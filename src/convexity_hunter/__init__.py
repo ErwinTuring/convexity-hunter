@@ -1,0 +1,1 @@
+"""Convexity Hunter research assistant."""
