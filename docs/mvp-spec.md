@@ -47,6 +47,8 @@ Limiting the MVP to long-option structures makes maximum loss explicitly bounded
 
 Low IV percentile is only an investigation signal. It is not proof that options are cheap.
 
+IV percentile and historical median ATM IV must disclose the number of historical observations used to calculate them.
+
 ### Layer 2: Tail relative pricing
 
 **Purpose:** Determine whether either tail is relatively cheap or expensive compared with ATM options and with its own history.
@@ -61,6 +63,10 @@ Low IV percentile is only an investigation signal. It is not proof that options 
 
 Steep put skew often means downside protection is relatively expensive. Flat skew may indicate cheaper downside protection, but it is not proof of mispricing. Skew is a relative-price measure, not a complete measure of absolute cheapness.
 
+Skew percentile must disclose its number of historical observations. The 10-delta and 25-delta measurements must disclose their delta convention and interpolation methodology.
+
+For MVP v0.1, one historical observation means one valid US market trading session using one end-of-day observation per session. Intraday, weekly, calendar-day, and mixed-frequency percentile histories are outside scope.
+
 ### Layer 3: Concrete structure validation
 
 **Purpose:** Determine whether a specific long-option structure provides attractive and bearable convexity after costs.
@@ -74,19 +80,30 @@ Each candidate must include:
 - expiration
 - contract multiplier
 - assumed position size
-- premium paid
+- quoted midpoint premium
+- estimated spread cost
+- commissions and fees
+- total estimated entry cost
 - maximum loss
 - maximum loss as a percentage of assumed portfolio value
 - bid-ask spread
-- estimated commissions and fees
 - theta
-- gamma
-- gamma relative to premium
+- raw total-position gamma
+- local Gamma P&L approximation for a 1% underlying move
+- local Gamma-cost ratio for a 1% underlying move
 - break-even point or points
 - scenario P&L for defined underlying moves
 - scenario P&L for defined volatility changes
 - expected holding horizon
 - cumulative cost if the same type of bet fails repeatedly
+
+The local Gamma approximation is a second-order local measure, not complete scenario P&L. It excludes Delta, Vega, Theta, volatility-surface changes, jumps, and model error, and it must not be presented as expected profit.
+
+For MVP v0.1, all monetary values in structure costs are total-position USD values. Quoted midpoint premium is the total option premium for the complete strategy position at quote midpoint and excludes spread cost, commissions, and fees. Estimated spread cost is the estimated execution cost above quote midpoint for the total strategy position. No currency field is required while scope remains limited to US-listed equities and ETFs.
+
+Gamma is the total strategy-position second derivative `d²V/dS²`, expressed as USD of position-value change per USD² of underlying-price movement. It must already incorporate every leg, quantity, and contract multiplier. Data adapters must convert provider-specific per-share or per-contract Gamma before constructing structure costs. The local Gamma formulas are valid only under this unit convention.
+
+Theta per day is the total strategy-position Theta expressed as USD of position-value change for one day under the declared methodology. The methodology must disclose the source or pricing model, Gamma scaling, Theta day-count convention, and relevant interpolation or calculation assumptions. The numeric field does not impose a 252-day or 365-day convention.
 
 The final candidate is a structure, not an asset.
 

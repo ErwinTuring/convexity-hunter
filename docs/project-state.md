@@ -30,14 +30,15 @@ Milestone 1: Define and implement the MVP domain model before connecting real ma
 - Project philosophy approved.
 - MVP specification drafted and corrected.
 - First MVP domain objects implemented and validated: CandidateState, OptionLeg, OptionStructure, and Scenario.
+- Typed evidence records implemented and validated for volatility environment, tail pricing, structure costs, and classified evidence.
 
 ## Current task
 
-Define the evidence records required by the three-layer screening model.
+Define scenario-result and candidate-research records that combine structures, evidence, costs, and scenario outcomes.
 
 ## Next task
 
-Implement typed records for volatility environment, tail pricing, structure costs, and classified evidence.
+Implement the first complete candidate report data model without screening policy or external data.
 
 ## Deferred
 
