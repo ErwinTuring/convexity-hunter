@@ -29,14 +29,15 @@ Milestone 1: Define and implement the MVP domain model before connecting real ma
 - Minimal Python package structure created.
 - Project philosophy approved.
 - MVP specification drafted and corrected.
+- First MVP domain objects implemented and validated: CandidateState, OptionLeg, OptionStructure, and Scenario.
 
 ## Current task
 
-Define the first Python domain objects and their validation rules.
+Define the evidence records required by the three-layer screening model.
 
 ## Next task
 
-Implement and test those domain objects without external APIs.
+Implement typed records for volatility environment, tail pricing, structure costs, and classified evidence.
 
 ## Deferred
 
