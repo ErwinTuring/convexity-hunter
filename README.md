@@ -18,17 +18,23 @@ The first MVP will organize research into five small stages:
 
 The repository contains only the initial project skeleton and documentation. Market scanning, external APIs, LLMs, MCP, Skills, and trading integrations are not implemented.
 
-## Run the synthetic report
+## Run the bilingual synthetic reports
 
-The example report uses invented demonstration values. It is not current market analysis and does not indicate that the scanner or agent is operational.
+Both reports use invented demonstration values. Neither is current market analysis or a trade recommendation. Each begins with a plain-language overview while retaining the complete technical detail below it. Scanning, screening policy, real-data integration, and the AI agent are not operational.
 
-Run it with:
+Run the Chinese report with:
 
-```text
-PYTHONPATH=src python3 examples/sample_candidate_report.py
+```bash
+PYTHONPATH=src python3 examples/sample_candidate_report.py --locale zh-CN
 ```
 
-The checked-in output is available at `data/samples/sample-candidate-report.md`.
+Run the English report with:
+
+```bash
+PYTHONPATH=src python3 examples/sample_candidate_report.py --locale en
+```
+
+The checked-in outputs are `data/samples/sample-candidate-report.zh-CN.md` and `data/samples/sample-candidate-report.en.md`.
 
 ## Development
 

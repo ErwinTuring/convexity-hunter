@@ -632,7 +632,7 @@ def _append_evidence_group(
 ) -> None:
     """Append one evidence-impact group with provenance fields."""
 
-    lines.extend((f"### {heading}", ""))
+    lines.extend((f"#### {heading}", ""))
     if not items:
         lines.extend(("None reported.", ""))
         return
@@ -649,7 +649,7 @@ def _append_evidence_group(
     lines.append("")
 
 
-def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
+def _render_technical_english(candidate: CandidateResearchRecord) -> str:
     """Render one candidate research record as deterministic Markdown."""
 
     if not isinstance(candidate, CandidateResearchRecord):
@@ -674,11 +674,11 @@ def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
             f"- **Expiration:** {candidate.expiration.isoformat()}",
             f"- **Expected holding days:** {candidate.structure.expected_holding_days}",
             "",
-            "## Research hypothesis",
+            "### Research hypothesis",
             "",
             candidate.hypothesis,
             "",
-            "## Concrete option structure",
+            "### Concrete option structure",
             "",
             "| Leg | Type | Strike | Expiration | Quantity | Multiplier |",
             "| ---: | --- | ---: | --- | ---: | ---: |",
@@ -691,7 +691,7 @@ def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
             f"{leg.contract_multiplier} |"
         )
 
-    lines.extend(("", "## Bounded downside and costs", ""))
+    lines.extend(("", "### Bounded downside and costs", ""))
     if candidate.costs is None:
         lines.extend(("Not supplied.", ""))
     else:
@@ -717,7 +717,7 @@ def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
             )
         )
 
-    lines.extend(("## Liquidity", ""))
+    lines.extend(("### Liquidity", ""))
     if candidate.liquidity is None:
         lines.extend(("Not supplied.", ""))
     else:
@@ -736,7 +736,7 @@ def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
             )
         )
 
-    lines.extend(("## Layer 1 — Volatility pricing environment", ""))
+    lines.extend(("### Layer 1 — Volatility pricing environment", ""))
     if candidate.volatility_environment is None:
         lines.extend(("Not supplied.", ""))
     else:
@@ -761,7 +761,7 @@ def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
             lines.append(f"| {point.tenor_days} | {_format_percentage(point.atm_iv)} |")
         lines.append("")
 
-    lines.extend(("## Layer 2 — Tail relative pricing", ""))
+    lines.extend(("### Layer 2 — Tail relative pricing", ""))
     if not candidate.tail_pricing_slices:
         lines.extend(("Not supplied.", ""))
     else:
@@ -792,7 +792,7 @@ def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
             )
         lines.append("")
 
-    lines.extend(("## Scenario analysis", ""))
+    lines.extend(("### Scenario analysis", ""))
     if not candidate.scenario_results:
         lines.extend(("Not supplied.", ""))
     else:
@@ -828,7 +828,7 @@ def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
         (
             "Scenario values are supplied research results, not expected returns or probability-weighted forecasts.",
             "",
-            "## Evidence",
+            "### Evidence",
             "",
         )
     )
@@ -836,23 +836,23 @@ def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
     _append_evidence_group(lines, "Weakening evidence", candidate.weakening_evidence)
     _append_evidence_group(lines, "Neutral evidence", candidate.neutral_evidence)
 
-    lines.extend(("## Falsification conditions", ""))
+    lines.extend(("### Falsification conditions", ""))
     for index, condition in enumerate(candidate.falsification_conditions, start=1):
         lines.append(f"{index}. {condition}")
 
-    lines.extend(("", "## Missing data", ""))
+    lines.extend(("", "### Missing data", ""))
     if candidate.missing_data:
         lines.extend(f"- {item}" for item in candidate.missing_data)
     else:
         lines.append("None reported.")
 
-    lines.extend(("", "## False-positive risks", ""))
+    lines.extend(("", "### False-positive risks", ""))
     lines.extend(f"- {item}" for item in candidate.false_positive_reasons)
 
-    lines.extend(("", "## AI interpretation", ""))
+    lines.extend(("", "### AI interpretation", ""))
     lines.append(candidate.ai_interpretation or "Not supplied.")
 
-    lines.extend(("", "## Human-review questions", ""))
+    lines.extend(("", "### Human-review questions", ""))
     for index, question in enumerate(candidate.human_review_questions, start=1):
         lines.append(f"{index}. {question}")
 
@@ -862,4 +862,254 @@ def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
             "This record organizes research evidence. It does not recommend, execute, or guarantee any trade or investment outcome.",
         )
     )
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+REPORT_TEXT = {
+    "en": {
+        "title": "# Convexity Hunter Research Record",
+        "warning": "> **SYNTHETIC DEMONSTRATION — NOT CURRENT MARKET DATA AND NOT A TRADE RECOMMENDATION**",
+        "overview": "## Plain-language overview",
+        "technical": "## Technical research details",
+        "sections": (
+            "### 1. What is being studied?",
+            "### 2. What is the current status?",
+            "### 3. Why might it deserve attention?",
+            "### 4. Why is caution still necessary?",
+            "### 5. How much could be lost?",
+            "### 6. What happens in the supplied scenarios?",
+            "### 7. What should a human verify next?",
+        ),
+        "structure_explanations": {
+            "long_call": "A fixed entry cost is paid for nonlinear upside exposure. The position may lose the declared entry cost if the underlying does not rise enough before expiration.",
+            "long_put": "A fixed entry cost is paid for nonlinear downside exposure or protection. The position may lose the declared entry cost if the underlying does not fall enough before expiration.",
+            "long_straddle": "This report studies buying a call and a put with the same strike and expiration. It does not require choosing an up or down direction in advance, but the underlying must move enough during the holding period to overcome premium, time decay, and trading costs.",
+        },
+        "state_labels": {
+            "reject": "reject", "watch": "watch", "investigate": "investigate",
+            "data_insufficient": "data_insufficient",
+        },
+        "structure_labels": {
+            "long_call": "long_call", "long_put": "long_put",
+            "long_straddle": "long_straddle",
+        },
+        "valuation_labels": {
+            "immediate": "immediate", "days_forward": "days_forward",
+            "holding_horizon": "holding_horizon", "expiration": "expiration",
+        },
+        "labels": {
+            "underlying": "Underlying", "structure": "Structure type",
+            "strikes": "Strike or strikes", "expiration": "Expiration",
+            "holding": "Expected holding days", "state": "State",
+            "rationale": "State rationale", "weakening": "Weakening evidence",
+            "missing": "Missing data", "entry": "Total entry cost",
+            "loss": "Maximum loss", "loss_pct": "Maximum loss percentage",
+            "repeat_count": "Repeated-bet count",
+            "repeat_cost": "Cumulative repeated-bet cost",
+            "repeat_pct": "Cumulative repeated-bet percentage",
+            "questions": "Human-review questions",
+            "falsification": "Conditions that would overturn the research hypothesis",
+        },
+        "status_note": "This status is supplied by the research record. Milestone 1.1 does not independently calculate it, and it is not a trade recommendation.",
+        "no_support": "No supporting evidence is currently reported.",
+        "no_weakening": "No weakening evidence is currently reported.",
+        "no_missing": "No missing data is currently reported.",
+        "loss_note": "For supported long-only MVP structures, the declared maximum modeled loss is the total entry cost.",
+        "loss_missing": "Loss information was not supplied.",
+        "scenario_counts": "Among the supplied scenarios: {positive} positive, {negative} negative, and {zero} zero P&L results.",
+        "highest": "Highest result among supplied scenarios",
+        "lowest": "Lowest result among supplied scenarios",
+        "scenario_line": "{label}: {time}; underlying move {move}; IV shock {iv}; P&L after costs {pnl}.",
+        "scenario_note": "This compares only the scenarios supplied in the report. It does not represent every possible outcome and is not a return forecast.",
+        "no_scenarios": "No scenario results were supplied.",
+        "footer": "This record organizes research evidence. It does not recommend, execute, or guarantee any trade or investment outcome.",
+    },
+    "zh-CN": {
+        "title": "# Convexity Hunter 候选研究报告",
+        "warning": "> **合成演示数据——不是当前市场数据，也不是交易建议**",
+        "overview": "## 通俗概要：先看懂这份报告",
+        "technical": "## 技术研究明细",
+        "sections": (
+            "### 1. 研究的是什么？", "### 2. 当前状态是什么？",
+            "### 3. 为什么可能值得关注？", "### 4. 为什么仍然需要谨慎？",
+            "### 5. 最多可能损失多少？", "### 6. 在给定情景下，结果可能怎样？",
+            "### 7. 接下来需要人工核实什么？",
+        ),
+        "structure_explanations": {
+            "long_call": "这份报告研究支付固定入场成本、获得非线性上涨敞口的买入看涨期权。如果标的在到期前上涨幅度不足，仓位可能损失已声明的全部入场成本。",
+            "long_put": "这份报告研究支付固定入场成本、获得非线性下跌敞口或保护的买入看跌期权。如果标的在到期前下跌幅度不足，仓位可能损失已声明的全部入场成本。",
+            "long_straddle": "本报告研究的是：同时买入相同执行价和到期日的看涨期权与看跌期权。它不需要提前押注上涨或下跌，但标的需要在持有期间出现足够大的波动，才可能覆盖期权费、时间损耗和交易成本。",
+        },
+        "state_labels": {
+            "reject": "拒绝（reject）", "watch": "观察（watch）",
+            "investigate": "深入研究（investigate）",
+            "data_insufficient": "数据不足（data_insufficient）",
+        },
+        "structure_labels": {
+            "long_call": "买入看涨（long_call）", "long_put": "买入看跌（long_put）",
+            "long_straddle": "买入跨式（long_straddle）",
+        },
+        "valuation_labels": {
+            "immediate": "即时（immediate）", "days_forward": "未来指定日期（days_forward）",
+            "holding_horizon": "持有期末（holding_horizon）", "expiration": "到期（expiration）",
+        },
+        "labels": {
+            "underlying": "标的", "structure": "结构类型", "strikes": "执行价",
+            "expiration": "到期日", "holding": "预计持有天数", "state": "状态",
+            "rationale": "状态理由", "weakening": "不利或弱化证据",
+            "missing": "尚未提供的数据", "entry": "总入场成本", "loss": "最大损失",
+            "loss_pct": "最大损失占组合比例", "repeat_count": "重复尝试次数",
+            "repeat_cost": "累计重复尝试成本", "repeat_pct": "累计重复尝试成本占比",
+            "questions": "人工复核问题", "falsification": "可能推翻研究假设的证伪条件",
+        },
+        "status_note": "该状态来自已提供的研究记录。里程碑 1.1 不会独立计算状态，该状态也不是交易建议。",
+        "no_support": "目前没有已报告的支持证据。",
+        "no_weakening": "目前没有已报告的弱化证据。",
+        "no_missing": "目前没有已报告的缺失数据。",
+        "loss_note": "对于当前 MVP 支持的只买入期权结构，已声明的最大模型损失等于总入场成本。",
+        "loss_missing": "未提供损失信息。",
+        "scenario_counts": "在已提供的情景中：{positive} 个盈利、{negative} 个亏损、{zero} 个盈亏为零。",
+        "highest": "已提供情景中的最高结果", "lowest": "已提供情景中的最低结果",
+        "scenario_line": "{label}：{time}；标的变动 {move}；IV 变动 {iv}；扣除成本后盈亏 {pnl}。",
+        "scenario_note": "这里只比较报告中已提供的情景，不代表所有可能结果，也不是收益预测。",
+        "no_scenarios": "未提供情景结果。",
+        "footer": "本记录用于整理研究证据，不推荐、不执行，也不保证任何交易或投资结果。",
+    },
+}
+
+
+ZH_TECHNICAL_REPLACEMENTS = {
+    "- **Candidate ID:**": "- **候选 ID:**", "- **State:**": "- **状态:**",
+    "- **State rationale:**": "- **状态理由:**", "- **As-of date:**": "- **数据截至日期:**",
+    "- **Underlying:**": "- **标的:**", "- **Structure type:**": "- **结构类型:**",
+    "- **Expiration:**": "- **到期日:**", "- **Expected holding days:**": "- **预计持有天数:**",
+    "### Research hypothesis": "### 研究假设", "### Concrete option structure": "### 具体期权结构",
+    "### Bounded downside and costs": "### 有限损失与成本", "### Liquidity": "### 流动性",
+    "### Layer 1 — Volatility pricing environment": "### 第一层——整体波动率定价环境",
+    "### Layer 2 — Tail relative pricing": "### 第二层——尾部相对定价",
+    "### Scenario analysis": "### 情景分析", "### Evidence": "### 证据",
+    "#### Supporting evidence": "#### 支持证据", "#### Weakening evidence": "#### 弱化证据",
+    "#### Neutral evidence": "#### 中性证据", "### Falsification conditions": "### 证伪条件",
+    "### Missing data": "### 缺失数据", "### False-positive risks": "### 假阳性风险",
+    "### AI interpretation": "### AI 解读", "### Human-review questions": "### 人工复核问题",
+    "| Leg | Type | Strike | Expiration | Quantity | Multiplier |": "| 期权腿 | 类型 | 执行价 | 到期日 | 数量 | 合约乘数 |",
+    "| Valuation time | Valuation date | Underlying move | IV shock | Shocked underlying | Base IVs | Shocked IVs | Position value | Exit cost | Net liquidation value | P&L after costs | Return on entry cost |": "| 估值时间 | 估值日期 | 标的变动 | IV 变动 | 变动后标的价格 | 基础 IV | 变动后 IV | 仓位价值 | 退出成本 | 净清算价值 | 扣除成本后盈亏 | 入场成本回报率 |",
+    "| Tenor days | ATM IV |": "| 期限天数 | 平值隐含波动率（ATM IV） |",
+    "| Expiration | Days to expiration | ATM IV | 25Δ put IV | 25Δ call IV | Downside 25Δ skew | Upside 25Δ skew | Downside wing curvature | Upside wing curvature | Skew percentile | History observations |": "| 到期日 | 距到期天数 | ATM IV | 25Δ 看跌 IV | 25Δ 看涨 IV | 下行 25Δ 偏斜 | 上行 25Δ 偏斜 | 下行翼曲率 | 上行翼曲率 | 偏斜历史百分位 | 历史观测数 |",
+    "**Assumed portfolio value:**": "**假设组合价值:**", "**Quoted midpoint premium:**": "**报价中点权利金:**",
+    "**Estimated spread cost:**": "**预估买卖价差成本:**", "**Commissions and fees:**": "**佣金与费用:**",
+    "**Total entry cost:**": "**总入场成本:**", "**Maximum loss:**": "**最大损失:**",
+    "**Maximum loss percentage:**": "**最大损失占组合比例:**", "**Repeated-bet count:**": "**重复尝试次数:**",
+    "**Cumulative repeated-bet cost:**": "**累计重复尝试成本:**", "**Cumulative repeated-bet percentage:**": "**累计重复尝试成本占比:**",
+    "**Theta per day:**": "**每日 Theta:**", "**Total-position Gamma:**": "**总仓位 Gamma:**",
+    "**Local Gamma P&L for a 1% move:**": "**标的变动 1% 的局部 Gamma 盈亏:**",
+    "**Local Gamma-cost ratio for a 1% move:**": "**标的变动 1% 的局部 Gamma 成本比:**",
+    "**Greeks methodology:**": "**希腊字母方法说明:**", "**Total-position bid:**": "**总仓位买价:**",
+    "**Total-position ask:**": "**总仓位卖价:**", "**Quoted midpoint:**": "**报价中点:**",
+    "**Absolute bid-ask spread:**": "**绝对买卖价差:**", "**Bid-ask spread percentage:**": "**买卖价差百分比:**",
+    "**Minimum leg open interest:**": "**各腿最小未平仓量:**", "**Minimum leg daily volume:**": "**各腿最小当日成交量:**",
+    "**Quote methodology:**": "**报价方法:**", "**Reference tenor:**": "**参考期限:**",
+    "**ATM IV:**": "**平值隐含波动率（ATM IV）:**", "**IV percentile:**": "**隐含波动率历史百分位:**",
+    "**IV history observations:**": "**IV 历史观测数:**", "**Historical median ATM IV:**": "**历史平值隐含波动率中位数:**",
+    "**ATM IV minus historical median:**": "**ATM IV 减历史中位数:**", "**Matched realized volatility:**": "**匹配期限实现波动率:**",
+    "**Matched realized window:**": "**实现波动率匹配窗口:**", "**Implied-realized gap:**": "**隐含波动率与实现波动率差:**",
+    " delta methodology:**": " Delta 方法:**", "**Pricing methodology:**": "**定价方法:**",
+    "**Evidence ID:**": "**证据 ID:**", "**Kind:**": "**证据类型:**", "**Statement:**": "**陈述:**",
+    "**Source:**": "**来源:**", "**Methodology:**": "**方法:**", "Not supplied.": "未提供。",
+    "None reported.": "未报告。", "Scenario values are supplied research results, not expected returns or probability-weighted forecasts.": "情景数值是已提供的研究结果，不是预期收益，也不是概率加权预测。",
+    "long_straddle": "买入跨式（long_straddle）", "long_call": "买入看涨（long_call）",
+    "long_put": "买入看跌（long_put）", "| call |": "| 看涨（call） |", "| put |": "| 看跌（put） |",
+    "| immediate |": "| 即时（immediate） |", "| holding_horizon |": "| 持有期末（holding_horizon） |",
+    "| expiration |": "| 到期（expiration） |", "| days_forward |": "| 未来指定日期（days_forward） |",
+    "Call:": "看涨（call）:", "Put:": "看跌（put）:", "calculated_metric": "计算指标（calculated_metric）",
+    "observed_fact": "观察事实（observed_fact）", "assumption": "假设（assumption）",
+    "ai_interpretation": "AI 解读（ai_interpretation）",
+    "watch": "观察（watch）", "reject": "拒绝（reject）", "investigate": "深入研究（investigate）",
+    "data_insufficient": "数据不足（data_insufficient）",
+    " days": " 天",
+}
+
+
+def _normalize_report_locale(locale: object) -> str:
+    if not isinstance(locale, str):
+        raise TypeError("locale must be a string")
+    normalized = locale.strip()
+    if normalized not in REPORT_TEXT:
+        raise ValueError("locale is not supported")
+    return normalized
+
+
+def _append_overview(lines: list, candidate: CandidateResearchRecord, locale: str) -> None:
+    text = REPORT_TEXT[locale]
+    labels = text["labels"]
+    sections = text["sections"]
+    strikes = ", ".join(_format_money(value) for value in dict.fromkeys(leg.strike for leg in candidate.structure.legs))
+    lines.extend((text["overview"], "", sections[0], "", text["structure_explanations"][candidate.structure.structure_type], "",
+                  f"- **{labels['underlying']}:** {candidate.structure.underlying}",
+                  f"- **{labels['structure']}:** {text['structure_labels'][candidate.structure.structure_type]}",
+                  f"- **{labels['strikes']}:** {strikes}", f"- **{labels['expiration']}:** {candidate.expiration.isoformat()}",
+                  f"- **{labels['holding']}:** {candidate.structure.expected_holding_days}", "", sections[1], "",
+                  f"- **{labels['state']}:** {text['state_labels'][candidate.state.value]}", f"- **{labels['rationale']}:** {candidate.state_rationale}", "", text["status_note"], "", sections[2], ""))
+    lines.extend((f"- {item.statement}" for item in candidate.supporting_evidence) if candidate.supporting_evidence else (text["no_support"],))
+    lines.extend(("", sections[3], "", f"**{labels['weakening']}**", ""))
+    lines.extend((f"- {item.statement}" for item in candidate.weakening_evidence) if candidate.weakening_evidence else (text["no_weakening"],))
+    lines.extend(("", f"**{labels['missing']}**", ""))
+    lines.extend((f"- {item}" for item in candidate.missing_data) if candidate.missing_data else (text["no_missing"],))
+    lines.extend(("", sections[4], ""))
+    if candidate.costs is None:
+        lines.append(text["loss_missing"])
+    else:
+        costs = candidate.costs
+        lines.extend((text["loss_note"], "", f"- **{labels['entry']}:** {_format_money(costs.total_entry_cost)}",
+                      f"- **{labels['loss']}:** {_format_money(costs.maximum_loss)}", f"- **{labels['loss_pct']}:** {_format_percentage(costs.maximum_loss_percentage)}",
+                      f"- **{labels['repeat_count']}:** {costs.repeated_bet_count}", f"- **{labels['repeat_cost']}:** {_format_money(costs.cumulative_repeated_bet_cost)}",
+                      f"- **{labels['repeat_pct']}:** {_format_percentage(costs.cumulative_repeated_bet_percentage)}"))
+    lines.extend(("", sections[5], ""))
+    if not candidate.scenario_results:
+        lines.append(text["no_scenarios"])
+    else:
+        positive = sum(item.pnl_after_costs > 0 for item in candidate.scenario_results)
+        negative = sum(item.pnl_after_costs < 0 for item in candidate.scenario_results)
+        zero = len(candidate.scenario_results) - positive - negative
+        high = max(candidate.scenario_results, key=lambda item: item.pnl_after_costs)
+        low = min(candidate.scenario_results, key=lambda item: item.pnl_after_costs)
+        lines.append(text["scenario_counts"].format(positive=positive, negative=negative, zero=zero))
+        for label, item in ((text["highest"], high), (text["lowest"], low)):
+            lines.extend(("", text["scenario_line"].format(label=label, time=text["valuation_labels"][item.scenario.valuation_time], move=_format_percentage(item.scenario.underlying_move), iv=_format_percentage(item.scenario.iv_change), pnl=_format_money(item.pnl_after_costs))))
+        lines.extend(("", text["scenario_note"]))
+    lines.extend(("", sections[6], "", f"**{labels['questions']}**", ""))
+    for index, question in enumerate(candidate.human_review_questions, start=1):
+        lines.append(f"{index}. {question}")
+    lines.extend(("", f"**{labels['falsification']}**", ""))
+    for index, condition in enumerate(candidate.falsification_conditions, start=1):
+        lines.append(f"{index}. {condition}")
+
+
+def _technical_body(candidate: CandidateResearchRecord, locale: str) -> str:
+    lines = _render_technical_english(candidate).rstrip("\n").split("\n")
+    lines = lines[2:]
+    if candidate.candidate_id.startswith("SYNTHETIC-"):
+        lines = lines[2:]
+    if lines and lines[-1] == REPORT_TEXT["en"]["footer"]:
+        lines = lines[:-1]
+    while lines and not lines[-1]:
+        lines.pop()
+    body = "\n".join(lines)
+    if locale == "zh-CN":
+        for source, translated in ZH_TECHNICAL_REPLACEMENTS.items():
+            body = body.replace(source, translated)
+    return body
+
+
+def render_candidate_markdown(candidate: CandidateResearchRecord, locale: str = "en") -> str:
+    """Render one deterministic bilingual candidate research report."""
+    if not isinstance(candidate, CandidateResearchRecord):
+        raise TypeError("candidate must be a CandidateResearchRecord")
+    normalized = _normalize_report_locale(locale)
+    text = REPORT_TEXT[normalized]
+    lines = [text["title"], ""]
+    if candidate.candidate_id.startswith("SYNTHETIC-"):
+        lines.extend((text["warning"], ""))
+    _append_overview(lines, candidate, normalized)
+    lines.extend(("", "---", "", text["technical"], "", _technical_body(candidate, normalized), "", text["footer"]))
     return "\n".join(lines).rstrip("\n") + "\n"

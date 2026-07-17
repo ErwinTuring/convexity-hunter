@@ -34,10 +34,11 @@ Milestone 2: Define and implement deterministic candidate screening policy using
 - Liquidity and scenario-result records implemented and validated with leg-level volatility inputs.
 - CandidateResearchRecord implemented and validated with cross-record consistency, bounded scenario losses, empirical support requirements, falsification, and human-review fields.
 - Deterministic Markdown rendering and the first end-to-end synthetic candidate report implemented and validated.
+- Milestone 1.1 completed: separate Chinese and English deterministic candidate reports now place a plain-language overview before fully auditable technical details.
 
 ## Current task
 
-Define explicit screening-policy inputs, thresholds, decision precedence, and reason codes for Reject, Watch, Investigate, and Data insufficient.
+Define explicit screening-policy inputs, provisional thresholds, scenario requirements, decision precedence, and reason codes.
 
 ## Next task
 

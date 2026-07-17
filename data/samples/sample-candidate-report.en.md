@@ -2,6 +2,79 @@
 
 > **SYNTHETIC DEMONSTRATION — NOT CURRENT MARKET DATA AND NOT A TRADE RECOMMENDATION**
 
+## Plain-language overview
+
+### 1. What is being studied?
+
+This report studies buying a call and a put with the same strike and expiration. It does not require choosing an up or down direction in advance, but the underlying must move enough during the holding period to overcome premium, time decay, and trading costs.
+
+- **Underlying:** SPY
+- **Structure type:** long_straddle
+- **Strike or strikes:** $500.00
+- **Expiration:** 2030-02-16
+- **Expected holding days:** 14
+
+### 2. What is the current status?
+
+- **State:** watch
+- **State rationale:** WATCH is supplied only to exercise the report model and is not a screening conclusion.
+
+This status is supplied by the research record. Milestone 1.1 does not independently calculate it, and it is not a trade recommendation.
+
+### 3. Why might it deserve attention?
+
+- Synthetic reference ATM IV is at the 28th historical percentile and 2.50 percentage points below its historical median. This is only an investigation signal and is not proof that options are cheap.
+
+### 4. Why is caution still necessary?
+
+**Weakening evidence**
+
+- Synthetic reference ATM IV exceeds matched-horizon realized volatility by 2.50 percentage points.
+- Synthetic repeated entry costs would consume 7.45% of the assumed portfolio across three attempts.
+
+**Missing data**
+
+- No current or historical market data has been supplied.
+- No independently validated pricing output has been supplied.
+
+### 5. How much could be lost?
+
+For supported long-only MVP structures, the declared maximum modeled loss is the total entry cost.
+
+- **Total entry cost:** $2,482.60
+- **Maximum loss:** $2,482.60
+- **Maximum loss percentage:** 2.48%
+- **Repeated-bet count:** 3
+- **Cumulative repeated-bet cost:** $7,447.80
+- **Cumulative repeated-bet percentage:** 7.45%
+
+### 6. What happens in the supplied scenarios?
+
+Among the supplied scenarios: 3 positive, 1 negative, and 0 zero P&L results.
+
+Highest result among supplied scenarios: expiration; underlying move -20.00%; IV shock 0.00%; P&L after costs $7,517.40.
+
+Lowest result among supplied scenarios: immediate; underlying move 0.00%; IV shock -20.00%; P&L after costs -$912.60.
+
+This compares only the scenarios supplied in the report. It does not represent every possible outcome and is not a return forecast.
+
+### 7. What should a human verify next?
+
+**Human-review questions**
+
+1. Are the synthetic cost fields internally understandable?
+2. Does each scenario disclose enough methodology for audit?
+3. Which real-data controls are required before this format is used for research?
+
+**Conditions that would overturn the research hypothesis**
+
+1. Volatility-environment support fails if real data show that structure-relevant ATM IV is not below its own historical median under the declared methodology.
+2. The convexity-versus-cost hypothesis fails if reproducible valuation using real quotes shows that reasonable two-sided move scenarios do not overcome entry cost, time decay, and estimated exit cost over the expected holding horizon.
+
+---
+
+## Technical research details
+
 - **Candidate ID:** SYNTHETIC-SPY-STRADDLE-001
 - **State:** watch
 - **State rationale:** WATCH is supplied only to exercise the report model and is not a screening conclusion.
@@ -11,18 +84,18 @@
 - **Expiration:** 2030-02-16
 - **Expected holding days:** 14
 
-## Research hypothesis
+### Research hypothesis
 
 A synthetic SPY long straddle may merit further investigation if its declared convex payoff paths appear favorable relative to total-position costs.
 
-## Concrete option structure
+### Concrete option structure
 
 | Leg | Type | Strike | Expiration | Quantity | Multiplier |
 | ---: | --- | ---: | --- | ---: | ---: |
 | 1 | call | $500.00 | 2030-02-16 | 1 | 100 |
 | 2 | put | $500.00 | 2030-02-16 | 1 | 100 |
 
-## Bounded downside and costs
+### Bounded downside and costs
 
 - **Assumed portfolio value:** $100,000.00
 - **Quoted midpoint premium:** $2,400.00
@@ -40,7 +113,7 @@ A synthetic SPY long straddle may merit further investigation if its declared co
 - **Local Gamma-cost ratio for a 1% move:** 0.29%
 - **Greeks methodology:** synthetic fixture Greeks; total-position scaling by quantity and multiplier; synthetic daily theta convention
 
-## Liquidity
+### Liquidity
 
 - **Total-position bid:** $2,320.00
 - **Total-position ask:** $2,480.00
@@ -51,7 +124,7 @@ A synthetic SPY long straddle may merit further investigation if its declared co
 - **Minimum leg daily volume:** 350
 - **Quote methodology:** synthetic fixture total-position quote assembled from synthetic leg quotes
 
-## Layer 1 — Volatility pricing environment
+### Layer 1 — Volatility pricing environment
 
 - **Reference tenor:** 30 days
 - **ATM IV:** 20.00%
@@ -68,7 +141,7 @@ A synthetic SPY long straddle may merit further investigation if its declared co
 | 30 | 20.00% |
 | 60 | 21.50% |
 
-## Layer 2 — Tail relative pricing
+### Layer 2 — Tail relative pricing
 
 | Expiration | Days to expiration | ATM IV | 25Δ put IV | 25Δ call IV | Downside 25Δ skew | Upside 25Δ skew | Downside wing curvature | Upside wing curvature | Skew percentile | History observations |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -78,7 +151,7 @@ A synthetic SPY long straddle may merit further investigation if its declared co
 - **2030-02-16 delta methodology:** synthetic fixture spot-delta convention with synthetic linear IV interpolation
 - **2030-03-15 delta methodology:** synthetic fixture spot-delta convention with synthetic linear IV interpolation
 
-## Scenario analysis
+### Scenario analysis
 
 | Valuation time | Valuation date | Underlying move | IV shock | Shocked underlying | Base IVs | Shocked IVs | Position value | Exit cost | Net liquidation value | P&L after costs | Return on entry cost |
 | --- | --- | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -91,9 +164,9 @@ A synthetic SPY long straddle may merit further investigation if its declared co
 
 Scenario values are supplied research results, not expected returns or probability-weighted forecasts.
 
-## Evidence
+### Evidence
 
-### Supporting evidence
+#### Supporting evidence
 
 - **Evidence ID:** SYNTHETIC-CALC-SUPPORT
   - **Kind:** calculated_metric
@@ -101,7 +174,7 @@ Scenario values are supplied research results, not expected returns or probabili
   - **Source:** synthetic fixture volatility-environment data
   - **Methodology:** synthetic fixture percentile and median comparison using 252 end-of-day observations
 
-### Weakening evidence
+#### Weakening evidence
 
 - **Evidence ID:** SYNTHETIC-CALC-WEAKEN-IV-GAP
   - **Kind:** calculated_metric
@@ -114,7 +187,7 @@ Scenario values are supplied research results, not expected returns or probabili
   - **Source:** synthetic fixture structure-cost inputs
   - **Methodology:** synthetic fixture total entry cost multiplied by three attempts
 
-### Neutral evidence
+#### Neutral evidence
 
 - **Evidence ID:** SYNTHETIC-ASSUMPTION
   - **Kind:** assumption
@@ -127,26 +200,26 @@ Scenario values are supplied research results, not expected returns or probabili
   - **Source:** synthetic fixture interpretation
   - **Methodology:** synthetic fixture deterministic narrative supplied by the example
 
-## Falsification conditions
+### Falsification conditions
 
 1. Volatility-environment support fails if real data show that structure-relevant ATM IV is not below its own historical median under the declared methodology.
 2. The convexity-versus-cost hypothesis fails if reproducible valuation using real quotes shows that reasonable two-sided move scenarios do not overcome entry cost, time decay, and estimated exit cost over the expected holding horizon.
 
-## Missing data
+### Missing data
 
 - No current or historical market data has been supplied.
 - No independently validated pricing output has been supplied.
 
-## False-positive risks
+### False-positive risks
 
 - Invented values may accidentally resemble a favorable historical configuration.
 - The simplified proportional IV shocks do not model skew or surface changes.
 
-## AI interpretation
+### AI interpretation
 
 Interpretation only: this synthetic fixture demonstrates report organization and does not establish that any real option structure is attractive.
 
-## Human-review questions
+### Human-review questions
 
 1. Are the synthetic cost fields internally understandable?
 2. Does each scenario disclose enough methodology for audit?

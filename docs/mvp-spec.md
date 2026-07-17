@@ -232,6 +232,12 @@ WATCH, REJECT, and DATA_INSUFFICIENT records may remain incomplete, with missing
 
 INVESTIGATE also requires at least one supporting observed fact or supporting calculated metric. Assumptions and AI interpretations cannot independently satisfy this empirical-support requirement.
 
+### User-facing reporting
+
+User-facing reports must support separate Chinese and English output built from identical structured facts and numerical values. Every report must place a plain-language overview before the technical analysis. The overview must explain the structure, supplied state, supporting reasons, caution reasons, bounded loss, supplied scenario snapshot, and next human checks.
+
+The overview must be derived deterministically from the research record and must not invent evidence, probabilities, prices, or conclusions. Complete auditable technical detail must remain below the overview. Localization is a presentation concern and must not change the candidate’s underlying economics.
+
 ## 9. Explicit non-goals
 
 The MVP does not aim to:
