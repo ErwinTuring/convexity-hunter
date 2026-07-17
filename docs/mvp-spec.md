@@ -105,6 +105,18 @@ Gamma is the total strategy-position second derivative `d²V/dS²`, expressed as
 
 Theta per day is the total strategy-position Theta expressed as USD of position-value change for one day under the declared methodology. The methodology must disclose the source or pricing model, Gamma scaling, Theta day-count convention, and relevant interpolation or calculation assumptions. The numeric field does not impose a 252-day or 365-day convention.
 
+Liquidity evidence must include:
+
+- total-position quoted bid value
+- total-position quoted ask value
+- absolute bid-ask spread
+- bid-ask spread relative to quoted midpoint
+- minimum open interest across the structure’s legs
+- minimum daily volume across the structure’s legs
+- disclosed quote aggregation and timestamp methodology
+
+These values expose the weakest-liquidity leg and the total-position execution market. The liquidity record stores evidence only; it does not define or apply sufficiency thresholds.
+
 The final candidate is a structure, not an asset.
 
 ## 4. Scenario framework
@@ -142,6 +154,23 @@ The MVP default IV shocks are relative changes from current IV:
 `shocked IV = current IV × (1 + IV shock)`
 
 For example, a +20% IV shock changes an IV of 20% to 24%, not 40%. Absolute percentage-point shocks may be added later, but they must be explicitly labeled.
+
+Each scenario result must record:
+
+- base underlying price
+- one base IV input for each declared option leg
+- shocked underlying price
+- one shocked IV for each declared option leg
+- valuation date
+- estimated total-position value
+- entry cost basis
+- estimated exit cost
+- P&L after declared costs
+- pricing methodology
+
+The starting IVs must be the actual leg-level volatility inputs used by the pricing calculation; they are not automatically ATM IV. The default scenario applies the same relative IV shock to every leg’s own base IV, preserving existing differences across legs. This is a parallel proportional shock and does not model changes in skew, smile curvature, or term-structure shape. Richer volatility-surface shocks are deferred beyond MVP v0.1.
+
+At expiration, leg-level IV inputs remain in the scenario result for auditability even when terminal payoff no longer depends on volatility. A scenario result stores a supplied pricing result and does not itself calculate option value, expected return, or probability-weighted forecasts. Its pricing methodology must describe the model or provider, rates, dividends, volatility-surface construction, interpolation, and limitations.
 
 Scenario ranges may later be adapted to each asset. These values are the initial MVP defaults.
 
