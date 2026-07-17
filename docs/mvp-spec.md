@@ -172,6 +172,8 @@ The starting IVs must be the actual leg-level volatility inputs used by the pric
 
 At expiration, leg-level IV inputs remain in the scenario result for auditability even when terminal payoff no longer depends on volatility. A scenario result stores a supplied pricing result and does not itself calculate option value, expected return, or probability-weighted forecasts. Its pricing methodology must describe the model or provider, rates, dividends, volatility-surface construction, interpolation, and limitations.
 
+For MVP long-only structures, net liquidation value is floored at zero. When estimated exit cost exceeds estimated position value, the scenario assumes rational abandonment rather than paying to close. Scenario P&L therefore cannot be worse than negative entry cost. This bounded-loss treatment does not apply to future short-option structures, which are outside MVP v0.1.
+
 Scenario ranges may later be adapted to each asset. These values are the initial MVP defaults.
 
 ## 5. Candidate states
@@ -221,6 +223,14 @@ One candidate report must contain:
 - missing data
 - AI interpretation
 - human-review questions
+
+### CandidateResearchRecord
+
+`CandidateResearchRecord` is the canonical aggregate for one candidate structure. It stores a supplied CandidateState and rationale but does not derive the state. It enforces the same structure, underlying, as-of date, expiration, entry-cost basis, underlying-price basis, and quoted-midpoint consistency where relevant. It separates evidence by kind and impact and requires falsification conditions, false-positive reasons, and human-review questions.
+
+WATCH, REJECT, and DATA_INSUFFICIENT records may remain incomplete, with missing data disclosed where required. INVESTIGATE records require minimum three-layer completeness. The aggregate does not define attractiveness thresholds or produce a recommendation.
+
+INVESTIGATE also requires at least one supporting observed fact or supporting calculated metric. Assumptions and AI interpretations cannot independently satisfy this empirical-support requirement.
 
 ## 9. Explicit non-goals
 

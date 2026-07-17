@@ -358,13 +358,44 @@ class ScenarioResultTests(unittest.TestCase):
 
     def test_positive_pnl_and_return(self) -> None:
         result = make_result()
+        self.assertAlmostEqual(result.net_liquidation_value, 1_480.0)
         self.assertAlmostEqual(result.pnl_after_costs, 480.0)
         self.assertAlmostEqual(result.return_on_entry_cost, 0.48)
 
     def test_negative_pnl(self) -> None:
         result = make_result(estimated_position_value=500.0)
+        self.assertAlmostEqual(result.net_liquidation_value, 480.0)
         self.assertAlmostEqual(result.pnl_after_costs, -520.0)
         self.assertAlmostEqual(result.return_on_entry_cost, -0.52)
+
+    def test_exit_cost_above_position_value_uses_abandonment_floor(self) -> None:
+        result = make_result(
+            estimated_position_value=10.0,
+            estimated_exit_cost=25.0,
+        )
+        self.assertAlmostEqual(result.net_liquidation_value, 0.0)
+        self.assertAlmostEqual(result.pnl_after_costs, -1_000.0)
+        self.assertAlmostEqual(result.return_on_entry_cost, -1.0)
+        self.assertTrue(result.loss_is_within_entry_cost)
+
+    def test_zero_position_value_with_positive_exit_cost_is_abandoned(self) -> None:
+        result = make_result(
+            estimated_position_value=0.0,
+            estimated_exit_cost=20.0,
+        )
+        self.assertAlmostEqual(result.net_liquidation_value, 0.0)
+        self.assertAlmostEqual(result.pnl_after_costs, -result.entry_cost_basis)
+        self.assertGreaterEqual(result.return_on_entry_cost, -1.0)
+        self.assertTrue(result.loss_is_within_entry_cost)
+
+    def test_scenario_loss_cannot_exceed_entry_cost(self) -> None:
+        result = make_result(
+            estimated_position_value=1.0,
+            estimated_exit_cost=1_000_000.0,
+        )
+        self.assertGreaterEqual(result.pnl_after_costs, -result.entry_cost_basis)
+        self.assertGreaterEqual(result.return_on_entry_cost, -1.0)
+        self.assertTrue(result.loss_is_within_entry_cost)
 
     def test_methodology_normalization(self) -> None:
         result = make_result(pricing_methodology="  provider model  ")
