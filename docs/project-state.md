@@ -6,7 +6,7 @@ Convexity Hunter is an investigation assistant for identifying concrete long-opt
 
 ## Current milestone
 
-Milestone 1: Define and implement the MVP domain model before connecting real market or world-event data.
+Milestone 2: Define and implement deterministic candidate screening policy using synthetic fixtures before connecting external data.
 
 ## Decisions locked
 
@@ -33,14 +33,15 @@ Milestone 1: Define and implement the MVP domain model before connecting real ma
 - Typed evidence records implemented and validated for volatility environment, tail pricing, structure costs, and classified evidence.
 - Liquidity and scenario-result records implemented and validated with leg-level volatility inputs.
 - CandidateResearchRecord implemented and validated with cross-record consistency, bounded scenario losses, empirical support requirements, falsification, and human-review fields.
+- Deterministic Markdown rendering and the first end-to-end synthetic candidate report implemented and validated.
 
 ## Current task
 
-Create the first end-to-end sample candidate fixture and render it as a human-readable research report.
+Define explicit screening-policy inputs, thresholds, decision precedence, and reason codes for Reject, Watch, Investigate, and Data insufficient.
 
 ## Next task
 
-Implement deterministic report rendering without screening policy, LLM generation, or external market data.
+Implement the deterministic screening policy against multiple synthetic candidate fixtures.
 
 ## Deferred
 

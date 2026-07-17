@@ -18,6 +18,18 @@ The first MVP will organize research into five small stages:
 
 The repository contains only the initial project skeleton and documentation. Market scanning, external APIs, LLMs, MCP, Skills, and trading integrations are not implemented.
 
+## Run the synthetic report
+
+The example report uses invented demonstration values. It is not current market analysis and does not indicate that the scanner or agent is operational.
+
+Run it with:
+
+```text
+PYTHONPATH=src python3 examples/sample_candidate_report.py
+```
+
+The checked-in output is available at `data/samples/sample-candidate-report.md`.
+
 ## Development
 
 Python 3.9 or later is required. Source code will live under `src/convexity_hunter`, with tests under `tests`.

@@ -583,3 +583,283 @@ class CandidateResearchRecord:
         """Return evidence classified as AI interpretation."""
 
         return self._evidence_of_kind(EvidenceKind.AI_INTERPRETATION)
+
+
+def _format_money(value: float) -> str:
+    """Format a USD value without locale-dependent behavior."""
+
+    sign = "-" if value < 0 else ""
+    return f"{sign}${abs(value):,.2f}"
+
+
+def _format_percentage(value: float) -> str:
+    """Format a decimal ratio as a percentage."""
+
+    return f"{value * 100:.2f}%"
+
+
+def _format_decimal(value: float, precision: int = 6) -> str:
+    """Format a decimal without unnecessary trailing zeroes."""
+
+    formatted = f"{value:.{precision}f}".rstrip("0").rstrip(".")
+    if formatted in {"", "-0"}:
+        return "0"
+    return formatted
+
+
+def _format_gamma(value: float) -> str:
+    """Format Gamma with enough precision to keep nonzero values visible."""
+
+    formatted = _format_decimal(value, precision=12)
+    if formatted == "0" and value != 0:
+        return f"{value:.12g}"
+    return formatted
+
+
+def _format_leg_ivs(
+    candidate: CandidateResearchRecord, values: Tuple[float, ...]
+) -> str:
+    """Format leg-level IVs in structure order."""
+
+    return "; ".join(
+        f"{leg.option_type.title()}: {_format_percentage(value)}"
+        for leg, value in zip(candidate.structure.legs, values)
+    )
+
+
+def _append_evidence_group(
+    lines: list, heading: str, items: Tuple[ClassifiedEvidence, ...]
+) -> None:
+    """Append one evidence-impact group with provenance fields."""
+
+    lines.extend((f"### {heading}", ""))
+    if not items:
+        lines.extend(("None reported.", ""))
+        return
+    for item in items:
+        lines.extend(
+            (
+                f"- **Evidence ID:** {item.evidence_id}",
+                f"  - **Kind:** {item.kind.value}",
+                f"  - **Statement:** {item.statement}",
+                f"  - **Source:** {item.source or 'Not supplied'}",
+                f"  - **Methodology:** {item.methodology or 'Not supplied'}",
+            )
+        )
+    lines.append("")
+
+
+def render_candidate_markdown(candidate: CandidateResearchRecord) -> str:
+    """Render one candidate research record as deterministic Markdown."""
+
+    if not isinstance(candidate, CandidateResearchRecord):
+        raise TypeError("candidate must be a CandidateResearchRecord")
+
+    lines = ["# Convexity Hunter Research Record", ""]
+    if candidate.candidate_id.startswith("SYNTHETIC-"):
+        lines.extend(
+            (
+                "> **SYNTHETIC DEMONSTRATION — NOT CURRENT MARKET DATA AND NOT A TRADE RECOMMENDATION**",
+                "",
+            )
+        )
+    lines.extend(
+        (
+            f"- **Candidate ID:** {candidate.candidate_id}",
+            f"- **State:** {candidate.state.value}",
+            f"- **State rationale:** {candidate.state_rationale}",
+            f"- **As-of date:** {candidate.as_of_date.isoformat()}",
+            f"- **Underlying:** {candidate.structure.underlying}",
+            f"- **Structure type:** {candidate.structure.structure_type}",
+            f"- **Expiration:** {candidate.expiration.isoformat()}",
+            f"- **Expected holding days:** {candidate.structure.expected_holding_days}",
+            "",
+            "## Research hypothesis",
+            "",
+            candidate.hypothesis,
+            "",
+            "## Concrete option structure",
+            "",
+            "| Leg | Type | Strike | Expiration | Quantity | Multiplier |",
+            "| ---: | --- | ---: | --- | ---: | ---: |",
+        )
+    )
+    for index, leg in enumerate(candidate.structure.legs, start=1):
+        lines.append(
+            f"| {index} | {leg.option_type} | {_format_money(leg.strike)} | "
+            f"{leg.expiration.isoformat()} | {leg.quantity} | "
+            f"{leg.contract_multiplier} |"
+        )
+
+    lines.extend(("", "## Bounded downside and costs", ""))
+    if candidate.costs is None:
+        lines.extend(("Not supplied.", ""))
+    else:
+        costs = candidate.costs
+        lines.extend(
+            (
+                f"- **Assumed portfolio value:** {_format_money(candidate.structure.assumed_portfolio_value)}",
+                f"- **Quoted midpoint premium:** {_format_money(costs.quoted_mid_premium)}",
+                f"- **Estimated spread cost:** {_format_money(costs.estimated_spread_cost)}",
+                f"- **Commissions and fees:** {_format_money(costs.commissions_and_fees)}",
+                f"- **Total entry cost:** {_format_money(costs.total_entry_cost)}",
+                f"- **Maximum loss:** {_format_money(costs.maximum_loss)}",
+                f"- **Maximum loss percentage:** {_format_percentage(costs.maximum_loss_percentage)}",
+                f"- **Repeated-bet count:** {costs.repeated_bet_count}",
+                f"- **Cumulative repeated-bet cost:** {_format_money(costs.cumulative_repeated_bet_cost)}",
+                f"- **Cumulative repeated-bet percentage:** {_format_percentage(costs.cumulative_repeated_bet_percentage)}",
+                f"- **Theta per day:** {_format_money(costs.theta_per_day)}",
+                f"- **Total-position Gamma:** {_format_gamma(costs.gamma)}",
+                f"- **Local Gamma P&L for a 1% move:** {_format_money(costs.gamma_pnl_for_one_percent_move)}",
+                f"- **Local Gamma-cost ratio for a 1% move:** {_format_percentage(costs.gamma_cost_ratio_for_one_percent_move)}",
+                f"- **Greeks methodology:** {costs.greeks_methodology}",
+                "",
+            )
+        )
+
+    lines.extend(("## Liquidity", ""))
+    if candidate.liquidity is None:
+        lines.extend(("Not supplied.", ""))
+    else:
+        liquidity = candidate.liquidity
+        lines.extend(
+            (
+                f"- **Total-position bid:** {_format_money(liquidity.quoted_bid_value)}",
+                f"- **Total-position ask:** {_format_money(liquidity.quoted_ask_value)}",
+                f"- **Quoted midpoint:** {_format_money(liquidity.quoted_mid_value)}",
+                f"- **Absolute bid-ask spread:** {_format_money(liquidity.bid_ask_spread)}",
+                f"- **Bid-ask spread percentage:** {_format_percentage(liquidity.bid_ask_spread_percentage)}",
+                f"- **Minimum leg open interest:** {liquidity.minimum_leg_open_interest}",
+                f"- **Minimum leg daily volume:** {liquidity.minimum_leg_daily_volume}",
+                f"- **Quote methodology:** {liquidity.quote_methodology}",
+                "",
+            )
+        )
+
+    lines.extend(("## Layer 1 — Volatility pricing environment", ""))
+    if candidate.volatility_environment is None:
+        lines.extend(("Not supplied.", ""))
+    else:
+        environment = candidate.volatility_environment
+        lines.extend(
+            (
+                f"- **Reference tenor:** {environment.reference_tenor_days} days",
+                f"- **ATM IV:** {_format_percentage(environment.atm_iv)}",
+                f"- **IV percentile:** {_format_percentage(environment.iv_percentile)}",
+                f"- **IV history observations:** {environment.iv_history_lookback_observations}",
+                f"- **Historical median ATM IV:** {_format_percentage(environment.historical_median_atm_iv)}",
+                f"- **ATM IV minus historical median:** {_format_percentage(environment.iv_vs_historical_median)}",
+                f"- **Matched realized volatility:** {_format_percentage(environment.matched_realized_volatility)}",
+                f"- **Matched realized window:** {environment.matched_realized_window_days} days",
+                f"- **Implied-realized gap:** {_format_percentage(environment.implied_realized_gap)}",
+                "",
+                "| Tenor days | ATM IV |",
+                "| ---: | ---: |",
+            )
+        )
+        for point in environment.term_structure:
+            lines.append(f"| {point.tenor_days} | {_format_percentage(point.atm_iv)} |")
+        lines.append("")
+
+    lines.extend(("## Layer 2 — Tail relative pricing", ""))
+    if not candidate.tail_pricing_slices:
+        lines.extend(("Not supplied.", ""))
+    else:
+        lines.extend(
+            (
+                "| Expiration | Days to expiration | ATM IV | 25Δ put IV | 25Δ call IV | Downside 25Δ skew | Upside 25Δ skew | Downside wing curvature | Upside wing curvature | Skew percentile | History observations |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            )
+        )
+        for item in candidate.tail_pricing_slices:
+            lines.append(
+                f"| {item.expiration.isoformat()} | {item.days_to_expiration} | "
+                f"{_format_percentage(item.atm_iv)} | "
+                f"{_format_percentage(item.put_25_delta_iv)} | "
+                f"{_format_percentage(item.call_25_delta_iv)} | "
+                f"{_format_percentage(item.downside_25_delta_skew)} | "
+                f"{_format_percentage(item.upside_25_delta_skew)} | "
+                f"{_format_percentage(item.downside_wing_curvature)} | "
+                f"{_format_percentage(item.upside_wing_curvature)} | "
+                f"{_format_percentage(item.skew_percentile)} | "
+                f"{item.skew_history_lookback_observations} |"
+            )
+        lines.append("")
+        for item in candidate.tail_pricing_slices:
+            lines.append(
+                f"- **{item.expiration.isoformat()} delta methodology:** "
+                f"{item.delta_methodology}"
+            )
+        lines.append("")
+
+    lines.extend(("## Scenario analysis", ""))
+    if not candidate.scenario_results:
+        lines.extend(("Not supplied.", ""))
+    else:
+        lines.extend(
+            (
+                "| Valuation time | Valuation date | Underlying move | IV shock | Shocked underlying | Base IVs | Shocked IVs | Position value | Exit cost | Net liquidation value | P&L after costs | Return on entry cost |",
+                "| --- | --- | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+            )
+        )
+        for result in candidate.scenario_results:
+            lines.append(
+                f"| {result.scenario.valuation_time} | "
+                f"{result.valuation_date.isoformat()} | "
+                f"{_format_percentage(result.scenario.underlying_move)} | "
+                f"{_format_percentage(result.scenario.iv_change)} | "
+                f"{_format_money(result.shocked_underlying_price)} | "
+                f"{_format_leg_ivs(candidate, result.base_ivs)} | "
+                f"{_format_leg_ivs(candidate, result.shocked_ivs)} | "
+                f"{_format_money(result.estimated_position_value)} | "
+                f"{_format_money(result.estimated_exit_cost)} | "
+                f"{_format_money(result.net_liquidation_value)} | "
+                f"{_format_money(result.pnl_after_costs)} | "
+                f"{_format_percentage(result.return_on_entry_cost)} |"
+            )
+        lines.append("")
+        seen_methodologies = set()
+        for result in candidate.scenario_results:
+            if result.pricing_methodology not in seen_methodologies:
+                seen_methodologies.add(result.pricing_methodology)
+                lines.append(f"- **Pricing methodology:** {result.pricing_methodology}")
+        lines.append("")
+    lines.extend(
+        (
+            "Scenario values are supplied research results, not expected returns or probability-weighted forecasts.",
+            "",
+            "## Evidence",
+            "",
+        )
+    )
+    _append_evidence_group(lines, "Supporting evidence", candidate.supporting_evidence)
+    _append_evidence_group(lines, "Weakening evidence", candidate.weakening_evidence)
+    _append_evidence_group(lines, "Neutral evidence", candidate.neutral_evidence)
+
+    lines.extend(("## Falsification conditions", ""))
+    for index, condition in enumerate(candidate.falsification_conditions, start=1):
+        lines.append(f"{index}. {condition}")
+
+    lines.extend(("", "## Missing data", ""))
+    if candidate.missing_data:
+        lines.extend(f"- {item}" for item in candidate.missing_data)
+    else:
+        lines.append("None reported.")
+
+    lines.extend(("", "## False-positive risks", ""))
+    lines.extend(f"- {item}" for item in candidate.false_positive_reasons)
+
+    lines.extend(("", "## AI interpretation", ""))
+    lines.append(candidate.ai_interpretation or "Not supplied.")
+
+    lines.extend(("", "## Human-review questions", ""))
+    for index, question in enumerate(candidate.human_review_questions, start=1):
+        lines.append(f"{index}. {question}")
+
+    lines.extend(
+        (
+            "",
+            "This record organizes research evidence. It does not recommend, execute, or guarantee any trade or investment outcome.",
+        )
+    )
+    return "\n".join(lines).rstrip("\n") + "\n"
