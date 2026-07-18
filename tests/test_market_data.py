@@ -3,6 +3,7 @@
 import dataclasses
 import datetime
 import decimal
+import itertools
 import os
 import pathlib
 import subprocess
@@ -15,6 +16,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import convexity_hunter.market_data as market_data
 from convexity_hunter.market_data import (
+    CorrectionSelection,
+    CorrectionSelectionReasonCode,
+    CorrectionSelectionStatus,
     DataOrigin,
     DividendObservation,
     DividendStatus,
@@ -43,6 +47,7 @@ from convexity_hunter.market_data import (
     UnderlyingQuoteObservation,
     UnderlyingSecurityType,
     assess_market_data_freshness,
+    select_correction_candidate,
 )
 from tests.market_data_fixtures import (
     EVALUATION_AT,
@@ -52,6 +57,9 @@ from tests.market_data_fixtures import (
     OBSERVED_AT,
     RETRIEVED_AT,
     UTC,
+    build_correction_candidate,
+    build_correction_selection,
+    build_correction_source,
     build_normalization_metadata,
     build_dividend_observation,
     build_freshness_context,
@@ -68,6 +76,7 @@ from tests.market_data_fixtures import (
     build_underlying_key,
     build_underlying_daily_bar_observation,
     build_underlying_quote_observation,
+    correction_selection_values,
 )
 
 
@@ -117,6 +126,42 @@ def build_locked_metadata(multiple_sources: bool = False) -> NormalizationMetada
     )
 
 
+def build_revision_candidate(
+    record_id: str,
+    revisions: tuple,
+    correction_ids: object = None,
+    **overrides: object,
+) -> NormalizationMetadata:
+    """Build a candidate with one fixed source per revision-vector component."""
+
+    identities = (
+        (None,) * len(revisions) if correction_ids is None else correction_ids
+    )
+    sources = tuple(
+        build_correction_source(
+            lineage_name=chr(ord("a") + index),
+            revision_number=revision,
+            provider_correction_id=identities[index],
+        )
+        for index, revision in enumerate(revisions)
+    )
+    return build_correction_candidate(record_id, sources, **overrides)
+
+
+def select_corrections(candidates: object, **overrides: object) -> CorrectionSelection:
+    """Call correction selection with fixed explicit rule inputs."""
+
+    values = {
+        "semantic_observation_key": "SPY consolidated quote",
+        "candidates": candidates,
+        "evaluated_at": EVALUATION_AT,
+        "rule_id": "provider-correction-selection",
+        "rule_version": "v0.1",
+    }
+    values.update(overrides)
+    return select_correction_candidate(**values)
+
+
 class PublicSurfaceTests(unittest.TestCase):
     def test_exact_all_and_public_names_exist(self) -> None:
         expected = (
@@ -148,16 +193,16 @@ class PublicSurfaceTests(unittest.TestCase):
             "FreshnessReasonCode",
             "FreshnessAssessment",
             "assess_market_data_freshness",
+            "CorrectionSelectionStatus",
+            "CorrectionSelectionReasonCode",
+            "CorrectionSelection",
+            "select_correction_candidate",
         )
         self.assertEqual(market_data.__all__, expected)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
         later_types = (
-            "CorrectionSelectionStatus",
-            "CorrectionSelectionReasonCode",
-            "CorrectionSelection",
-            "select_correction_candidate",
             "CalculationQualityFlag",
             "CalculationInputReference",
             "CalculationLineage",
@@ -259,6 +304,11 @@ class PublicSurfaceTests(unittest.TestCase):
                 "maximum_retrieval_lag_seconds_observed",
                 "source_observation_span_seconds", "session_date_gap_days",
             ),
+            CorrectionSelection: (
+                "semantic_observation_key", "candidate_record_ids",
+                "selected_record_id", "status", "reason_codes", "rule_id",
+                "rule_version", "evaluated_at",
+            ),
         }
         for record, names in expected.items():
             with self.subTest(record=record.__name__):
@@ -312,6 +362,13 @@ class EnumContractTests(unittest.TestCase):
             "open_interest_session_date_gap_exceeded",
             "historical_bar_session_date_gap_exceeded",
             "fresh_within_policy",
+        ),
+        CorrectionSelectionStatus: ("selected", "ambiguous"),
+        CorrectionSelectionReasonCode: (
+            "missing_provider_record_id", "source_lineage_mismatch",
+            "conflicting_correction_ids_same_revision",
+            "tied_revision_vectors", "incomparable_revision_vectors",
+            "only_candidate_selected", "dominating_revision_vector_selected",
         ),
     }
 
@@ -2718,6 +2775,409 @@ class FreshnessStatusAndAssessmentTests(unittest.TestCase):
         self.assertEqual(seen, set(FreshnessReasonCode))
 
 
+class CorrectionSelectionConstructorTests(unittest.TestCase):
+    def test_canonical_normalization_frozen_hashable_and_deterministic(self) -> None:
+        result = build_correction_selection(
+            semantic_observation_key="  SPY quote  ",
+            candidate_record_ids=[" candidate-b ", "candidate-a"],
+            selected_record_id=" candidate-b ",
+            rule_id=" correction-rule ",
+            rule_version=" v1 ",
+            evaluated_at=datetime.datetime(
+                2030, 1, 2, 10, 31,
+                tzinfo=datetime.timezone(datetime.timedelta(hours=-5)),
+            ),
+        )
+        self.assertEqual(result.semantic_observation_key, "SPY quote")
+        self.assertEqual(
+            result.candidate_record_ids, ("candidate-a", "candidate-b")
+        )
+        self.assertEqual(result.selected_record_id, "candidate-b")
+        self.assertEqual((result.rule_id, result.rule_version),
+                         ("correction-rule", "v1"))
+        self.assertEqual(result.evaluated_at, EVALUATION_AT)
+        self.assertEqual(result, build_correction_selection(
+            semantic_observation_key="SPY quote",
+            candidate_record_ids=("candidate-a", "candidate-b"),
+            selected_record_id="candidate-b",
+            rule_id="correction-rule", rule_version="v1",
+        ))
+        self.assertEqual(hash(result), hash(result))
+        with self.assertRaises(FrozenInstanceError):
+            result.status = CorrectionSelectionStatus.AMBIGUOUS  # type: ignore[misc]
+
+    def test_candidate_id_collection_and_membership_validation(self) -> None:
+        invalid = (
+            ({"candidate_record_ids": "candidate-001"}, TypeError),
+            ({"candidate_record_ids": ("candidate-001", object())}, TypeError),
+            ({"candidate_record_ids": ()}, ValueError),
+            ({"candidate_record_ids": ("candidate-001", " candidate-001 ")},
+             ValueError),
+            ({"candidate_record_ids": (" ",)}, ValueError),
+            ({"selected_record_id": "candidate-outside"}, ValueError),
+            ({"selected_record_id": None}, ValueError),
+        )
+        for overrides, error in invalid:
+            with self.subTest(overrides=overrides):
+                with self.assertRaises(error):
+                    CorrectionSelection(**correction_selection_values(**overrides))
+
+    def test_status_selected_id_and_reason_compatibility(self) -> None:
+        ambiguous = build_correction_selection(
+            selected_record_id=None,
+            status=CorrectionSelectionStatus.AMBIGUOUS,
+            reason_codes=[CorrectionSelectionReasonCode.TIED_REVISION_VECTORS],
+        )
+        self.assertEqual(
+            ambiguous.reason_codes,
+            (CorrectionSelectionReasonCode.TIED_REVISION_VECTORS,),
+        )
+        invalid = (
+            {"status": object()},
+            {"reason_codes": "only_candidate_selected"},
+            {"reason_codes": (object(),)},
+            {"reason_codes": ()},
+            {"reason_codes": (
+                CorrectionSelectionReasonCode.ONLY_CANDIDATE_SELECTED,
+                CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,
+            )},
+            {"reason_codes": (
+                CorrectionSelectionReasonCode.ONLY_CANDIDATE_SELECTED,
+                CorrectionSelectionReasonCode.ONLY_CANDIDATE_SELECTED,
+            )},
+            {"reason_codes": (
+                CorrectionSelectionReasonCode.TIED_REVISION_VECTORS,
+            )},
+            {
+                "selected_record_id": None,
+                "status": CorrectionSelectionStatus.AMBIGUOUS,
+                "reason_codes": (
+                    CorrectionSelectionReasonCode.ONLY_CANDIDATE_SELECTED,
+                ),
+            },
+            {
+                "selected_record_id": "candidate-001",
+                "status": CorrectionSelectionStatus.AMBIGUOUS,
+                "reason_codes": (
+                    CorrectionSelectionReasonCode.TIED_REVISION_VECTORS,
+                ),
+            },
+        )
+        for overrides in invalid:
+            with self.subTest(overrides=overrides):
+                with self.assertRaises((TypeError, ValueError)):
+                    CorrectionSelection(**correction_selection_values(**overrides))
+
+    def test_string_and_evaluation_time_validation(self) -> None:
+        for field in ("semantic_observation_key", "rule_id", "rule_version"):
+            for value in (object(), " "):
+                with self.subTest(field=field, value=value):
+                    with self.assertRaises((TypeError, ValueError)):
+                        CorrectionSelection(**correction_selection_values(
+                            **{field: value}
+                        ))
+        with self.assertRaises(ValueError):
+            build_correction_selection(
+                evaluated_at=datetime.datetime(2030, 1, 2, 15, 31)
+            )
+
+
+class CorrectionSelectionInputTests(unittest.TestCase):
+    def test_tuple_and_list_are_accepted_and_order_is_presentation_only(self) -> None:
+        first = build_revision_candidate("candidate-z", (0,))
+        second = build_revision_candidate("candidate-a", (1,))
+        tuple_result = select_corrections((first, second))
+        list_result = select_corrections([second, first])
+        self.assertEqual(tuple_result, list_result)
+        self.assertEqual(
+            tuple_result.candidate_record_ids, ("candidate-a", "candidate-z")
+        )
+        self.assertEqual(tuple_result.selected_record_id, "candidate-a")
+
+    def test_invalid_candidate_collections_and_duplicate_ids(self) -> None:
+        candidate = build_correction_candidate()
+        for value in ((item for item in (candidate,)), {candidate}, object()):
+            with self.subTest(value=type(value)):
+                with self.assertRaises(TypeError):
+                    select_corrections(value)
+        with self.assertRaises(ValueError):
+            select_corrections(())
+        with self.assertRaises(TypeError):
+            select_corrections((object(),))
+        with self.assertRaises(ValueError):
+            select_corrections((candidate, candidate))
+
+    def test_normalization_metadata_subclass_is_rejected(self) -> None:
+        class MetadataSubclass(NormalizationMetadata):
+            pass
+
+        candidate = build_correction_candidate()
+        subclass = MetadataSubclass(**{
+            field.name: getattr(candidate, field.name)
+            for field in dataclasses.fields(candidate)
+        })
+        with self.assertRaises(TypeError):
+            select_corrections((subclass,))
+
+    def test_future_normalization_rejected_and_equality_accepted(self) -> None:
+        at_evaluation = build_correction_candidate(
+            normalized_at=EVALUATION_AT
+        )
+        self.assertEqual(
+            select_corrections((at_evaluation,)).selected_record_id,
+            at_evaluation.record_id,
+        )
+        future = build_correction_candidate(
+            normalized_at=EVALUATION_AT + datetime.timedelta(microseconds=1)
+        )
+        with self.assertRaises(ValueError):
+            select_corrections((future,))
+
+
+class CorrectionSelectionTerminalTests(unittest.TestCase):
+    def assert_reason(
+        self,
+        result: CorrectionSelection,
+        reason: CorrectionSelectionReasonCode,
+    ) -> None:
+        self.assertEqual(result.reason_codes, (reason,))
+
+    def test_only_candidate_selected_without_provider_record_id(self) -> None:
+        source = build_correction_source(provider_record_id=None)
+        candidate = build_correction_candidate(sources=(source,))
+        result = select_corrections((candidate,))
+        self.assertEqual(result.status, CorrectionSelectionStatus.SELECTED)
+        self.assertEqual(result.selected_record_id, candidate.record_id)
+        self.assert_reason(
+            result, CorrectionSelectionReasonCode.ONLY_CANDIDATE_SELECTED
+        )
+
+    def test_missing_provider_id_precedes_lineage_validation(self) -> None:
+        missing_a = build_correction_source(
+            provider_record_id=None, source_id="missing-a"
+        )
+        missing_b = build_correction_source(
+            provider_record_id=None, source_id="missing-b"
+        )
+        first = build_correction_candidate(
+            "candidate-a", (missing_a, missing_b)
+        )
+        second = build_revision_candidate("candidate-b", (0,))
+        result = select_corrections((first, second))
+        self.assert_reason(
+            result, CorrectionSelectionReasonCode.MISSING_PROVIDER_RECORD_ID
+        )
+
+    def test_duplicate_lineage_key_raises(self) -> None:
+        first_source = build_correction_source(source_id="duplicate-a")
+        second_source = build_correction_source(
+            source_id="duplicate-b", revision_number=1
+        )
+        duplicate = build_correction_candidate(
+            "candidate-a", (first_source, second_source)
+        )
+        other = build_revision_candidate("candidate-b", (1,))
+        with self.assertRaises(ValueError):
+            select_corrections((duplicate, other))
+
+    def test_source_lineage_mismatch(self) -> None:
+        first = build_revision_candidate("candidate-a", (1,))
+        different_source = build_correction_source(
+            lineage_name="b", revision_number=2
+        )
+        second = build_correction_candidate(
+            "candidate-b", (different_source,)
+        )
+        result = select_corrections((first, second))
+        self.assert_reason(
+            result, CorrectionSelectionReasonCode.SOURCE_LINEAGE_MISMATCH
+        )
+
+    def test_every_terminal_reason_path(self) -> None:
+        conflict = select_corrections((
+            build_revision_candidate("a", (1,), ("A",)),
+            build_revision_candidate("b", (1,), ("B",)),
+        ))
+        tied = select_corrections((
+            build_revision_candidate("a", (2, 2)),
+            build_revision_candidate("b", (2, 2)),
+        ))
+        dominating = select_corrections((
+            build_revision_candidate("a", (2, 1)),
+            build_revision_candidate("b", (1, 1)),
+        ))
+        incomparable = select_corrections((
+            build_revision_candidate("a", (2, 1)),
+            build_revision_candidate("b", (1, 2)),
+        ))
+        expected = (
+            (conflict, CorrectionSelectionReasonCode.CONFLICTING_CORRECTION_IDS_SAME_REVISION),
+            (tied, CorrectionSelectionReasonCode.TIED_REVISION_VECTORS),
+            (dominating, CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED),
+            (incomparable, CorrectionSelectionReasonCode.INCOMPARABLE_REVISION_VECTORS),
+        )
+        for result, reason in expected:
+            with self.subTest(reason=reason):
+                self.assert_reason(result, reason)
+
+
+class CorrectionRevisionAndDominanceTests(unittest.TestCase):
+    def test_normalized_revision_identity_regressions(self) -> None:
+        cases = (
+            ((None, None), (0, None),
+             CorrectionSelectionReasonCode.TIED_REVISION_VECTORS, None),
+            ((None, None), (0, "A"),
+             CorrectionSelectionReasonCode.CONFLICTING_CORRECTION_IDS_SAME_REVISION,
+             None),
+            ((0, "A"), (0, "A"),
+             CorrectionSelectionReasonCode.TIED_REVISION_VECTORS, None),
+            ((1, "A"), (1, "B"),
+             CorrectionSelectionReasonCode.CONFLICTING_CORRECTION_IDS_SAME_REVISION,
+             None),
+            ((1, "A"), (2, "B"),
+             CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,
+             "candidate-b"),
+        )
+        for first_values, second_values, reason, selected_id in cases:
+            with self.subTest(first=first_values, second=second_values):
+                first = build_revision_candidate(
+                    "candidate-a", (first_values[0],), (first_values[1],)
+                )
+                second = build_revision_candidate(
+                    "candidate-b", (second_values[0],), (second_values[1],)
+                )
+                result = select_corrections((first, second))
+                self.assertEqual(result.reason_codes, (reason,))
+                self.assertEqual(result.selected_record_id, selected_id)
+
+    def test_documented_two_candidate_dominance_vectors(self) -> None:
+        cases = (
+            ((0,), (1,), "candidate-b"),
+            ((1, 1), (2, 1), "candidate-b"),
+            ((2, 1), (1, 2), None),
+            ((2, 2), (2, 2), None),
+            ((0, 0), (0, 1), "candidate-b"),
+            ((3, 1, 2), (2, 1, 2), "candidate-a"),
+            ((3, 0), (2, 4), None),
+        )
+        for first_vector, second_vector, selected_id in cases:
+            with self.subTest(first=first_vector, second=second_vector):
+                result = select_corrections((
+                    build_revision_candidate("candidate-a", first_vector),
+                    build_revision_candidate("candidate-b", second_vector),
+                ))
+                self.assertEqual(result.selected_record_id, selected_id)
+                if first_vector == second_vector:
+                    expected = CorrectionSelectionReasonCode.TIED_REVISION_VECTORS
+                elif selected_id is None:
+                    expected = (
+                        CorrectionSelectionReasonCode.INCOMPARABLE_REVISION_VECTORS
+                    )
+                else:
+                    expected = (
+                        CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED
+                    )
+                self.assertEqual(result.reason_codes, (expected,))
+
+    def test_three_candidate_dominance_incomparable_maxima_and_tie(self) -> None:
+        dominating = select_corrections((
+            build_revision_candidate("a", (3, 3)),
+            build_revision_candidate("b", (2, 3)),
+            build_revision_candidate("c", (3, 1)),
+        ))
+        self.assertEqual(dominating.selected_record_id, "a")
+
+        incomparable = select_corrections((
+            build_revision_candidate("a", (3, 2)),
+            build_revision_candidate("b", (2, 3)),
+            build_revision_candidate("c", (1, 1)),
+        ))
+        self.assertEqual(
+            incomparable.reason_codes,
+            (CorrectionSelectionReasonCode.INCOMPARABLE_REVISION_VECTORS,),
+        )
+
+        tied = select_corrections(tuple(
+            build_revision_candidate(record_id, (2, 2))
+            for record_id in ("a", "b", "c")
+        ))
+        self.assertEqual(
+            tied.reason_codes,
+            (CorrectionSelectionReasonCode.TIED_REVISION_VECTORS,),
+        )
+
+
+class CorrectionMultiSourceAndDeterminismTests(unittest.TestCase):
+    def test_complete_group_identity_conflict_is_order_independent(self) -> None:
+        candidates = (
+            build_revision_candidate("a", (1, 2), ("A", "X")),
+            build_revision_candidate("b", (1, 2), ("A", "X")),
+            build_revision_candidate("c", (1, 2), ("B", "X")),
+        )
+        for permutation in itertools.permutations(candidates):
+            result = select_corrections(permutation)
+            self.assertEqual(
+                result.reason_codes,
+                (CorrectionSelectionReasonCode.CONFLICTING_CORRECTION_IDS_SAME_REVISION,),
+            )
+
+    def test_identity_is_per_lineage_and_normalized_revision(self) -> None:
+        first = build_revision_candidate("a", (1, 1), ("A", "same"))
+        same_revision_conflict = build_revision_candidate(
+            "b", (2, 1), ("B", "different")
+        )
+        result = select_corrections((first, same_revision_conflict))
+        self.assertEqual(
+            result.reason_codes,
+            (CorrectionSelectionReasonCode.CONFLICTING_CORRECTION_IDS_SAME_REVISION,),
+        )
+
+        different_revisions = build_revision_candidate(
+            "b", (2, 2), ("B", "different")
+        )
+        ordered = select_corrections((first, different_revisions))
+        self.assertEqual(ordered.selected_record_id, "b")
+
+    def test_source_storage_order_does_not_change_vector_order(self) -> None:
+        first_sources = (
+            build_correction_source("a", 1, source_id="z-source"),
+            build_correction_source("b", 2, source_id="a-source"),
+        )
+        second_sources = (
+            build_correction_source("b", 2, source_id="z-source"),
+            build_correction_source("a", 2, source_id="a-source"),
+        )
+        first = build_correction_candidate("first", first_sources)
+        second = build_correction_candidate("second", second_sources)
+        result = select_corrections((first, second))
+        self.assertEqual(result.selected_record_id, "second")
+
+    def test_excluded_fields_do_not_order_corrections_or_mutate_inputs(self) -> None:
+        low_source = build_correction_source(
+            "a", 1, "Z", source_id="zzz-source",
+            provider_request_id="zzz-request", payload_sha256="f" * 64,
+            observed_at=OBSERVED_AT + datetime.timedelta(seconds=4),
+            retrieved_at=OBSERVED_AT + datetime.timedelta(seconds=5),
+        )
+        high_source = build_correction_source(
+            "a", 2, "A", source_id="aaa-source",
+            provider_request_id="aaa-request", payload_sha256="0" * 64,
+            observed_at=OBSERVED_AT + datetime.timedelta(seconds=1),
+        )
+        low = build_correction_candidate(
+            "zzz-record", (low_source,),
+            normalized_at=NORMALIZED_AT + datetime.timedelta(seconds=7),
+        )
+        high = build_correction_candidate("aaa-record", (high_source,))
+        candidates = [low, high]
+        before = (tuple(candidates), tuple(map(repr, candidates)))
+        first = select_corrections(candidates)
+        second = select_corrections(list(reversed(candidates)))
+        self.assertEqual(first, second)
+        self.assertEqual(first.selected_record_id, "aaa-record")
+        self.assertEqual(before, (tuple(candidates), tuple(map(repr, candidates))))
+
+
 class ImportAndDeterminismTests(unittest.TestCase):
     def test_clean_import_has_no_later_layer_or_network_modules(self) -> None:
         script = """
@@ -2745,6 +3205,8 @@ print('clean market-data import passed')
         )
         self.assertEqual(build_underlying_key(), build_underlying_key())
         self.assertEqual(build_option_contract_key(), build_option_contract_key())
+        self.assertEqual(build_correction_source(), build_correction_source())
+        self.assertEqual(build_correction_candidate(), build_correction_candidate())
 
 
 if __name__ == "__main__":

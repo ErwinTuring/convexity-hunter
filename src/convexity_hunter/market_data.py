@@ -38,6 +38,10 @@ __all__ = (
     "FreshnessReasonCode",
     "FreshnessAssessment",
     "assess_market_data_freshness",
+    "CorrectionSelectionStatus",
+    "CorrectionSelectionReasonCode",
+    "CorrectionSelection",
+    "select_correction_candidate",
 )
 
 
@@ -411,6 +415,29 @@ class FreshnessReasonCode(str, Enum):
     FRESH_WITHIN_POLICY = "fresh_within_policy"
 
 
+class CorrectionSelectionStatus(str, Enum):
+    """Terminal status for deterministic provider-correction selection."""
+
+    SELECTED = "selected"
+    AMBIGUOUS = "ambiguous"
+
+
+class CorrectionSelectionReasonCode(str, Enum):
+    """One terminal reason from deterministic correction selection."""
+
+    MISSING_PROVIDER_RECORD_ID = "missing_provider_record_id"
+    SOURCE_LINEAGE_MISMATCH = "source_lineage_mismatch"
+    CONFLICTING_CORRECTION_IDS_SAME_REVISION = (
+        "conflicting_correction_ids_same_revision"
+    )
+    TIED_REVISION_VECTORS = "tied_revision_vectors"
+    INCOMPARABLE_REVISION_VECTORS = "incomparable_revision_vectors"
+    ONLY_CANDIDATE_SELECTED = "only_candidate_selected"
+    DOMINATING_REVISION_VECTOR_SELECTED = (
+        "dominating_revision_vector_selected"
+    )
+
+
 _INELIGIBLE_FRESHNESS_REASONS = frozenset(tuple(FreshnessReasonCode)[:14])
 _UNKNOWN_FRESHNESS_REASONS = frozenset(tuple(FreshnessReasonCode)[14:16])
 _STALE_FRESHNESS_REASONS = frozenset(tuple(FreshnessReasonCode)[16:21])
@@ -473,6 +500,13 @@ _FUTURE_CHRONOLOGY_REASONS = frozenset({
     FreshnessReasonCode.SOURCE_RETRIEVED_AFTER_EVALUATION,
     FreshnessReasonCode.SOURCE_OBSERVED_AFTER_EVALUATION,
 })
+
+_AMBIGUOUS_CORRECTION_REASONS = frozenset(
+    tuple(CorrectionSelectionReasonCode)[:5]
+)
+_SELECTED_CORRECTION_REASONS = frozenset(
+    tuple(CorrectionSelectionReasonCode)[5:]
+)
 
 
 def _freshness_status_from_reasons(
@@ -700,6 +734,78 @@ class FreshnessAssessment:
             self, "maximum_retrieval_lag_seconds_observed", retrieval_lag
         )
         object.__setattr__(self, "source_observation_span_seconds", source_span)
+
+
+@dataclass(frozen=True)
+class CorrectionSelection:
+    """Immutable result of deterministic provider-correction selection."""
+
+    semantic_observation_key: str
+    candidate_record_ids: Tuple[str, ...]
+    selected_record_id: Optional[str]
+    status: CorrectionSelectionStatus
+    reason_codes: Tuple[CorrectionSelectionReasonCode, ...]
+    rule_id: str
+    rule_version: str
+    evaluated_at: datetime.datetime
+
+    def __post_init__(self) -> None:
+        semantic_key = _normalize_required_string(
+            "semantic_observation_key", self.semantic_observation_key
+        )
+        if not isinstance(self.candidate_record_ids, (tuple, list)):
+            raise TypeError("candidate_record_ids must be a tuple or list")
+        candidate_ids = tuple(
+            _normalize_required_string("candidate_record_id", candidate_id)
+            for candidate_id in self.candidate_record_ids
+        )
+        if not candidate_ids:
+            raise ValueError("candidate_record_ids must contain at least one item")
+        if len(set(candidate_ids)) != len(candidate_ids):
+            raise ValueError("candidate_record_ids must not contain duplicates")
+        candidate_ids = tuple(sorted(candidate_ids))
+
+        selected_id = _normalize_optional_string(
+            "selected_record_id", self.selected_record_id
+        )
+        if not isinstance(self.status, CorrectionSelectionStatus):
+            raise TypeError("status must be a CorrectionSelectionStatus")
+        reasons = _normalize_enum_flags(
+            "reason_codes", self.reason_codes, CorrectionSelectionReasonCode
+        )
+        if len(reasons) != 1:
+            raise ValueError("reason_codes must contain exactly one item")
+
+        if self.status is CorrectionSelectionStatus.SELECTED:
+            if selected_id is None:
+                raise ValueError("selected status requires selected_record_id")
+            if selected_id not in candidate_ids:
+                raise ValueError(
+                    "selected_record_id must belong to candidate_record_ids"
+                )
+            if reasons[0] not in _SELECTED_CORRECTION_REASONS:
+                raise ValueError("selected status requires a selection reason")
+        else:
+            if selected_id is not None:
+                raise ValueError(
+                    "ambiguous status requires selected_record_id to be None"
+                )
+            if reasons[0] not in _AMBIGUOUS_CORRECTION_REASONS:
+                raise ValueError("ambiguous status requires an ambiguity reason")
+
+        rule_id = _normalize_required_string("rule_id", self.rule_id)
+        rule_version = _normalize_required_string(
+            "rule_version", self.rule_version
+        )
+        evaluated_at = _normalize_utc_datetime("evaluated_at", self.evaluated_at)
+
+        object.__setattr__(self, "semantic_observation_key", semantic_key)
+        object.__setattr__(self, "candidate_record_ids", candidate_ids)
+        object.__setattr__(self, "selected_record_id", selected_id)
+        object.__setattr__(self, "reason_codes", reasons)
+        object.__setattr__(self, "rule_id", rule_id)
+        object.__setattr__(self, "rule_version", rule_version)
+        object.__setattr__(self, "evaluated_at", evaluated_at)
 
 
 @dataclass(frozen=True)
@@ -1605,4 +1711,200 @@ def assess_market_data_freshness(
         maximum_retrieval_lag_seconds_observed=retrieval_lag,
         source_observation_span_seconds=source_span,
         session_date_gap_days=session_date_gap_days,
+    )
+
+
+def _validate_correction_candidates(
+    candidates: object,
+    evaluated_at: datetime.datetime,
+) -> Tuple[NormalizationMetadata, ...]:
+    """Validate and presentation-sort exact correction candidates."""
+
+    if not isinstance(candidates, (tuple, list)):
+        raise TypeError("candidates must be a tuple or list")
+    normalized = tuple(candidates)
+    if not normalized:
+        raise ValueError("candidates must contain at least one item")
+    if not all(
+        type(candidate) is NormalizationMetadata for candidate in normalized
+    ):
+        raise TypeError("every candidate must be an exact NormalizationMetadata")
+    record_ids = tuple(candidate.record_id for candidate in normalized)
+    if len(set(record_ids)) != len(record_ids):
+        raise ValueError("candidates must have unique record IDs")
+    if any(candidate.normalized_at > evaluated_at for candidate in normalized):
+        raise ValueError("candidates must be normalized by evaluated_at")
+    return tuple(sorted(normalized, key=lambda candidate: candidate.record_id))
+
+
+def _normalized_revision_component(source: SourceReference) -> int:
+    """Return the sole normalized revision value used by selection."""
+
+    revision = source.revision_number
+    return revision if revision is not None and revision > 0 else 0
+
+
+def _correction_lineage(
+    candidate: NormalizationMetadata,
+) -> Tuple[Tuple[Tuple[str, str, str], int, Optional[str]], ...]:
+    """Build one candidate's ordered lineage, revision, and identity entries."""
+
+    entries = []
+    for source in candidate.source_references:
+        provider_record_id = source.provider_record_id
+        if provider_record_id is None:
+            raise ValueError("correction lineage requires provider_record_id")
+        entries.append((
+            (
+                source.provider_name,
+                source.dataset_name,
+                provider_record_id,
+            ),
+            _normalized_revision_component(source),
+            source.provider_correction_id,
+        ))
+    ordered_entries = tuple(sorted(entries, key=lambda entry: entry[0]))
+    keys = tuple(entry[0] for entry in ordered_entries)
+    if len(set(keys)) != len(keys):
+        raise ValueError("a candidate must not contain duplicate lineage keys")
+    return ordered_entries
+
+
+def _has_correction_identity_conflict(
+    lineages: Tuple[
+        Tuple[Tuple[Tuple[str, str, str], int, Optional[str]], ...], ...
+    ],
+) -> bool:
+    """Check complete candidate groups per lineage and normalized revision."""
+
+    for lineage_index in range(len(lineages[0])):
+        identities_by_revision = {}
+        for lineage in lineages:
+            revision = lineage[lineage_index][1]
+            correction_id = lineage[lineage_index][2]
+            identities_by_revision.setdefault(revision, set()).add(correction_id)
+        if any(
+            len(identities) > 1
+            for identities in identities_by_revision.values()
+        ):
+            return True
+    return False
+
+
+def _strictly_dominates(first: Tuple[int, ...], second: Tuple[int, ...]) -> bool:
+    """Return whether one equal-lineage revision vector strictly dominates."""
+
+    return all(
+        first_component >= second_component
+        for first_component, second_component in zip(first, second)
+    ) and any(
+        first_component > second_component
+        for first_component, second_component in zip(first, second)
+    )
+
+
+def select_correction_candidate(
+    semantic_observation_key: object,
+    candidates: object,
+    evaluated_at: object,
+    rule_id: object,
+    rule_version: object,
+) -> CorrectionSelection:
+    """Select one deterministic correction candidate without external state."""
+
+    semantic_key = _normalize_required_string(
+        "semantic_observation_key", semantic_observation_key
+    )
+    normalized_evaluated_at = _normalize_utc_datetime(
+        "evaluated_at", evaluated_at
+    )
+    normalized_rule_id = _normalize_required_string("rule_id", rule_id)
+    normalized_rule_version = _normalize_required_string(
+        "rule_version", rule_version
+    )
+    normalized_candidates = _validate_correction_candidates(
+        candidates, normalized_evaluated_at
+    )
+    candidate_ids = tuple(
+        candidate.record_id for candidate in normalized_candidates
+    )
+
+    def result(
+        status: CorrectionSelectionStatus,
+        reason: CorrectionSelectionReasonCode,
+        selected_record_id: Optional[str] = None,
+    ) -> CorrectionSelection:
+        return CorrectionSelection(
+            semantic_observation_key=semantic_key,
+            candidate_record_ids=candidate_ids,
+            selected_record_id=selected_record_id,
+            status=status,
+            reason_codes=(reason,),
+            rule_id=normalized_rule_id,
+            rule_version=normalized_rule_version,
+            evaluated_at=normalized_evaluated_at,
+        )
+
+    if len(normalized_candidates) == 1:
+        return result(
+            CorrectionSelectionStatus.SELECTED,
+            CorrectionSelectionReasonCode.ONLY_CANDIDATE_SELECTED,
+            normalized_candidates[0].record_id,
+        )
+
+    if any(
+        source.provider_record_id is None
+        for candidate in normalized_candidates
+        for source in candidate.source_references
+    ):
+        return result(
+            CorrectionSelectionStatus.AMBIGUOUS,
+            CorrectionSelectionReasonCode.MISSING_PROVIDER_RECORD_ID,
+        )
+
+    lineages = tuple(
+        _correction_lineage(candidate) for candidate in normalized_candidates
+    )
+    lineage_key_sets = tuple(
+        tuple(entry[0] for entry in lineage) for lineage in lineages
+    )
+    if any(keys != lineage_key_sets[0] for keys in lineage_key_sets[1:]):
+        return result(
+            CorrectionSelectionStatus.AMBIGUOUS,
+            CorrectionSelectionReasonCode.SOURCE_LINEAGE_MISMATCH,
+        )
+
+    if _has_correction_identity_conflict(lineages):
+        return result(
+            CorrectionSelectionStatus.AMBIGUOUS,
+            CorrectionSelectionReasonCode.CONFLICTING_CORRECTION_IDS_SAME_REVISION,
+        )
+
+    vectors = tuple(
+        tuple(entry[1] for entry in lineage) for lineage in lineages
+    )
+    if all(vector == vectors[0] for vector in vectors[1:]):
+        return result(
+            CorrectionSelectionStatus.AMBIGUOUS,
+            CorrectionSelectionReasonCode.TIED_REVISION_VECTORS,
+        )
+
+    dominating_indexes = tuple(
+        index
+        for index, vector in enumerate(vectors)
+        if all(
+            index == other_index or _strictly_dominates(vector, other_vector)
+            for other_index, other_vector in enumerate(vectors)
+        )
+    )
+    if len(dominating_indexes) == 1:
+        selected_index = dominating_indexes[0]
+        return result(
+            CorrectionSelectionStatus.SELECTED,
+            CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,
+            normalized_candidates[selected_index].record_id,
+        )
+    return result(
+        CorrectionSelectionStatus.AMBIGUOUS,
+        CorrectionSelectionReasonCode.INCOMPARABLE_REVISION_VECTORS,
     )

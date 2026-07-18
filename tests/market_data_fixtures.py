@@ -5,6 +5,9 @@ import decimal
 from typing import Optional
 
 from convexity_hunter.market_data import (
+    CorrectionSelection,
+    CorrectionSelectionReasonCode,
+    CorrectionSelectionStatus,
     DataOrigin,
     DividendObservation,
     DividendStatus,
@@ -22,6 +25,7 @@ from convexity_hunter.market_data import (
     QuoteScope,
     RateCurvePointObservation,
     SourceReference,
+    SourceQualityFlag,
     UnderlyingDailyBarObservation,
     UnderlyingKey,
     UnderlyingQuoteObservation,
@@ -134,6 +138,81 @@ def build_normalization_metadata(
     }
     values.update(overrides)
     return NormalizationMetadata(**values)  # type: ignore[arg-type]
+
+
+def build_correction_source(
+    lineage_name: str = "a",
+    revision_number: Optional[int] = None,
+    provider_correction_id: Optional[str] = None,
+    **overrides: object,
+) -> SourceReference:
+    """Build one fixed source version for correction-selection tests."""
+
+    corrected = (
+        revision_number is not None and revision_number > 0
+    ) or provider_correction_id is not None
+    values = {
+        "source_id": f"correction-source-{lineage_name}",
+        "provider_name": "Synthetic Provider",
+        "dataset_name": f"Synthetic Corrections {lineage_name}",
+        "provider_record_id": f"correction-record-{lineage_name}",
+        "provider_request_id": f"correction-request-{lineage_name}",
+        "source_uri": f"synthetic://corrections/{lineage_name}",
+        "payload_sha256": "b" * 64,
+        "revision_number": revision_number,
+        "provider_correction_id": provider_correction_id,
+        "quality_flags": (
+            (SourceQualityFlag.CORRECTED,) if corrected else ()
+        ),
+    }
+    values.update(overrides)
+    return build_source_reference(**values)
+
+
+def build_correction_candidate(
+    record_id: str = "candidate-001",
+    sources: Optional[object] = None,
+    **overrides: object,
+) -> NormalizationMetadata:
+    """Build one fixed normalization candidate for correction selection."""
+
+    normalized_sources = (
+        (build_correction_source(),) if sources is None else sources
+    )
+    values = {
+        "record_id": record_id,
+        "normalization_methodology": "Synthetic correction normalization",
+    }
+    values.update(overrides)
+    return build_normalization_metadata(
+        normalized_sources,
+        **values,
+    )
+
+
+def correction_selection_values(**overrides: object) -> dict:
+    """Return canonical direct-constructor values for a selected correction."""
+
+    values = {
+        "semantic_observation_key": "SPY quote",
+        "candidate_record_ids": ("candidate-001",),
+        "selected_record_id": "candidate-001",
+        "status": CorrectionSelectionStatus.SELECTED,
+        "reason_codes": (
+            CorrectionSelectionReasonCode.ONLY_CANDIDATE_SELECTED,
+        ),
+        "rule_id": "provider-correction-selection",
+        "rule_version": "v0.1",
+        "evaluated_at": EVALUATION_AT,
+    }
+    values.update(overrides)
+    return values
+
+
+def build_correction_selection(**overrides: object) -> CorrectionSelection:
+    """Build one canonical direct correction-selection result."""
+
+    return CorrectionSelection(**correction_selection_values(**overrides))
 
 
 def build_underlying_key(**overrides: object) -> UnderlyingKey:
