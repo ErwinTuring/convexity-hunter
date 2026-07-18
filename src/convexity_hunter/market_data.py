@@ -20,6 +20,11 @@ __all__ = (
     "NormalizationMetadata",
     "UnderlyingKey",
     "OptionContractKey",
+    "UnderlyingQuoteObservation",
+    "OptionContractReference",
+    "OptionQuoteObservation",
+    "OptionVolumeObservation",
+    "OptionOpenInterestObservation",
 )
 
 
@@ -62,6 +67,13 @@ def _validate_date_only(name: str, value: object) -> None:
         raise TypeError(f"{name} must be a date without a time component")
 
 
+def _validate_optional_date_only(name: str, value: object) -> None:
+    """Require an optional calendar date without a time component."""
+
+    if value is not None:
+        _validate_date_only(name, value)
+
+
 def _normalize_utc_datetime(name: str, value: object) -> datetime.datetime:
     """Require an aware datetime and normalize it to UTC."""
 
@@ -81,6 +93,103 @@ def _validate_positive_decimal(name: str, value: object) -> None:
         raise ValueError(f"{name} must be finite")
     if value <= 0:
         raise ValueError(f"{name} must be greater than 0")
+
+
+def _normalize_nonnegative_decimal(
+    name: str, value: object
+) -> decimal.Decimal:
+    """Require a finite nonnegative Decimal and remove a zero sign."""
+
+    if not isinstance(value, decimal.Decimal):
+        raise TypeError(f"{name} must be a Decimal")
+    if not value.is_finite():
+        raise ValueError(f"{name} must be finite")
+    if value < 0:
+        raise ValueError(f"{name} must be 0 or greater")
+    return value.copy_abs() if value.is_zero() else value
+
+
+def _normalize_positive_decimal(name: str, value: object) -> decimal.Decimal:
+    """Require and return a finite positive Decimal."""
+
+    _validate_positive_decimal(name, value)
+    return value  # type: ignore[return-value]
+
+
+def _validate_optional_nonnegative_integer(name: str, value: object) -> None:
+    """Require an optional nonnegative non-Boolean integer."""
+
+    if value is not None:
+        _validate_integer(name, value, 0)
+
+
+def _validate_boolean(name: str, value: object) -> None:
+    """Require an actual Boolean value."""
+
+    if not isinstance(value, bool):
+        raise TypeError(f"{name} must be a Boolean")
+
+
+def _validate_metadata(metadata: object) -> None:
+    """Require normalization metadata for a normalized record."""
+
+    if not isinstance(metadata, NormalizationMetadata):
+        raise TypeError("metadata must be a NormalizationMetadata")
+
+
+def _validate_market_observation_metadata(metadata: object) -> None:
+    """Reject reference-origin metadata for a market observation."""
+
+    _validate_metadata(metadata)
+    if metadata.record_origin is DataOrigin.PROVIDER_REFERENCE:  # type: ignore[union-attr]
+        raise ValueError("market observations must not use provider_reference origin")
+
+
+def _validate_contract_reference_metadata(metadata: object) -> None:
+    """Require reference or system-composite metadata for contract terms."""
+
+    _validate_metadata(metadata)
+    if metadata.record_origin not in {  # type: ignore[union-attr]
+        DataOrigin.PROVIDER_REFERENCE,
+        DataOrigin.SYSTEM_COMPOSITE,
+    }:
+        raise ValueError(
+            "contract references require provider_reference or system_composite origin"
+        )
+
+
+def _normalize_quote_scope_and_venue(
+    quote_scope: object, venue_mic: object
+) -> Tuple["QuoteScope", Optional[str]]:
+    """Validate quote scope and its optional execution venue."""
+
+    if not isinstance(quote_scope, QuoteScope):
+        raise TypeError("quote_scope must be a QuoteScope")
+    normalized_venue = _normalize_optional_string("venue_mic", venue_mic)
+    if normalized_venue is not None:
+        normalized_venue = normalized_venue.upper()
+    if quote_scope is QuoteScope.VENUE_SPECIFIC:
+        if normalized_venue is None:
+            raise ValueError("venue_specific quotes require venue_mic")
+    elif normalized_venue is not None:
+        raise ValueError(f"{quote_scope.value} quotes require venue_mic to be None")
+    return quote_scope, normalized_venue
+
+
+def _validate_locked_quote(
+    bid: decimal.Decimal,
+    ask: decimal.Decimal,
+    metadata: "NormalizationMetadata",
+) -> None:
+    """Require source evidence when a normalized quote is locked."""
+
+    if ask < bid:
+        raise ValueError("ask must not be below bid")
+    if bid == ask and not any(
+        SourceQualityFlag.LOCKED in source.quality_flags
+        for source in metadata.source_references
+    ):
+        raise ValueError("equal bid and ask require a locked source flag")
 
 
 def _normalize_enum_flags(
@@ -450,3 +559,165 @@ class OptionContractKey:
         object.__setattr__(self, "option_type", option_type)
         object.__setattr__(self, "currency", currency)
         object.__setattr__(self, "deliverable_id", deliverable_id)
+
+
+@dataclass(frozen=True)
+class UnderlyingQuoteObservation:
+    """One normalized underlying quote in canonical per-share units."""
+
+    underlying_key: UnderlyingKey
+    session_date: datetime.date
+    bid_price: decimal.Decimal
+    ask_price: decimal.Decimal
+    last_price: Optional[decimal.Decimal]
+    bid_size: Optional[int]
+    ask_size: Optional[int]
+    market_phase: MarketPhase
+    quote_scope: QuoteScope
+    venue_mic: Optional[str]
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.underlying_key, UnderlyingKey):
+            raise TypeError("underlying_key must be an UnderlyingKey")
+        _validate_date_only("session_date", self.session_date)
+        bid = _normalize_nonnegative_decimal("bid_price", self.bid_price)
+        ask = _normalize_positive_decimal("ask_price", self.ask_price)
+        last = None
+        if self.last_price is not None:
+            last = _normalize_positive_decimal("last_price", self.last_price)
+        _validate_optional_nonnegative_integer("bid_size", self.bid_size)
+        _validate_optional_nonnegative_integer("ask_size", self.ask_size)
+        if not isinstance(self.market_phase, MarketPhase):
+            raise TypeError("market_phase must be a MarketPhase")
+        quote_scope, venue_mic = _normalize_quote_scope_and_venue(
+            self.quote_scope, self.venue_mic
+        )
+        _validate_market_observation_metadata(self.metadata)
+        _validate_locked_quote(bid, ask, self.metadata)
+
+        object.__setattr__(self, "bid_price", bid)
+        object.__setattr__(self, "ask_price", ask)
+        object.__setattr__(self, "last_price", last)
+        object.__setattr__(self, "quote_scope", quote_scope)
+        object.__setattr__(self, "venue_mic", venue_mic)
+
+
+@dataclass(frozen=True)
+class OptionContractReference:
+    """One normalized set of reference terms for an option contract."""
+
+    contract_key: OptionContractKey
+    listing_date: Optional[datetime.date]
+    last_trade_date: Optional[datetime.date]
+    exercise_style: Optional[str]
+    settlement_type: Optional[str]
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contract_key, OptionContractKey):
+            raise TypeError("contract_key must be an OptionContractKey")
+        _validate_optional_date_only("listing_date", self.listing_date)
+        _validate_optional_date_only("last_trade_date", self.last_trade_date)
+        exercise_style = _normalize_optional_string(
+            "exercise_style", self.exercise_style
+        )
+        settlement_type = _normalize_optional_string(
+            "settlement_type", self.settlement_type
+        )
+        _validate_contract_reference_metadata(self.metadata)
+
+        if (
+            self.listing_date is not None
+            and self.listing_date > self.contract_key.expiration
+        ):
+            raise ValueError("listing_date must not follow contract expiration")
+        if (
+            self.last_trade_date is not None
+            and self.last_trade_date > self.contract_key.expiration
+        ):
+            raise ValueError("last_trade_date must not follow contract expiration")
+        if (
+            self.listing_date is not None
+            and self.last_trade_date is not None
+            and self.listing_date > self.last_trade_date
+        ):
+            raise ValueError("listing_date must not follow last_trade_date")
+
+        object.__setattr__(self, "exercise_style", exercise_style)
+        object.__setattr__(self, "settlement_type", settlement_type)
+
+
+@dataclass(frozen=True)
+class OptionQuoteObservation:
+    """One normalized option quote in canonical per-underlying-unit premiums."""
+
+    contract_key: OptionContractKey
+    session_date: datetime.date
+    bid_premium: decimal.Decimal
+    ask_premium: decimal.Decimal
+    bid_size: Optional[int]
+    ask_size: Optional[int]
+    market_phase: MarketPhase
+    quote_scope: QuoteScope
+    venue_mic: Optional[str]
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contract_key, OptionContractKey):
+            raise TypeError("contract_key must be an OptionContractKey")
+        _validate_date_only("session_date", self.session_date)
+        bid = _normalize_nonnegative_decimal("bid_premium", self.bid_premium)
+        ask = _normalize_positive_decimal("ask_premium", self.ask_premium)
+        _validate_optional_nonnegative_integer("bid_size", self.bid_size)
+        _validate_optional_nonnegative_integer("ask_size", self.ask_size)
+        if not isinstance(self.market_phase, MarketPhase):
+            raise TypeError("market_phase must be a MarketPhase")
+        quote_scope, venue_mic = _normalize_quote_scope_and_venue(
+            self.quote_scope, self.venue_mic
+        )
+        _validate_market_observation_metadata(self.metadata)
+        _validate_locked_quote(bid, ask, self.metadata)
+
+        object.__setattr__(self, "bid_premium", bid)
+        object.__setattr__(self, "ask_premium", ask)
+        object.__setattr__(self, "quote_scope", quote_scope)
+        object.__setattr__(self, "venue_mic", venue_mic)
+
+
+@dataclass(frozen=True)
+class OptionVolumeObservation:
+    """One normalized cumulative option-volume observation."""
+
+    contract_key: OptionContractKey
+    session_date: datetime.date
+    cumulative_volume: int
+    is_session_complete: bool
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contract_key, OptionContractKey):
+            raise TypeError("contract_key must be an OptionContractKey")
+        _validate_date_only("session_date", self.session_date)
+        _validate_integer("cumulative_volume", self.cumulative_volume, 0)
+        _validate_boolean("is_session_complete", self.is_session_complete)
+        _validate_market_observation_metadata(self.metadata)
+
+
+@dataclass(frozen=True)
+class OptionOpenInterestObservation:
+    """One normalized option open-interest observation."""
+
+    contract_key: OptionContractKey
+    open_interest_session_date: datetime.date
+    open_interest: int
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contract_key, OptionContractKey):
+            raise TypeError("contract_key must be an OptionContractKey")
+        _validate_date_only(
+            "open_interest_session_date", self.open_interest_session_date
+        )
+        _validate_integer("open_interest", self.open_interest, 0)
+        _validate_market_observation_metadata(self.metadata)

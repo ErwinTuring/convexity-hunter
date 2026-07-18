@@ -40,16 +40,17 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 2 completed: deterministic ScreeningDecision results are integrated into Chinese and English reports with policy provenance, localized canonical reasons, and explicit separation from CandidateResearchRecord.
 - Provider-neutral market-data contracts v0.1 documented and reviewed, covering auditable provenance, normalized observation time, immutable corrections, Decimal units, canonical security and option identities, quote scope, observation schemas, freshness boundaries, and staged implementation.
 - Milestone 3A.1 completed: immutable provider-neutral provenance, normalization metadata, canonical enums, and underlying and option identity records implemented and validated with fixed synthetic fixtures.
+- Milestone 3A.2 completed: immutable provider-neutral underlying and option quote, option-contract reference, cumulative-volume, and open-interest records implemented and validated with fixed synthetic fixtures.
 
 ## Current task
 
-Implement Milestone 3A.2 provider-neutral underlying and option quote, contract-reference, volume, and open-interest records using fixed synthetic fixtures only.
+Implement Milestone 3A.3 provider-neutral implied-volatility, Greeks, historical-bar, rate, and dividend records using fixed synthetic fixtures only.
 
-No provider has been selected and no network access is authorized. Milestone 3A.2 must use synthetic fixtures only. Freshness, `CalculationLineage`, and transformations remain deferred, and `market_data.py` remains independent of the evidence, report, and scanner modules.
+No provider has been selected and no network access is authorized. Milestone 3A.3 must use fixed synthetic fixtures only. Quote and activity records do not determine freshness or screening eligibility. Freshness, correction-selection policy, `CalculationLineage`, and transformations remain deferred, and `market_data.py` remains independent of the evidence, report, and scanner modules.
 
 ## Next task
 
-Implement Milestone 3A.3 provider-neutral implied-volatility, Greeks, historical-bar, rate, and dividend records after 3A.2 review.
+Define and implement Milestone 3B deterministic freshness assessment and `CalculationLineage` after Milestone 3A.3 review.
 
 ## Deferred
 

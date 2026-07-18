@@ -6,10 +6,17 @@ from typing import Optional
 
 from convexity_hunter.market_data import (
     DataOrigin,
+    MarketPhase,
     NormalizationMetadata,
     OptionContractKey,
+    OptionContractReference,
+    OptionOpenInterestObservation,
+    OptionQuoteObservation,
+    OptionVolumeObservation,
+    QuoteScope,
     SourceReference,
     UnderlyingKey,
+    UnderlyingQuoteObservation,
     UnderlyingSecurityType,
 )
 
@@ -22,6 +29,7 @@ NORMALIZED_AT = datetime.datetime(2030, 1, 2, 15, 30, 3, tzinfo=UTC)
 NON_UTC_OBSERVED_AT = datetime.datetime(2030, 1, 2, 10, 30, tzinfo=NON_UTC)
 NON_UTC_RETRIEVED_AT = datetime.datetime(2030, 1, 2, 10, 30, 2, tzinfo=NON_UTC)
 EXPIRATION = datetime.date(2030, 3, 15)
+SESSION_DATE = datetime.date(2030, 1, 2)
 
 
 def build_source_reference(**overrides: object) -> SourceReference:
@@ -106,3 +114,105 @@ def build_option_contract_key(**overrides: object) -> OptionContractKey:
     }
     values.update(overrides)
     return OptionContractKey(**values)  # type: ignore[arg-type]
+
+
+def build_underlying_quote_observation(
+    **overrides: object,
+) -> UnderlyingQuoteObservation:
+    """Build one deterministic consolidated underlying quote."""
+
+    values = {
+        "underlying_key": build_underlying_key(),
+        "session_date": SESSION_DATE,
+        "bid_price": decimal.Decimal("499.95"),
+        "ask_price": decimal.Decimal("500.05"),
+        "last_price": decimal.Decimal("500.00"),
+        "bid_size": 800,
+        "ask_size": 900,
+        "market_phase": MarketPhase.REGULAR,
+        "quote_scope": QuoteScope.CONSOLIDATED,
+        "venue_mic": None,
+        "metadata": build_normalization_metadata(),
+    }
+    values.update(overrides)
+    return UnderlyingQuoteObservation(**values)  # type: ignore[arg-type]
+
+
+def build_option_contract_reference(
+    **overrides: object,
+) -> OptionContractReference:
+    """Build one deterministic provider-reference option contract record."""
+
+    source = build_source_reference(
+        source_id="contract-source-001",
+        dataset_name="Synthetic Contract Reference",
+        provider_record_id="contract-record-001",
+        source_uri="synthetic://contracts/SPY",
+        origin=DataOrigin.PROVIDER_REFERENCE,
+    )
+    metadata = build_normalization_metadata(
+        [source],
+        record_id="contract-reference-001",
+        record_origin=DataOrigin.PROVIDER_REFERENCE,
+        normalization_methodology="Synthetic direct contract normalization",
+    )
+    values = {
+        "contract_key": build_option_contract_key(),
+        "listing_date": datetime.date(2029, 9, 16),
+        "last_trade_date": datetime.date(2030, 3, 14),
+        "exercise_style": "American",
+        "settlement_type": "Physical",
+        "metadata": metadata,
+    }
+    values.update(overrides)
+    return OptionContractReference(**values)  # type: ignore[arg-type]
+
+
+def build_option_quote_observation(**overrides: object) -> OptionQuoteObservation:
+    """Build one deterministic consolidated option quote."""
+
+    values = {
+        "contract_key": build_option_contract_key(),
+        "session_date": SESSION_DATE,
+        "bid_premium": decimal.Decimal("10.25"),
+        "ask_premium": decimal.Decimal("10.35"),
+        "bid_size": 120,
+        "ask_size": 140,
+        "market_phase": MarketPhase.REGULAR,
+        "quote_scope": QuoteScope.CONSOLIDATED,
+        "venue_mic": None,
+        "metadata": build_normalization_metadata(),
+    }
+    values.update(overrides)
+    return OptionQuoteObservation(**values)  # type: ignore[arg-type]
+
+
+def build_option_volume_observation(
+    **overrides: object,
+) -> OptionVolumeObservation:
+    """Build one deterministic incomplete cumulative option-volume record."""
+
+    values = {
+        "contract_key": build_option_contract_key(),
+        "session_date": SESSION_DATE,
+        "cumulative_volume": 1250,
+        "is_session_complete": False,
+        "metadata": build_normalization_metadata(),
+    }
+    values.update(overrides)
+    return OptionVolumeObservation(**values)  # type: ignore[arg-type]
+
+
+def build_option_open_interest_observation(
+    **overrides: object,
+) -> OptionOpenInterestObservation:
+    """Build one deterministic option open-interest record."""
+
+    values = {
+        "contract_key": build_option_contract_key(),
+        "open_interest_session_date": datetime.date(2030, 1, 1),
+        "open_interest": 5000,
+        "metadata": build_normalization_metadata(),
+    }
+    values.update(overrides)
+    return OptionOpenInterestObservation(**values)  # type: ignore[arg-type]
