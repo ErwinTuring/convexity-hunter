@@ -47,6 +47,7 @@ __all__ = (
     "CalculationInputReference",
     "CalculationLineage",
     "canonicalize_lineage_parameters",
+    "semantic_observation_key",
 )
 
 
@@ -1970,6 +1971,132 @@ class DividendObservation:
         object.__setattr__(self, "cash_amount", cash_amount)
         object.__setattr__(self, "annualized_yield", annualized_yield)
         object.__setattr__(self, "currency", currency)
+
+
+_SEMANTIC_OBSERVATION_PREFIX = "semantic-observation-v0.1:"
+
+
+def _semantic_underlying_key(underlying_key: UnderlyingKey) -> dict:
+    """Return the exact canonical identity payload for an underlying."""
+
+    return {
+        "symbol": underlying_key.symbol,
+        "listing_mic": underlying_key.listing_mic,
+        "security_type": underlying_key.security_type.value,
+        "currency": underlying_key.currency,
+    }
+
+
+def _semantic_option_contract_key(contract_key: OptionContractKey) -> dict:
+    """Return the exact canonical identity payload for an option contract."""
+
+    return {
+        "underlying_key": _semantic_underlying_key(contract_key.underlying_key),
+        "expiration": contract_key.expiration,
+        "option_type": contract_key.option_type,
+        "strike": contract_key.strike,
+        "contract_multiplier": contract_key.contract_multiplier,
+        "currency": contract_key.currency,
+        "deliverable_id": contract_key.deliverable_id,
+    }
+
+
+def _semantic_observation_payload(record: object) -> dict:
+    """Build the exact v0.1 payload for one supported exact record type."""
+
+    record_type = type(record)
+    if record_type is UnderlyingQuoteObservation:
+        return {
+            "record_type": "UnderlyingQuoteObservation",
+            "underlying_key": _semantic_underlying_key(record.underlying_key),
+            "session_date": record.session_date,
+            "effective_observed_at": record.metadata.effective_observed_at,
+            "market_phase": record.market_phase.value,
+            "quote_scope": record.quote_scope.value,
+            "venue_mic": record.venue_mic,
+        }
+    if record_type is OptionContractReference:
+        return {
+            "record_type": "OptionContractReference",
+            "contract_key": _semantic_option_contract_key(record.contract_key),
+        }
+    if record_type is OptionQuoteObservation:
+        return {
+            "record_type": "OptionQuoteObservation",
+            "contract_key": _semantic_option_contract_key(record.contract_key),
+            "session_date": record.session_date,
+            "effective_observed_at": record.metadata.effective_observed_at,
+            "market_phase": record.market_phase.value,
+            "quote_scope": record.quote_scope.value,
+            "venue_mic": record.venue_mic,
+        }
+    if record_type is OptionVolumeObservation:
+        return {
+            "record_type": "OptionVolumeObservation",
+            "contract_key": _semantic_option_contract_key(record.contract_key),
+            "session_date": record.session_date,
+            "effective_observed_at": record.metadata.effective_observed_at,
+        }
+    if record_type is OptionOpenInterestObservation:
+        return {
+            "record_type": "OptionOpenInterestObservation",
+            "contract_key": _semantic_option_contract_key(record.contract_key),
+            "open_interest_session_date": record.open_interest_session_date,
+        }
+    if record_type is OptionImpliedVolatilityObservation:
+        return {
+            "record_type": "OptionImpliedVolatilityObservation",
+            "contract_key": _semantic_option_contract_key(record.contract_key),
+            "session_date": record.session_date,
+            "effective_observed_at": record.metadata.effective_observed_at,
+            "model_name": record.model_name,
+            "model_version": record.model_version,
+            "rate_input_description": record.rate_input_description,
+            "dividend_input_description": record.dividend_input_description,
+        }
+    if record_type is OptionGreeksObservation:
+        return {
+            "record_type": "OptionGreeksObservation",
+            "contract_key": _semantic_option_contract_key(record.contract_key),
+            "session_date": record.session_date,
+            "effective_observed_at": record.metadata.effective_observed_at,
+            "model_name": record.model_name,
+            "model_version": record.model_version,
+            "rate_input_description": record.rate_input_description,
+            "dividend_input_description": record.dividend_input_description,
+        }
+    if record_type is UnderlyingDailyBarObservation:
+        return {
+            "record_type": "UnderlyingDailyBarObservation",
+            "underlying_key": _semantic_underlying_key(record.underlying_key),
+            "session_date": record.session_date,
+        }
+    if record_type is RateCurvePointObservation:
+        return {
+            "record_type": "RateCurvePointObservation",
+            "curve_id": record.curve_id,
+            "currency": record.currency,
+            "tenor_days": record.tenor_days,
+            "effective_date": record.effective_date,
+            "compounding_convention": record.compounding_convention,
+            "day_count_convention": record.day_count_convention,
+        }
+    if record_type is DividendObservation:
+        return {
+            "record_type": "DividendObservation",
+            "underlying_key": _semantic_underlying_key(record.underlying_key),
+            "dividend_type": record.dividend_type,
+            "ex_date": record.ex_date,
+            "status": record.status.value,
+        }
+    raise TypeError("record must have an exact supported observation type")
+
+
+def semantic_observation_key(record: object) -> str:
+    """Return the deterministic v0.1 semantic key for one observation."""
+
+    payload = _semantic_observation_payload(record)
+    return _SEMANTIC_OBSERVATION_PREFIX + canonicalize_lineage_parameters(payload)
 
 
 _MARKET_DATA_CATEGORY_BY_RECORD_TYPE = {

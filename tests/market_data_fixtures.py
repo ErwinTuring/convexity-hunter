@@ -145,6 +145,35 @@ def build_normalization_metadata(
     return NormalizationMetadata(**values)  # type: ignore[arg-type]
 
 
+def build_provider_variant_metadata(
+    provider_label: str,
+    record_id: str,
+    **overrides: object,
+) -> NormalizationMetadata:
+    """Build different provenance for the same declared observation time."""
+
+    is_corrected = provider_label == "b"
+    source = build_source_reference(
+        source_id=f"source-{provider_label}",
+        provider_name=f"Provider {provider_label}",
+        dataset_name=f"Dataset {provider_label}",
+        provider_record_id=f"provider-record-{provider_label}",
+        provider_request_id=f"provider-request-{provider_label}",
+        source_uri=f"synthetic://provider-{provider_label}/SPY",
+        payload_sha256=("b" if provider_label == "b" else "a") * 64,
+        revision_number=7 if is_corrected else None,
+        provider_correction_id="provider-b-correction" if is_corrected else None,
+        quality_flags=(SourceQualityFlag.CORRECTED,) if is_corrected else (),
+    )
+    values = {
+        "record_id": record_id,
+        "normalization_methodology": f"Provider {provider_label} normalization",
+        "normalization_version": f"provider-{provider_label}-v1",
+    }
+    values.update(overrides)
+    return build_normalization_metadata((source,), **values)
+
+
 def build_correction_source(
     lineage_name: str = "a",
     revision_number: Optional[int] = None,

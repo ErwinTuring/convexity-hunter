@@ -5,6 +5,7 @@ import collections
 import datetime
 import decimal
 import itertools
+import json
 import os
 import pathlib
 import subprocess
@@ -52,6 +53,7 @@ from convexity_hunter.market_data import (
     UnderlyingSecurityType,
     assess_market_data_freshness,
     canonicalize_lineage_parameters,
+    semantic_observation_key,
     select_correction_candidate,
 )
 from tests.market_data_fixtures import (
@@ -79,6 +81,7 @@ from tests.market_data_fixtures import (
     build_option_open_interest_observation,
     build_option_quote_observation,
     build_option_volume_observation,
+    build_provider_variant_metadata,
     build_rate_curve_point_observation,
     build_source_reference,
     build_underlying_key,
@@ -209,8 +212,10 @@ class PublicSurfaceTests(unittest.TestCase):
             "CalculationInputReference",
             "CalculationLineage",
             "canonicalize_lineage_parameters",
+            "semantic_observation_key",
         )
         self.assertEqual(market_data.__all__, expected)
+        self.assertEqual(len(market_data.__all__), 37)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
@@ -3687,6 +3692,354 @@ class CalculationLineageTests(unittest.TestCase):
         for value in ("", " ", "{}", '{"$map": [ ]}'):
             with self.assertRaises(ValueError):
                 build_calculation_lineage(parameters_json=value)
+
+
+class SemanticObservationIdentityTests(unittest.TestCase):
+    PREFIX = "semantic-observation-v0.1:"
+
+    @staticmethod
+    def tagged_map(value: object) -> dict:
+        return dict(value["$map"])  # type: ignore[index]
+
+    @classmethod
+    def decoded_payload(cls, record: object) -> dict:
+        key = semantic_observation_key(record)
+        return cls.tagged_map(json.loads(key[len(cls.PREFIX):]))
+
+    @staticmethod
+    def metadata_with_effective_time(
+        record: object, effective_at: datetime.datetime
+    ) -> NormalizationMetadata:
+        metadata = record.metadata  # type: ignore[attr-defined]
+        source = dataclasses.replace(
+            metadata.source_references[0], observed_at=effective_at
+        )
+        return dataclasses.replace(
+            metadata,
+            record_id=metadata.record_id + "-later",
+            source_references=(source,),
+            effective_observed_at=effective_at,
+        )
+
+    def test_all_ten_exact_types_tokens_and_payload_schemas(self) -> None:
+        cases = (
+            (build_underlying_quote_observation(), "UnderlyingQuoteObservation", {
+                "record_type", "underlying_key", "session_date",
+                "effective_observed_at", "market_phase", "quote_scope",
+                "venue_mic",
+            }),
+            (build_option_contract_reference(), "OptionContractReference", {
+                "record_type", "contract_key",
+            }),
+            (build_option_quote_observation(), "OptionQuoteObservation", {
+                "record_type", "contract_key", "session_date",
+                "effective_observed_at", "market_phase", "quote_scope",
+                "venue_mic",
+            }),
+            (build_option_volume_observation(), "OptionVolumeObservation", {
+                "record_type", "contract_key", "session_date",
+                "effective_observed_at",
+            }),
+            (build_option_open_interest_observation(),
+             "OptionOpenInterestObservation", {
+                 "record_type", "contract_key", "open_interest_session_date",
+             }),
+            (build_option_implied_volatility_observation(),
+             "OptionImpliedVolatilityObservation", {
+                 "record_type", "contract_key", "session_date",
+                 "effective_observed_at", "model_name", "model_version",
+                 "rate_input_description", "dividend_input_description",
+             }),
+            (build_option_greeks_observation(), "OptionGreeksObservation", {
+                "record_type", "contract_key", "session_date",
+                "effective_observed_at", "model_name", "model_version",
+                "rate_input_description", "dividend_input_description",
+            }),
+            (build_underlying_daily_bar_observation(),
+             "UnderlyingDailyBarObservation", {
+                 "record_type", "underlying_key", "session_date",
+             }),
+            (build_rate_curve_point_observation(),
+             "RateCurvePointObservation", {
+                 "record_type", "curve_id", "currency", "tenor_days",
+                 "effective_date", "compounding_convention",
+                 "day_count_convention",
+             }),
+            (build_dividend_observation(), "DividendObservation", {
+                "record_type", "underlying_key", "dividend_type", "ex_date",
+                "status",
+            }),
+        )
+        self.assertEqual(len(cases), 10)
+        for record, token, expected_fields in cases:
+            with self.subTest(record_type=token):
+                key = semantic_observation_key(record)
+                self.assertIs(type(key), str)
+                self.assertTrue(key.startswith(self.PREFIX))
+                self.assertEqual(key, semantic_observation_key(record))
+                payload = self.decoded_payload(record)
+                self.assertEqual(payload["record_type"], token)
+                self.assertEqual(set(payload), expected_fields)
+
+    def test_literal_golden_keys_lock_nested_schema_order_null_and_decimal(self) -> None:
+        quote_expected = (
+            'semantic-observation-v0.1:{"$map":['
+            '["effective_observed_at",{"$datetime":"2030-01-02T15:30:00.000000Z"}],'
+            '["market_phase","regular"],["quote_scope","consolidated"],'
+            '["record_type","UnderlyingQuoteObservation"],'
+            '["session_date",{"$date":"2030-01-02"}],'
+            '["underlying_key",{"$map":[["currency","USD"],'
+            '["listing_mic","ARCX"],["security_type","etf"],'
+            '["symbol","SPY"]]}],["venue_mic",null]]}'
+        )
+        contract_expected = (
+            'semantic-observation-v0.1:{"$map":[["contract_key",{"$map":['
+            '["contract_multiplier",100],["currency","USD"],'
+            '["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],'
+            '["option_type","call"],["strike",{"$decimal":"500.1250"}],'
+            '["underlying_key",{"$map":[["currency","USD"],'
+            '["listing_mic","ARCX"],["security_type","etf"],'
+            '["symbol","SPY"]]}]]}],["record_type",'
+            '"OptionContractReference"]]}'
+        )
+        self.assertEqual(
+            semantic_observation_key(build_underlying_quote_observation()),
+            quote_expected,
+        )
+        self.assertEqual(
+            semantic_observation_key(build_option_contract_reference()),
+            contract_expected,
+        )
+
+    def test_nested_null_model_null_decimal_and_non_utc_datetime_encoding(self) -> None:
+        underlying = build_underlying_key(listing_mic=None)
+        contract = build_option_contract_key(
+            underlying_key=underlying,
+            strike=decimal.Decimal("500.1250"),
+            deliverable_id=None,
+        )
+        reference_key = semantic_observation_key(
+            build_option_contract_reference(contract_key=contract)
+        )
+        self.assertIn('["listing_mic",null]', reference_key)
+        self.assertIn('["deliverable_id",null]', reference_key)
+        self.assertIn('{"$decimal":"500.1250"}', reference_key)
+        exponent_contract = build_option_contract_key(
+            strike=decimal.Decimal("5.001250E+8")
+        )
+        exponent_key = semantic_observation_key(
+            build_option_contract_reference(contract_key=exponent_contract)
+        )
+        self.assertIn('{"$decimal":"5.001250E+8"}', exponent_key)
+
+        iv_key = semantic_observation_key(
+            build_option_implied_volatility_observation(model_version=None)
+        )
+        self.assertIn('["model_version",null]', iv_key)
+
+        non_utc = datetime.timezone(datetime.timedelta(hours=-5))
+        observed_at = datetime.datetime(
+            2030, 1, 2, 10, 30, 0, 123456, tzinfo=non_utc
+        )
+        source = build_source_reference(
+            observed_at=observed_at,
+            retrieved_at=observed_at + datetime.timedelta(seconds=2),
+        )
+        metadata = build_normalization_metadata((source,))
+        key = semantic_observation_key(
+            build_underlying_quote_observation(metadata=metadata)
+        )
+        self.assertIn(
+            '{"$datetime":"2030-01-02T15:30:00.123456Z"}', key
+        )
+
+    def test_canonical_payload_order_is_insertion_independent(self) -> None:
+        first = {
+            "record_type": "Synthetic",
+            "underlying_key": {"symbol": "SPY", "listing_mic": None},
+        }
+        second = {
+            "underlying_key": {"listing_mic": None, "symbol": "SPY"},
+            "record_type": "Synthetic",
+        }
+        self.assertEqual(
+            self.PREFIX + canonicalize_lineage_parameters(first),
+            self.PREFIX + canonicalize_lineage_parameters(second),
+        )
+
+    def test_exact_type_boundary_rejects_unsupported_and_subclass_values(self) -> None:
+        base = build_underlying_quote_observation()
+
+        @dataclasses.dataclass(frozen=True)
+        class QuoteSubclass(UnderlyingQuoteObservation):
+            pass
+
+        subclass = QuoteSubclass(**{
+            field.name: getattr(base, field.name)
+            for field in dataclasses.fields(UnderlyingQuoteObservation)
+        })
+        unsupported = (
+            object(), base.metadata, base.underlying_key,
+            build_option_contract_key(), base.metadata.source_references[0],
+            subclass,
+        )
+        for value in unsupported:
+            with self.subTest(value_type=type(value).__name__):
+                with self.assertRaises(TypeError):
+                    semantic_observation_key(value)
+
+    def test_excluded_value_state_and_reference_corrections_keep_key(self) -> None:
+        greek_base = build_option_greeks_observation(
+            delta=decimal.Decimal("0.50"), gamma=None, theta=None, vega=None,
+            theta_day_basis=None,
+        )
+        cases = (
+            (build_underlying_quote_observation(),
+             build_underlying_quote_observation(
+                 bid_price=decimal.Decimal("499.90"),
+                 ask_price=decimal.Decimal("500.10"))),
+            (build_option_contract_reference(),
+             build_option_contract_reference(
+                 exercise_style="European", settlement_type="Cash")),
+            (build_option_volume_observation(),
+             build_option_volume_observation(
+                 cumulative_volume=1500, is_session_complete=True)),
+            (build_option_open_interest_observation(),
+             build_option_open_interest_observation(open_interest=6000)),
+            (build_option_implied_volatility_observation(),
+             build_option_implied_volatility_observation(
+                 implied_volatility=decimal.Decimal("0.225"))),
+            (greek_base, dataclasses.replace(
+                greek_base, gamma=decimal.Decimal("0.02"))),
+            (build_underlying_daily_bar_observation(),
+             build_underlying_daily_bar_observation(
+                 open_price=decimal.Decimal("499"),
+                 high_price=decimal.Decimal("503"),
+                 low_price=decimal.Decimal("498"),
+                 close_price=decimal.Decimal("502"),
+                 adjusted_close_price=decimal.Decimal("501.5"),
+                 volume=76000000,
+                 adjustment_methodology="Corrected total-return adjustment")),
+            (build_rate_curve_point_observation(),
+             build_rate_curve_point_observation(
+                 annualized_rate=decimal.Decimal("0.043"))),
+            (build_dividend_observation(),
+             build_dividend_observation(
+                 payment_date=datetime.date(2030, 3, 2),
+                 cash_amount=decimal.Decimal("1.80"))),
+        )
+        for original, correction in cases:
+            with self.subTest(record_type=type(original).__name__):
+                before = repr(original)
+                self.assertEqual(
+                    semantic_observation_key(original),
+                    semantic_observation_key(correction),
+                )
+                self.assertEqual(repr(original), before)
+
+    def test_provider_provenance_revision_and_correction_are_key_neutral(self) -> None:
+        first = build_underlying_quote_observation(
+            metadata=build_provider_variant_metadata("a", "provider-a-quote")
+        )
+        corrected = build_underlying_quote_observation(
+            metadata=build_provider_variant_metadata("b", "provider-b-quote")
+        )
+        self.assertNotEqual(
+            first.metadata.source_references[0].provider_name,
+            corrected.metadata.source_references[0].provider_name,
+        )
+        self.assertEqual(
+            corrected.metadata.source_references[0].revision_number, 7
+        )
+        self.assertEqual(
+            semantic_observation_key(first),
+            semantic_observation_key(corrected),
+        )
+
+    def test_effective_time_participates_for_exactly_five_types(self) -> None:
+        included = (
+            build_underlying_quote_observation(),
+            build_option_quote_observation(),
+            build_option_volume_observation(),
+            build_option_implied_volatility_observation(),
+            build_option_greeks_observation(),
+        )
+        excluded = (
+            build_option_contract_reference(),
+            build_option_open_interest_observation(),
+            build_underlying_daily_bar_observation(),
+            build_rate_curve_point_observation(),
+            build_dividend_observation(),
+        )
+        later = OBSERVED_AT + datetime.timedelta(microseconds=1)
+        for record in included + excluded:
+            changed = dataclasses.replace(
+                record, metadata=self.metadata_with_effective_time(record, later)
+            )
+            keys_equal = (
+                semantic_observation_key(record)
+                == semantic_observation_key(changed)
+            )
+            with self.subTest(record_type=type(record).__name__):
+                self.assertEqual(keys_equal, record in excluded)
+
+    def test_identity_field_changes_produce_different_keys(self) -> None:
+        quote = build_underlying_quote_observation()
+        option_quote = build_option_quote_observation()
+        iv = build_option_implied_volatility_observation()
+        greeks = build_option_greeks_observation()
+        rate = build_rate_curve_point_observation()
+        dividend = build_dividend_observation()
+        venue_quote = build_option_quote_observation(
+            quote_scope=QuoteScope.VENUE_SPECIFIC, venue_mic="XNAS"
+        )
+        cases = (
+            (quote, build_underlying_quote_observation(
+                underlying_key=build_underlying_key(symbol="QQQ"))),
+            (build_option_contract_reference(), build_option_contract_reference(
+                contract_key=build_option_contract_key(
+                    expiration=datetime.date(2030, 4, 19)))),
+            (quote, build_underlying_quote_observation(
+                market_phase=MarketPhase.PRE_MARKET)),
+            (option_quote, venue_quote),
+            (build_option_volume_observation(), dataclasses.replace(
+                build_option_volume_observation(),
+                metadata=self.metadata_with_effective_time(
+                    build_option_volume_observation(),
+                    OBSERVED_AT + datetime.timedelta(microseconds=1)))),
+            (build_option_open_interest_observation(),
+             build_option_open_interest_observation(
+                 open_interest_session_date=datetime.date(2029, 12, 31))),
+            (iv, dataclasses.replace(iv, model_name="Other model")),
+            (iv, dataclasses.replace(iv, model_version=None)),
+            (iv, dataclasses.replace(
+                iv, rate_input_description="Other rate input")),
+            (greeks, dataclasses.replace(
+                greeks, dividend_input_description="Other dividend input")),
+            (build_underlying_daily_bar_observation(),
+             build_underlying_daily_bar_observation(
+                 session_date=datetime.date(2030, 1, 3))),
+            (rate, dataclasses.replace(rate, curve_id="USD-OTHER-OIS")),
+            (rate, dataclasses.replace(rate, tenor_days=60)),
+            (rate, dataclasses.replace(
+                rate, effective_date=datetime.date(2030, 1, 3))),
+            (rate, dataclasses.replace(
+                rate, compounding_convention="Simple")),
+            (rate, dataclasses.replace(
+                rate, day_count_convention="Actual/360")),
+            (dividend, dataclasses.replace(
+                dividend, ex_date=datetime.date(2030, 2, 16))),
+            (dividend, dataclasses.replace(
+                dividend, dividend_type="Special Cash")),
+            (dividend, dataclasses.replace(
+                dividend, status=DividendStatus.HISTORICAL)),
+        )
+        for original, changed in cases:
+            with self.subTest(record_type=type(original).__name__):
+                self.assertNotEqual(
+                    semantic_observation_key(original),
+                    semantic_observation_key(changed),
+                )
 
 
 class ImportAndDeterminismTests(unittest.TestCase):

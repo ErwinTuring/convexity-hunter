@@ -47,15 +47,21 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3B.2 completed: deterministic provider-correction selection implemented and validated with exact lineage matching, normalized revision components, correction-identity conflict handling, revision-vector dominance, canonical terminal reasons, and deterministic synthetic fixtures.
 - Milestone 3B.3 completed: canonical calculation lineage implemented and validated with immutable input references, deterministic tagged-JSON parameter serialization, exact type boundaries, duplicate-key-safe validation, Decimal/date/datetime canonicalization, depth and cycle controls, and auditable calculation-lineage sidecars.
 - Milestone 3B completed: deterministic freshness assessment, provider-correction selection, and canonical calculation lineage are implemented, independently reviewed, and validated with fixed synthetic fixtures.
+- Milestone 3C.1 completed: deterministic provider-neutral semantic observation identity implemented and independently reviewed for all ten normalized market-data record types, with versioned canonical tagged-JSON keys, exact identity-field boundaries, provider-neutral provenance exclusion, and deterministic fixed synthetic tests.
 
 ## Current task
 
-Define and review the Milestone 3C.1 semantic observation identity contract.
+Clarify and review the next Milestone 3C.2+ specification before any later 3C implementation.
 
 Broad Milestone 3C preflight completed: NOT READY FOR IMPLEMENTATION. Milestone
-3C is being decomposed to resolve specification blockers. Current task: define
-and review Milestone 3C.1 semantic observation identity contract. 3C
-implementation has not started. No provider has been selected and no network
+3C is being decomposed to resolve specification blockers. The Milestone 3C.1
+contract and implementation are complete, and
+`semantic_observation_key(record) -> str` is implemented. The public
+`market_data` API now contains 37 names. Broad Milestone 3C remains incomplete.
+Remaining selected/fresh binding, snapshot coherence, deterministic input
+selection, historical completeness, and research-record transformations remain
+specification-blocked and unimplemented; final later 3C sub-milestone numbering
+and public APIs are not yet locked. No provider has been selected and no network
 access is authorized. `market_data.py` remains independent of the evidence,
 report, and scanner modules.
 
@@ -73,7 +79,7 @@ report, and scanner modules.
 
 ## Next task
 
-Review and approve the Milestone 3C.1 semantic observation identity contract before implementation.
+Perform an A-level specification preflight for the next dependency-ordered Milestone 3C.2+ contract before implementation.
 
 ## Deferred
 
