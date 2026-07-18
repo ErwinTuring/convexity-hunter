@@ -35,14 +35,17 @@ Milestone 2: Define and implement deterministic candidate screening policy using
 - CandidateResearchRecord implemented and validated with cross-record consistency, bounded scenario losses, empirical support requirements, falsification, and human-review fields.
 - Deterministic Markdown rendering and the first end-to-end synthetic candidate report implemented and validated.
 - Milestone 1.1 completed: separate Chinese and English deterministic candidate reports now place a plain-language overview before fully auditable technical details.
+- Deterministic screening policy v0.1 documented and reviewed with provisional thresholds, structure-specific scenarios, decision precedence, immutable version semantics, and canonical reason codes.
 
 ## Current task
 
-Define explicit screening-policy inputs, provisional thresholds, scenario requirements, decision precedence, and reason codes.
+Implement immutable ScreeningPolicy, ScreeningReasonCode, ScreeningDecision, and screen_candidate against purpose-built synthetic fixtures.
+
+Policy v0.1 thresholds are synthetic-development assumptions, not calibrated market rules. External market data remains deferred.
 
 ## Next task
 
-Implement the deterministic screening policy against multiple synthetic candidate fixtures.
+Integrate the deterministic ScreeningDecision into bilingual reports without mutating or replacing CandidateResearchRecord.
 
 ## Deferred
 
