@@ -1168,6 +1168,265 @@ Invalid Python inputs do not create additional result statuses. The function is
 pure: it does not mutate candidates, read the wall clock, or depend on provider,
 network, filesystem, or random state.
 
+### 13.6 Milestone 3C.1 semantic observation identity
+
+Milestone 3C.1 defines one deterministic, provider-neutral identity for each
+supported normalized economic observation. Different immutable versions or
+corrections of the same economic observation have the same semantic observation
+key. Economically different observation slots have different keys. A semantic
+observation key identifies the observation slot, not one stored record version.
+
+The only planned public 3C.1 function is:
+
+```text
+semantic_observation_key(record) -> str
+```
+
+No public `SemanticObservationKey` dataclass, enum, alias, or other record is
+planned. `CorrectionSelection.semantic_observation_key` remains `str`. When
+later 3C binding logic consumes a `CorrectionSelection`, the selection's stored
+semantic key must equal the deterministic key produced for the bound normalized
+observation. Milestone 3C.1 does not define or implement that binding logic.
+
+#### Supported input and purity boundary
+
+The function supports exactly these ten normalized observation record types:
+
+```text
+UnderlyingQuoteObservation
+OptionContractReference
+OptionQuoteObservation
+OptionVolumeObservation
+OptionOpenInterestObservation
+OptionImpliedVolatilityObservation
+OptionGreeksObservation
+UnderlyingDailyBarObservation
+RateCurvePointObservation
+DividendObservation
+```
+
+Every accepted value must satisfy `type(record) is SupportedRecordType` for one
+of those exact types. Subclasses and all unsupported objects raise `TypeError`.
+The function accepts no category override and introduces no new economic
+validation layer because supported inputs are already validated immutable
+records. An unexpected inability to encode an otherwise valid supported record
+is an internal contract violation and must not be silently repaired. No custom
+public exception is introduced.
+
+The function is pure. It does not inspect the wall clock, filesystem,
+environment, network, a provider SDK, random state, or LLM output, and it does
+not mutate the record.
+
+#### Versioned canonical encoding
+
+The exact v0.1 format is:
+
+```text
+semantic-observation-v0.1:<canonical-tagged-json>
+```
+
+The mandatory prefix is followed by the exact canonical tagged-JSON encoding
+defined in Section 14. Conceptually, the tagged JSON is produced by applying the
+same deterministic canonicalization semantics as
+`canonicalize_lineage_parameters(...)` to one exact built-in `dict` containing
+`record_type` and the authoritative identity fields below. The `record_type`
+value is the exact public normalized-record type name shown in the supported
+type list. Enum identity components are passed as their exact `.value` strings.
+Dates, datetimes, Decimals, strings, integers, and `None` retain their exact
+supported canonical types.
+
+This reuse is an encoding rule only. Semantic observation identity remains
+conceptually separate from calculation lineage. v0.1 uses no hash; the complete
+key remains human-inspectable and audit-friendly. Any change to semantic
+identity meaning or field composition requires a new semantic-key version.
+
+Nested `UnderlyingKey` identity is encoded as one exact built-in dictionary with
+these exact keys and values:
+
+| Canonical dictionary key | Exact stored value |
+| --- | --- |
+| `symbol` | `underlying_key.symbol` |
+| `listing_mic` | `underlying_key.listing_mic` |
+| `security_type` | `underlying_key.security_type.value` |
+| `currency` | `underlying_key.currency` |
+
+Nested `OptionContractKey` identity is encoded as one exact built-in dictionary
+with these exact keys and values:
+
+| Canonical dictionary key | Exact stored value |
+| --- | --- |
+| `underlying_key` | the exact nested `UnderlyingKey` dictionary above |
+| `expiration` | `contract_key.expiration` |
+| `option_type` | `contract_key.option_type` |
+| `strike` | `contract_key.strike` |
+| `contract_multiplier` | `contract_key.contract_multiplier` |
+| `currency` | `contract_key.currency` |
+| `deliverable_id` | `contract_key.deliverable_id` |
+
+These dictionaries use the already-normalized stored values. They never use an
+object representation, hash value, insertion order, or Python object identity.
+Strike remains a `Decimal` in the canonical tagged representation and is never
+converted through `float`.
+
+#### Authoritative identity fields
+
+The following lists are exact and authoritative. Implementations may not add or
+remove fields dynamically.
+
+Each row below defines the exact additional canonical dictionary keys and their
+record sources. The `record_type` key is present in every dictionary. A nested
+key uses the exact nested dictionary defined above.
+
+| Normalized record type | Exact canonical dictionary entries in addition to `record_type` |
+| --- | --- |
+| `UnderlyingQuoteObservation` | `underlying_key=record.underlying_key`, `session_date=record.session_date`, `effective_observed_at=record.metadata.effective_observed_at`, `market_phase=record.market_phase.value`, `quote_scope=record.quote_scope.value`, `venue_mic=record.venue_mic` |
+| `OptionContractReference` | `contract_key=record.contract_key` |
+| `OptionQuoteObservation` | `contract_key=record.contract_key`, `session_date=record.session_date`, `effective_observed_at=record.metadata.effective_observed_at`, `market_phase=record.market_phase.value`, `quote_scope=record.quote_scope.value`, `venue_mic=record.venue_mic` |
+| `OptionVolumeObservation` | `contract_key=record.contract_key`, `session_date=record.session_date`, `effective_observed_at=record.metadata.effective_observed_at` |
+| `OptionOpenInterestObservation` | `contract_key=record.contract_key`, `open_interest_session_date=record.open_interest_session_date` |
+| `OptionImpliedVolatilityObservation` | `contract_key=record.contract_key`, `session_date=record.session_date`, `effective_observed_at=record.metadata.effective_observed_at`, `model_name=record.model_name`, `model_version=record.model_version`, `rate_input_description=record.rate_input_description`, `dividend_input_description=record.dividend_input_description` |
+| `OptionGreeksObservation` | `contract_key=record.contract_key`, `session_date=record.session_date`, `effective_observed_at=record.metadata.effective_observed_at`, `model_name=record.model_name`, `model_version=record.model_version`, `rate_input_description=record.rate_input_description`, `dividend_input_description=record.dividend_input_description` |
+| `UnderlyingDailyBarObservation` | `underlying_key=record.underlying_key`, `session_date=record.session_date` |
+| `RateCurvePointObservation` | `curve_id=record.curve_id`, `currency=record.currency`, `tenor_days=record.tenor_days`, `effective_date=record.effective_date`, `compounding_convention=record.compounding_convention`, `day_count_convention=record.day_count_convention` |
+| `DividendObservation` | `underlying_key=record.underlying_key`, `dividend_type=record.dividend_type`, `ex_date=record.ex_date`, `status=record.status.value` |
+
+An intraday quote is a time-specific market observation, so different effective
+observation times are different quote slots. Quote market phase, scope, and
+venue identity are also semantic distinctions. Cumulative volume is an as-of
+observation, but its value and completion state are not identity. Open interest
+and daily bars are session-date observations and do not gain an effective-time
+identity component. Option analytics distinguish declared model and rate and
+dividend input methodologies; their numeric outputs do not define identity.
+Rate points distinguish curve, tenor, effective date, and conventions.
+Dividend forecast, announced, and historical statuses are distinct semantic
+states.
+
+For `OptionContractReference`, the exact `contract_key` identifies the economic
+contract. Changes or corrections to the reference record's descriptive terms,
+including listing, last-trade, exercise-style, or settlement details, remain
+versions of the same contract-reference observation when `contract_key` is
+unchanged. For Greeks, populated or missing Greek fields and `theta_day_basis`
+do not alter v0.1 identity. For daily bars, adjustment values and methodology
+do not alter identity; later historical transformation rules determine
+methodology compatibility.
+
+`metadata.effective_observed_at` participates in semantic identity for exactly
+five record types:
+
+```text
+UnderlyingQuoteObservation
+OptionQuoteObservation
+OptionVolumeObservation
+OptionImpliedVolatilityObservation
+OptionGreeksObservation
+```
+
+Effective time must not be added to date-based observations. Retrieval,
+publication, or normalization timestamps never substitute for an identity date
+or effective time.
+
+#### Value-versus-identity and universal exclusions
+
+A field belongs in semantic identity only when changing it changes what
+economic observation is represented, rather than merely changing the observed
+value, completeness, source or provenance, revision, or normalization process.
+This rule explains the exact per-record lists but does not authorize dynamic
+field selection.
+
+Unless explicitly included above, every semantic key excludes:
+
+```text
+metadata.record_id
+all SourceReference identity and provenance fields
+provider and dataset identity
+provider_record_id and provider_request_id
+source_id
+retrieved_at and normalized_at
+payload_sha256
+revision_number and provider_correction_id
+normalization methodology and version
+unit convention
+source and normalization quality flags
+actual observed numeric values
+bid and ask sizes
+prices, volume, and open-interest values
+implied-volatility and Greek values
+bar values
+rate values
+dividend amounts and yields
+```
+
+#### Provider neutrality and correction comparability
+
+Records from different providers may legitimately produce the same semantic
+observation key when they claim to represent the same economic observation
+slot. This does not make them corrections of one another automatically:
+
+```text
+same semantic key != automatically comparable corrections
+```
+
+Correction comparability remains governed by the Section 13 source-lineage
+requirements. Candidates with one semantic key but incompatible source lineage
+produce the already-defined correction-selection ambiguity result. Provider
+identity must not be added to the semantic key to suppress that ambiguity.
+Provider provenance remains separately auditable.
+
+#### Collision and correction invariants
+
+When every declared identity field remains unchanged, all of these corrections
+retain the same semantic key:
+
+```text
+quote bid or ask corrected
+volume value or completion state corrected
+open-interest value corrected
+implied-volatility value corrected
+Greek values corrected or additional Greeks populated
+daily-bar prices or volume corrected
+adjusted close or adjustment methodology corrected
+rate value corrected
+dividend amount or payment date corrected
+```
+
+All of these changes produce different keys:
+
+```text
+different underlying or option contract
+different quote effective_observed_at
+different quote market phase, scope, or venue identity
+different volume effective_observed_at
+different open-interest session date
+different IV or Greek model or declared rate or dividend input description
+different daily-bar session date
+different rate curve, tenor, effective date, or conventions
+different dividend ex-date, type, or status
+```
+
+Milestone 3C.1 does not infer semantic equivalence across different model names,
+provider methodology descriptions, curve IDs, dividend types or statuses,
+listings or share classes, quote scopes, or venues. It uses no fuzzy matching,
+LLM interpretation, or alias registry. Exact normalized fields define identity.
+
+#### Relationship to later 3C work
+
+Only this directional dependency is locked:
+
+```text
+normalized immutable records
+    -> semantic observation key
+    -> correction candidate grouping
+    -> explicit CorrectionSelection
+    -> selected normalized record
+    -> explicit FreshnessAssessment
+    -> later snapshot coherence
+    -> later transformation
+```
+
+Milestone 3C.1 specifies only semantic identity. It does not define a later
+binding API, snapshot statuses or reasons, transformation APIs, transformations,
+or pricing behavior.
+
 ## 14. Canonical calculation lineage
 
 A separate input-reference record is required because IDs alone cannot validate calculation chronology.
@@ -1503,16 +1762,27 @@ canonicalize_lineage_parameters
 
 Use fixed synthetic inputs. Implement the complete canonical tagged-tree grammar and duplicate-key-safe JSON validation. No provider or network access is authorized in any 3B subphase.
 
-### Milestone 3C — Transformations
+### Milestone 3C.1 — Semantic observation identity
 
-Only after all 3B subphases are reviewed:
+After all 3B subphases are reviewed, define and review the deterministic
+provider-neutral semantic observation identity contract in Section 13.6.
+Milestone 3C.1 must be reviewed and stable before correction or snapshot binding
+depends on semantic keys. Its only planned public API is:
 
-- implement pure transformations into existing research records;
-- require explicit correction selection;
-- require explicit freshness assessments;
-- retain `CalculationLineage`;
-- apply cross-record snapshot skew;
-- use fixed synthetic fixtures before provider integration.
+```text
+semantic_observation_key(record) -> str
+```
+
+Completing this contract clarification does not authorize transformation
+implementation.
+
+### Milestone 3C.2+ — Remaining Milestone 3C work
+
+Remaining selected/fresh binding, snapshot coherence, deterministic input
+selection, historical completeness, and research-record transformations stay
+grouped at dependency level only. Later 3C work remains specification-blocked.
+Final sub-milestone numbering and public APIs are intentionally not assigned
+until their contracts are clarified.
 
 ### Milestone 3D — Provider adapter
 
@@ -1534,12 +1804,15 @@ The full implementation sequence is:
 4. Implement and review Milestone 3B.1 freshness contracts and assessment.
 5. Implement and review Milestone 3B.2 correction selection.
 6. Implement and review Milestone 3B.3 calculation lineage.
-7. Implement Milestone 3C transformations.
-8. Select a provider only after Milestones 3A–3C are stable.
-9. Add recorded provider fixture payloads.
-10. Implement one adapter behind the contracts.
-11. Review licensing and retention constraints.
-12. Separately authorize live-network testing.
+7. Review and stabilize the Milestone 3C.1 semantic observation identity
+   contract, then implement it only after approval.
+8. Clarify and review the remaining Milestone 3C.2+ specifications before any
+   later 3C implementation.
+9. Select a provider only after Milestones 3A–3C are stable.
+10. Add recorded provider fixture payloads.
+11. Implement one adapter behind the contracts.
+12. Review licensing and retention constraints.
+13. Separately authorize live-network testing.
 
 ## 20. Non-goals
 
@@ -1562,6 +1835,17 @@ Market-data contracts v0.1 do not:
 
 ## 21. Open design questions
 
+Resolved for v0.1 by the Milestone 3C.1 contract:
+
+- Semantic observation keys for all ten normalized record types use the exact
+  deterministic identity maps and versioned canonical encoding in Section 13.6.
+- No for v0.1: existing immutable normalized records do not directly carry a
+  semantic observation key. The key is derived by the planned pure
+  `semantic_observation_key(record) -> str` function; no new stored field is
+  added.
+
+The following questions remain open:
+
 - Which MIC or listing registry should supply `listing_mic`?
 - How should adjusted option deliverables be represented beyond `deliverable_id`?
 - What production freshness thresholds apply by category?
@@ -1571,7 +1855,6 @@ Market-data contracts v0.1 do not:
 - Should `AFTER_HOURS` source flags create an explicit policy reason in a later version?
 - Should `UNKNOWN_CONDITION` source flags become policy-controlled?
 - Should future policies make halted-source handling configurable by category?
-- How should semantic observation keys be constructed for every record type in 3C?
 - Should cross-record snapshot assessment become a separate public record?
 - Which exchange calendar implementation would support trading-session counting?
 - Which provider correction schemes expose genuinely comparable numeric revisions?
@@ -1581,5 +1864,4 @@ Market-data contracts v0.1 do not:
 - How should historical volatility-surface observations be stored efficiently?
 - What raw payload material may legally be retained for each provider?
 - When should existing research records receive direct lineage IDs instead of sidecar lineage?
-- Should normalized records eventually carry an explicit semantic-observation key in addition to `record_id`?
 - Should forecast dividends use one provider model or a system-composite methodology?
