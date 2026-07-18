@@ -2,6 +2,8 @@
 
 Before changing business logic, read `docs/philosophy.md`, `docs/mvp-spec.md`, and `docs/project-state.md`. Treat them as the project source of truth.
 
+Follow `docs/development-workflow.md` for risk classification, repository grounding, BUILD/REVIEW gates, review discipline, and commit workflow.
+
 - Do not turn the project into a directional prediction or recommendation system.
 - Do not invent market data, Greeks, probabilities, or historical values.
 - Prefer the smallest implementation that satisfies the current milestone.
@@ -17,3 +19,4 @@ Before changing business logic, read `docs/philosophy.md`, `docs/mvp-spec.md`, a
 - `docs/philosophy.md` — guiding research principles and boundaries
 - `docs/mvp-spec.md` — MVP scope, screening model, and output requirements
 - `docs/project-state.md` — current milestone, decisions, progress, and open questions
+- `docs/development-workflow.md` — risk-tiered development, grounding, BUILD/REVIEW, review, checkpoint, and commit workflow

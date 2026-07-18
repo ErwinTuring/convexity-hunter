@@ -54,6 +54,18 @@ Perform Milestone 3C transformations and snapshot-coherence specification prefli
 
 Milestones 3B.1, 3B.2, and 3B.3 are complete, and Milestone 3B is complete. Milestone 3C implementation has not started. Semantic observation keys, multi-record snapshot coherence and assembly, and deterministic transformations belong to the upcoming 3C scope and remain unimplemented. No provider has been selected and no network access is authorized. `market_data.py` remains independent of the evidence, report, and scanner modules.
 
+## Last validated checkpoint
+
+- Checkpoint: Milestone 3B complete
+- Commit: `7fd25810fff5a044c64ca717a6e9535f6206889c`
+- Tests: 486 passed
+- Public `market_data` API: 36 names
+- Current task: Milestone 3C transformations and snapshot-coherence specification preflight
+- 3B.1 freshness complete
+- 3B.2 correction selection complete
+- 3B.3 canonical calculation lineage complete
+- 3C implementation not started
+
 ## Next task
 
 Implement the approved Milestone 3C scope after specification preflight.
