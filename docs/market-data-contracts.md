@@ -801,7 +801,37 @@ assess_market_data_freshness(
 ) -> FreshnessAssessment
 ```
 
-It accepts only the eleven normalized 3A record types. It never mutates the record, policy, context, metadata, or sources; fetches data; inspects an exchange calendar; calculates economic metrics; or calls screening or reporting code.
+It accepts only the ten normalized Milestone 3A record types, grouped by their fixed categories:
+
+```text
+quote:
+- UnderlyingQuoteObservation
+- OptionQuoteObservation
+
+analytics:
+- OptionImpliedVolatilityObservation
+- OptionGreeksObservation
+
+activity:
+- OptionVolumeObservation
+- OptionOpenInterestObservation
+
+contract_reference:
+- OptionContractReference
+
+historical_bar:
+- UnderlyingDailyBarObservation
+
+rate:
+- RateCurvePointObservation
+
+dividend:
+- DividendObservation
+```
+
+The total is ten record types. Unsupported record types raise `TypeError`, and callers cannot override the category mapping. `SourceReference`, `NormalizationMetadata`, `UnderlyingKey`, and `OptionContractKey` are not freshness-assessable normalized observation records.
+
+The function never mutates the record, policy, context, metadata, or sources; fetches data; inspects an exchange calendar; calculates economic metrics; or calls screening or reporting code.
 
 #### Chronology rules
 
