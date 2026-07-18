@@ -985,15 +985,32 @@ For each normalized record, collect all keys, sort them lexicographically, and r
 
 ### 13.4 Revision vector and dominance
 
-For each ordered source-lineage key:
+For each ordered source-lineage key, correction selection defines one and only
+one revision value:
 
 ```text
-revision component =
+normalized revision component =
     revision_number when revision_number is positive
     otherwise 0
 ```
 
-The candidate revision vector contains those components in source-lineage-key order. Revisions are comparable only within the same lineage key. Revisions from unrelated providers or datasets are never compared directly. `provider_correction_id` proves correction identity but supplies no ordering semantics, and lexical correction-ID order is prohibited. Normalized time, retrieval time, observation time, file order, insertion order, record ID, payload hash, set order, and dictionary order are prohibited as latest-revision tie-breakers.
+`revision_number=None` and `revision_number=0` both map to normalized revision
+component `0`. Positive revision numbers retain their integer values. Every
+correction-selection comparison uses this normalized revision component. In
+particular, "same numeric revision" means the same normalized revision
+component, not equality of the raw `revision_number` fields. Correction-identity
+conflict detection and revision-vector construction use the same normalized
+revision component; separate raw-revision and vector-revision semantics are
+prohibited.
+
+The candidate revision vector contains those normalized components in
+source-lineage-key order. Revisions are comparable only within the same lineage
+key. Revisions from unrelated providers or datasets are never compared directly.
+`provider_correction_id` proves correction identity but supplies no ordering
+semantics, and lexical correction-ID order is prohibited. Normalized time,
+retrieval time, observation time, file order, insertion order, record ID, payload
+hash, set order, and dictionary order are prohibited as latest-revision
+tie-breakers.
 
 Candidate A strictly dominates candidate B when both have the same ordered lineage keys, every revision component in A is greater than or equal to its counterpart in B, and at least one component is greater.
 
@@ -1001,20 +1018,64 @@ Candidate A strictly dominates candidate B when both have the same ordered linea
 
 The exact terminal-reason algorithm is:
 
-1. Validate the non-empty tuple or list of `NormalizationMetadata` candidates, unique record IDs, evaluated-at chronology, and supplied rule fields.
+1. Validate the non-empty tuple or list of exact `NormalizationMetadata` candidates, unique record IDs, evaluated-at chronology, and supplied rule fields.
 2. Normalize candidates into ascending `record_id` order for presentation only.
 3. If exactly one candidate exists, return `selected` with `only_candidate_selected`.
 4. For multiple candidates, if any source lacks `provider_record_id`, return `ambiguous` with `missing_provider_record_id`.
 5. Construct each candidate's source-lineage keys.
 6. If one candidate contains duplicate source-lineage keys, raise `ValueError`; do not return ambiguity.
 7. If candidates lack identical ordered lineage-key sets, return `ambiguous` with `source_lineage_mismatch`.
-8. If candidates contain different non-equivalent correction identities for the same lineage key and numeric revision, return `ambiguous` with `conflicting_correction_ids_same_revision`.
-9. Construct revision vectors.
+8. If candidates contain different non-equivalent correction identities for the same lineage key and normalized revision component, return `ambiguous` with `conflicting_correction_ids_same_revision`.
+9. Construct revision vectors using those same normalized revision components.
 10. If all revision vectors are identical, return `ambiguous` with `tied_revision_vectors`.
 11. If exactly one candidate strictly dominates every other candidate, return `selected` with `dominating_revision_vector_selected`.
 12. Otherwise, return `ambiguous` with `incomparable_revision_vectors`.
 
-For correction-identity comparison, `None` and a supplied ID differ, two different supplied IDs differ, and identical supplied IDs are equivalent. Correction IDs never define ordering.
+For correction-identity comparison, `None` and a supplied ID differ, two
+different supplied IDs differ, and identical supplied IDs are equivalent.
+Correction IDs establish identity only, never define ordering, and are never
+compared lexicographically.
+
+The normalized-revision and correction-identity cases include:
+
+```text
+(revision_number=None, correction_id=None)
+versus (revision_number=0, correction_id=None)
+    -> same normalized revision 0, equivalent correction identity
+    -> no identity conflict
+    -> vectors may later tie
+
+(revision_number=None, correction_id=None)
+versus (revision_number=0, correction_id="A")
+    -> same normalized revision 0, conflicting correction identity
+    -> conflicting_correction_ids_same_revision
+
+(revision_number=0, correction_id="A")
+versus (revision_number=0, correction_id="A")
+    -> same normalized revision 0, equivalent correction identity
+    -> no identity conflict
+
+(revision_number=1, correction_id="A")
+versus (revision_number=1, correction_id="B")
+    -> same normalized revision 1, conflicting correction identity
+    -> conflicting_correction_ids_same_revision
+
+(revision_number=1, correction_id="A")
+versus (revision_number=2, correction_id="B")
+    -> different normalized revisions
+    -> no same-revision identity conflict
+    -> revision-vector ordering continues
+```
+
+For candidates with identical source-lineage-key sets, correction identities are
+compared per matching source-lineage key plus normalized revision component. If
+any such matched pair or group has non-equivalent correction identities,
+selection terminates with `conflicting_correction_ids_same_revision`. Identity
+differences across different normalized revision components do not create this
+reason. For three or more candidates, the check covers the complete candidate
+group rather than only adjacent candidates in input order. After the complete
+identity-conflict check passes, revision vectors determine tied, dominating, or
+incomparable behavior. The result is independent of candidate input order.
 
 ```text
 (0) versus (1) → select (1)
@@ -1041,7 +1102,36 @@ CorrectionSelection
     evaluated_at: datetime
 ```
 
-The caller supplies a trimmed, non-empty semantic observation key; v0.1 defines no global semantic-key registry. Candidate IDs are unique and sorted. Selected status requires a selected record ID; ambiguous status requires `selected_record_id=None`. Every result has exactly one reason code. Rule identity is trimmed and non-empty. Evaluation time is explicit and normalized to UTC; selection never reads the wall clock. The result is frozen and hashable and neither embeds nor mutates candidates.
+Direct construction applies the following canonical validation:
+
+- `semantic_observation_key` must be an actual string. Leading and trailing
+  whitespace is trimmed, and the result must be non-empty. v0.1 defines no
+  global semantic-key registry.
+- `candidate_record_ids` accepts only a tuple or list. Every member must be an
+  actual string, is trimmed, and must remain non-empty. At least one ID is
+  required. Duplicates after normalization raise `ValueError`. Storage is an
+  ascending lexicographically sorted tuple, so caller order is not preserved.
+- When supplied, `selected_record_id` must be an actual string, is trimmed, must
+  remain non-empty, and must belong to the normalized `candidate_record_ids`.
+  `selected` requires such a candidate ID; `ambiguous` requires
+  `selected_record_id=None`. The constructor cannot create a selected result
+  pointing outside the candidate set.
+- `reason_codes` accepts only a tuple or list whose members are actual
+  `CorrectionSelectionReasonCode` values. Exactly one reason is required and
+  storage is normalized to a tuple. The first five declared reasons require
+  `ambiguous`; the last two require `selected`. Status/reason mismatches are
+  invalid.
+- `rule_id` and `rule_version` must be actual strings. Each is trimmed and must
+  remain non-empty.
+- `evaluated_at` must be a timezone-aware datetime and is normalized to UTC. A
+  naive datetime is invalid.
+
+Thus, `candidate_record_ids` is always non-empty, unique, and sorted after
+normalization; selected-ID membership is mandatory; and every valid v0.1 result
+contains exactly one terminal reason. Direct-constructor canonicalization must
+match output produced by `select_correction_candidate`. The result is frozen,
+hashable, independent of candidate objects, and free of wall-clock calls; it
+neither embeds nor mutates candidates.
 
 The planned pure function is:
 
@@ -1054,6 +1144,29 @@ select_correction_candidate(
     rule_version,
 ) -> CorrectionSelection
 ```
+
+The public `candidates` input accepts only a tuple or list. Arbitrary iterables
+are rejected. The collection must be non-empty, and every element must satisfy
+`type(candidate) is NormalizationMetadata`; subclasses are not accepted.
+Candidate `record_id` values must be unique, so repeated references to the same
+candidate fail through duplicate record-ID validation. Input order has no
+selection meaning. Candidates are normalized into ascending `record_id` order
+only for result presentation, never for revision selection.
+
+The exact invalid-input exception categories are:
+
+```text
+wrong candidates container type                 -> TypeError
+wrong candidate element type or subclass        -> TypeError
+empty candidate tuple or list                    -> ValueError
+duplicate candidate record IDs                   -> ValueError
+duplicate lineage key inside one candidate       -> ValueError
+candidate normalized after evaluated_at          -> ValueError
+```
+
+Invalid Python inputs do not create additional result statuses. The function is
+pure: it does not mutate candidates, read the wall clock, or depend on provider,
+network, filesystem, or random state.
 
 ## 14. Canonical calculation lineage
 
