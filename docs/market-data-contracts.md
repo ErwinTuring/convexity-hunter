@@ -593,63 +593,281 @@ unknown
 
 Regular-session and after-hours quotes must not be mixed silently. A freshness policy may reject `unknown`. The same value may have different eligibility by phase. Phase must not be inferred from local machine time.
 
-## 11. Freshness policy
+## 11. Deterministic freshness contracts
 
-Production freshness ages are intentionally not defined in v0.1.
+> **NO PRODUCTION DEFAULT THRESHOLDS ARE DEFINED.** Every assessment receives an explicit policy and context. Freshness never reads the wall clock or mutates normalized records. Stale, unknown, and ineligible records remain auditable, but only a `fresh` result is eligible to serve as current evidence. Freshness is separate from screening attractiveness. Policy identity and version are supplied and preserved, and provider selection remains deferred.
 
-The planned immutable `MarketDataFreshnessPolicy` contains:
+### 11.1 MarketDataCategory
 
-```text
-policy_id
-policy_version
-maximum_quote_age_seconds
-maximum_analytics_age_seconds
-maximum_retrieval_lag_seconds
-maximum_cross_record_skew_seconds
-maximum_rate_age_seconds
-maximum_dividend_age_seconds
-allow_delayed_data
-require_regular_session_quotes
-require_completed_historical_sessions
-```
-
-The planned explicit `FreshnessContext` contains:
+The future string enum `MarketDataCategory` has this exact declaration order and values:
 
 ```text
-evaluation_at
-latest_completed_session_date
+quote
+analytics
+activity
+contract_reference
+historical_bar
+rate
+dividend
 ```
 
-Rules:
+Record categories are fixed by record type:
 
-- `evaluation_at` is supplied explicitly; freshness never calls the wall clock internally.
-- The same record may receive a different assessment at another evaluation time.
-- Stale records remain auditable but are ineligible for a current screen.
-- Stale is not the same as structurally invalid.
-- Missing observation timestamps produce an ineligible or unknown result, never an invented timestamp.
-- Delayed-data eligibility depends on policy.
-- Policy ID and version make assessments reproducible.
+| Category | Record types |
+| --- | --- |
+| `quote` | `UnderlyingQuoteObservation`, `OptionQuoteObservation` |
+| `analytics` | `OptionImpliedVolatilityObservation`, `OptionGreeksObservation` |
+| `activity` | `OptionVolumeObservation`, `OptionOpenInterestObservation` |
+| `contract_reference` | `OptionContractReference` |
+| `historical_bar` | `UnderlyingDailyBarObservation` |
+| `rate` | `RateCurvePointObservation` |
+| `dividend` | `DividendObservation` |
 
-The planned `FreshnessAssessment` fields are:
+Callers cannot override a record's category. An unsupported record type raises `TypeError`; unsupported types do not produce an `unknown` assessment.
+
+### 11.2 MarketDataFreshnessPolicy
+
+The future immutable record has these exact fields and order:
 
 ```text
-status
-reason_codes
-policy_id
-policy_version
-evaluated_at
+MarketDataFreshnessPolicy
+    policy_id: str
+    policy_version: str
+    maximum_quote_age_seconds: int
+    maximum_analytics_age_seconds: int
+    maximum_activity_age_seconds: int
+    maximum_reference_age_seconds: int
+    maximum_rate_age_seconds: int
+    maximum_dividend_age_seconds: int
+    maximum_retrieval_lag_seconds: int
+    maximum_source_observation_span_seconds: int
+    maximum_cross_record_skew_seconds: int
+    maximum_open_interest_session_date_gap_days: int
+    maximum_historical_bar_session_date_gap_days: int
+    allow_delayed_data: bool
+    allow_indicative_data: bool
+    allow_non_firm_data: bool
+    allow_partial_data: bool
+    allow_assigned_timestamps: bool
+    require_regular_session_quotes: bool
+    require_completed_historical_sessions: bool
 ```
 
-Statuses are:
+`policy_id` and `policy_version` are trimmed, non-empty strings. Every threshold is an actual non-Boolean integer, is zero or greater, and is required. Every policy switch is an actual Boolean. v0.1 creates no process-global policy registry and defines no built-in production default policy. Policies with different semantics must use a different immutable identity or version. Tests construct explicit synthetic policies.
+
+| Category | Applied age threshold |
+| --- | --- |
+| `quote` | `maximum_quote_age_seconds` |
+| `analytics` | `maximum_analytics_age_seconds` |
+| `activity` | `maximum_activity_age_seconds` |
+| `contract_reference` | `maximum_reference_age_seconds` |
+| `historical_bar` | Calendar-day session-date-gap policy rather than an age-in-seconds field |
+| `rate` | `maximum_rate_age_seconds` |
+| `dividend` | `maximum_dividend_age_seconds` |
+
+`maximum_cross_record_skew_seconds` is retained for later multi-record snapshot assembly. Single-record freshness assessment does not apply it; 3C transformations or a separately reviewed snapshot-coherence function will apply it. `maximum_source_observation_span_seconds` is the within-record multi-source limit and is applied in 3B.1.
+
+### 11.3 FreshnessContext
+
+The future immutable record is:
 
 ```text
-fresh
-stale
-ineligible
-unknown
+FreshnessContext
+    evaluation_at: datetime
+    latest_completed_session_date: date
 ```
 
-Numerical default ages require separate review before implementation.
+`evaluation_at` is timezone-aware and stored as UTC; naive values are rejected. `latest_completed_session_date` is a date without time, and datetime values are rejected. The context is supplied explicitly. The system never calls `now()`, `today()`, or an exchange-calendar service. The caller supplies the correct exchange-local completed-session date, and context values are not inferred from normalized record timestamps.
+
+### 11.4 FreshnessStatus
+
+The exact enum order is:
+
+```text
+FreshnessStatus
+    fresh
+    stale
+    ineligible
+    unknown
+```
+
+- `fresh`: all applicable time and eligibility rules pass.
+- `stale`: structurally usable but outside one or more allowed age or calendar-day session-date-gap limits.
+- `ineligible`: a deterministic policy or chronology rule prohibits current use.
+- `unknown`: the record contains an explicit unknown quote phase or quote scope, so current eligibility cannot be established responsibly.
+
+`unknown` is not used for unsupported Python types; those raise `TypeError`. `stale`, `ineligible`, and `unknown` are all unsuitable for current screening evidence. Status does not delete or mutate the record.
+
+### 11.5 FreshnessReasonCode
+
+The future string enum has this exact canonical declaration order:
+
+```text
+record_normalized_after_evaluation
+source_retrieved_after_evaluation
+source_observed_after_evaluation
+normalization_incomplete
+assigned_timestamp_not_allowed
+delayed_data_not_allowed
+indicative_data_not_allowed
+non_firm_data_not_allowed
+partial_data_not_allowed
+halted_source
+source_observation_span_exceeded
+non_regular_session_quote
+historical_session_incomplete
+session_date_after_latest_completed_session
+unknown_market_phase
+unknown_quote_scope
+effective_age_exceeded
+oldest_source_age_exceeded
+retrieval_lag_exceeded
+open_interest_session_date_gap_exceeded
+historical_bar_session_date_gap_exceeded
+fresh_within_policy
+```
+
+Ineligible reasons are the first fourteen values, through `session_date_after_latest_completed_session`. Unknown reasons are `unknown_market_phase` and `unknown_quote_scope`. Stale reasons are the five values from `effective_age_exceeded` through `historical_bar_session_date_gap_exceeded`. The fresh reason is `fresh_within_policy`.
+
+Reasons contain no duplicates, are always returned in enum declaration order, and are never sorted alphabetically. All detected reasons remain visible even when a higher-precedence status wins. `fresh_within_policy` appears only when no other reason applies, and every assessment contains at least one reason.
+
+### 11.6 Deterministic status precedence
+
+The exact precedence is:
+
+```text
+ineligible > unknown > stale > fresh
+```
+
+The evaluator:
+
+1. evaluates every applicable rule;
+2. collects every reason;
+3. normalizes reasons into canonical enum order;
+4. selects `ineligible` if any ineligible reason exists;
+5. otherwise selects `unknown` if any unknown reason exists;
+6. otherwise selects `stale` if any stale reason exists;
+7. otherwise selects `fresh`, with `fresh_within_policy` as the only reason.
+
+Delayed and stale data is `ineligible` while retaining both reasons. An unknown quote scope and stale quote is `unknown` while retaining the stale reason. A record cannot be `fresh` while retaining another reason.
+
+### 11.7 Exact freshness metrics
+
+All second-based metrics are finite `Decimal` values, allowing exact microsecond representation without rounding.
+
+```text
+effective_age_seconds =
+    evaluation_at - metadata.effective_observed_at
+
+oldest_source_age_seconds =
+    evaluation_at - min(source.observed_at)
+
+maximum_retrieval_lag_seconds_observed =
+    max(source.retrieved_at - source.observed_at)
+
+source_observation_span_seconds =
+    max(source.observed_at) - min(source.observed_at)
+```
+
+Oldest-source age represents the age of the oldest source component. For one source, source observation span is zero.
+
+The open-interest session date gap is:
+
+```text
+latest_completed_session_date - open_interest_session_date
+```
+
+The historical-bar session date gap is:
+
+```text
+latest_completed_session_date - historical_bar.session_date
+```
+
+The result is an integer number of calendar days, not a trading-session count. Weekends and holidays are not removed, and no exchange calendar is called. A negative date gap exposes a future-session chronology problem and is never clamped to zero. An incomplete historical bar uses `session_date_gap_days=None`; an open-interest observation always exposes its calculated gap, including a negative value when its date follows the latest completed session. A configured maximum is inclusive: `observed gap <= configured maximum` passes.
+
+> **Production policy warning:** Calendar-day gap thresholds must account for weekends and holidays until a separately reviewed trading-session-count convention exists.
+
+Second-based calculations use exact timedeltas before conversion to Decimal seconds and do not truncate or round microseconds. The implementation derives exact Decimal seconds from the timedelta's integer `days`, `seconds`, and `microseconds` components; binary-float `total_seconds()` is not the audit-critical source. Negative ages expose future chronology problems and are never clamped to zero. No calculation uses local machine time.
+
+### 11.8 Single-record freshness assessment
+
+The future pure function is:
+
+```text
+assess_market_data_freshness(
+    record,
+    policy: MarketDataFreshnessPolicy,
+    context: FreshnessContext,
+) -> FreshnessAssessment
+```
+
+It accepts only the eleven normalized 3A record types. It never mutates the record, policy, context, metadata, or sources; fetches data; inspects an exchange calendar; calculates economic metrics; or calls screening or reporting code.
+
+#### Chronology rules
+
+- `metadata.normalized_at > evaluation_at` adds `record_normalized_after_evaluation`.
+- Any source `retrieved_at > evaluation_at` adds `source_retrieved_after_evaluation`.
+- Any source `observed_at > evaluation_at` adds `source_observed_after_evaluation`.
+
+#### Normalization-quality rules
+
+- `NormalizationQualityFlag.INCOMPLETE` adds `normalization_incomplete`.
+- `NormalizationQualityFlag.TIMESTAMP_ASSIGNED` adds `assigned_timestamp_not_allowed` when assigned timestamps are disallowed.
+
+`unit_converted`, `symbol_mapped`, `contract_adjusted`, `composite_source`, and `interpolated` are not freshness failures by themselves.
+
+#### Source-quality rules
+
+Every source reference is inspected. `DELAYED`, `INDICATIVE`, `NON_FIRM`, and `PARTIAL` add their corresponding `*_not_allowed` reason when disallowed by policy. For `quote` and `analytics` records, any `HALTED` flag adds `halted_source`: a current quote or option analytic calculated during a halt may not represent a currently usable market. For `activity`, `contract_reference`, `historical_bar`, `rate`, and `dividend` records, the flag remains visible but does not independently add a freshness reason or make the record ineligible in v0.1. A completed historical bar, contract term, rate point, dividend record, volume record, or open-interest record is not automatically invalid merely because one source describes a halt. `LOCKED`, `CORRECTED`, `PROVIDER_ESTIMATED`, `AFTER_HOURS`, and `UNKNOWN_CONDITION` do not independently determine freshness in v0.1. Corrected data must first pass correction selection. `AFTER_HOURS` does not replace the normalized record's declared `MarketPhase`. Freshness never adds, removes, or mutates source flags.
+
+#### Composite-source rule
+
+For every multi-source record, not only records with `record_origin=system_composite`, the evaluator calculates the complete source observation span and adds `source_observation_span_exceeded` when it exceeds `maximum_source_observation_span_seconds`. It evaluates every source's age, retrieval lag, and quality flags. The oldest source participates in the age decision: one stale source can make the record stale, one prohibited condition can make it ineligible, an acceptable `effective_observed_at` cannot hide an old source, and source ages are never averaged. These rules are mandatory for `system_composite` records.
+
+#### Quote rules
+
+For `UnderlyingQuoteObservation` and `OptionQuoteObservation`, `MarketPhase.UNKNOWN` adds `unknown_market_phase`, and `QuoteScope.UNKNOWN` adds `unknown_quote_scope`. When regular-session quotes are required and market phase is not `REGULAR`, add `non_regular_session_quote`. Market phase is not inferred from source timestamps or source flags. Quote venue and scope are unchanged.
+
+#### Historical-session rules
+
+For `UnderlyingDailyBarObservation`:
+
+- when completed sessions are required and `is_session_complete=False`, add `historical_session_incomplete`;
+- when the bar is declared complete and its session date is later than `latest_completed_session_date`, add `session_date_after_latest_completed_session`;
+- when a completed bar's session date gap exceeds `maximum_historical_bar_session_date_gap_days`, add `historical_bar_session_date_gap_exceeded`;
+- an incomplete current-session bar receives no session-date-gap calculation.
+
+For `OptionOpenInterestObservation`, a session date later than `latest_completed_session_date` adds `session_date_after_latest_completed_session`; a date gap above `maximum_open_interest_session_date_gap_days` adds `open_interest_session_date_gap_exceeded`. Quote, IV, Greeks, volume, rate, dividend, and contract-reference records have no session-date-gap rule.
+
+#### Age rules
+
+For categories with an age threshold, compare effective age and oldest-source age with the applicable category threshold, adding `effective_age_exceeded` or `oldest_source_age_exceeded` when exceeded. Compare maximum retrieval lag with `maximum_retrieval_lag_seconds`, adding `retrieval_lag_exceeded` when exceeded. Historical bars use the calendar-day session-date gap rather than category age in seconds but still apply retrieval-lag and source-span rules. A value equal to the configured maximum passes.
+
+### 11.9 FreshnessAssessment
+
+The future immutable record has these exact fields:
+
+```text
+FreshnessAssessment
+    record_id: str
+    category: MarketDataCategory
+    status: FreshnessStatus
+    reason_codes: Tuple[FreshnessReasonCode, ...]
+    policy_id: str
+    policy_version: str
+    evaluated_at: datetime
+    effective_age_seconds: Decimal
+    oldest_source_age_seconds: Decimal
+    maximum_retrieval_lag_seconds_observed: Decimal
+    source_observation_span_seconds: Decimal
+    session_date_gap_days: Optional[int]
+```
+
+`record_id` equals `record.metadata.record_id`; category is derived from record type; policy identity is copied unchanged; and `evaluated_at` equals the normalized UTC context time. Reason order and status follow the exact rules above. Metrics are supplied calculated facts, not policy conclusions. `session_date_gap_days` is present for completed daily bars and all open-interest records, including negative open-interest gaps, and is `None` otherwise. The assessment is frozen and hashable, does not embed or mutate the record, and contains no recommendation.
+
+### Cross-record skew remains separate
+
+`maximum_cross_record_skew_seconds` is not applied by single-record freshness assessment. Later snapshot assembly compares `metadata.effective_observed_at` across records and also inspects every record's complete source-time range; no single effective timestamp can hide incompatible source spans. That future operation preserves every individual `FreshnessAssessment`. It is not implemented in 3B.1, and transformation into research records remains 3C work.
 
 ## 12. Snapshot coherence
 
@@ -677,46 +895,301 @@ Multiple providers may be combined only when every provider remains identified, 
 
 The complete source observation-time span of a system composite must be checked. An acceptable `effective_observed_at` does not make excessive source skew acceptable, and one stale component may make the composite ineligible even when another component is fresh. The exact composite-freshness rule remains part of Milestone 3B.
 
-## 13. Corrections, revisions, and duplicates
+## 13. Deterministic correction selection
 
-- Repeated retrieval of one provider record is not automatically a new market observation.
-- A provider correction carries the `corrected` flag and either a positive revision number or a provider correction ID.
-- Corrections never silently overwrite historical audit records.
-- Selecting the latest revision requires a deterministic rule.
-- Duplicate normalized record IDs are invalid.
-- Records sharing a semantic key and observation time require explicit resolution.
-- Downstream calculation lineage retains the selected source revision.
-
-`record_id` identifies one immutable normalized-record version. A corrected normalized value receives a new `NormalizationMetadata.record_id` and references the corrected `SourceReference`; the previous normalized record remains immutable. The new record's normalization methodology identifies the semantic observation being corrected. Equal semantic keys and observation times do not imply equal values, so conflicting records require deterministic resolution.
-
-The latest correction may be selected only by a deterministic revision-resolution rule. That rule must not rely on file order, retrieval order, insertion order, set ordering, or dictionary ordering. Freshness checks and calculations retain the selected source revision in later `CalculationLineage`. Mutable overwrite is prohibited, and v0.1 defines no global record registry.
-
-## 14. Calculation lineage
-
-The planned immutable `CalculationLineage` sidecar contains:
+The exact order of operations is:
 
 ```text
-calculation_id
-calculation_type
-methodology_id
-methodology_version
-calculated_at
-input_record_ids
-input_source_ids
-parameters
-quality_flags
+immutable normalized candidates
+    ↓ deterministic correction selection
+selected record or ambiguous result
+    ↓ single-record freshness assessment
+fresh record may enter later calculations
 ```
 
-Requirements:
+Freshness must not choose among competing corrections; correction selection occurs first. An ambiguous group cannot be current evidence. Selection neither mutates nor deletes candidates, and historical versions remain auditable.
 
-- Input IDs are non-empty, unique, and deterministically ordered.
-- Methodology ID and version are immutable.
-- Parameters are serializable and ordered.
-- `calculated_at` is timezone-aware UTC and not earlier than any input normalization time.
-- No input is hidden and a calculation cannot cite itself.
-- Lineage remains separate from the calculated numeric record.
+### 13.1 CorrectionSelectionStatus
 
-A sidecar is necessary because existing research records mostly use date-only `as_of_date`, while real inputs have intraday timestamps and individual source identities. `CandidateResearchRecord` must not be expanded or mutated merely to hold provider metadata. The sidecar preserves detail without changing existing domain contracts.
+The exact enum order is:
+
+```text
+CorrectionSelectionStatus
+    selected
+    ambiguous
+```
+
+`selected` means exactly one candidate can be selected under the v0.1 rule. `ambiguous` means the candidates cannot be safely ordered. Invalid Python inputs raise validation errors rather than producing another status.
+
+### 13.2 CorrectionSelectionReasonCode
+
+The exact canonical order is:
+
+```text
+missing_provider_record_id
+source_lineage_mismatch
+conflicting_correction_ids_same_revision
+tied_revision_vectors
+incomparable_revision_vectors
+only_candidate_selected
+dominating_revision_vector_selected
+```
+
+The first five values are ambiguity reasons; the last two are selected reasons. `CorrectionSelection.reason_codes` remains a tuple for consistency and future extensibility, but every valid v0.1 result contains exactly one terminal reason. Reasons preserve declaration order and are never alphabetically sorted.
+
+### 13.3 Source-lineage key
+
+The correction-ordering key is:
+
+```text
+(
+    provider_name,
+    dataset_name,
+    provider_record_id,
+)
+```
+
+Provider and dataset names retain their normalized stored values. `provider_record_id` is mandatory when comparing more than one candidate. Source ID, provider request ID, retrieval time, payload hash, and correction ID are not part of the key or ordering.
+
+For each normalized record, collect all keys, sort them lexicographically, and reject duplicate lineage keys inside one candidate for correction-ordering purposes. Candidates can be ordered only when they have exactly the same ordered lineage-key set.
+
+### 13.4 Revision vector and dominance
+
+For each ordered source-lineage key:
+
+```text
+revision component =
+    revision_number when revision_number is positive
+    otherwise 0
+```
+
+The candidate revision vector contains those components in source-lineage-key order. Revisions are comparable only within the same lineage key. Revisions from unrelated providers or datasets are never compared directly. `provider_correction_id` proves correction identity but supplies no ordering semantics, and lexical correction-ID order is prohibited. Normalized time, retrieval time, observation time, file order, insertion order, record ID, payload hash, set order, and dictionary order are prohibited as latest-revision tie-breakers.
+
+Candidate A strictly dominates candidate B when both have the same ordered lineage keys, every revision component in A is greater than or equal to its counterpart in B, and at least one component is greater.
+
+`evaluated_at` is timezone-aware and normalized to UTC. Before ordering corrections, every candidate must satisfy `candidate.normalized_at <= evaluated_at`. A candidate normalized later is invalid input and raises `ValueError`; it does not produce an ambiguous selection and is never silently filtered. The function never substitutes the current clock. Because `NormalizationMetadata` already requires normalization after every source retrieval, this check establishes that each candidate existed by the evaluation time.
+
+The exact terminal-reason algorithm is:
+
+1. Validate the non-empty tuple or list of `NormalizationMetadata` candidates, unique record IDs, evaluated-at chronology, and supplied rule fields.
+2. Normalize candidates into ascending `record_id` order for presentation only.
+3. If exactly one candidate exists, return `selected` with `only_candidate_selected`.
+4. For multiple candidates, if any source lacks `provider_record_id`, return `ambiguous` with `missing_provider_record_id`.
+5. Construct each candidate's source-lineage keys.
+6. If one candidate contains duplicate source-lineage keys, raise `ValueError`; do not return ambiguity.
+7. If candidates lack identical ordered lineage-key sets, return `ambiguous` with `source_lineage_mismatch`.
+8. If candidates contain different non-equivalent correction identities for the same lineage key and numeric revision, return `ambiguous` with `conflicting_correction_ids_same_revision`.
+9. Construct revision vectors.
+10. If all revision vectors are identical, return `ambiguous` with `tied_revision_vectors`.
+11. If exactly one candidate strictly dominates every other candidate, return `selected` with `dominating_revision_vector_selected`.
+12. Otherwise, return `ambiguous` with `incomparable_revision_vectors`.
+
+For correction-identity comparison, `None` and a supplied ID differ, two different supplied IDs differ, and identical supplied IDs are equivalent. Correction IDs never define ordering.
+
+```text
+(0) versus (1) → select (1)
+(1, 1) versus (2, 1) → select (2, 1)
+(2, 1) versus (1, 2) → ambiguous
+(2, 2) versus (2, 2) → ambiguous
+```
+
+A larger record ID or later retrieval time is never treated as newer.
+
+### 13.5 CorrectionSelection
+
+The future immutable result is:
+
+```text
+CorrectionSelection
+    semantic_observation_key: str
+    candidate_record_ids: Tuple[str, ...]
+    selected_record_id: Optional[str]
+    status: CorrectionSelectionStatus
+    reason_codes: Tuple[CorrectionSelectionReasonCode, ...]
+    rule_id: str
+    rule_version: str
+    evaluated_at: datetime
+```
+
+The caller supplies a trimmed, non-empty semantic observation key; v0.1 defines no global semantic-key registry. Candidate IDs are unique and sorted. Selected status requires a selected record ID; ambiguous status requires `selected_record_id=None`. Every result has exactly one reason code. Rule identity is trimmed and non-empty. Evaluation time is explicit and normalized to UTC; selection never reads the wall clock. The result is frozen and hashable and neither embeds nor mutates candidates.
+
+The planned pure function is:
+
+```text
+select_correction_candidate(
+    semantic_observation_key,
+    candidates,
+    evaluated_at,
+    rule_id,
+    rule_version,
+) -> CorrectionSelection
+```
+
+## 14. Canonical calculation lineage
+
+A separate input-reference record is required because IDs alone cannot validate calculation chronology.
+
+### 14.1 CalculationQualityFlag
+
+The exact enum order is:
+
+```text
+decimal_to_float_converted
+interpolated
+annualized
+adjusted_input_used
+correction_selected
+composite_input_used
+assumption_applied
+incomplete_input_used
+```
+
+Flags contain no duplicates, use declaration order rather than alphabetical order, and describe calculation conditions rather than attractiveness. A flag never substitutes for methodology disclosure.
+
+### 14.2 CalculationInputReference
+
+The future immutable record is:
+
+```text
+CalculationInputReference
+    record_id: str
+    normalized_at: datetime
+    source_ids: Tuple[str, ...]
+```
+
+Record ID is trimmed and non-empty. Normalized time is timezone-aware and stored as UTC. At least one source ID is required; source IDs are trimmed, non-empty, unique, and sorted. The frozen, hashable record references one immutable normalized-record version without embedding it.
+
+### 14.3 Canonical parameter types
+
+The top-level parameter input is an actual mapping with string keys. Supported recursive values are:
+
+```text
+None
+bool
+int
+str
+Decimal
+date
+timezone-aware datetime
+list
+tuple
+dict
+```
+
+Boolean is distinct from integer. Floats, nonfinite Decimals, bytes, bytearray, sets, frozensets, Enum objects, and arbitrary objects are prohibited; callers pass an Enum's explicit `.value` string. Mapping keys are actual, non-empty strings without leading or trailing whitespace and are not silently trimmed. Lists and tuples normalize to the same ordered-list representation. Cycles are rejected before serialization. Date rejects datetime, and aware datetimes normalize to UTC.
+
+### 14.4 Canonical tagged representation
+
+The root is always a tagged mapping. An empty top-level mapping is valid:
+
+```json
+{"$map":[]}
+```
+
+Every tagged object is an actual JSON object containing exactly one key, with no additional keys. The only valid tag keys are `$map`, `$list`, `$decimal`, `$date`, and `$datetime`. No untagged JSON object is valid anywhere in the tree.
+
+Every mapping is encoded through `$map`, preventing confusion between user mappings and type tags:
+
+```json
+{"$map":[["key",value],["next_key",value]]}
+```
+
+The `$map` value is a JSON array. Each entry is a JSON array of exactly two elements: a JSON string key and a value following this complete parameter-tree grammar. Keys are non-empty, contain no leading or trailing whitespace, are unique, and appear in strictly increasing Unicode string order. Dictionary insertion order does not affect output. Duplicate or unsorted keys, malformed entry lengths, non-string keys, blank keys, and keys with surrounding whitespace are invalid.
+
+Lists and tuples preserve input order:
+
+```json
+{"$list":[value,value]}
+```
+
+The `$list` value is a JSON array, and every item follows this grammar. Input lists and tuples both normalize to `$list`; item order is preserved and affects canonical output.
+
+Decimal preserves precision and exponent:
+
+```json
+{"$decimal":"0.20"}
+```
+
+The `$decimal` value is a JSON string that parses as a finite `Decimal`; NaN and infinities are rejected. Negative zero normalizes to unsigned zero, and the canonical string is `str(normalized_decimal)`. Validation reparses, normalizes negative zero, and requires `str()` to reproduce the supplied string exactly. This preserves precision and exponent while rejecting noncanonical alternatives that do not round-trip identically. Examples such as `0.20`, `0E+2`, and `1.25E-7` may be canonical when produced by this normalization.
+
+Date uses:
+
+```json
+{"$date":"2026-07-18"}
+```
+
+The `$date` value is a JSON string that parses as `datetime.date` without time information, and `parsed_date.isoformat()` must reproduce the string exactly.
+
+Datetime is always UTC with six microsecond digits:
+
+```json
+{"$datetime":"2026-07-18T19:00:00.000000Z"}
+```
+
+The `$datetime` value must exactly match `YYYY-MM-DDTHH:MM:SS.ffffffZ`. It always uses UTC, ends in `Z`, and contains six microsecond digits. Parsing and reserializing must reproduce the string exactly. The canonicalizer accepts aware non-UTC Python datetimes but converts them to UTC before serialization; non-`Z` offsets are not canonical JSON input.
+
+The only untagged scalar values are `null`, `true`, `false`, JSON integers, and JSON strings. JSON floating-point values and arbitrary untagged JSON objects are prohibited. Boolean remains distinct from integer.
+
+Container depth is defined precisely: the root `$map` has depth 1; entering a nested `$map` or `$list` increases depth by 1; scalar and scalar-tag values do not increase depth beyond their containing tagged object. Depth 32 is valid and depth 33 is rejected. The canonicalizer and `CalculationLineage` validation use the same rule.
+
+### 14.5 Canonical JSON serialization
+
+The planned pure function is:
+
+```text
+canonicalize_lineage_parameters(parameters) -> str
+```
+
+It serializes the tagged tree using the logical equivalent of:
+
+```python
+json.dumps(
+    value,
+    ensure_ascii=False,
+    allow_nan=False,
+    sort_keys=True,
+    separators=(",", ":"),
+)
+```
+
+Output is deterministic UTF-8 JSON text with no insignificant whitespace. Identical supported values produce byte-identical text; dictionary insertion order does not affect output, while list order does. Float, unsupported, cyclic, and over-depth inputs raise validation errors. The function reads no files, clocks, environment variables, or external data.
+
+When validating existing canonical JSON, parsing must detect duplicate JSON object keys instead of silently overwriting them. Validation must:
+
+1. parse JSON while rejecting duplicate object keys;
+2. validate the complete tagged grammar;
+3. require the root to be `$map`;
+4. reject JSON floats;
+5. reject malformed or unknown tags;
+6. reject noncanonical map-key order;
+7. reject noncanonical Decimal, date, or datetime strings;
+8. enforce the maximum nesting depth;
+9. reserialize through the canonical serializer;
+10. require byte-identical text.
+
+No additional public validation function is planned; `CalculationLineage` may use a private parser and validator.
+
+### 14.6 CalculationLineage
+
+The future immutable record has these exact fields:
+
+```text
+CalculationLineage
+    calculation_id: str
+    calculation_type: str
+    methodology_id: str
+    methodology_version: str
+    calculated_at: datetime
+    inputs: Tuple[CalculationInputReference, ...]
+    parameters_json: str
+    quality_flags: Tuple[CalculationQualityFlag, ...]
+```
+
+Required strings are trimmed and non-empty. Calculation time is timezone-aware UTC. At least one `CalculationInputReference` is required; input record IDs are unique, and inputs normalize into ascending record-ID order. `calculation_id` cannot equal an input record ID, and `calculated_at` cannot precede any input normalized time.
+
+`parameters_json` is a trimmed, non-empty string whose root is a canonical `$map`. The empty canonical mapping `{"$map":[]}` is valid. The string must be produced by, or be byte-equivalent to, `canonicalize_lineage_parameters`; no untagged mapping is accepted and no JSON float may survive parsing. Validation uses duplicate-key-safe parsing, validates the complete grammar and depth, and requires byte-identical canonical reserialization. Quality flags contain no duplicates and normalize to declaration order. The record is frozen and hashable. No input is hidden. Lineage remains separate from the calculated numeric record and does not calculate the research value itself.
+
+A sidecar is necessary because existing research records mostly use date-only `as_of_date`, while real inputs have intraday timestamps and individual source identities. Existing research records do not receive lineage fields in 3B. Future 3C transformations will select corrected inputs, require fresh assessments, perform deterministic calculations, produce existing research records, and create `CalculationLineage` sidecars.
 
 ## 15. Mapping to existing research records
 
@@ -811,23 +1284,58 @@ DividendObservation
 
 No network access is authorized in any Milestone 3A subphase.
 
-### Milestone 3B — Freshness and lineage
+### Milestone 3B.1 — Freshness contracts and assessment
 
-After Milestone 3A.3 review:
+Implement only:
 
-- finalize freshness-threshold field types;
-- define freshness reason codes and canonical ordering;
-- implement deterministic freshness assessment;
-- finalize canonical serialization of `CalculationLineage.parameters`;
-- implement `CalculationLineage`.
+```text
+MarketDataCategory
+MarketDataFreshnessPolicy
+FreshnessContext
+FreshnessStatus
+FreshnessReasonCode
+FreshnessAssessment
+assess_market_data_freshness
+```
+
+Use fixed synthetic records and explicit synthetic policies. Implement the calendar-date-gap fields and reasons defined in Section 11; do not implement trading-session counting. Do not implement correction selection or `CalculationLineage` in 3B.1.
+
+### Milestone 3B.2 — Correction selection
+
+After 3B.1 review, implement only:
+
+```text
+CorrectionSelectionStatus
+CorrectionSelectionReasonCode
+CorrectionSelection
+select_correction_candidate
+```
+
+Use immutable synthetic `NormalizationMetadata` candidates. Implement the exact one-terminal-reason algorithm and candidate normalized-at chronology check.
+
+### Milestone 3B.3 — Calculation lineage
+
+After 3B.2 review, implement only:
+
+```text
+CalculationQualityFlag
+CalculationInputReference
+CalculationLineage
+canonicalize_lineage_parameters
+```
+
+Use fixed synthetic inputs. Implement the complete canonical tagged-tree grammar and duplicate-key-safe JSON validation. No provider or network access is authorized in any 3B subphase.
 
 ### Milestone 3C — Transformations
 
-After Milestone 3B review:
+Only after all 3B subphases are reviewed:
 
 - implement pure transformations into existing research records;
-- preserve calculation lineage;
-- validate transformations with synthetic fixtures.
+- require explicit correction selection;
+- require explicit freshness assessments;
+- retain `CalculationLineage`;
+- apply cross-record snapshot skew;
+- use fixed synthetic fixtures before provider integration.
 
 ### Milestone 3D — Provider adapter
 
@@ -846,13 +1354,15 @@ The full implementation sequence is:
 1. Implement and review Milestone 3A.1.
 2. Implement and review Milestone 3A.2.
 3. Implement and review Milestone 3A.3.
-4. Finalize and implement Milestone 3B freshness and lineage.
-5. Implement Milestone 3C transformations.
-6. Select a provider only after Milestones 3A–3C are stable.
-7. Add recorded provider fixture payloads.
-8. Implement one adapter behind the contracts.
-9. Review licensing and retention constraints.
-10. Separately authorize live-network testing.
+4. Implement and review Milestone 3B.1 freshness contracts and assessment.
+5. Implement and review Milestone 3B.2 correction selection.
+6. Implement and review Milestone 3B.3 calculation lineage.
+7. Implement Milestone 3C transformations.
+8. Select a provider only after Milestones 3A–3C are stable.
+9. Add recorded provider fixture payloads.
+10. Implement one adapter behind the contracts.
+11. Review licensing and retention constraints.
+12. Separately authorize live-network testing.
 
 ## 20. Non-goals
 
@@ -877,18 +1387,22 @@ Market-data contracts v0.1 do not:
 
 - Which MIC or listing registry should supply `listing_mic`?
 - How should adjusted option deliverables be represented beyond `deliverable_id`?
-- What exact freshness thresholds should apply by market phase?
-- What freshness reason codes and canonical ordering are required?
-- Should delayed data ever be eligible for screening?
-- How should `CalculationLineage.parameters` be serialized canonically?
-- Which source has priority when providers disagree?
-- Which exchange-calendar implementation should be used?
+- What production freshness thresholds apply by category?
+- What production calendar-day gap thresholds should account for weekends and holidays?
+- Should a future version replace calendar-day gaps with exchange-calendar trading-session counts?
+- Should different policies exist for end-of-day research and intraday research?
+- Should `AFTER_HOURS` source flags create an explicit policy reason in a later version?
+- Should `UNKNOWN_CONDITION` source flags become policy-controlled?
+- Should future policies make halted-source handling configurable by category?
+- How should semantic observation keys be constructed for every record type in 3C?
+- Should cross-record snapshot assessment become a separate public record?
+- Which exchange calendar implementation would support trading-session counting?
+- Which provider correction schemes expose genuinely comparable numeric revisions?
+- Which provider licenses permit retention of correction histories?
 - Which rate and dividend methodologies should scenario pricing use?
 - Should Convexity Hunter calculate IV and Greeks or initially accept provider-calculated analytics?
 - How should historical volatility-surface observations be stored efficiently?
 - What raw payload material may legally be retained for each provider?
 - When should existing research records receive direct lineage IDs instead of sidecar lineage?
-- Should future composite freshness use the oldest source observation time, the effective observation time, or both?
-- What deterministic revision-selection rule should choose among provider corrections?
 - Should normalized records eventually carry an explicit semantic-observation key in addition to `record_id`?
 - Should forecast dividends use one provider model or a system-composite methodology?
