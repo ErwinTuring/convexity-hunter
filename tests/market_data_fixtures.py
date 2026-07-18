@@ -6,15 +6,21 @@ from typing import Optional
 
 from convexity_hunter.market_data import (
     DataOrigin,
+    DividendObservation,
+    DividendStatus,
     MarketPhase,
     NormalizationMetadata,
     OptionContractKey,
     OptionContractReference,
+    OptionGreeksObservation,
+    OptionImpliedVolatilityObservation,
     OptionOpenInterestObservation,
     OptionQuoteObservation,
     OptionVolumeObservation,
     QuoteScope,
+    RateCurvePointObservation,
     SourceReference,
+    UnderlyingDailyBarObservation,
     UnderlyingKey,
     UnderlyingQuoteObservation,
     UnderlyingSecurityType,
@@ -216,3 +222,146 @@ def build_option_open_interest_observation(
     }
     values.update(overrides)
     return OptionOpenInterestObservation(**values)  # type: ignore[arg-type]
+
+
+def build_metadata_for_origin(
+    origin: DataOrigin,
+    record_id: str,
+    dataset_name: str,
+) -> NormalizationMetadata:
+    """Build deterministic single-source metadata for a non-composite origin."""
+
+    source = build_source_reference(
+        source_id=f"{record_id}-source",
+        dataset_name=dataset_name,
+        provider_record_id=f"{record_id}-provider-record",
+        source_uri=f"synthetic://market-data/{record_id}",
+        origin=origin,
+    )
+    return build_normalization_metadata(
+        [source],
+        record_id=record_id,
+        record_origin=origin,
+        normalization_methodology="Synthetic direct normalization",
+    )
+
+
+def build_option_implied_volatility_observation(
+    **overrides: object,
+) -> OptionImpliedVolatilityObservation:
+    """Build one deterministic provider-calculated IV observation."""
+
+    values = {
+        "contract_key": build_option_contract_key(),
+        "session_date": SESSION_DATE,
+        "implied_volatility": decimal.Decimal("0.201250"),
+        "model_name": "Synthetic Black-Scholes",
+        "model_version": "fixture-v1",
+        "rate_input_description": "Synthetic USD curve input",
+        "dividend_input_description": "Synthetic dividend input",
+        "metadata": build_metadata_for_origin(
+            DataOrigin.PROVIDER_CALCULATED,
+            "iv-observation-001",
+            "Synthetic Option Analytics",
+        ),
+    }
+    values.update(overrides)
+    return OptionImpliedVolatilityObservation(**values)  # type: ignore[arg-type]
+
+
+def build_option_greeks_observation(
+    **overrides: object,
+) -> OptionGreeksObservation:
+    """Build one deterministic provider-calculated Greeks observation."""
+
+    values = {
+        "contract_key": build_option_contract_key(),
+        "session_date": SESSION_DATE,
+        "delta": decimal.Decimal("0.512500"),
+        "gamma": decimal.Decimal("0.018750"),
+        "theta": decimal.Decimal("-0.125000"),
+        "vega": decimal.Decimal("1.875000"),
+        "theta_day_basis": "Provider calendar-day convention",
+        "model_name": "Synthetic Black-Scholes",
+        "model_version": "fixture-v1",
+        "rate_input_description": "Synthetic USD curve input",
+        "dividend_input_description": "Synthetic dividend input",
+        "metadata": build_metadata_for_origin(
+            DataOrigin.PROVIDER_CALCULATED,
+            "greeks-observation-001",
+            "Synthetic Option Analytics",
+        ),
+    }
+    values.update(overrides)
+    return OptionGreeksObservation(**values)  # type: ignore[arg-type]
+
+
+def build_underlying_daily_bar_observation(
+    **overrides: object,
+) -> UnderlyingDailyBarObservation:
+    """Build one deterministic completed adjusted underlying daily bar."""
+
+    values = {
+        "underlying_key": build_underlying_key(),
+        "session_date": SESSION_DATE,
+        "open_price": decimal.Decimal("498.2500"),
+        "high_price": decimal.Decimal("502.7500"),
+        "low_price": decimal.Decimal("497.5000"),
+        "close_price": decimal.Decimal("501.1250"),
+        "adjusted_close_price": decimal.Decimal("500.8750"),
+        "volume": 75000000,
+        "is_session_complete": True,
+        "adjustment_methodology": "Synthetic split-and-dividend adjustment",
+        "metadata": build_metadata_for_origin(
+            DataOrigin.PROVIDER_CALCULATED,
+            "daily-bar-001",
+            "Synthetic Daily Bars",
+        ),
+    }
+    values.update(overrides)
+    return UnderlyingDailyBarObservation(**values)  # type: ignore[arg-type]
+
+
+def build_rate_curve_point_observation(
+    **overrides: object,
+) -> RateCurvePointObservation:
+    """Build one deterministic provider-reference USD rate point."""
+
+    values = {
+        "curve_id": "USD-SYNTHETIC-OIS",
+        "currency": "USD",
+        "tenor_days": 30,
+        "annualized_rate": decimal.Decimal("0.042500"),
+        "compounding_convention": "Continuous",
+        "day_count_convention": "Actual/365",
+        "effective_date": SESSION_DATE,
+        "metadata": build_metadata_for_origin(
+            DataOrigin.PROVIDER_REFERENCE,
+            "rate-point-001",
+            "Synthetic Rate Curve",
+        ),
+    }
+    values.update(overrides)
+    return RateCurvePointObservation(**values)  # type: ignore[arg-type]
+
+
+def build_dividend_observation(**overrides: object) -> DividendObservation:
+    """Build one deterministic announced provider-reference dividend."""
+
+    values = {
+        "underlying_key": build_underlying_key(),
+        "dividend_type": "Regular Cash",
+        "ex_date": datetime.date(2030, 2, 15),
+        "payment_date": datetime.date(2030, 3, 1),
+        "cash_amount": decimal.Decimal("1.7500"),
+        "annualized_yield": decimal.Decimal("0.014000"),
+        "currency": "USD",
+        "status": DividendStatus.ANNOUNCED,
+        "metadata": build_metadata_for_origin(
+            DataOrigin.PROVIDER_REFERENCE,
+            "dividend-001",
+            "Synthetic Dividend Reference",
+        ),
+    }
+    values.update(overrides)
+    return DividendObservation(**values)  # type: ignore[arg-type]

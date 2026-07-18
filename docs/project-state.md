@@ -41,16 +41,17 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Provider-neutral market-data contracts v0.1 documented and reviewed, covering auditable provenance, normalized observation time, immutable corrections, Decimal units, canonical security and option identities, quote scope, observation schemas, freshness boundaries, and staged implementation.
 - Milestone 3A.1 completed: immutable provider-neutral provenance, normalization metadata, canonical enums, and underlying and option identity records implemented and validated with fixed synthetic fixtures.
 - Milestone 3A.2 completed: immutable provider-neutral underlying and option quote, option-contract reference, cumulative-volume, and open-interest records implemented and validated with fixed synthetic fixtures.
+- Milestone 3A.3 completed: immutable provider-neutral implied-volatility, Greeks, underlying daily-bar, rate-curve-point, and dividend records implemented and validated with fixed synthetic fixtures.
 
 ## Current task
 
-Implement Milestone 3A.3 provider-neutral implied-volatility, Greeks, historical-bar, rate, and dividend records using fixed synthetic fixtures only.
+Define and review Milestone 3B deterministic freshness-policy, freshness-assessment, canonical reason-code, composite-source, correction-selection, and `CalculationLineage` contracts before implementation.
 
-No provider has been selected and no network access is authorized. Milestone 3A.3 must use fixed synthetic fixtures only. Quote and activity records do not determine freshness or screening eligibility. Freshness, correction-selection policy, `CalculationLineage`, and transformations remain deferred, and `market_data.py` remains independent of the evidence, report, and scanner modules.
+Milestone 3A data-container implementation is complete. No provider has been selected and no network access is authorized. Normalized records do not establish freshness or screening eligibility. Milestone 3B must resolve composite freshness semantics, deterministic provider-correction selection, canonical freshness reason-code ordering, and canonical `CalculationLineage` parameter serialization. Transformations into existing research records remain deferred to Milestone 3C, and `market_data.py` remains independent of the evidence, report, and scanner modules.
 
 ## Next task
 
-Define and implement Milestone 3B deterministic freshness assessment and `CalculationLineage` after Milestone 3A.3 review.
+Implement the reviewed Milestone 3B freshness and `CalculationLineage` records with fixed synthetic fixtures and no provider or network integration.
 
 ## Deferred
 

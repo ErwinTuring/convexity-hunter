@@ -25,6 +25,11 @@ __all__ = (
     "OptionQuoteObservation",
     "OptionVolumeObservation",
     "OptionOpenInterestObservation",
+    "OptionImpliedVolatilityObservation",
+    "OptionGreeksObservation",
+    "UnderlyingDailyBarObservation",
+    "RateCurvePointObservation",
+    "DividendObservation",
 )
 
 
@@ -95,18 +100,25 @@ def _validate_positive_decimal(name: str, value: object) -> None:
         raise ValueError(f"{name} must be greater than 0")
 
 
-def _normalize_nonnegative_decimal(
-    name: str, value: object
-) -> decimal.Decimal:
-    """Require a finite nonnegative Decimal and remove a zero sign."""
+def _normalize_finite_decimal(name: str, value: object) -> decimal.Decimal:
+    """Require a finite Decimal and remove a zero sign without rounding."""
 
     if not isinstance(value, decimal.Decimal):
         raise TypeError(f"{name} must be a Decimal")
     if not value.is_finite():
         raise ValueError(f"{name} must be finite")
-    if value < 0:
-        raise ValueError(f"{name} must be 0 or greater")
     return value.copy_abs() if value.is_zero() else value
+
+
+def _normalize_nonnegative_decimal(
+    name: str, value: object
+) -> decimal.Decimal:
+    """Require a finite nonnegative Decimal and remove a zero sign."""
+
+    normalized = _normalize_finite_decimal(name, value)
+    if normalized < 0:
+        raise ValueError(f"{name} must be 0 or greater")
+    return normalized
 
 
 def _normalize_positive_decimal(name: str, value: object) -> decimal.Decimal:
@@ -155,6 +167,49 @@ def _validate_contract_reference_metadata(metadata: object) -> None:
     }:
         raise ValueError(
             "contract references require provider_reference or system_composite origin"
+        )
+
+
+def _validate_analytics_metadata(metadata: object) -> None:
+    """Require calculated or composite origin for option analytics."""
+
+    _validate_metadata(metadata)
+    if metadata.record_origin not in {  # type: ignore[union-attr]
+        DataOrigin.PROVIDER_CALCULATED,
+        DataOrigin.SYSTEM_COMPOSITE,
+    }:
+        raise ValueError(
+            "option analytics require provider_calculated or system_composite origin"
+        )
+
+
+def _validate_rate_metadata(metadata: object) -> None:
+    """Reject exchange-observed origin for a normalized rate point."""
+
+    _validate_metadata(metadata)
+    if metadata.record_origin is DataOrigin.EXCHANGE_OBSERVED:  # type: ignore[union-attr]
+        raise ValueError("rate points must not use exchange_observed origin")
+
+
+def _validate_dividend_metadata(
+    metadata: object, status: "DividendStatus"
+) -> None:
+    """Validate dividend origin according to its declared lifecycle status."""
+
+    _validate_metadata(metadata)
+    if status is DividendStatus.FORECAST:
+        allowed = {
+            DataOrigin.PROVIDER_CALCULATED,
+            DataOrigin.SYSTEM_COMPOSITE,
+        }
+    else:
+        allowed = {
+            DataOrigin.PROVIDER_REFERENCE,
+            DataOrigin.SYSTEM_COMPOSITE,
+        }
+    if metadata.record_origin not in allowed:  # type: ignore[union-attr]
+        raise ValueError(
+            f"{status.value} dividend has an incompatible metadata origin"
         )
 
 
@@ -721,3 +776,250 @@ class OptionOpenInterestObservation:
         )
         _validate_integer("open_interest", self.open_interest, 0)
         _validate_market_observation_metadata(self.metadata)
+
+
+@dataclass(frozen=True)
+class OptionImpliedVolatilityObservation:
+    """One supplied normalized option implied-volatility observation."""
+
+    contract_key: OptionContractKey
+    session_date: datetime.date
+    implied_volatility: decimal.Decimal
+    model_name: str
+    model_version: Optional[str]
+    rate_input_description: str
+    dividend_input_description: str
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contract_key, OptionContractKey):
+            raise TypeError("contract_key must be an OptionContractKey")
+        _validate_date_only("session_date", self.session_date)
+        implied_volatility = _normalize_positive_decimal(
+            "implied_volatility", self.implied_volatility
+        )
+        model_name = _normalize_required_string("model_name", self.model_name)
+        model_version = _normalize_optional_string(
+            "model_version", self.model_version
+        )
+        rate_description = _normalize_required_string(
+            "rate_input_description", self.rate_input_description
+        )
+        dividend_description = _normalize_required_string(
+            "dividend_input_description", self.dividend_input_description
+        )
+        _validate_analytics_metadata(self.metadata)
+
+        object.__setattr__(self, "implied_volatility", implied_volatility)
+        object.__setattr__(self, "model_name", model_name)
+        object.__setattr__(self, "model_version", model_version)
+        object.__setattr__(self, "rate_input_description", rate_description)
+        object.__setattr__(self, "dividend_input_description", dividend_description)
+
+
+@dataclass(frozen=True)
+class OptionGreeksObservation:
+    """One supplied normalized set of option Greeks."""
+
+    contract_key: OptionContractKey
+    session_date: datetime.date
+    delta: Optional[decimal.Decimal]
+    gamma: Optional[decimal.Decimal]
+    theta: Optional[decimal.Decimal]
+    vega: Optional[decimal.Decimal]
+    theta_day_basis: Optional[str]
+    model_name: str
+    model_version: Optional[str]
+    rate_input_description: str
+    dividend_input_description: str
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contract_key, OptionContractKey):
+            raise TypeError("contract_key must be an OptionContractKey")
+        _validate_date_only("session_date", self.session_date)
+
+        greek_values = {}
+        for name in ("delta", "gamma", "theta", "vega"):
+            value = getattr(self, name)
+            greek_values[name] = (
+                None if value is None else _normalize_finite_decimal(name, value)
+            )
+        if all(value is None for value in greek_values.values()):
+            raise ValueError("at least one Greek must be supplied")
+
+        if greek_values["theta"] is None:
+            if self.theta_day_basis is not None:
+                raise ValueError("theta_day_basis must be None when theta is absent")
+            theta_day_basis = None
+        else:
+            if self.theta_day_basis is None:
+                raise ValueError("theta_day_basis is required when theta is supplied")
+            theta_day_basis = _normalize_required_string(
+                "theta_day_basis", self.theta_day_basis
+            )
+
+        model_name = _normalize_required_string("model_name", self.model_name)
+        model_version = _normalize_optional_string(
+            "model_version", self.model_version
+        )
+        rate_description = _normalize_required_string(
+            "rate_input_description", self.rate_input_description
+        )
+        dividend_description = _normalize_required_string(
+            "dividend_input_description", self.dividend_input_description
+        )
+        _validate_analytics_metadata(self.metadata)
+
+        for name, value in greek_values.items():
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, "theta_day_basis", theta_day_basis)
+        object.__setattr__(self, "model_name", model_name)
+        object.__setattr__(self, "model_version", model_version)
+        object.__setattr__(self, "rate_input_description", rate_description)
+        object.__setattr__(self, "dividend_input_description", dividend_description)
+
+
+@dataclass(frozen=True)
+class UnderlyingDailyBarObservation:
+    """One supplied normalized underlying daily bar."""
+
+    underlying_key: UnderlyingKey
+    session_date: datetime.date
+    open_price: decimal.Decimal
+    high_price: decimal.Decimal
+    low_price: decimal.Decimal
+    close_price: decimal.Decimal
+    adjusted_close_price: Optional[decimal.Decimal]
+    volume: int
+    is_session_complete: bool
+    adjustment_methodology: Optional[str]
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.underlying_key, UnderlyingKey):
+            raise TypeError("underlying_key must be an UnderlyingKey")
+        _validate_date_only("session_date", self.session_date)
+        prices = {
+            name: _normalize_positive_decimal(name, getattr(self, name))
+            for name in ("open_price", "high_price", "low_price", "close_price")
+        }
+        if prices["low_price"] > min(prices["open_price"], prices["close_price"]):
+            raise ValueError("low_price must not exceed open_price or close_price")
+        if prices["high_price"] < max(
+            prices["open_price"], prices["close_price"]
+        ):
+            raise ValueError("high_price must not be below open_price or close_price")
+        if prices["high_price"] < prices["low_price"]:
+            raise ValueError("high_price must not be below low_price")
+
+        if self.adjusted_close_price is None:
+            adjusted_close = None
+            if self.adjustment_methodology is not None:
+                raise ValueError(
+                    "adjustment_methodology must be None without adjusted close"
+                )
+            methodology = None
+        else:
+            adjusted_close = _normalize_positive_decimal(
+                "adjusted_close_price", self.adjusted_close_price
+            )
+            if self.adjustment_methodology is None:
+                raise ValueError(
+                    "adjustment_methodology is required with adjusted close"
+                )
+            methodology = _normalize_required_string(
+                "adjustment_methodology", self.adjustment_methodology
+            )
+
+        _validate_integer("volume", self.volume, 0)
+        _validate_boolean("is_session_complete", self.is_session_complete)
+        _validate_market_observation_metadata(self.metadata)
+
+        for name, value in prices.items():
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, "adjusted_close_price", adjusted_close)
+        object.__setattr__(self, "adjustment_methodology", methodology)
+
+
+@dataclass(frozen=True)
+class RateCurvePointObservation:
+    """One supplied normalized annualized rate-curve point."""
+
+    curve_id: str
+    currency: str
+    tenor_days: int
+    annualized_rate: decimal.Decimal
+    compounding_convention: str
+    day_count_convention: str
+    effective_date: datetime.date
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        curve_id = _normalize_required_string("curve_id", self.curve_id)
+        currency = _normalize_required_string("currency", self.currency).upper()
+        if currency != "USD":
+            raise ValueError("currency must be USD for MVP v0.1")
+        _validate_integer("tenor_days", self.tenor_days, 1)
+        rate = _normalize_finite_decimal("annualized_rate", self.annualized_rate)
+        compounding = _normalize_required_string(
+            "compounding_convention", self.compounding_convention
+        )
+        day_count = _normalize_required_string(
+            "day_count_convention", self.day_count_convention
+        )
+        _validate_date_only("effective_date", self.effective_date)
+        _validate_rate_metadata(self.metadata)
+
+        object.__setattr__(self, "curve_id", curve_id)
+        object.__setattr__(self, "currency", currency)
+        object.__setattr__(self, "annualized_rate", rate)
+        object.__setattr__(self, "compounding_convention", compounding)
+        object.__setattr__(self, "day_count_convention", day_count)
+
+
+@dataclass(frozen=True)
+class DividendObservation:
+    """One supplied normalized dividend observation."""
+
+    underlying_key: UnderlyingKey
+    dividend_type: str
+    ex_date: datetime.date
+    payment_date: Optional[datetime.date]
+    cash_amount: Optional[decimal.Decimal]
+    annualized_yield: Optional[decimal.Decimal]
+    currency: str
+    status: DividendStatus
+    metadata: NormalizationMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.underlying_key, UnderlyingKey):
+            raise TypeError("underlying_key must be an UnderlyingKey")
+        dividend_type = _normalize_required_string(
+            "dividend_type", self.dividend_type
+        )
+        _validate_date_only("ex_date", self.ex_date)
+        _validate_optional_date_only("payment_date", self.payment_date)
+        cash_amount = (
+            None if self.cash_amount is None else _normalize_nonnegative_decimal(
+                "cash_amount", self.cash_amount
+            )
+        )
+        annualized_yield = (
+            None if self.annualized_yield is None else _normalize_nonnegative_decimal(
+                "annualized_yield", self.annualized_yield
+            )
+        )
+        if cash_amount is None and annualized_yield is None:
+            raise ValueError("cash_amount or annualized_yield must be supplied")
+        currency = _normalize_required_string("currency", self.currency).upper()
+        if currency != self.underlying_key.currency:
+            raise ValueError("currency must equal underlying_key.currency")
+        if not isinstance(self.status, DividendStatus):
+            raise TypeError("status must be a DividendStatus")
+        _validate_dividend_metadata(self.metadata, self.status)
+
+        object.__setattr__(self, "dividend_type", dividend_type)
+        object.__setattr__(self, "cash_amount", cash_amount)
+        object.__setattr__(self, "annualized_yield", annualized_yield)
+        object.__setattr__(self, "currency", currency)

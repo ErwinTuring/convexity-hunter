@@ -16,19 +16,24 @@ sys.path.insert(0, str(ROOT / "src"))
 import convexity_hunter.market_data as market_data
 from convexity_hunter.market_data import (
     DataOrigin,
+    DividendObservation,
     DividendStatus,
     MarketPhase,
     NormalizationMetadata,
     NormalizationQualityFlag,
     OptionContractKey,
     OptionContractReference,
+    OptionGreeksObservation,
+    OptionImpliedVolatilityObservation,
     OptionOpenInterestObservation,
     OptionQuoteObservation,
     OptionVolumeObservation,
     QuoteScope,
+    RateCurvePointObservation,
     SourceQualityFlag,
     SourceReference,
     UnderlyingKey,
+    UnderlyingDailyBarObservation,
     UnderlyingQuoteObservation,
     UnderlyingSecurityType,
 )
@@ -40,13 +45,18 @@ from tests.market_data_fixtures import (
     RETRIEVED_AT,
     UTC,
     build_normalization_metadata,
+    build_dividend_observation,
     build_option_contract_key,
     build_option_contract_reference,
+    build_option_greeks_observation,
+    build_option_implied_volatility_observation,
     build_option_open_interest_observation,
     build_option_quote_observation,
     build_option_volume_observation,
+    build_rate_curve_point_observation,
     build_source_reference,
     build_underlying_key,
+    build_underlying_daily_bar_observation,
     build_underlying_quote_observation,
 )
 
@@ -116,20 +126,22 @@ class PublicSurfaceTests(unittest.TestCase):
             "OptionQuoteObservation",
             "OptionVolumeObservation",
             "OptionOpenInterestObservation",
+            "OptionImpliedVolatilityObservation",
+            "OptionGreeksObservation",
+            "UnderlyingDailyBarObservation",
+            "RateCurvePointObservation",
+            "DividendObservation",
         )
         self.assertEqual(market_data.__all__, expected)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
         later_types = (
-            "OptionImpliedVolatilityObservation",
-            "OptionGreeksObservation",
-            "UnderlyingDailyBarObservation",
-            "RateCurvePointObservation",
-            "DividendObservation",
             "MarketDataFreshnessPolicy",
             "FreshnessContext",
             "FreshnessAssessment",
+            "FreshnessStatus",
+            "FreshnessReasonCode",
             "CalculationLineage",
         )
         self.assertTrue(all(not hasattr(market_data, name) for name in later_types))
@@ -176,6 +188,32 @@ class PublicSurfaceTests(unittest.TestCase):
             ),
             OptionOpenInterestObservation: (
                 "contract_key", "open_interest_session_date", "open_interest",
+                "metadata",
+            ),
+            OptionImpliedVolatilityObservation: (
+                "contract_key", "session_date", "implied_volatility",
+                "model_name", "model_version", "rate_input_description",
+                "dividend_input_description", "metadata",
+            ),
+            OptionGreeksObservation: (
+                "contract_key", "session_date", "delta", "gamma", "theta",
+                "vega", "theta_day_basis", "model_name", "model_version",
+                "rate_input_description", "dividend_input_description",
+                "metadata",
+            ),
+            UnderlyingDailyBarObservation: (
+                "underlying_key", "session_date", "open_price", "high_price",
+                "low_price", "close_price", "adjusted_close_price", "volume",
+                "is_session_complete", "adjustment_methodology", "metadata",
+            ),
+            RateCurvePointObservation: (
+                "curve_id", "currency", "tenor_days", "annualized_rate",
+                "compounding_convention", "day_count_convention",
+                "effective_date", "metadata",
+            ),
+            DividendObservation: (
+                "underlying_key", "dividend_type", "ex_date", "payment_date",
+                "cash_amount", "annualized_yield", "currency", "status",
                 "metadata",
             ),
         }
@@ -1135,6 +1173,392 @@ class ObservationOriginAndLockedSourceTests(unittest.TestCase):
                 )
 
 
+class OptionImpliedVolatilityObservationTests(unittest.TestCase):
+    def test_valid_normalization_precision_origins_frozen_and_deterministic(self) -> None:
+        observation = build_option_implied_volatility_observation(
+            implied_volatility=decimal.Decimal("0.2012500"),
+            model_name=" Synthetic Model ", model_version=None,
+            rate_input_description=" Rate Input ",
+            dividend_input_description=" Dividend Input ",
+        )
+        self.assertEqual(observation.model_name, "Synthetic Model")
+        self.assertIsNone(observation.model_version)
+        self.assertEqual(observation.rate_input_description, "Rate Input")
+        self.assertEqual(observation.implied_volatility.as_tuple().exponent, -7)
+        self.assertEqual(observation, build_option_implied_volatility_observation(
+            implied_volatility=decimal.Decimal("0.2012500"),
+            model_name=" Synthetic Model ", model_version=None,
+            rate_input_description=" Rate Input ",
+            dividend_input_description=" Dividend Input ",
+        ))
+        composite = build_option_implied_volatility_observation(
+            metadata=build_metadata_for_origin(DataOrigin.SYSTEM_COMPOSITE)
+        )
+        self.assertEqual(composite.metadata.record_origin, DataOrigin.SYSTEM_COMPOSITE)
+        hash(observation)
+        with self.assertRaises(FrozenInstanceError):
+            observation.model_name = "changed"  # type: ignore[misc]
+
+    def test_invalid_identity_iv_strings_metadata_and_origins(self) -> None:
+        cases = (
+            ({"contract_key": "contract"}, TypeError),
+            ({"session_date": datetime.datetime(2030, 1, 2)}, TypeError),
+            ({"session_date": "2030-01-02"}, TypeError),
+            ({"implied_volatility": decimal.Decimal("0")}, ValueError),
+            ({"implied_volatility": decimal.Decimal("-0.1")}, ValueError),
+            ({"metadata": "metadata"}, TypeError),
+        )
+        for values, error in cases:
+            with self.subTest(values=values):
+                with self.assertRaises(error):
+                    build_option_implied_volatility_observation(**values)
+        for value in (1.0, 1, True, "0.2", decimal.Decimal("NaN"),
+                      decimal.Decimal("Infinity"), decimal.Decimal("-Infinity")):
+            with self.subTest(iv=value):
+                with self.assertRaises((TypeError, ValueError)):
+                    build_option_implied_volatility_observation(
+                        implied_volatility=value
+                    )
+        for field in (
+            "model_name", "rate_input_description", "dividend_input_description"
+        ):
+            for value in (" ", 1):
+                with self.subTest(field=field, value=value):
+                    with self.assertRaises((TypeError, ValueError)):
+                        build_option_implied_volatility_observation(**{field: value})
+        for value in (" ", 1):
+            with self.assertRaises((TypeError, ValueError)):
+                build_option_implied_volatility_observation(model_version=value)
+        for origin in (DataOrigin.EXCHANGE_OBSERVED, DataOrigin.PROVIDER_REFERENCE):
+            with self.assertRaises(ValueError):
+                build_option_implied_volatility_observation(
+                    metadata=build_metadata_for_origin(origin)
+                )
+
+
+class OptionGreeksObservationTests(unittest.TestCase):
+    def test_valid_optional_values_signs_zero_and_origins(self) -> None:
+        default = build_option_greeks_observation()
+        hash(default)
+        for field in ("delta", "gamma", "theta", "vega"):
+            values = {name: None for name in ("delta", "gamma", "theta", "vega")}
+            values[field] = decimal.Decimal("-0.00" if field != "theta" else "0.00")
+            values["theta_day_basis"] = " Calendar Day " if field == "theta" else None
+            with self.subTest(field=field):
+                observation = build_option_greeks_observation(**values)
+                self.assertFalse(getattr(observation, field).is_signed())
+                if field == "theta":
+                    self.assertEqual(observation.theta_day_basis, "Calendar Day")
+        unusual = build_option_greeks_observation(
+            delta=decimal.Decimal("2"), gamma=decimal.Decimal("-1"),
+            theta=None, vega=decimal.Decimal("-3"), theta_day_basis=None,
+            model_version=None,
+        )
+        self.assertEqual(unusual.delta, decimal.Decimal("2"))
+        self.assertIsNone(unusual.model_version)
+        composite = build_option_greeks_observation(
+            metadata=build_metadata_for_origin(DataOrigin.SYSTEM_COMPOSITE)
+        )
+        self.assertEqual(composite.metadata.record_origin, DataOrigin.SYSTEM_COMPOSITE)
+        with self.assertRaises(FrozenInstanceError):
+            default.delta = decimal.Decimal("0")  # type: ignore[misc]
+
+    def test_invalid_greeks_theta_basis_strings_identity_and_origins(self) -> None:
+        with self.assertRaises(ValueError):
+            build_option_greeks_observation(
+                delta=None, gamma=None, theta=None, vega=None,
+                theta_day_basis=None,
+            )
+        for field in ("delta", "gamma", "theta", "vega"):
+            for value in (1.0, 1, True, "1", decimal.Decimal("NaN"),
+                          decimal.Decimal("Infinity"), decimal.Decimal("-Infinity")):
+                values = {field: value}
+                if field == "theta":
+                    values["theta_day_basis"] = "Calendar Day"
+                with self.subTest(field=field, value=value):
+                    with self.assertRaises((TypeError, ValueError)):
+                        build_option_greeks_observation(**values)
+        with self.assertRaises((TypeError, ValueError)):
+            build_option_greeks_observation(theta=decimal.Decimal("-1"),
+                                             theta_day_basis=None)
+        with self.assertRaises(ValueError):
+            build_option_greeks_observation(theta=None, theta_day_basis="Daily")
+        with self.assertRaises(ValueError):
+            build_option_greeks_observation(theta=decimal.Decimal("-1"),
+                                             theta_day_basis=" ")
+        for field in (
+            "model_name", "rate_input_description", "dividend_input_description"
+        ):
+            for value in (" ", 1):
+                with self.assertRaises((TypeError, ValueError)):
+                    build_option_greeks_observation(**{field: value})
+        for values, error in (
+            ({"model_version": " "}, ValueError),
+            ({"model_version": 1}, TypeError),
+            ({"contract_key": "contract"}, TypeError),
+            ({"session_date": datetime.datetime(2030, 1, 2)}, TypeError),
+            ({"session_date": "2030-01-02"}, TypeError),
+            ({"metadata": "metadata"}, TypeError),
+        ):
+            with self.assertRaises(error):
+                build_option_greeks_observation(**values)
+        for origin in (DataOrigin.EXCHANGE_OBSERVED, DataOrigin.PROVIDER_REFERENCE):
+            with self.assertRaises(ValueError):
+                build_option_greeks_observation(
+                    metadata=build_metadata_for_origin(origin)
+                )
+
+
+class UnderlyingDailyBarObservationTests(unittest.TestCase):
+    def test_valid_variants_precision_origins_frozen_and_adjustment_independence(self) -> None:
+        adjusted = build_underlying_daily_bar_observation(
+            open_price=decimal.Decimal("498.250000"),
+            adjusted_close_price=decimal.Decimal("600.0000"),
+        )
+        self.assertEqual(adjusted.open_price.as_tuple().exponent, -6)
+        self.assertGreater(adjusted.adjusted_close_price, adjusted.high_price)
+        raw = build_underlying_daily_bar_observation(
+            adjusted_close_price=None, adjustment_methodology=None,
+            is_session_complete=False, volume=0,
+        )
+        self.assertIsNone(raw.adjusted_close_price)
+        self.assertFalse(raw.is_session_complete)
+        self.assertEqual(raw.volume, 0)
+        for origin in (
+            DataOrigin.EXCHANGE_OBSERVED, DataOrigin.PROVIDER_CALCULATED,
+            DataOrigin.SYSTEM_COMPOSITE,
+        ):
+            bar = build_underlying_daily_bar_observation(
+                metadata=build_metadata_for_origin(origin)
+            )
+            self.assertEqual(bar.metadata.record_origin, origin)
+        hash(adjusted)
+        with self.assertRaises(FrozenInstanceError):
+            adjusted.volume = 1  # type: ignore[misc]
+
+    def test_invalid_identity_prices_ohlc_adjustment_volume_and_metadata(self) -> None:
+        for values, error in (
+            ({"underlying_key": "SPY"}, TypeError),
+            ({"session_date": datetime.datetime(2030, 1, 2)}, TypeError),
+            ({"session_date": "2030-01-02"}, TypeError),
+            ({"metadata": "metadata"}, TypeError),
+            ({"metadata": build_metadata_for_origin(DataOrigin.PROVIDER_REFERENCE)},
+             ValueError),
+        ):
+            with self.assertRaises(error):
+                build_underlying_daily_bar_observation(**values)
+        for field in ("open_price", "high_price", "low_price", "close_price"):
+            for value in (1.0, 1, True, "1", decimal.Decimal("0"),
+                          decimal.Decimal("-1"), decimal.Decimal("NaN"),
+                          decimal.Decimal("Infinity"), decimal.Decimal("-Infinity")):
+                with self.subTest(field=field, value=value):
+                    with self.assertRaises((TypeError, ValueError)):
+                        build_underlying_daily_bar_observation(**{field: value})
+        for values in (
+            {"low_price": decimal.Decimal("499")},
+            {"low_price": decimal.Decimal("502")},
+            {"high_price": decimal.Decimal("499")},
+            {"high_price": decimal.Decimal("500")},
+            {"low_price": decimal.Decimal("503"),
+             "high_price": decimal.Decimal("502")},
+        ):
+            with self.assertRaises(ValueError):
+                build_underlying_daily_bar_observation(**values)
+        for value in (decimal.Decimal("0"), decimal.Decimal("-1"),
+                      decimal.Decimal("NaN"), 1.0, 1, True, "1"):
+            with self.assertRaises((TypeError, ValueError)):
+                build_underlying_daily_bar_observation(adjusted_close_price=value)
+        for values in (
+            {"adjusted_close_price": decimal.Decimal("500"),
+             "adjustment_methodology": None},
+            {"adjusted_close_price": None,
+             "adjustment_methodology": "Method"},
+            {"adjusted_close_price": decimal.Decimal("500"),
+             "adjustment_methodology": " "},
+        ):
+            with self.assertRaises(ValueError):
+                build_underlying_daily_bar_observation(**values)
+        for values, error in (
+            ({"volume": -1}, ValueError), ({"volume": True}, TypeError),
+            ({"volume": 1.0}, TypeError), ({"is_session_complete": 1}, TypeError),
+        ):
+            with self.assertRaises(error):
+                build_underlying_daily_bar_observation(**values)
+
+
+class RateCurvePointObservationTests(unittest.TestCase):
+    def test_valid_rates_normalization_origins_frozen_and_deterministic(self) -> None:
+        for rate in (decimal.Decimal("0.01"), decimal.Decimal("0"),
+                     decimal.Decimal("-0.01"), decimal.Decimal("-0.000")):
+            point = build_rate_curve_point_observation(
+                curve_id=" Curve A ", currency=" usd ", annualized_rate=rate,
+                compounding_convention=" Continuous ",
+                day_count_convention=" Actual/365 ",
+            )
+            self.assertEqual(point.curve_id, "Curve A")
+            self.assertEqual(point.currency, "USD")
+            self.assertFalse(point.annualized_rate.is_signed() and
+                             point.annualized_rate.is_zero())
+        for origin in (
+            DataOrigin.PROVIDER_CALCULATED, DataOrigin.PROVIDER_REFERENCE,
+            DataOrigin.SYSTEM_COMPOSITE,
+        ):
+            point = build_rate_curve_point_observation(
+                metadata=build_metadata_for_origin(origin)
+            )
+            self.assertEqual(point.metadata.record_origin, origin)
+        point = build_rate_curve_point_observation()
+        self.assertEqual(point, build_rate_curve_point_observation())
+        hash(point)
+        with self.assertRaises(FrozenInstanceError):
+            point.tenor_days = 1  # type: ignore[misc]
+
+    def test_invalid_fields_and_origin(self) -> None:
+        for field in ("curve_id", "compounding_convention", "day_count_convention"):
+            for value in (" ", 1):
+                with self.assertRaises((TypeError, ValueError)):
+                    build_rate_curve_point_observation(**{field: value})
+        for values, error in (
+            ({"currency": "EUR"}, ValueError), ({"currency": 1}, TypeError),
+            ({"tenor_days": 0}, ValueError), ({"tenor_days": -1}, ValueError),
+            ({"tenor_days": True}, TypeError), ({"tenor_days": 1.0}, TypeError),
+            ({"effective_date": datetime.datetime(2030, 1, 2)}, TypeError),
+            ({"effective_date": "2030-01-02"}, TypeError),
+            ({"metadata": "metadata"}, TypeError),
+            ({"metadata": build_metadata_for_origin(DataOrigin.EXCHANGE_OBSERVED)},
+             ValueError),
+        ):
+            with self.assertRaises(error):
+                build_rate_curve_point_observation(**values)
+        for value in (1.0, 1, True, "0.01", decimal.Decimal("NaN"),
+                      decimal.Decimal("Infinity"), decimal.Decimal("-Infinity")):
+            with self.assertRaises((TypeError, ValueError)):
+                build_rate_curve_point_observation(annualized_rate=value)
+
+
+class DividendObservationTests(unittest.TestCase):
+    def test_valid_status_value_combinations_normalization_and_frozen(self) -> None:
+        announced = build_dividend_observation(
+            dividend_type=" Regular Cash ", currency=" usd ", payment_date=None,
+            cash_amount=decimal.Decimal("-0.000"), annualized_yield=None,
+        )
+        self.assertEqual(announced.dividend_type, "Regular Cash")
+        self.assertEqual(announced.currency, "USD")
+        self.assertFalse(announced.cash_amount.is_signed())
+        yield_only = build_dividend_observation(
+            cash_amount=None, annualized_yield=decimal.Decimal("0")
+        )
+        self.assertIsNone(yield_only.cash_amount)
+        both = build_dividend_observation()
+        self.assertIsNotNone(both.cash_amount)
+        status_origins = (
+            (DividendStatus.FORECAST, DataOrigin.PROVIDER_CALCULATED),
+            (DividendStatus.ANNOUNCED, DataOrigin.PROVIDER_REFERENCE),
+            (DividendStatus.HISTORICAL, DataOrigin.PROVIDER_REFERENCE),
+        )
+        for status, origin in status_origins:
+            observation = build_dividend_observation(
+                status=status, metadata=build_metadata_for_origin(origin)
+            )
+            self.assertEqual(observation.status, status)
+            composite = build_dividend_observation(
+                status=status,
+                metadata=build_metadata_for_origin(DataOrigin.SYSTEM_COMPOSITE),
+            )
+            self.assertEqual(composite.metadata.record_origin,
+                             DataOrigin.SYSTEM_COMPOSITE)
+        hash(announced)
+        with self.assertRaises(FrozenInstanceError):
+            announced.status = DividendStatus.HISTORICAL  # type: ignore[misc]
+
+    def test_invalid_fields_values_and_status_origins(self) -> None:
+        for values, error in (
+            ({"underlying_key": "SPY"}, TypeError),
+            ({"dividend_type": " "}, ValueError),
+            ({"dividend_type": 1}, TypeError),
+            ({"ex_date": datetime.datetime(2030, 1, 2)}, TypeError),
+            ({"payment_date": datetime.datetime(2030, 1, 2)}, TypeError),
+            ({"ex_date": "2030-01-02"}, TypeError),
+            ({"payment_date": "2030-03-01"}, TypeError),
+            ({"cash_amount": None, "annualized_yield": None}, ValueError),
+            ({"currency": "EUR"}, ValueError),
+            ({"status": "announced"}, TypeError),
+            ({"metadata": "metadata"}, TypeError),
+        ):
+            with self.assertRaises(error):
+                build_dividend_observation(**values)
+        for field in ("cash_amount", "annualized_yield"):
+            for value in (decimal.Decimal("-0.01"), 1.0, 1, True, "0.01",
+                          decimal.Decimal("NaN"), decimal.Decimal("Infinity"),
+                          decimal.Decimal("-Infinity")):
+                with self.subTest(field=field, value=value):
+                    with self.assertRaises((TypeError, ValueError)):
+                        build_dividend_observation(**{field: value})
+        rejected = (
+            (DividendStatus.FORECAST, DataOrigin.EXCHANGE_OBSERVED),
+            (DividendStatus.FORECAST, DataOrigin.PROVIDER_REFERENCE),
+            (DividendStatus.ANNOUNCED, DataOrigin.EXCHANGE_OBSERVED),
+            (DividendStatus.ANNOUNCED, DataOrigin.PROVIDER_CALCULATED),
+            (DividendStatus.HISTORICAL, DataOrigin.EXCHANGE_OBSERVED),
+            (DividendStatus.HISTORICAL, DataOrigin.PROVIDER_CALCULATED),
+        )
+        for status, origin in rejected:
+            with self.subTest(status=status, origin=origin):
+                with self.assertRaises(ValueError):
+                    build_dividend_observation(
+                        status=status, metadata=build_metadata_for_origin(origin)
+                    )
+
+
+class Milestone3A3OriginBoundaryTests(unittest.TestCase):
+    def test_every_origin_combination(self) -> None:
+        all_origins = tuple(DataOrigin)
+        cases = (
+            (build_option_implied_volatility_observation,
+             {DataOrigin.PROVIDER_CALCULATED, DataOrigin.SYSTEM_COMPOSITE}),
+            (build_option_greeks_observation,
+             {DataOrigin.PROVIDER_CALCULATED, DataOrigin.SYSTEM_COMPOSITE}),
+            (build_underlying_daily_bar_observation,
+             {DataOrigin.EXCHANGE_OBSERVED, DataOrigin.PROVIDER_CALCULATED,
+              DataOrigin.SYSTEM_COMPOSITE}),
+            (build_rate_curve_point_observation,
+             {DataOrigin.PROVIDER_CALCULATED, DataOrigin.PROVIDER_REFERENCE,
+              DataOrigin.SYSTEM_COMPOSITE}),
+        )
+        for builder, allowed in cases:
+            for origin in all_origins:
+                with self.subTest(builder=builder.__name__, origin=origin):
+                    if origin in allowed:
+                        builder(metadata=build_metadata_for_origin(origin))
+                    else:
+                        with self.assertRaises(ValueError):
+                            builder(metadata=build_metadata_for_origin(origin))
+        dividend_allowed = {
+            DividendStatus.FORECAST: {
+                DataOrigin.PROVIDER_CALCULATED, DataOrigin.SYSTEM_COMPOSITE,
+            },
+            DividendStatus.ANNOUNCED: {
+                DataOrigin.PROVIDER_REFERENCE, DataOrigin.SYSTEM_COMPOSITE,
+            },
+            DividendStatus.HISTORICAL: {
+                DataOrigin.PROVIDER_REFERENCE, DataOrigin.SYSTEM_COMPOSITE,
+            },
+        }
+        for status, allowed in dividend_allowed.items():
+            for origin in all_origins:
+                with self.subTest(status=status, origin=origin):
+                    if origin in allowed:
+                        build_dividend_observation(
+                            status=status, metadata=build_metadata_for_origin(origin)
+                        )
+                    else:
+                        with self.assertRaises(ValueError):
+                            build_dividend_observation(
+                                status=status,
+                                metadata=build_metadata_for_origin(origin),
+                            )
+
+
 class NoDerivedAnalyticsAndMutationTests(unittest.TestCase):
     RECORDS = (
         UnderlyingQuoteObservation,
@@ -1142,12 +1566,21 @@ class NoDerivedAnalyticsAndMutationTests(unittest.TestCase):
         OptionQuoteObservation,
         OptionVolumeObservation,
         OptionOpenInterestObservation,
+        OptionImpliedVolatilityObservation,
+        OptionGreeksObservation,
+        UnderlyingDailyBarObservation,
+        RateCurvePointObservation,
+        DividendObservation,
     )
     FORBIDDEN = {
         "midpoint", "spread", "relative_spread", "spread_percentage",
         "contract_value", "total_position_value", "minimum_leg_volume",
         "minimum_leg_open_interest", "liquidity", "freshness", "eligibility",
-        "score", "state", "recommendation",
+        "score", "state", "recommendation", "atm_status", "iv_percentile",
+        "historical_median", "realized_volatility", "skew", "curvature",
+        "theoretical_price", "discount_factor", "forward_rate",
+        "adjusted_return", "simple_return", "log_return", "return",
+        "dividend_growth", "dividend_present_value",
     }
 
     def test_no_derived_fields_or_public_properties(self) -> None:
@@ -1164,6 +1597,11 @@ class NoDerivedAnalyticsAndMutationTests(unittest.TestCase):
             build_option_quote_observation,
             build_option_volume_observation,
             build_option_open_interest_observation,
+            build_option_implied_volatility_observation,
+            build_option_greeks_observation,
+            build_underlying_daily_bar_observation,
+            build_rate_curve_point_observation,
+            build_dividend_observation,
         )
         for builder in builders:
             with self.subTest(builder=builder.__name__):
@@ -1183,8 +1621,22 @@ class NoDerivedAnalyticsAndMutationTests(unittest.TestCase):
         option_quote = build_option_quote_observation(
             metadata=metadata, contract_key=contract
         )
+        iv_metadata = build_metadata_for_origin(DataOrigin.PROVIDER_CALCULATED)
+        reference_metadata = build_metadata_for_origin(DataOrigin.PROVIDER_REFERENCE)
+        iv = build_option_implied_volatility_observation(
+            metadata=iv_metadata, contract_key=contract
+        )
+        bar = build_underlying_daily_bar_observation(
+            metadata=metadata, underlying_key=underlying
+        )
+        dividend = build_dividend_observation(
+            metadata=reference_metadata, underlying_key=underlying
+        )
         repr(quote)
         repr(option_quote)
+        repr(iv)
+        repr(bar)
+        repr(dividend)
         self.assertEqual(before, (metadata, underlying, contract,
                                   repr(metadata), repr(contract)))
 
