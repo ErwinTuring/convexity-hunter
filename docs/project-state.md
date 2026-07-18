@@ -39,16 +39,17 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Deterministic screening policy v0.1 implemented and validated with immutable policy and decision records, protected policy identity, canonical reason codes, strict decision precedence, scenario-ambiguity checks, and purpose-built synthetic fixtures.
 - Milestone 2 completed: deterministic ScreeningDecision results are integrated into Chinese and English reports with policy provenance, localized canonical reasons, and explicit separation from CandidateResearchRecord.
 - Provider-neutral market-data contracts v0.1 documented and reviewed, covering auditable provenance, normalized observation time, immutable corrections, Decimal units, canonical security and option identities, quote scope, observation schemas, freshness boundaries, and staged implementation.
+- Milestone 3A.1 completed: immutable provider-neutral provenance, normalization metadata, canonical enums, and underlying and option identity records implemented and validated with fixed synthetic fixtures.
 
 ## Current task
 
-Implement Milestone 3A.1 immutable provenance, normalization-metadata, enum, and canonical identity records using fixed synthetic fixtures only.
+Implement Milestone 3A.2 provider-neutral underlying and option quote, contract-reference, volume, and open-interest records using fixed synthetic fixtures only.
 
-No provider has been selected and no network access is authorized. Milestone 3A.1 must use synthetic fixtures only. Freshness assessment, `CalculationLineage`, and transformations remain deferred; composite freshness and correction-selection rules remain Milestone 3B design questions.
+No provider has been selected and no network access is authorized. Milestone 3A.2 must use synthetic fixtures only. Freshness, `CalculationLineage`, and transformations remain deferred, and `market_data.py` remains independent of the evidence, report, and scanner modules.
 
 ## Next task
 
-Implement Milestone 3A.2 provider-neutral underlying and option quote, contract-reference, volume, and open-interest records after 3A.1 review.
+Implement Milestone 3A.3 provider-neutral implied-volatility, Greeks, historical-bar, rate, and dividend records after 3A.2 review.
 
 ## Deferred
 
