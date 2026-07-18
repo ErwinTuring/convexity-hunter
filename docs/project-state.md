@@ -43,16 +43,17 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3A.2 completed: immutable provider-neutral underlying and option quote, option-contract reference, cumulative-volume, and open-interest records implemented and validated with fixed synthetic fixtures.
 - Milestone 3A.3 completed: immutable provider-neutral implied-volatility, Greeks, underlying daily-bar, rate-curve-point, and dividend records implemented and validated with fixed synthetic fixtures.
 - Milestone 3B deterministic freshness, correction-selection, and calculation-lineage contracts documented and reviewed, including canonical reason ordering, complete composite-source checks, calendar-date-gap semantics, revision-vector dominance, and canonical tagged-JSON serialization.
+- Milestone 3B.1 completed: deterministic single-record market-data freshness policy, context, assessment, canonical reason handling, exact Decimal timing metrics, composite-source checks, and calendar-date-gap rules implemented and validated with fixed synthetic fixtures.
 
 ## Current task
 
-Implement Milestone 3B.1 deterministic single-record freshness contracts and assessment using fixed synthetic fixtures only.
+Perform Milestone 3B.2 deterministic provider-correction selection specification preflight before implementation.
 
-No production freshness thresholds are embedded; 3B.1 must use explicit synthetic policies and contexts. No provider has been selected and no network access is authorized. Milestone 3B.2 correction selection and 3B.3 calculation lineage remain deferred. Semantic observation-key construction, cross-record snapshot assembly, and transformations remain deferred to Milestone 3C. `market_data.py` remains independent of the evidence, report, and scanner modules.
+Milestone 3B.1 is complete with no embedded production freshness thresholds. Milestone 3B.2 implementation has not started, and Milestone 3B.3 calculation lineage remains deferred. Milestone 3C semantic observation keys, snapshot assembly, and transformations remain deferred. No provider has been selected and no network access is authorized. `market_data.py` remains independent of the evidence, report, and scanner modules.
 
 ## Next task
 
-Implement Milestone 3B.2 deterministic provider-correction selection after Milestone 3B.1 review.
+Implement Milestone 3B.2 deterministic provider-correction selection after preflight approval.
 
 ## Deferred
 

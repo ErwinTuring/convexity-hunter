@@ -5,6 +5,7 @@ import decimal
 import re
 from dataclasses import dataclass
 from enum import Enum
+from fractions import Fraction
 from typing import Optional, Tuple, Type, TypeVar
 
 
@@ -30,6 +31,13 @@ __all__ = (
     "UnderlyingDailyBarObservation",
     "RateCurvePointObservation",
     "DividendObservation",
+    "MarketDataCategory",
+    "MarketDataFreshnessPolicy",
+    "FreshnessContext",
+    "FreshnessStatus",
+    "FreshnessReasonCode",
+    "FreshnessAssessment",
+    "assess_market_data_freshness",
 )
 
 
@@ -265,6 +273,20 @@ def _normalize_enum_flags(
     return tuple(item for item in enum_type if item in selected)
 
 
+def _timedelta_to_decimal_seconds(
+    value: datetime.timedelta,
+) -> decimal.Decimal:
+    """Construct exact Decimal seconds using only integer arithmetic."""
+
+    total_microseconds = (
+        ((value.days * 86400) + value.seconds) * 1000000
+        + value.microseconds
+    )
+    sign = 1 if total_microseconds < 0 else 0
+    digits = tuple(int(digit) for digit in str(abs(total_microseconds)))
+    return decimal.Decimal((sign, digits, -6))
+
+
 class DataOrigin(str, Enum):
     """Origin category for source and normalized records."""
 
@@ -333,6 +355,351 @@ class DividendStatus(str, Enum):
     FORECAST = "forecast"
     ANNOUNCED = "announced"
     HISTORICAL = "historical"
+
+
+class MarketDataCategory(str, Enum):
+    """Fixed freshness category for one supported normalized record type."""
+
+    QUOTE = "quote"
+    ANALYTICS = "analytics"
+    ACTIVITY = "activity"
+    CONTRACT_REFERENCE = "contract_reference"
+    HISTORICAL_BAR = "historical_bar"
+    RATE = "rate"
+    DIVIDEND = "dividend"
+
+
+class FreshnessStatus(str, Enum):
+    """Deterministic current-eligibility status for normalized market data."""
+
+    FRESH = "fresh"
+    STALE = "stale"
+    INELIGIBLE = "ineligible"
+    UNKNOWN = "unknown"
+
+
+class FreshnessReasonCode(str, Enum):
+    """Canonical reasons produced by single-record freshness assessment."""
+
+    RECORD_NORMALIZED_AFTER_EVALUATION = "record_normalized_after_evaluation"
+    SOURCE_RETRIEVED_AFTER_EVALUATION = "source_retrieved_after_evaluation"
+    SOURCE_OBSERVED_AFTER_EVALUATION = "source_observed_after_evaluation"
+    NORMALIZATION_INCOMPLETE = "normalization_incomplete"
+    ASSIGNED_TIMESTAMP_NOT_ALLOWED = "assigned_timestamp_not_allowed"
+    DELAYED_DATA_NOT_ALLOWED = "delayed_data_not_allowed"
+    INDICATIVE_DATA_NOT_ALLOWED = "indicative_data_not_allowed"
+    NON_FIRM_DATA_NOT_ALLOWED = "non_firm_data_not_allowed"
+    PARTIAL_DATA_NOT_ALLOWED = "partial_data_not_allowed"
+    HALTED_SOURCE = "halted_source"
+    SOURCE_OBSERVATION_SPAN_EXCEEDED = "source_observation_span_exceeded"
+    NON_REGULAR_SESSION_QUOTE = "non_regular_session_quote"
+    HISTORICAL_SESSION_INCOMPLETE = "historical_session_incomplete"
+    SESSION_DATE_AFTER_LATEST_COMPLETED_SESSION = (
+        "session_date_after_latest_completed_session"
+    )
+    UNKNOWN_MARKET_PHASE = "unknown_market_phase"
+    UNKNOWN_QUOTE_SCOPE = "unknown_quote_scope"
+    EFFECTIVE_AGE_EXCEEDED = "effective_age_exceeded"
+    OLDEST_SOURCE_AGE_EXCEEDED = "oldest_source_age_exceeded"
+    RETRIEVAL_LAG_EXCEEDED = "retrieval_lag_exceeded"
+    OPEN_INTEREST_SESSION_DATE_GAP_EXCEEDED = (
+        "open_interest_session_date_gap_exceeded"
+    )
+    HISTORICAL_BAR_SESSION_DATE_GAP_EXCEEDED = (
+        "historical_bar_session_date_gap_exceeded"
+    )
+    FRESH_WITHIN_POLICY = "fresh_within_policy"
+
+
+_INELIGIBLE_FRESHNESS_REASONS = frozenset(tuple(FreshnessReasonCode)[:14])
+_UNKNOWN_FRESHNESS_REASONS = frozenset(tuple(FreshnessReasonCode)[14:16])
+_STALE_FRESHNESS_REASONS = frozenset(tuple(FreshnessReasonCode)[16:21])
+
+_FRESHNESS_REASON_CATEGORIES = {
+    FreshnessReasonCode.NON_REGULAR_SESSION_QUOTE: frozenset({
+        MarketDataCategory.QUOTE,
+    }),
+    FreshnessReasonCode.UNKNOWN_MARKET_PHASE: frozenset({
+        MarketDataCategory.QUOTE,
+    }),
+    FreshnessReasonCode.UNKNOWN_QUOTE_SCOPE: frozenset({
+        MarketDataCategory.QUOTE,
+    }),
+    FreshnessReasonCode.HALTED_SOURCE: frozenset({
+        MarketDataCategory.QUOTE,
+        MarketDataCategory.ANALYTICS,
+    }),
+    FreshnessReasonCode.HISTORICAL_SESSION_INCOMPLETE: frozenset({
+        MarketDataCategory.HISTORICAL_BAR,
+    }),
+    FreshnessReasonCode.OPEN_INTEREST_SESSION_DATE_GAP_EXCEEDED: frozenset({
+        MarketDataCategory.ACTIVITY,
+    }),
+    FreshnessReasonCode.HISTORICAL_BAR_SESSION_DATE_GAP_EXCEEDED: frozenset({
+        MarketDataCategory.HISTORICAL_BAR,
+    }),
+    FreshnessReasonCode.SESSION_DATE_AFTER_LATEST_COMPLETED_SESSION: frozenset({
+        MarketDataCategory.ACTIVITY,
+        MarketDataCategory.HISTORICAL_BAR,
+    }),
+    FreshnessReasonCode.EFFECTIVE_AGE_EXCEEDED: frozenset({
+        MarketDataCategory.QUOTE,
+        MarketDataCategory.ANALYTICS,
+        MarketDataCategory.ACTIVITY,
+        MarketDataCategory.CONTRACT_REFERENCE,
+        MarketDataCategory.RATE,
+        MarketDataCategory.DIVIDEND,
+    }),
+    FreshnessReasonCode.OLDEST_SOURCE_AGE_EXCEEDED: frozenset({
+        MarketDataCategory.QUOTE,
+        MarketDataCategory.ANALYTICS,
+        MarketDataCategory.ACTIVITY,
+        MarketDataCategory.CONTRACT_REFERENCE,
+        MarketDataCategory.RATE,
+        MarketDataCategory.DIVIDEND,
+    }),
+}
+
+_NO_SESSION_DATE_GAP_CATEGORIES = frozenset({
+    MarketDataCategory.QUOTE,
+    MarketDataCategory.ANALYTICS,
+    MarketDataCategory.CONTRACT_REFERENCE,
+    MarketDataCategory.RATE,
+    MarketDataCategory.DIVIDEND,
+})
+
+_FUTURE_CHRONOLOGY_REASONS = frozenset({
+    FreshnessReasonCode.RECORD_NORMALIZED_AFTER_EVALUATION,
+    FreshnessReasonCode.SOURCE_RETRIEVED_AFTER_EVALUATION,
+    FreshnessReasonCode.SOURCE_OBSERVED_AFTER_EVALUATION,
+})
+
+
+def _freshness_status_from_reasons(
+    reasons: Tuple[FreshnessReasonCode, ...]
+) -> FreshnessStatus:
+    """Derive status from complete canonical reasons using fixed precedence."""
+
+    selected = set(reasons)
+    if selected & _INELIGIBLE_FRESHNESS_REASONS:
+        return FreshnessStatus.INELIGIBLE
+    if selected & _UNKNOWN_FRESHNESS_REASONS:
+        return FreshnessStatus.UNKNOWN
+    if selected & _STALE_FRESHNESS_REASONS:
+        return FreshnessStatus.STALE
+    return FreshnessStatus.FRESH
+
+
+@dataclass(frozen=True)
+class MarketDataFreshnessPolicy:
+    """Explicit immutable thresholds for single-record freshness."""
+
+    policy_id: str
+    policy_version: str
+    maximum_quote_age_seconds: int
+    maximum_analytics_age_seconds: int
+    maximum_activity_age_seconds: int
+    maximum_reference_age_seconds: int
+    maximum_rate_age_seconds: int
+    maximum_dividend_age_seconds: int
+    maximum_retrieval_lag_seconds: int
+    maximum_source_observation_span_seconds: int
+    maximum_cross_record_skew_seconds: int
+    maximum_open_interest_session_date_gap_days: int
+    maximum_historical_bar_session_date_gap_days: int
+    allow_delayed_data: bool
+    allow_indicative_data: bool
+    allow_non_firm_data: bool
+    allow_partial_data: bool
+    allow_assigned_timestamps: bool
+    require_regular_session_quotes: bool
+    require_completed_historical_sessions: bool
+
+    def __post_init__(self) -> None:
+        policy_id = _normalize_required_string("policy_id", self.policy_id)
+        policy_version = _normalize_required_string(
+            "policy_version", self.policy_version
+        )
+        threshold_names = (
+            "maximum_quote_age_seconds",
+            "maximum_analytics_age_seconds",
+            "maximum_activity_age_seconds",
+            "maximum_reference_age_seconds",
+            "maximum_rate_age_seconds",
+            "maximum_dividend_age_seconds",
+            "maximum_retrieval_lag_seconds",
+            "maximum_source_observation_span_seconds",
+            "maximum_cross_record_skew_seconds",
+            "maximum_open_interest_session_date_gap_days",
+            "maximum_historical_bar_session_date_gap_days",
+        )
+        boolean_names = (
+            "allow_delayed_data",
+            "allow_indicative_data",
+            "allow_non_firm_data",
+            "allow_partial_data",
+            "allow_assigned_timestamps",
+            "require_regular_session_quotes",
+            "require_completed_historical_sessions",
+        )
+        for name in threshold_names:
+            _validate_integer(name, getattr(self, name), 0)
+        for name in boolean_names:
+            _validate_boolean(name, getattr(self, name))
+        object.__setattr__(self, "policy_id", policy_id)
+        object.__setattr__(self, "policy_version", policy_version)
+
+
+@dataclass(frozen=True)
+class FreshnessContext:
+    """Explicit evaluation time and caller-supplied completed session date."""
+
+    evaluation_at: datetime.datetime
+    latest_completed_session_date: datetime.date
+
+    def __post_init__(self) -> None:
+        evaluation_at = _normalize_utc_datetime(
+            "evaluation_at", self.evaluation_at
+        )
+        _validate_date_only(
+            "latest_completed_session_date", self.latest_completed_session_date
+        )
+        object.__setattr__(self, "evaluation_at", evaluation_at)
+
+
+@dataclass(frozen=True)
+class FreshnessAssessment:
+    """Immutable calculated facts and policy result for one normalized record."""
+
+    record_id: str
+    category: MarketDataCategory
+    status: FreshnessStatus
+    reason_codes: Tuple[FreshnessReasonCode, ...]
+    policy_id: str
+    policy_version: str
+    evaluated_at: datetime.datetime
+    effective_age_seconds: decimal.Decimal
+    oldest_source_age_seconds: decimal.Decimal
+    maximum_retrieval_lag_seconds_observed: decimal.Decimal
+    source_observation_span_seconds: decimal.Decimal
+    session_date_gap_days: Optional[int]
+
+    def __post_init__(self) -> None:
+        record_id = _normalize_required_string("record_id", self.record_id)
+        policy_id = _normalize_required_string("policy_id", self.policy_id)
+        policy_version = _normalize_required_string(
+            "policy_version", self.policy_version
+        )
+        if not isinstance(self.category, MarketDataCategory):
+            raise TypeError("category must be a MarketDataCategory")
+        if not isinstance(self.status, FreshnessStatus):
+            raise TypeError("status must be a FreshnessStatus")
+        reasons = _normalize_enum_flags(
+            "reason_codes", self.reason_codes, FreshnessReasonCode
+        )
+        if not reasons:
+            raise ValueError("reason_codes must contain at least one item")
+        fresh_reason = FreshnessReasonCode.FRESH_WITHIN_POLICY
+        if fresh_reason in reasons and reasons != (fresh_reason,):
+            raise ValueError("fresh_within_policy must be the only reason")
+        expected_status = _freshness_status_from_reasons(reasons)
+        if expected_status is FreshnessStatus.FRESH and reasons != (fresh_reason,):
+            raise ValueError("fresh assessments require fresh_within_policy")
+        if self.status is not expected_status:
+            raise ValueError("status does not agree with reason_codes")
+
+        evaluated_at = _normalize_utc_datetime("evaluated_at", self.evaluated_at)
+        effective_age = _normalize_finite_decimal(
+            "effective_age_seconds", self.effective_age_seconds
+        )
+        oldest_source_age = _normalize_finite_decimal(
+            "oldest_source_age_seconds", self.oldest_source_age_seconds
+        )
+        retrieval_lag = _normalize_nonnegative_decimal(
+            "maximum_retrieval_lag_seconds_observed",
+            self.maximum_retrieval_lag_seconds_observed,
+        )
+        source_span = _normalize_nonnegative_decimal(
+            "source_observation_span_seconds",
+            self.source_observation_span_seconds,
+        )
+        if self.session_date_gap_days is not None and (
+            isinstance(self.session_date_gap_days, bool)
+            or not isinstance(self.session_date_gap_days, int)
+        ):
+            raise TypeError("session_date_gap_days must be an integer or None")
+
+        selected_reasons = set(reasons)
+        for reason, allowed_categories in _FRESHNESS_REASON_CATEGORIES.items():
+            if reason in selected_reasons and self.category not in allowed_categories:
+                raise ValueError(
+                    f"{reason.value} is incompatible with category {self.category.value}"
+                )
+
+        date_gap = self.session_date_gap_days
+        future_session_reason = (
+            FreshnessReasonCode.SESSION_DATE_AFTER_LATEST_COMPLETED_SESSION
+        )
+        open_interest_gap_reason = (
+            FreshnessReasonCode.OPEN_INTEREST_SESSION_DATE_GAP_EXCEEDED
+        )
+        historical_bar_gap_reason = (
+            FreshnessReasonCode.HISTORICAL_BAR_SESSION_DATE_GAP_EXCEEDED
+        )
+        historical_incomplete_reason = (
+            FreshnessReasonCode.HISTORICAL_SESSION_INCOMPLETE
+        )
+        if self.category in _NO_SESSION_DATE_GAP_CATEGORIES and date_gap is not None:
+            raise ValueError(
+                f"{self.category.value} assessments require no session date gap"
+            )
+        if date_gap is not None and date_gap < 0 and future_session_reason not in selected_reasons:
+            raise ValueError("a negative session date gap requires the future-session reason")
+        if future_session_reason in selected_reasons and (
+            date_gap is None or date_gap >= 0
+        ):
+            raise ValueError("the future-session reason requires a negative date gap")
+        for reason in (open_interest_gap_reason, historical_bar_gap_reason):
+            if reason in selected_reasons and (
+                date_gap is None or date_gap <= 0
+            ):
+                raise ValueError(f"{reason.value} requires a positive date gap")
+        if (
+            historical_incomplete_reason in selected_reasons
+            and date_gap is not None
+        ):
+            raise ValueError("an incomplete historical session requires no date gap")
+
+        if (
+            effective_age < 0 or oldest_source_age < 0
+        ) and not _FUTURE_CHRONOLOGY_REASONS.issubset(selected_reasons):
+            raise ValueError(
+                "negative ages require all future chronology reasons"
+            )
+
+        effective_age_fraction = Fraction(effective_age)
+        oldest_source_age_fraction = Fraction(oldest_source_age)
+        source_span_fraction = Fraction(source_span)
+        if not (
+            oldest_source_age_fraction - source_span_fraction
+            <= effective_age_fraction
+            <= oldest_source_age_fraction
+        ):
+            raise ValueError(
+                "effective age must lie within the complete source age range"
+            )
+
+        object.__setattr__(self, "record_id", record_id)
+        object.__setattr__(self, "reason_codes", reasons)
+        object.__setattr__(self, "policy_id", policy_id)
+        object.__setattr__(self, "policy_version", policy_version)
+        object.__setattr__(self, "evaluated_at", evaluated_at)
+        object.__setattr__(self, "effective_age_seconds", effective_age)
+        object.__setattr__(self, "oldest_source_age_seconds", oldest_source_age)
+        object.__setattr__(
+            self, "maximum_retrieval_lag_seconds_observed", retrieval_lag
+        )
+        object.__setattr__(self, "source_observation_span_seconds", source_span)
 
 
 @dataclass(frozen=True)
@@ -1023,3 +1390,219 @@ class DividendObservation:
         object.__setattr__(self, "cash_amount", cash_amount)
         object.__setattr__(self, "annualized_yield", annualized_yield)
         object.__setattr__(self, "currency", currency)
+
+
+_MARKET_DATA_CATEGORY_BY_RECORD_TYPE = {
+    UnderlyingQuoteObservation: MarketDataCategory.QUOTE,
+    OptionQuoteObservation: MarketDataCategory.QUOTE,
+    OptionImpliedVolatilityObservation: MarketDataCategory.ANALYTICS,
+    OptionGreeksObservation: MarketDataCategory.ANALYTICS,
+    OptionVolumeObservation: MarketDataCategory.ACTIVITY,
+    OptionOpenInterestObservation: MarketDataCategory.ACTIVITY,
+    OptionContractReference: MarketDataCategory.CONTRACT_REFERENCE,
+    UnderlyingDailyBarObservation: MarketDataCategory.HISTORICAL_BAR,
+    RateCurvePointObservation: MarketDataCategory.RATE,
+    DividendObservation: MarketDataCategory.DIVIDEND,
+}
+
+
+def _freshness_age_limit(
+    category: MarketDataCategory,
+    policy: MarketDataFreshnessPolicy,
+) -> Optional[int]:
+    """Return the category age limit, or None for historical bars."""
+
+    return {
+        MarketDataCategory.QUOTE: policy.maximum_quote_age_seconds,
+        MarketDataCategory.ANALYTICS: policy.maximum_analytics_age_seconds,
+        MarketDataCategory.ACTIVITY: policy.maximum_activity_age_seconds,
+        MarketDataCategory.CONTRACT_REFERENCE: (
+            policy.maximum_reference_age_seconds
+        ),
+        MarketDataCategory.HISTORICAL_BAR: None,
+        MarketDataCategory.RATE: policy.maximum_rate_age_seconds,
+        MarketDataCategory.DIVIDEND: policy.maximum_dividend_age_seconds,
+    }[category]
+
+
+def assess_market_data_freshness(
+    record: object,
+    policy: MarketDataFreshnessPolicy,
+    context: FreshnessContext,
+) -> FreshnessAssessment:
+    """Assess one exact supported normalized record without external state."""
+
+    category = _MARKET_DATA_CATEGORY_BY_RECORD_TYPE.get(type(record))
+    if category is None:
+        raise TypeError("record must be a supported normalized market-data record")
+    if not isinstance(policy, MarketDataFreshnessPolicy):
+        raise TypeError("policy must be a MarketDataFreshnessPolicy")
+    if not isinstance(context, FreshnessContext):
+        raise TypeError("context must be a FreshnessContext")
+
+    metadata = record.metadata  # type: ignore[attr-defined]
+    sources = metadata.source_references
+    observed_times = tuple(source.observed_at for source in sources)
+    evaluation_at = context.evaluation_at
+    effective_age = _timedelta_to_decimal_seconds(
+        evaluation_at - metadata.effective_observed_at
+    )
+    oldest_source_age = _timedelta_to_decimal_seconds(
+        evaluation_at - min(observed_times)
+    )
+    retrieval_lag = max(
+        _timedelta_to_decimal_seconds(source.retrieved_at - source.observed_at)
+        for source in sources
+    )
+    source_span = _timedelta_to_decimal_seconds(
+        max(observed_times) - min(observed_times)
+    )
+
+    session_date_gap_days = None
+    if type(record) is OptionOpenInterestObservation:
+        session_date_gap_days = (
+            context.latest_completed_session_date
+            - record.open_interest_session_date  # type: ignore[attr-defined]
+        ).days
+    elif (
+        type(record) is UnderlyingDailyBarObservation
+        and record.is_session_complete  # type: ignore[attr-defined]
+    ):
+        session_date_gap_days = (
+            context.latest_completed_session_date
+            - record.session_date  # type: ignore[attr-defined]
+        ).days
+
+    reasons = set()
+    if metadata.normalized_at > evaluation_at:
+        reasons.add(
+            FreshnessReasonCode.RECORD_NORMALIZED_AFTER_EVALUATION
+        )
+    if any(source.retrieved_at > evaluation_at for source in sources):
+        reasons.add(FreshnessReasonCode.SOURCE_RETRIEVED_AFTER_EVALUATION)
+    if any(source.observed_at > evaluation_at for source in sources):
+        reasons.add(FreshnessReasonCode.SOURCE_OBSERVED_AFTER_EVALUATION)
+
+    normalization_flags = set(metadata.quality_flags)
+    if NormalizationQualityFlag.INCOMPLETE in normalization_flags:
+        reasons.add(FreshnessReasonCode.NORMALIZATION_INCOMPLETE)
+    if (
+        NormalizationQualityFlag.TIMESTAMP_ASSIGNED in normalization_flags
+        and not policy.allow_assigned_timestamps
+    ):
+        reasons.add(FreshnessReasonCode.ASSIGNED_TIMESTAMP_NOT_ALLOWED)
+
+    for source in sources:
+        source_flags = set(source.quality_flags)
+        if (
+            SourceQualityFlag.DELAYED in source_flags
+            and not policy.allow_delayed_data
+        ):
+            reasons.add(FreshnessReasonCode.DELAYED_DATA_NOT_ALLOWED)
+        if (
+            SourceQualityFlag.INDICATIVE in source_flags
+            and not policy.allow_indicative_data
+        ):
+            reasons.add(FreshnessReasonCode.INDICATIVE_DATA_NOT_ALLOWED)
+        if (
+            SourceQualityFlag.NON_FIRM in source_flags
+            and not policy.allow_non_firm_data
+        ):
+            reasons.add(FreshnessReasonCode.NON_FIRM_DATA_NOT_ALLOWED)
+        if (
+            SourceQualityFlag.PARTIAL in source_flags
+            and not policy.allow_partial_data
+        ):
+            reasons.add(FreshnessReasonCode.PARTIAL_DATA_NOT_ALLOWED)
+        if (
+            SourceQualityFlag.HALTED in source_flags
+            and category in {
+                MarketDataCategory.QUOTE,
+                MarketDataCategory.ANALYTICS,
+            }
+        ):
+            reasons.add(FreshnessReasonCode.HALTED_SOURCE)
+
+    if (
+        len(sources) > 1
+        and source_span
+        > decimal.Decimal(policy.maximum_source_observation_span_seconds)
+    ):
+        reasons.add(FreshnessReasonCode.SOURCE_OBSERVATION_SPAN_EXCEEDED)
+
+    if category is MarketDataCategory.QUOTE:
+        if record.market_phase is MarketPhase.UNKNOWN:  # type: ignore[attr-defined]
+            reasons.add(FreshnessReasonCode.UNKNOWN_MARKET_PHASE)
+        if record.quote_scope is QuoteScope.UNKNOWN:  # type: ignore[attr-defined]
+            reasons.add(FreshnessReasonCode.UNKNOWN_QUOTE_SCOPE)
+        if (
+            policy.require_regular_session_quotes
+            and record.market_phase is not MarketPhase.REGULAR  # type: ignore[attr-defined]
+        ):
+            reasons.add(FreshnessReasonCode.NON_REGULAR_SESSION_QUOTE)
+
+    if type(record) is UnderlyingDailyBarObservation:
+        if (
+            policy.require_completed_historical_sessions
+            and not record.is_session_complete  # type: ignore[attr-defined]
+        ):
+            reasons.add(FreshnessReasonCode.HISTORICAL_SESSION_INCOMPLETE)
+        if record.is_session_complete:  # type: ignore[attr-defined]
+            if record.session_date > context.latest_completed_session_date:  # type: ignore[attr-defined]
+                reasons.add(
+                    FreshnessReasonCode.SESSION_DATE_AFTER_LATEST_COMPLETED_SESSION
+                )
+            if (
+                session_date_gap_days
+                > policy.maximum_historical_bar_session_date_gap_days
+            ):
+                reasons.add(
+                    FreshnessReasonCode.HISTORICAL_BAR_SESSION_DATE_GAP_EXCEEDED
+                )
+
+    if type(record) is OptionOpenInterestObservation:
+        if (
+            record.open_interest_session_date  # type: ignore[attr-defined]
+            > context.latest_completed_session_date
+        ):
+            reasons.add(
+                FreshnessReasonCode.SESSION_DATE_AFTER_LATEST_COMPLETED_SESSION
+            )
+        if (
+            session_date_gap_days
+            > policy.maximum_open_interest_session_date_gap_days
+        ):
+            reasons.add(
+                FreshnessReasonCode.OPEN_INTEREST_SESSION_DATE_GAP_EXCEEDED
+            )
+
+    age_limit = _freshness_age_limit(category, policy)
+    if age_limit is not None:
+        decimal_age_limit = decimal.Decimal(age_limit)
+        if effective_age > decimal_age_limit:
+            reasons.add(FreshnessReasonCode.EFFECTIVE_AGE_EXCEEDED)
+        if oldest_source_age > decimal_age_limit:
+            reasons.add(FreshnessReasonCode.OLDEST_SOURCE_AGE_EXCEEDED)
+    if retrieval_lag > decimal.Decimal(policy.maximum_retrieval_lag_seconds):
+        reasons.add(FreshnessReasonCode.RETRIEVAL_LAG_EXCEEDED)
+
+    if not reasons:
+        reasons.add(FreshnessReasonCode.FRESH_WITHIN_POLICY)
+    canonical_reasons = tuple(
+        reason for reason in FreshnessReasonCode if reason in reasons
+    )
+    status = _freshness_status_from_reasons(canonical_reasons)
+    return FreshnessAssessment(
+        record_id=metadata.record_id,
+        category=category,
+        status=status,
+        reason_codes=canonical_reasons,
+        policy_id=policy.policy_id,
+        policy_version=policy.policy_version,
+        evaluated_at=evaluation_at,
+        effective_age_seconds=effective_age,
+        oldest_source_age_seconds=oldest_source_age,
+        maximum_retrieval_lag_seconds_observed=retrieval_lag,
+        source_observation_span_seconds=source_span,
+        session_date_gap_days=session_date_gap_days,
+    )

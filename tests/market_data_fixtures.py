@@ -8,6 +8,8 @@ from convexity_hunter.market_data import (
     DataOrigin,
     DividendObservation,
     DividendStatus,
+    FreshnessContext,
+    MarketDataFreshnessPolicy,
     MarketPhase,
     NormalizationMetadata,
     OptionContractKey,
@@ -32,10 +34,51 @@ NON_UTC = datetime.timezone(datetime.timedelta(hours=-5))
 OBSERVED_AT = datetime.datetime(2030, 1, 2, 15, 30, tzinfo=UTC)
 RETRIEVED_AT = datetime.datetime(2030, 1, 2, 15, 30, 2, tzinfo=UTC)
 NORMALIZED_AT = datetime.datetime(2030, 1, 2, 15, 30, 3, tzinfo=UTC)
+EVALUATION_AT = datetime.datetime(2030, 1, 2, 15, 31, tzinfo=UTC)
 NON_UTC_OBSERVED_AT = datetime.datetime(2030, 1, 2, 10, 30, tzinfo=NON_UTC)
 NON_UTC_RETRIEVED_AT = datetime.datetime(2030, 1, 2, 10, 30, 2, tzinfo=NON_UTC)
 EXPIRATION = datetime.date(2030, 3, 15)
 SESSION_DATE = datetime.date(2030, 1, 2)
+
+
+def build_freshness_policy(**overrides: object) -> MarketDataFreshnessPolicy:
+    """Build one explicit synthetic single-record freshness policy."""
+
+    values = {
+        "policy_id": "synthetic-freshness",
+        "policy_version": "v1",
+        "maximum_quote_age_seconds": 60,
+        "maximum_analytics_age_seconds": 60,
+        "maximum_activity_age_seconds": 120,
+        "maximum_reference_age_seconds": 86400,
+        "maximum_rate_age_seconds": 86400,
+        "maximum_dividend_age_seconds": 86400,
+        "maximum_retrieval_lag_seconds": 5,
+        "maximum_source_observation_span_seconds": 2,
+        "maximum_cross_record_skew_seconds": 10,
+        "maximum_open_interest_session_date_gap_days": 3,
+        "maximum_historical_bar_session_date_gap_days": 5,
+        "allow_delayed_data": False,
+        "allow_indicative_data": False,
+        "allow_non_firm_data": False,
+        "allow_partial_data": False,
+        "allow_assigned_timestamps": False,
+        "require_regular_session_quotes": True,
+        "require_completed_historical_sessions": True,
+    }
+    values.update(overrides)
+    return MarketDataFreshnessPolicy(**values)  # type: ignore[arg-type]
+
+
+def build_freshness_context(**overrides: object) -> FreshnessContext:
+    """Build one explicit synthetic freshness evaluation context."""
+
+    values = {
+        "evaluation_at": EVALUATION_AT,
+        "latest_completed_session_date": SESSION_DATE,
+    }
+    values.update(overrides)
+    return FreshnessContext(**values)  # type: ignore[arg-type]
 
 
 def build_source_reference(**overrides: object) -> SourceReference:
