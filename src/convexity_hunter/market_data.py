@@ -2,6 +2,7 @@
 
 import datetime
 import decimal
+import json
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -42,6 +43,10 @@ __all__ = (
     "CorrectionSelectionReasonCode",
     "CorrectionSelection",
     "select_correction_candidate",
+    "CalculationQualityFlag",
+    "CalculationInputReference",
+    "CalculationLineage",
+    "canonicalize_lineage_parameters",
 )
 
 
@@ -291,6 +296,330 @@ def _timedelta_to_decimal_seconds(
     return decimal.Decimal((sign, digits, -6))
 
 
+_LINEAGE_DATETIME_PATTERN = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+    r"[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z$"
+)
+
+
+def _validate_no_surrogates(name: str, value: str) -> None:
+    """Reject strings that cannot be encoded as strict UTF-8."""
+
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        raise ValueError(f"{name} must not contain Unicode surrogates")
+
+
+def _normalize_exact_utc_datetime(
+    name: str, value: object
+) -> datetime.datetime:
+    """Normalize an exact aware datetime and hide representation overflow."""
+
+    if type(value) is not datetime.datetime:
+        raise TypeError(f"{name} must have exact type datetime")
+    try:
+        offset = value.utcoffset()
+    except (OverflowError, TypeError, ValueError) as error:
+        raise ValueError(f"{name} has an invalid timezone offset") from error
+    if value.tzinfo is None or offset is None:
+        raise ValueError(f"{name} must be timezone-aware")
+    try:
+        return value.astimezone(datetime.timezone.utc)
+    except (OverflowError, TypeError, ValueError) as error:
+        raise ValueError(f"{name} cannot be represented in UTC") from error
+
+
+def _canonical_datetime_string(value: datetime.datetime) -> str:
+    """Serialize one already-normalized UTC datetime canonically."""
+
+    return value.isoformat(timespec="microseconds")[:-6] + "Z"
+
+
+def _canonical_decimal_string(value: decimal.Decimal) -> str:
+    """Serialize one finite Decimal without ambient-context operations."""
+
+    if not value.is_finite():
+        raise ValueError("Decimal parameter must be finite")
+    normalized = value.copy_abs() if value.is_zero() else value
+    return str(normalized)
+
+
+def _validate_lineage_key(key: object) -> str:
+    """Validate one exact, untrimmed canonical mapping key."""
+
+    if type(key) is not str:
+        raise TypeError("lineage parameter keys must have exact type str")
+    _validate_no_surrogates("lineage parameter key", key)
+    if not key or key != key.strip():
+        raise ValueError(
+            "lineage parameter keys must be non-empty without surrounding whitespace"
+        )
+    return key
+
+
+def _canonicalize_lineage_mapping(
+    value: dict, depth: int, active_path: set
+) -> dict:
+    """Convert an exact Python dictionary to a canonical tagged mapping."""
+
+    if depth > 32:
+        raise ValueError("lineage parameter container depth must not exceed 32")
+    identity = id(value)
+    if identity in active_path:
+        raise ValueError("lineage parameters must not contain cycles")
+    active_path.add(identity)
+    try:
+        keys = tuple(_validate_lineage_key(key) for key in value.keys())
+        entries = []
+        for key in sorted(keys):
+            entries.append([
+                key,
+                _canonicalize_lineage_value(value[key], depth, active_path),
+            ])
+        return {"$map": entries}
+    finally:
+        active_path.remove(identity)
+
+
+def _canonicalize_lineage_list(
+    value: object, depth: int, active_path: set
+) -> dict:
+    """Convert one exact list or tuple to a canonical tagged list."""
+
+    if depth > 32:
+        raise ValueError("lineage parameter container depth must not exceed 32")
+    identity = id(value)
+    if identity in active_path:
+        raise ValueError("lineage parameters must not contain cycles")
+    active_path.add(identity)
+    try:
+        return {
+            "$list": [
+                _canonicalize_lineage_value(item, depth, active_path)
+                for item in value  # type: ignore[union-attr]
+            ]
+        }
+    finally:
+        active_path.remove(identity)
+
+
+def _canonicalize_lineage_value(
+    value: object, container_depth: int, active_path: set
+) -> object:
+    """Convert one exact supported Python value to the tagged grammar."""
+
+    value_type = type(value)
+    if value is None:
+        return None
+    if value_type is bool or value_type is int:
+        return value
+    if value_type is str:
+        _validate_no_surrogates("lineage string parameter", value)
+        return value
+    if value_type is decimal.Decimal:
+        return {"$decimal": _canonical_decimal_string(value)}
+    if value_type is datetime.datetime:
+        normalized = _normalize_exact_utc_datetime(
+            "lineage datetime parameter", value
+        )
+        return {"$datetime": _canonical_datetime_string(normalized)}
+    if value_type is datetime.date:
+        return {"$date": value.isoformat()}
+    if value_type is list or value_type is tuple:
+        return _canonicalize_lineage_list(
+            value, container_depth + 1, active_path
+        )
+    if value_type is dict:
+        return _canonicalize_lineage_mapping(
+            value, container_depth + 1, active_path
+        )
+    raise TypeError(
+        f"unsupported lineage parameter type: {value_type.__name__}"
+    )
+
+
+def _serialize_lineage_tree(value: object) -> str:
+    """Serialize a validated tagged tree using canonical JSON settings."""
+
+    serialized = json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    serialized.encode("utf-8")
+    return serialized
+
+
+def canonicalize_lineage_parameters(parameters: object) -> str:
+    """Return deterministic canonical tagged JSON for exact Python inputs."""
+
+    if type(parameters) is not dict:
+        raise TypeError("parameters must have exact built-in type dict")
+    tree = _canonicalize_lineage_mapping(parameters, 1, set())
+    return _serialize_lineage_tree(tree)
+
+
+def _reject_lineage_json_float(value: str) -> object:
+    """Reject JSON floating-point and non-standard numeric constants."""
+
+    raise ValueError(f"lineage parameters JSON does not allow float {value}")
+
+
+def _lineage_object_from_pairs(pairs: object) -> dict:
+    """Construct one JSON object while detecting duplicate object keys."""
+
+    result = {}
+    for key, value in pairs:  # type: ignore[union-attr]
+        if key in result:
+            raise ValueError("lineage parameters JSON has duplicate object keys")
+        result[key] = value
+    return result
+
+
+def _parse_lineage_json(value: str) -> object:
+    """Parse JSON with duplicate and floating-point rejection."""
+
+    try:
+        return json.loads(
+            value,
+            object_pairs_hook=_lineage_object_from_pairs,
+            parse_float=_reject_lineage_json_float,
+            parse_constant=_reject_lineage_json_float,
+        )
+    except json.JSONDecodeError as error:
+        raise ValueError("parameters_json must contain valid JSON") from None
+    except RecursionError as error:
+        raise ValueError("parameters_json exceeds supported depth") from error
+
+
+def _require_tag_payload_string(tag: str, payload: object) -> str:
+    """Require one surrogate-free exact string tag payload."""
+
+    if type(payload) is not str:
+        raise ValueError(f"{tag} payload must be a JSON string")
+    _validate_no_surrogates(f"{tag} payload", payload)
+    return payload
+
+
+def _validate_lineage_decimal_payload(payload: object) -> None:
+    """Require one canonical finite Decimal string."""
+
+    text = _require_tag_payload_string("$decimal", payload)
+    try:
+        value = decimal.Decimal(text)
+    except (decimal.InvalidOperation, ValueError):
+        raise ValueError("$decimal payload must parse as Decimal") from None
+    if _canonical_decimal_string(value) != text:
+        raise ValueError("$decimal payload is not canonical")
+
+
+def _validate_lineage_date_payload(payload: object) -> None:
+    """Require one byte-canonical ISO calendar date."""
+
+    text = _require_tag_payload_string("$date", payload)
+    try:
+        value = datetime.date.fromisoformat(text)
+    except ValueError:
+        raise ValueError("$date payload must be an ISO date") from None
+    if value.isoformat() != text:
+        raise ValueError("$date payload is not canonical")
+
+
+def _validate_lineage_datetime_payload(payload: object) -> None:
+    """Require one byte-canonical six-digit UTC datetime."""
+
+    text = _require_tag_payload_string("$datetime", payload)
+    if _LINEAGE_DATETIME_PATTERN.fullmatch(text) is None:
+        raise ValueError("$datetime payload is not canonical")
+    try:
+        value = datetime.datetime.fromisoformat(text[:-1] + "+00:00")
+    except ValueError:
+        raise ValueError("$datetime payload is invalid") from None
+    if _canonical_datetime_string(value) != text:
+        raise ValueError("$datetime payload is not canonical")
+
+
+def _validate_lineage_json_map(payload: object, depth: int) -> None:
+    """Validate one $map payload at its exact container depth."""
+
+    if depth > 32:
+        raise ValueError("lineage parameter container depth must not exceed 32")
+    if type(payload) is not list:
+        raise ValueError("$map payload must be a JSON array")
+    seen = set()
+    previous = None
+    for entry in payload:
+        if type(entry) is not list or len(entry) != 2:
+            raise ValueError("every $map entry must be a two-element JSON array")
+        key = entry[0]
+        if type(key) is not str:
+            raise ValueError("every $map key must be a JSON string")
+        _validate_no_surrogates("$map key", key)
+        if not key or key != key.strip():
+            raise ValueError(
+                "$map keys must be non-empty without surrounding whitespace"
+            )
+        if key in seen:
+            raise ValueError("$map user keys must not contain duplicates")
+        if previous is not None and key <= previous:
+            raise ValueError("$map keys must be in strictly increasing order")
+        seen.add(key)
+        previous = key
+        _validate_lineage_json_value(entry[1], depth)
+
+
+def _validate_lineage_json_list(payload: object, depth: int) -> None:
+    """Validate one $list payload at its exact container depth."""
+
+    if depth > 32:
+        raise ValueError("lineage parameter container depth must not exceed 32")
+    if type(payload) is not list:
+        raise ValueError("$list payload must be a JSON array")
+    for item in payload:
+        _validate_lineage_json_value(item, depth)
+
+
+def _validate_lineage_json_value(value: object, container_depth: int) -> None:
+    """Validate one recursive value in an already-parsed tagged tree."""
+
+    value_type = type(value)
+    if value is None or value_type is bool or value_type is int:
+        return
+    if value_type is str:
+        _validate_no_surrogates("lineage JSON string", value)
+        return
+    if value_type is not dict:
+        raise ValueError("lineage JSON values must follow the tagged grammar")
+    if len(value) != 1:
+        raise ValueError("tagged JSON objects must contain exactly one key")
+    tag, payload = next(iter(value.items()))
+    _validate_no_surrogates("lineage JSON tag", tag)
+    if tag == "$map":
+        _validate_lineage_json_map(payload, container_depth + 1)
+    elif tag == "$list":
+        _validate_lineage_json_list(payload, container_depth + 1)
+    elif tag == "$decimal":
+        _validate_lineage_decimal_payload(payload)
+    elif tag == "$date":
+        _validate_lineage_date_payload(payload)
+    elif tag == "$datetime":
+        _validate_lineage_datetime_payload(payload)
+    else:
+        raise ValueError(f"unknown lineage JSON tag: {tag}")
+
+
+def _validate_canonical_lineage_json(value: str) -> None:
+    """Validate complete canonical parameters JSON without normalizing it."""
+
+    tree = _parse_lineage_json(value)
+    if type(tree) is not dict or tuple(tree.keys()) != ("$map",):
+        raise ValueError("parameters_json root must be exactly one $map object")
+    _validate_lineage_json_map(tree["$map"], 1)
+    if _serialize_lineage_tree(tree) != value:
+        raise ValueError("parameters_json must be byte-identical canonical JSON")
+
+
 class DataOrigin(str, Enum):
     """Origin category for source and normalized records."""
 
@@ -436,6 +765,19 @@ class CorrectionSelectionReasonCode(str, Enum):
     DOMINATING_REVISION_VECTOR_SELECTED = (
         "dominating_revision_vector_selected"
     )
+
+
+class CalculationQualityFlag(str, Enum):
+    """Canonical conditions disclosed for one deterministic calculation."""
+
+    DECIMAL_TO_FLOAT_CONVERTED = "decimal_to_float_converted"
+    INTERPOLATED = "interpolated"
+    ANNUALIZED = "annualized"
+    ADJUSTED_INPUT_USED = "adjusted_input_used"
+    CORRECTION_SELECTED = "correction_selected"
+    COMPOSITE_INPUT_USED = "composite_input_used"
+    ASSUMPTION_APPLIED = "assumption_applied"
+    INCOMPLETE_INPUT_USED = "incomplete_input_used"
 
 
 _INELIGIBLE_FRESHNESS_REASONS = frozenset(tuple(FreshnessReasonCode)[:14])
@@ -806,6 +1148,138 @@ class CorrectionSelection:
         object.__setattr__(self, "rule_id", rule_id)
         object.__setattr__(self, "rule_version", rule_version)
         object.__setattr__(self, "evaluated_at", evaluated_at)
+
+
+def _normalize_lineage_source_ids(values: object) -> Tuple[str, ...]:
+    """Normalize the exact tuple/list source-ID constructor boundary."""
+
+    if type(values) is not tuple and type(values) is not list:
+        raise TypeError("source_ids must be an exact tuple or list")
+    normalized = []
+    for value in values:
+        if type(value) is not str:
+            raise TypeError("every source_ids item must have exact type str")
+        source_id = value.strip()
+        if not source_id:
+            raise ValueError("source_ids items must not be empty")
+        normalized.append(source_id)
+    if not normalized:
+        raise ValueError("source_ids must contain at least one item")
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("source_ids must not contain duplicates")
+    return tuple(sorted(normalized))
+
+
+def _normalize_calculation_inputs(
+    values: object,
+) -> Tuple["CalculationInputReference", ...]:
+    """Normalize exact calculation-input records into record-ID order."""
+
+    if type(values) is not tuple and type(values) is not list:
+        raise TypeError("inputs must be an exact tuple or list")
+    normalized = tuple(values)
+    if not all(type(item) is CalculationInputReference for item in normalized):
+        raise TypeError(
+            "every inputs item must have exact type CalculationInputReference"
+        )
+    if not normalized:
+        raise ValueError("inputs must contain at least one item")
+    record_ids = tuple(item.record_id for item in normalized)
+    if len(set(record_ids)) != len(record_ids):
+        raise ValueError("input record IDs must not contain duplicates")
+    return tuple(sorted(normalized, key=lambda item: item.record_id))
+
+
+def _normalize_calculation_quality_flags(
+    values: object,
+) -> Tuple[CalculationQualityFlag, ...]:
+    """Normalize exact calculation flags into declaration order."""
+
+    if type(values) is not tuple and type(values) is not list:
+        raise TypeError("quality_flags must be an exact tuple or list")
+    normalized = tuple(values)
+    if not all(type(item) is CalculationQualityFlag for item in normalized):
+        raise TypeError(
+            "every quality_flags item must have exact type CalculationQualityFlag"
+        )
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("quality_flags must not contain duplicates")
+    selected = set(normalized)
+    return tuple(flag for flag in CalculationQualityFlag if flag in selected)
+
+
+@dataclass(frozen=True)
+class CalculationInputReference:
+    """Immutable reference to one normalized calculation input version."""
+
+    record_id: str
+    normalized_at: datetime.datetime
+    source_ids: Tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        record_id = _normalize_required_string("record_id", self.record_id)
+        normalized_at = _normalize_exact_utc_datetime(
+            "normalized_at", self.normalized_at
+        )
+        source_ids = _normalize_lineage_source_ids(self.source_ids)
+        object.__setattr__(self, "record_id", record_id)
+        object.__setattr__(self, "normalized_at", normalized_at)
+        object.__setattr__(self, "source_ids", source_ids)
+
+
+@dataclass(frozen=True)
+class CalculationLineage:
+    """Immutable auditable sidecar for one deterministic calculation."""
+
+    calculation_id: str
+    calculation_type: str
+    methodology_id: str
+    methodology_version: str
+    calculated_at: datetime.datetime
+    inputs: Tuple[CalculationInputReference, ...]
+    parameters_json: str
+    quality_flags: Tuple[CalculationQualityFlag, ...]
+
+    def __post_init__(self) -> None:
+        calculation_id = _normalize_required_string(
+            "calculation_id", self.calculation_id
+        )
+        calculation_type = _normalize_required_string(
+            "calculation_type", self.calculation_type
+        )
+        methodology_id = _normalize_required_string(
+            "methodology_id", self.methodology_id
+        )
+        methodology_version = _normalize_required_string(
+            "methodology_version", self.methodology_version
+        )
+        calculated_at = _normalize_exact_utc_datetime(
+            "calculated_at", self.calculated_at
+        )
+        inputs = _normalize_calculation_inputs(self.inputs)
+        if calculation_id in {item.record_id for item in inputs}:
+            raise ValueError("calculation_id must not equal an input record ID")
+        if any(calculated_at < item.normalized_at for item in inputs):
+            raise ValueError("calculated_at must not precede any input")
+
+        if type(self.parameters_json) is not str:
+            raise TypeError("parameters_json must have exact type str")
+        parameters_json = self.parameters_json.strip()
+        if not parameters_json:
+            raise ValueError("parameters_json must not be empty")
+        _validate_canonical_lineage_json(parameters_json)
+        quality_flags = _normalize_calculation_quality_flags(
+            self.quality_flags
+        )
+
+        object.__setattr__(self, "calculation_id", calculation_id)
+        object.__setattr__(self, "calculation_type", calculation_type)
+        object.__setattr__(self, "methodology_id", methodology_id)
+        object.__setattr__(self, "methodology_version", methodology_version)
+        object.__setattr__(self, "calculated_at", calculated_at)
+        object.__setattr__(self, "inputs", inputs)
+        object.__setattr__(self, "parameters_json", parameters_json)
+        object.__setattr__(self, "quality_flags", quality_flags)
 
 
 @dataclass(frozen=True)

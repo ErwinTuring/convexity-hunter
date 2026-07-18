@@ -45,16 +45,18 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3B deterministic freshness, correction-selection, and calculation-lineage contracts documented and reviewed, including canonical reason ordering, complete composite-source checks, calendar-date-gap semantics, revision-vector dominance, and canonical tagged-JSON serialization.
 - Milestone 3B.1 completed: deterministic single-record market-data freshness policy, context, assessment, canonical reason handling, exact Decimal timing metrics, composite-source checks, and calendar-date-gap rules implemented and validated with fixed synthetic fixtures.
 - Milestone 3B.2 completed: deterministic provider-correction selection implemented and validated with exact lineage matching, normalized revision components, correction-identity conflict handling, revision-vector dominance, canonical terminal reasons, and deterministic synthetic fixtures.
+- Milestone 3B.3 completed: canonical calculation lineage implemented and validated with immutable input references, deterministic tagged-JSON parameter serialization, exact type boundaries, duplicate-key-safe validation, Decimal/date/datetime canonicalization, depth and cycle controls, and auditable calculation-lineage sidecars.
+- Milestone 3B completed: deterministic freshness assessment, provider-correction selection, and canonical calculation lineage are implemented, independently reviewed, and validated with fixed synthetic fixtures.
 
 ## Current task
 
-Perform Milestone 3B.3 canonical calculation-lineage specification preflight before implementation.
+Perform Milestone 3C transformations and snapshot-coherence specification preflight before implementation.
 
-Milestones 3B.1 and 3B.2 are complete. Milestone 3B.3 implementation has not started. Milestone 3C semantic observation keys, snapshot assembly, and transformations remain deferred. No provider has been selected and no network access is authorized. `market_data.py` remains independent of the evidence, report, and scanner modules.
+Milestones 3B.1, 3B.2, and 3B.3 are complete, and Milestone 3B is complete. Milestone 3C implementation has not started. Semantic observation keys, multi-record snapshot coherence and assembly, and deterministic transformations belong to the upcoming 3C scope and remain unimplemented. No provider has been selected and no network access is authorized. `market_data.py` remains independent of the evidence, report, and scanner modules.
 
 ## Next task
 
-Implement Milestone 3B.3 canonical calculation lineage after preflight approval.
+Implement the approved Milestone 3C scope after specification preflight.
 
 ## Deferred
 

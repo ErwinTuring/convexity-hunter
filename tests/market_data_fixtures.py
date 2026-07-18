@@ -5,6 +5,9 @@ import decimal
 from typing import Optional
 
 from convexity_hunter.market_data import (
+    CalculationInputReference,
+    CalculationLineage,
+    CalculationQualityFlag,
     CorrectionSelection,
     CorrectionSelectionReasonCode,
     CorrectionSelectionStatus,
@@ -30,6 +33,7 @@ from convexity_hunter.market_data import (
     UnderlyingKey,
     UnderlyingQuoteObservation,
     UnderlyingSecurityType,
+    canonicalize_lineage_parameters,
 )
 
 
@@ -43,6 +47,7 @@ NON_UTC_OBSERVED_AT = datetime.datetime(2030, 1, 2, 10, 30, tzinfo=NON_UTC)
 NON_UTC_RETRIEVED_AT = datetime.datetime(2030, 1, 2, 10, 30, 2, tzinfo=NON_UTC)
 EXPIRATION = datetime.date(2030, 3, 15)
 SESSION_DATE = datetime.date(2030, 1, 2)
+CALCULATED_AT = datetime.datetime(2030, 1, 2, 15, 30, 4, tzinfo=UTC)
 
 
 def build_freshness_policy(**overrides: object) -> MarketDataFreshnessPolicy:
@@ -487,3 +492,38 @@ def build_dividend_observation(**overrides: object) -> DividendObservation:
     }
     values.update(overrides)
     return DividendObservation(**values)  # type: ignore[arg-type]
+
+
+def build_calculation_input_reference(
+    record_id: str = "normalized-001",
+    **overrides: object,
+) -> CalculationInputReference:
+    """Build one fixed normalized-record reference for lineage tests."""
+
+    values = {
+        "record_id": record_id,
+        "normalized_at": NORMALIZED_AT,
+        "source_ids": ("source-001",),
+    }
+    values.update(overrides)
+    return CalculationInputReference(**values)  # type: ignore[arg-type]
+
+
+def build_calculation_lineage(**overrides: object) -> CalculationLineage:
+    """Build one fixed deterministic calculation-lineage sidecar."""
+
+    values = {
+        "calculation_id": "calculation-001",
+        "calculation_type": "synthetic-volatility-metric",
+        "methodology_id": "synthetic-methodology",
+        "methodology_version": "v1",
+        "calculated_at": CALCULATED_AT,
+        "inputs": (build_calculation_input_reference(),),
+        "parameters_json": canonicalize_lineage_parameters({
+            "annualization_days": 252,
+            "window": decimal.Decimal("30.00"),
+        }),
+        "quality_flags": (CalculationQualityFlag.ANNUALIZED,),
+    }
+    values.update(overrides)
+    return CalculationLineage(**values)  # type: ignore[arg-type]

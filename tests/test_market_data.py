@@ -1,6 +1,7 @@
 """Tests for Milestone 3A.1 market-data provenance and identity records."""
 
 import dataclasses
+import collections
 import datetime
 import decimal
 import itertools
@@ -16,6 +17,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import convexity_hunter.market_data as market_data
 from convexity_hunter.market_data import (
+    CalculationInputReference,
+    CalculationLineage,
+    CalculationQualityFlag,
     CorrectionSelection,
     CorrectionSelectionReasonCode,
     CorrectionSelectionStatus,
@@ -47,9 +51,11 @@ from convexity_hunter.market_data import (
     UnderlyingQuoteObservation,
     UnderlyingSecurityType,
     assess_market_data_freshness,
+    canonicalize_lineage_parameters,
     select_correction_candidate,
 )
 from tests.market_data_fixtures import (
+    CALCULATED_AT,
     EVALUATION_AT,
     NON_UTC_OBSERVED_AT,
     NON_UTC_RETRIEVED_AT,
@@ -60,6 +66,8 @@ from tests.market_data_fixtures import (
     build_correction_candidate,
     build_correction_selection,
     build_correction_source,
+    build_calculation_input_reference,
+    build_calculation_lineage,
     build_normalization_metadata,
     build_dividend_observation,
     build_freshness_context,
@@ -197,16 +205,19 @@ class PublicSurfaceTests(unittest.TestCase):
             "CorrectionSelectionReasonCode",
             "CorrectionSelection",
             "select_correction_candidate",
+            "CalculationQualityFlag",
+            "CalculationInputReference",
+            "CalculationLineage",
+            "canonicalize_lineage_parameters",
         )
         self.assertEqual(market_data.__all__, expected)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
         later_types = (
-            "CalculationQualityFlag",
-            "CalculationInputReference",
-            "CalculationLineage",
-            "canonicalize_lineage_parameters",
+            "SemanticObservationKey",
+            "MarketDataSnapshot",
+            "transform_market_data",
         )
         self.assertTrue(all(not hasattr(market_data, name) for name in later_types))
 
@@ -309,6 +320,14 @@ class PublicSurfaceTests(unittest.TestCase):
                 "selected_record_id", "status", "reason_codes", "rule_id",
                 "rule_version", "evaluated_at",
             ),
+            CalculationInputReference: (
+                "record_id", "normalized_at", "source_ids",
+            ),
+            CalculationLineage: (
+                "calculation_id", "calculation_type", "methodology_id",
+                "methodology_version", "calculated_at", "inputs",
+                "parameters_json", "quality_flags",
+            ),
         }
         for record, names in expected.items():
             with self.subTest(record=record.__name__):
@@ -369,6 +388,12 @@ class EnumContractTests(unittest.TestCase):
             "conflicting_correction_ids_same_revision",
             "tied_revision_vectors", "incomparable_revision_vectors",
             "only_candidate_selected", "dominating_revision_vector_selected",
+        ),
+        CalculationQualityFlag: (
+            "decimal_to_float_converted", "interpolated", "annualized",
+            "adjusted_input_used", "correction_selected",
+            "composite_input_used", "assumption_applied",
+            "incomplete_input_used",
         ),
     }
 
@@ -3178,6 +3203,492 @@ class CorrectionMultiSourceAndDeterminismTests(unittest.TestCase):
         self.assertEqual(before, (tuple(candidates), tuple(map(repr, candidates))))
 
 
+class LineageCanonicalValueTests(unittest.TestCase):
+    def test_complete_supported_scalar_and_container_grammar(self) -> None:
+        parameters = {
+            "none": None,
+            "bool": True,
+            "int": 7,
+            "str": "text",
+            "decimal": decimal.Decimal("0.20"),
+            "date": datetime.date(2026, 7, 18),
+            "datetime": datetime.datetime(
+                2026, 7, 18, 19, tzinfo=datetime.timezone.utc
+            ),
+            "list": [1, False],
+            "tuple": (1, False),
+            "dict": {"nested": "value"},
+        }
+        result = canonicalize_lineage_parameters(parameters)
+        self.assertIn('"$decimal":"0.20"', result)
+        self.assertIn('"$date":"2026-07-18"', result)
+        self.assertIn('"$datetime":"2026-07-18T19:00:00.000000Z"', result)
+        self.assertEqual(
+            canonicalize_lineage_parameters({"value": [1, False]}),
+            canonicalize_lineage_parameters({"value": (1, False)}),
+        )
+
+    def test_empty_map_map_order_and_list_order(self) -> None:
+        self.assertEqual(canonicalize_lineage_parameters({}), '{"$map":[]}')
+        first = {"z": 1, "a": 2, "😀": 3}
+        second = {"😀": 3, "a": 2, "z": 1}
+        self.assertEqual(
+            canonicalize_lineage_parameters(first),
+            canonicalize_lineage_parameters(second),
+        )
+        self.assertIn('[["a",2],["z",1],["😀",3]]',
+                      canonicalize_lineage_parameters(first))
+        self.assertNotEqual(
+            canonicalize_lineage_parameters({"x": [1, 2]}),
+            canonicalize_lineage_parameters({"x": [2, 1]}),
+        )
+
+    def test_decimal_precision_zero_exponent_and_context_independence(self) -> None:
+        values = (
+            ("0.20", "0.20"), ("-0", "0"), ("-0.00", "0.00"),
+            ("0E+2", "0E+2"), ("1.25E-7", "1.25E-7"),
+            ("1E+999999", "1E+999999"), ("1E-999999", "1E-999999"),
+        )
+        for source, expected in values:
+            outputs = []
+            for precision in (1, 2, 28, 50):
+                with decimal.localcontext() as context:
+                    context.prec = precision
+                    outputs.append(canonicalize_lineage_parameters({
+                        "value": decimal.Decimal(source),
+                    }))
+            self.assertEqual(len(set(outputs)), 1)
+            self.assertIn(f'"$decimal":"{expected}"', outputs[0])
+
+    def test_nonfinite_decimals_raise_value_error(self) -> None:
+        for value in ("NaN", "sNaN", "Infinity", "-Infinity"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    canonicalize_lineage_parameters({
+                        "value": decimal.Decimal(value),
+                    })
+
+    def test_datetime_utc_conversion_rollover_and_six_digits(self) -> None:
+        non_utc = datetime.datetime(
+            2026, 7, 19, 0, 30, 0, 123456,
+            tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)),
+        )
+        result = canonicalize_lineage_parameters({"value": non_utc})
+        self.assertIn("2026-07-18T19:00:00.123456Z", result)
+        zero = canonicalize_lineage_parameters({
+            "value": datetime.datetime(2026, 7, 18, tzinfo=UTC),
+        })
+        self.assertIn("2026-07-18T00:00:00.000000Z", zero)
+
+    def test_datetime_naive_and_utc_overflow_raise_value_error(self) -> None:
+        lower = datetime.datetime(
+            1, 1, 1, tzinfo=datetime.timezone(datetime.timedelta(hours=1))
+        )
+        upper = datetime.datetime(
+            9999, 12, 31, 23, 59, 59,
+            tzinfo=datetime.timezone(datetime.timedelta(hours=-1)),
+        )
+        for value in (datetime.datetime(2026, 7, 18), lower, upper):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    canonicalize_lineage_parameters({"value": value})
+
+    def test_malformed_timezone_type_error_is_public_value_error(self) -> None:
+        class InvalidOffsetTimezone(datetime.tzinfo):
+            def utcoffset(self, value: object) -> object:
+                return "invalid-offset"
+
+        malformed = datetime.datetime(
+            2030, 1, 2, 15, 30, tzinfo=InvalidOffsetTimezone()
+        )
+        with self.assertRaises(TypeError):
+            malformed.utcoffset()
+
+        boundaries = (
+            lambda: build_calculation_input_reference(
+                normalized_at=malformed
+            ),
+            lambda: canonicalize_lineage_parameters({"value": malformed}),
+            lambda: build_calculation_lineage(calculated_at=malformed),
+        )
+        for boundary in boundaries:
+            with self.subTest(boundary=boundary.__code__.co_firstlineno):
+                with self.assertRaises(ValueError):
+                    boundary()
+
+    def test_unicode_scalars_valid_and_surrogates_rejected(self) -> None:
+        canonical = canonicalize_lineage_parameters({"emoji": "😀", "汉字": "值"})
+        canonical.encode("utf-8")
+        self.assertIn("😀", canonical)
+        for parameters in ({"value": "\ud800"}, {"\udfff": "value"}):
+            with self.assertRaises(ValueError):
+                canonicalize_lineage_parameters(parameters)
+
+
+class LineageExactTypeBoundaryTests(unittest.TestCase):
+    def test_root_rejects_broader_mapping_and_iterable_types(self) -> None:
+        class DictSubclass(dict):
+            pass
+
+        class CustomMapping(collections.abc.Mapping):
+            def __getitem__(self, key: object) -> object:
+                return {"a": 1}[key]  # type: ignore[index]
+
+            def __iter__(self):
+                return iter(("a",))
+
+            def __len__(self) -> int:
+                return 1
+
+        values = (
+            DictSubclass(), collections.UserDict(), CustomMapping(),
+            (("a", 1),), (item for item in (1,)), [], None,
+        )
+        for value in values:
+            with self.subTest(value=type(value)):
+                with self.assertRaises(TypeError):
+                    canonicalize_lineage_parameters(value)
+
+    def test_nested_dict_subclass_and_supported_subclasses_rejected(self) -> None:
+        class DictSubclass(dict):
+            pass
+
+        class StrSubclass(str):
+            pass
+
+        class IntSubclass(int):
+            pass
+
+        class ListSubclass(list):
+            pass
+
+        class TupleSubclass(tuple):
+            pass
+
+        class DateSubclass(datetime.date):
+            pass
+
+        class DatetimeSubclass(datetime.datetime):
+            pass
+
+        values = (
+            DictSubclass(), StrSubclass("x"), IntSubclass(1),
+            ListSubclass(), TupleSubclass(), DateSubclass(2026, 7, 18),
+            DatetimeSubclass(2026, 7, 18, tzinfo=UTC),
+            SourceQualityFlag.DELAYED,
+        )
+        for value in values:
+            with self.subTest(value=type(value)):
+                with self.assertRaises(TypeError):
+                    canonicalize_lineage_parameters({"value": value})
+
+    def test_all_documented_unsupported_categories_raise_type_error(self) -> None:
+        values = (
+            1.0, b"x", bytearray(b"x"), {1}, frozenset((1,)), object(),
+            range(2), (item for item in (1,)),
+        )
+        for value in values:
+            with self.subTest(value=type(value)):
+                with self.assertRaises(TypeError):
+                    canonicalize_lineage_parameters({"value": value})
+
+    def test_mapping_key_exact_type_and_value_rules(self) -> None:
+        class StrSubclass(str):
+            pass
+
+        for key in (1, StrSubclass("key")):
+            with self.subTest(key=key):
+                with self.assertRaises(TypeError):
+                    canonicalize_lineage_parameters({key: 1})
+        for key in ("", " ", " key", "key "):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    canonicalize_lineage_parameters({key: 1})
+
+
+class LineageDepthAndCycleTests(unittest.TestCase):
+    @staticmethod
+    def nested_parameters(list_count: int, leaf: object = 0) -> dict:
+        value = leaf
+        for _ in range(list_count):
+            value = [value]
+        return {"value": value}
+
+    def test_depth_32_valid_33_invalid_and_scalar_tag_not_counted(self) -> None:
+        depth_32 = self.nested_parameters(31)
+        scalar_at_32 = self.nested_parameters(31, decimal.Decimal("1.20"))
+        canonicalize_lineage_parameters(depth_32)
+        canonicalize_lineage_parameters(scalar_at_32)
+        with self.assertRaises(ValueError):
+            canonicalize_lineage_parameters(self.nested_parameters(32))
+
+    def test_json_validation_uses_same_depth_rule(self) -> None:
+        depth_32 = canonicalize_lineage_parameters(self.nested_parameters(31))
+        build_calculation_lineage(parameters_json=depth_32)
+        scalar_at_32 = canonicalize_lineage_parameters(
+            self.nested_parameters(31, decimal.Decimal("1.20"))
+        )
+        build_calculation_lineage(parameters_json=scalar_at_32)
+        value = "0"
+        for _ in range(32):
+            value = '{"$list":[' + value + "]}"
+        depth_33 = '{"$map":[["value",' + value + ']]}'
+        with self.assertRaises(ValueError):
+            build_calculation_lineage(parameters_json=depth_33)
+
+    def test_direct_and_indirect_cycles_rejected(self) -> None:
+        direct_list = []
+        direct_list.append(direct_list)
+        direct_dict = {}
+        direct_dict["self"] = direct_dict
+        indirect_list = []
+        indirect_dict = {"list": indirect_list}
+        indirect_list.append(indirect_dict)
+        tuple_list = []
+        tuple_value = (tuple_list,)
+        tuple_list.append(tuple_value)
+        for value in (direct_list, direct_dict, indirect_list, tuple_value):
+            with self.subTest(value=type(value)):
+                with self.assertRaises(ValueError):
+                    canonicalize_lineage_parameters({"value": value})
+
+    def test_shared_noncyclic_reference_is_valid(self) -> None:
+        shared = [decimal.Decimal("1.20")]
+        result = canonicalize_lineage_parameters({"a": shared, "b": shared})
+        self.assertEqual(result.count('"$decimal":"1.20"'), 2)
+
+
+class LineageJsonValidationTests(unittest.TestCase):
+    def assert_invalid_json(self, value: str) -> None:
+        with self.assertRaises(ValueError) as context:
+            build_calculation_lineage(parameters_json=value)
+        self.assertNotEqual(type(context.exception).__name__, "JSONDecodeError")
+
+    def test_duplicate_object_and_map_user_keys_are_separate_failures(self) -> None:
+        self.assert_invalid_json('{"$map":[],"$map":[]}')
+        self.assert_invalid_json('{"$map":[["a",1],["a",2]]}')
+
+    def test_map_order_keys_and_entries_are_strict(self) -> None:
+        values = (
+            '{"$map":[["b",1],["a",2]]}',
+            '{"$map":[["",1]]}',
+            '{"$map":[[" a",1]]}',
+            '{"$map":[[1,1]]}',
+            '{"$map":[["a"]]}',
+            '{"$map":[["a",1,2]]}',
+        )
+        for value in values:
+            with self.subTest(value=value):
+                self.assert_invalid_json(value)
+
+    def test_unknown_multi_untagged_and_malformed_tags_rejected(self) -> None:
+        values = (
+            '{"$map":[["x",{"$unknown":[]}]]}',
+            '{"$map":[["x",{"$list":[],"$map":[]}]]}',
+            '{"$map":[["x",{"plain":1}]]}',
+            '{"$map":[["x",[]]]}',
+            '{"$map":{}}',
+            '{"$list":[]}',
+        )
+        for value in values:
+            with self.subTest(value=value):
+                self.assert_invalid_json(value)
+
+    def test_float_malformed_json_and_noncanonical_formatting_rejected(self) -> None:
+        values = (
+            '{"$map":[["x",1.0]]}',
+            '{"$map":[["x",NaN]]}',
+            '{"$map":[',
+            '{ "$map": [] }',
+            '{"$map":[["x",-0]]}',
+            '{"$map":[["x","\\u0061"]]}',
+        )
+        for value in values:
+            with self.subTest(value=value):
+                self.assert_invalid_json(value)
+
+    def test_noncanonical_tagged_scalar_strings_rejected(self) -> None:
+        values = (
+            '{"$map":[["x",{"$decimal":"-0.00"}]]}',
+            '{"$map":[["x",{"$decimal":"01.250"}]]}',
+            '{"$map":[["x",{"$date":"2026-7-18"}]]}',
+            '{"$map":[["x",{"$datetime":"2026-07-18T19:00:00Z"}]]}',
+            '{"$map":[["x",{"$datetime":"2026-07-18T19:00:00.000000+00:00"}]]}',
+        )
+        for value in values:
+            with self.subTest(value=value):
+                self.assert_invalid_json(value)
+
+    def test_surrogate_from_json_and_outer_whitespace_behavior(self) -> None:
+        self.assert_invalid_json('{"$map":[["x","\\ud800"]]}')
+        canonical = canonicalize_lineage_parameters({"x": "😀"})
+        lineage = build_calculation_lineage(
+            parameters_json=" \n" + canonical + "\t "
+        )
+        self.assertEqual(lineage.parameters_json, canonical)
+
+
+class CalculationInputReferenceTests(unittest.TestCase):
+    def test_normalization_sorting_utc_hash_and_frozen(self) -> None:
+        non_utc = datetime.datetime(
+            2030, 1, 2, 10, 30, 3,
+            tzinfo=datetime.timezone(datetime.timedelta(hours=-5)),
+        )
+        reference = build_calculation_input_reference(
+            record_id=" normalized ", normalized_at=non_utc,
+            source_ids=[" z-source ", "a-source"],
+        )
+        self.assertEqual(reference.record_id, "normalized")
+        self.assertEqual(reference.normalized_at, NORMALIZED_AT)
+        self.assertEqual(reference.source_ids, ("a-source", "z-source"))
+        hash(reference)
+        with self.assertRaises(FrozenInstanceError):
+            reference.record_id = "changed"  # type: ignore[misc]
+
+    def test_source_id_container_element_empty_and_duplicate_boundaries(self) -> None:
+        class ListSubclass(list):
+            pass
+
+        class StrSubclass(str):
+            pass
+
+        for value in ((), [], (item for item in ("a",)), {"a"}, ListSubclass(["a"])):
+            expected = ValueError if type(value) in (tuple, list) else TypeError
+            with self.subTest(value=type(value)):
+                with self.assertRaises(expected):
+                    build_calculation_input_reference(source_ids=value)
+        for value in ((1,), (StrSubclass("a"),)):
+            with self.assertRaises(TypeError):
+                build_calculation_input_reference(source_ids=value)
+        for value in ((" ",), ("a", " a ")):
+            with self.assertRaises(ValueError):
+                build_calculation_input_reference(source_ids=value)
+
+    def test_datetime_exact_type_awareness_and_overflow(self) -> None:
+        class DatetimeSubclass(datetime.datetime):
+            pass
+
+        values = (
+            datetime.datetime(2030, 1, 2),
+            datetime.date(2030, 1, 2),
+            DatetimeSubclass(2030, 1, 2, tzinfo=UTC),
+            datetime.datetime(
+                1, 1, 1,
+                tzinfo=datetime.timezone(datetime.timedelta(hours=1)),
+            ),
+        )
+        for value in values:
+            expected = TypeError if type(value) is not datetime.datetime else ValueError
+            with self.subTest(value=type(value)):
+                with self.assertRaises(expected):
+                    build_calculation_input_reference(normalized_at=value)
+
+
+class CalculationLineageTests(unittest.TestCase):
+    def test_input_flag_string_normalization_hash_and_frozen(self) -> None:
+        second = build_calculation_input_reference("input-b")
+        first = build_calculation_input_reference("input-a")
+        lineage = build_calculation_lineage(
+            calculation_id=" calculation ", calculation_type=" type ",
+            methodology_id=" method ", methodology_version=" v1 ",
+            inputs=[second, first],
+            quality_flags=[
+                CalculationQualityFlag.INCOMPLETE_INPUT_USED,
+                CalculationQualityFlag.INTERPOLATED,
+            ],
+        )
+        self.assertEqual(lineage.calculation_id, "calculation")
+        self.assertEqual(
+            tuple(item.record_id for item in lineage.inputs),
+            ("input-a", "input-b"),
+        )
+        self.assertEqual(lineage.quality_flags, (
+            CalculationQualityFlag.INTERPOLATED,
+            CalculationQualityFlag.INCOMPLETE_INPUT_USED,
+        ))
+        hash(lineage)
+        with self.assertRaises(FrozenInstanceError):
+            lineage.calculation_id = "changed"  # type: ignore[misc]
+
+    def test_empty_flags_valid_and_duplicate_or_wrong_flags_rejected(self) -> None:
+        self.assertEqual(build_calculation_lineage(quality_flags=[]).quality_flags, ())
+        with self.assertRaises(ValueError):
+            build_calculation_lineage(quality_flags=[
+                CalculationQualityFlag.ANNUALIZED,
+                CalculationQualityFlag.ANNUALIZED,
+            ])
+        for value in ({CalculationQualityFlag.ANNUALIZED},
+                      (SourceQualityFlag.DELAYED,)):
+            with self.assertRaises(TypeError):
+                build_calculation_lineage(quality_flags=value)
+
+    def test_inputs_exact_container_record_type_and_uniqueness(self) -> None:
+        @dataclasses.dataclass(frozen=True)
+        class ReferenceSubclass(CalculationInputReference):
+            pass
+
+        base = build_calculation_input_reference()
+        subclass = ReferenceSubclass(
+            base.record_id, base.normalized_at, base.source_ids
+        )
+        for value in ({base}, (item for item in (base,)), (object(),), (subclass,)):
+            with self.subTest(value=type(value)):
+                with self.assertRaises(TypeError):
+                    build_calculation_lineage(inputs=value)
+        with self.assertRaises(ValueError):
+            build_calculation_lineage(inputs=[])
+        with self.assertRaises(ValueError):
+            build_calculation_lineage(inputs=[base, base])
+
+    def test_id_collision_and_chronology_equality_and_failure(self) -> None:
+        input_reference = build_calculation_input_reference("input-a")
+        equality = build_calculation_lineage(
+            calculated_at=input_reference.normalized_at,
+            inputs=(input_reference,),
+        )
+        self.assertEqual(equality.calculated_at, input_reference.normalized_at)
+        with self.assertRaises(ValueError):
+            build_calculation_lineage(
+                calculation_id="input-a", inputs=(input_reference,)
+            )
+        with self.assertRaises(ValueError):
+            build_calculation_lineage(
+                calculated_at=input_reference.normalized_at
+                - datetime.timedelta(microseconds=1),
+                inputs=(input_reference,),
+            )
+
+    def test_calculated_at_exact_type_naive_and_overflow(self) -> None:
+        class DatetimeSubclass(datetime.datetime):
+            pass
+
+        values = (
+            datetime.date(2030, 1, 2),
+            DatetimeSubclass(2030, 1, 2, tzinfo=UTC),
+            datetime.datetime(2030, 1, 2),
+            datetime.datetime(
+                9999, 12, 31, 23, 59, 59,
+                tzinfo=datetime.timezone(datetime.timedelta(hours=-1)),
+            ),
+        )
+        for value in values:
+            expected = TypeError if type(value) is not datetime.datetime else ValueError
+            with self.subTest(value=type(value)):
+                with self.assertRaises(expected):
+                    build_calculation_lineage(calculated_at=value)
+
+    def test_parameters_json_exact_string_and_canonical_requirement(self) -> None:
+        class StrSubclass(str):
+            pass
+
+        for value in (1, StrSubclass('{"$map":[]}')):
+            with self.assertRaises(TypeError):
+                build_calculation_lineage(parameters_json=value)
+        for value in ("", " ", "{}", '{"$map": [ ]}'):
+            with self.assertRaises(ValueError):
+                build_calculation_lineage(parameters_json=value)
+
+
 class ImportAndDeterminismTests(unittest.TestCase):
     def test_clean_import_has_no_later_layer_or_network_modules(self) -> None:
         script = """
@@ -3207,6 +3718,11 @@ print('clean market-data import passed')
         self.assertEqual(build_option_contract_key(), build_option_contract_key())
         self.assertEqual(build_correction_source(), build_correction_source())
         self.assertEqual(build_correction_candidate(), build_correction_candidate())
+        self.assertEqual(
+            build_calculation_input_reference(),
+            build_calculation_input_reference(),
+        )
+        self.assertEqual(build_calculation_lineage(), build_calculation_lineage())
 
 
 if __name__ == "__main__":
