@@ -4,7 +4,7 @@ import datetime
 import math
 from dataclasses import dataclass
 from numbers import Real
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from .evidence import (
     CandidateState,
@@ -18,6 +18,9 @@ from .evidence import (
     TailPricingSlice,
     VolatilityEnvironment,
 )
+
+if TYPE_CHECKING:
+    from .scanner import ScreeningDecision
 
 
 def _validate_real(name: str, value: object) -> None:
@@ -666,14 +669,18 @@ def _render_technical_english(candidate: CandidateResearchRecord) -> str:
     lines.extend(
         (
             f"- **Candidate ID:** {candidate.candidate_id}",
-            f"- **State:** {candidate.state.value}",
-            f"- **State rationale:** {candidate.state_rationale}",
+            f"- **Research-record state:** {candidate.state.value}",
+            f"- **Research-record state rationale:** {candidate.state_rationale}",
             f"- **As-of date:** {candidate.as_of_date.isoformat()}",
             f"- **Underlying:** {candidate.structure.underlying}",
             f"- **Structure type:** {candidate.structure.structure_type}",
             f"- **Expiration:** {candidate.expiration.isoformat()}",
             f"- **Expected holding days:** {candidate.structure.expected_holding_days}",
             "",
+        )
+    )
+    lines.extend(
+        (
             "### Research hypothesis",
             "",
             candidate.hypothesis,
@@ -865,6 +872,130 @@ def _render_technical_english(candidate: CandidateResearchRecord) -> str:
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
+SCREENING_REASON_PRESENTATION = {
+    "max_loss_hard_limit_exceeded": {
+        "en": "Maximum loss exceeds the policy hard limit",
+        "zh-CN": "最大损失超过政策硬性上限",
+    },
+    "repeated_bet_hard_limit_exceeded": {
+        "en": "Cumulative repeated-attempt cost exceeds the policy hard limit",
+        "zh-CN": "累计重复尝试成本超过政策硬性上限",
+    },
+    "spread_hard_limit_exceeded": {
+        "en": "Bid-ask spread exceeds the policy hard limit",
+        "zh-CN": "买卖价差超过政策硬性上限",
+    },
+    "open_interest_hard_minimum_failed": {
+        "en": "Minimum leg open interest is below the policy hard minimum",
+        "zh-CN": "期权腿最低未平仓量低于政策硬性下限",
+    },
+    "daily_volume_hard_minimum_failed": {
+        "en": "Minimum leg daily volume is below the policy hard minimum",
+        "zh-CN": "期权腿最低当日成交量低于政策硬性下限",
+    },
+    "theta_burden_hard_limit_exceeded": {
+        "en": "Holding-period Theta burden exceeds the policy hard limit",
+        "zh-CN": "持有期 Theta 损耗负担超过政策硬性上限",
+    },
+    "target_move_scenario_not_profitable": {
+        "en": "A required target-move scenario is not profitable after costs",
+        "zh-CN": "至少一个政策要求的目标变动情景在扣除成本后未盈利",
+    },
+    "missing_costs": {
+        "en": "Structure cost data is missing",
+        "zh-CN": "缺少结构成本数据",
+    },
+    "missing_liquidity": {
+        "en": "Structure liquidity data is missing",
+        "zh-CN": "缺少结构流动性数据",
+    },
+    "missing_volatility_environment": {
+        "en": "Volatility-environment data is missing",
+        "zh-CN": "缺少整体波动率环境数据",
+    },
+    "missing_structure_expiration_tail_slice": {
+        "en": "Tail-pricing data for the structure expiration is missing",
+        "zh-CN": "缺少结构到期日对应的尾部定价数据",
+    },
+    "missing_target_move_scenario": {
+        "en": "A required target-move scenario is missing",
+        "zh-CN": "缺少政策要求的目标变动情景",
+    },
+    "missing_volatility_crush_scenario": {
+        "en": "The required volatility-crush scenario is missing",
+        "zh-CN": "缺少政策要求的波动率收缩情景",
+    },
+    "max_loss_above_investigate_limit": {
+        "en": "Maximum loss is above the Investigate limit",
+        "zh-CN": "最大损失高于“深入研究”门槛",
+    },
+    "repeated_bet_above_investigate_limit": {
+        "en": "Cumulative repeated-attempt cost is above the Investigate limit",
+        "zh-CN": "累计重复尝试成本高于“深入研究”门槛",
+    },
+    "spread_above_investigate_limit": {
+        "en": "Bid-ask spread is above the Investigate limit",
+        "zh-CN": "买卖价差高于“深入研究”门槛",
+    },
+    "open_interest_below_investigate_minimum": {
+        "en": "Minimum leg open interest is below the Investigate minimum",
+        "zh-CN": "期权腿最低未平仓量低于“深入研究”门槛",
+    },
+    "daily_volume_below_investigate_minimum": {
+        "en": "Minimum leg daily volume is below the Investigate minimum",
+        "zh-CN": "期权腿最低当日成交量低于“深入研究”门槛",
+    },
+    "theta_burden_above_investigate_limit": {
+        "en": "Holding-period Theta burden is above the Investigate limit",
+        "zh-CN": "持有期 Theta 损耗负担高于“深入研究”门槛",
+    },
+    "volatility_environment_not_supportive": {
+        "en": "The volatility environment does not pass the policy support test",
+        "zh-CN": "整体波动率环境未通过政策支持条件",
+    },
+    "tail_pricing_not_supportive": {
+        "en": "Structure-relevant tail pricing does not pass the policy support test",
+        "zh-CN": "与结构相关的尾部定价未通过政策支持条件",
+    },
+    "affordability_gates_passed": {
+        "en": "All affordability gates passed",
+        "zh-CN": "所有成本承受能力条件均已通过",
+    },
+    "liquidity_gates_passed": {
+        "en": "All liquidity gates passed",
+        "zh-CN": "所有流动性条件均已通过",
+    },
+    "volatility_environment_supportive": {
+        "en": "The volatility environment passed the policy support test",
+        "zh-CN": "整体波动率环境通过政策支持条件",
+    },
+    "tail_pricing_supportive": {
+        "en": "Structure-relevant tail pricing passed the policy support test",
+        "zh-CN": "与结构相关的尾部定价通过政策支持条件",
+    },
+    "target_move_scenarios_profitable": {
+        "en": "All required target-move scenarios are profitable after costs",
+        "zh-CN": "所有政策要求的目标变动情景在扣除成本后均盈利",
+    },
+}
+
+
+SCREENING_STATE_EXPLANATIONS = {
+    "en": {
+        "reject": "Under this policy, a known hard failure is sufficient to reject the candidate from further screening.",
+        "data_insufficient": "The policy cannot complete classification because one or more required structured inputs are missing.",
+        "watch": "The structured inputs are complete and no hard rejection applies, but one or more Investigate gates did not pass.",
+        "investigate": "The candidate passed the provisional deterministic gates and may deserve deeper human research. This does not establish that the structure is cheap or suitable to trade.",
+    },
+    "zh-CN": {
+        "reject": "按照该政策，只要存在已知的硬性失败条件，就足以在本轮筛选中拒绝该候选。",
+        "data_insufficient": "由于缺少一项或多项政策要求的结构化输入，该政策无法完成进一步分类。",
+        "watch": "结构化输入完整，且不存在硬性拒绝条件，但至少一个“深入研究”门槛未通过。",
+        "investigate": "该候选通过了暂定的确定性门槛，可能值得进一步人工研究。这并不能证明该结构价格便宜或适合交易。",
+    },
+}
+
+
 REPORT_TEXT = {
     "en": {
         "title": "# Convexity Hunter Research Record",
@@ -873,7 +1004,7 @@ REPORT_TEXT = {
         "technical": "## Technical research details",
         "sections": (
             "### 1. What is being studied?",
-            "### 2. What is the current status?",
+            "### 2. What do the two statuses mean?",
             "### 3. Why might it deserve attention?",
             "### 4. Why is caution still necessary?",
             "### 5. How much could be lost?",
@@ -900,8 +1031,14 @@ REPORT_TEXT = {
         "labels": {
             "underlying": "Underlying", "structure": "Structure type",
             "strikes": "Strike or strikes", "expiration": "Expiration",
-            "holding": "Expected holding days", "state": "State",
-            "rationale": "State rationale", "weakening": "Weakening evidence",
+            "holding": "Expected holding days",
+            "state": "Research-record state",
+            "rationale": "Research-record state rationale",
+            "proposed_state": "Deterministic proposed state",
+            "policy_id": "Screening policy ID",
+            "policy_version": "Screening policy version",
+            "reason_codes": "Deterministic reason codes",
+            "weakening": "Weakening evidence",
             "missing": "Missing data", "entry": "Total entry cost",
             "loss": "Maximum loss", "loss_pct": "Maximum loss percentage",
             "repeat_count": "Repeated-bet count",
@@ -910,7 +1047,10 @@ REPORT_TEXT = {
             "questions": "Human-review questions",
             "falsification": "Conditions that would overturn the research hypothesis",
         },
-        "status_note": "This status is supplied by the research record. Milestone 1.1 does not independently calculate it, and it is not a trade recommendation.",
+        "status_note": "The research-record state is supplied with the candidate and may reflect fixture, analyst, or workflow context. The deterministic proposed state is calculated separately under the named policy. It does not modify the research record, and neither state is a trade recommendation.",
+        "no_screening": "No deterministic screening decision was supplied for this report.",
+        "screening_heading": "### Deterministic screening decision",
+        "separation_note": "This decision is separate from the supplied research-record state and does not modify CandidateResearchRecord.",
         "no_support": "No supporting evidence is currently reported.",
         "no_weakening": "No weakening evidence is currently reported.",
         "no_missing": "No missing data is currently reported.",
@@ -930,7 +1070,7 @@ REPORT_TEXT = {
         "overview": "## 通俗概要：先看懂这份报告",
         "technical": "## 技术研究明细",
         "sections": (
-            "### 1. 研究的是什么？", "### 2. 当前状态是什么？",
+            "### 1. 研究的是什么？", "### 2. 两种状态分别代表什么？",
             "### 3. 为什么可能值得关注？", "### 4. 为什么仍然需要谨慎？",
             "### 5. 最多可能损失多少？", "### 6. 在给定情景下，结果可能怎样？",
             "### 7. 接下来需要人工核实什么？",
@@ -955,14 +1095,20 @@ REPORT_TEXT = {
         },
         "labels": {
             "underlying": "标的", "structure": "结构类型", "strikes": "执行价",
-            "expiration": "到期日", "holding": "预计持有天数", "state": "状态",
-            "rationale": "状态理由", "weakening": "不利或弱化证据",
+            "expiration": "到期日", "holding": "预计持有天数",
+            "state": "研究记录状态", "rationale": "研究记录状态理由",
+            "proposed_state": "确定性筛选建议状态", "policy_id": "筛选政策 ID",
+            "policy_version": "筛选政策版本", "reason_codes": "确定性理由码",
+            "weakening": "不利或弱化证据",
             "missing": "尚未提供的数据", "entry": "总入场成本", "loss": "最大损失",
             "loss_pct": "最大损失占组合比例", "repeat_count": "重复尝试次数",
             "repeat_cost": "累计重复尝试成本", "repeat_pct": "累计重复尝试成本占比",
             "questions": "人工复核问题", "falsification": "可能推翻研究假设的证伪条件",
         },
-        "status_note": "该状态来自已提供的研究记录。里程碑 1.1 不会独立计算状态，该状态也不是交易建议。",
+        "status_note": "研究记录状态随候选记录一同提供，可能反映样例、分析人员或工作流程中的判断。确定性筛选建议状态由指定政策独立计算，不会修改研究记录。两种状态都不是交易建议。",
+        "no_screening": "本报告未提供确定性筛选决策。",
+        "screening_heading": "### 确定性筛选决策",
+        "separation_note": "该决策独立于已提供的研究记录状态，不会修改 CandidateResearchRecord。",
         "no_support": "目前没有已报告的支持证据。",
         "no_weakening": "目前没有已报告的弱化证据。",
         "no_missing": "目前没有已报告的缺失数据。",
@@ -979,8 +1125,10 @@ REPORT_TEXT = {
 
 
 ZH_TECHNICAL_REPLACEMENTS = {
-    "- **Candidate ID:**": "- **候选 ID:**", "- **State:**": "- **状态:**",
-    "- **State rationale:**": "- **状态理由:**", "- **As-of date:**": "- **数据截至日期:**",
+    "- **Candidate ID:**": "- **候选 ID:**",
+    "- **Research-record state:**": "- **研究记录状态:**",
+    "- **Research-record state rationale:**": "- **研究记录状态理由:**",
+    "- **As-of date:**": "- **数据截至日期:**",
     "- **Underlying:**": "- **标的:**", "- **Structure type:**": "- **结构类型:**",
     "- **Expiration:**": "- **到期日:**", "- **Expected holding days:**": "- **预计持有天数:**",
     "### Research hypothesis": "### 研究假设", "### Concrete option structure": "### 具体期权结构",
@@ -1039,7 +1187,75 @@ def _normalize_report_locale(locale: object) -> str:
     return normalized
 
 
-def _append_overview(lines: list, candidate: CandidateResearchRecord, locale: str) -> None:
+def _validate_screening_decision(
+    screening_decision: Optional["ScreeningDecision"],
+) -> None:
+    """Validate an optional decision without creating a module import cycle."""
+
+    if screening_decision is None:
+        return
+    from .scanner import ScreeningDecision
+
+    if not isinstance(screening_decision, ScreeningDecision):
+        raise TypeError("screening_decision must be a ScreeningDecision or None")
+
+
+def _screening_reason_label(reason_value: str, locale: str) -> str:
+    """Return one localized reason label or reject an unknown reason value."""
+
+    presentation = SCREENING_REASON_PRESENTATION.get(reason_value)
+    if presentation is None:
+        raise ValueError(f"unknown screening reason code: {reason_value}")
+    return presentation[locale]
+
+
+def _format_screening_reason(reason_value: str, locale: str) -> str:
+    label = _screening_reason_label(reason_value, locale)
+    if locale == "zh-CN":
+        return f"{label}（`{reason_value}`）"
+    return f"{label} (`{reason_value}`)"
+
+
+def _append_screening_decision(
+    lines: list,
+    screening_decision: "ScreeningDecision",
+    locale: str,
+) -> None:
+    """Append one already-calculated decision without reordering its reasons."""
+
+    text = REPORT_TEXT[locale]
+    labels = text["labels"]
+    lines.extend(
+        (
+            text["screening_heading"],
+            "",
+            f"- **{labels['proposed_state']}:** {text['state_labels'][screening_decision.proposed_state.value]}",
+            f"- **{labels['policy_id']}:** {screening_decision.policy_id}",
+            f"- **{labels['policy_version']}:** {screening_decision.policy_version}",
+            f"- **{labels['reason_codes']}:**",
+        )
+    )
+    for reason in screening_decision.reason_codes:
+        lines.append(f"  - {_format_screening_reason(reason.value, locale)}")
+    lines.extend(
+        (
+            "",
+            SCREENING_STATE_EXPLANATIONS[locale][
+                screening_decision.proposed_state.value
+            ],
+            "",
+            text["separation_note"],
+            "",
+        )
+    )
+
+
+def _append_overview(
+    lines: list,
+    candidate: CandidateResearchRecord,
+    locale: str,
+    screening_decision: Optional["ScreeningDecision"],
+) -> None:
     text = REPORT_TEXT[locale]
     labels = text["labels"]
     sections = text["sections"]
@@ -1049,7 +1265,29 @@ def _append_overview(lines: list, candidate: CandidateResearchRecord, locale: st
                   f"- **{labels['structure']}:** {text['structure_labels'][candidate.structure.structure_type]}",
                   f"- **{labels['strikes']}:** {strikes}", f"- **{labels['expiration']}:** {candidate.expiration.isoformat()}",
                   f"- **{labels['holding']}:** {candidate.structure.expected_holding_days}", "", sections[1], "",
-                  f"- **{labels['state']}:** {text['state_labels'][candidate.state.value]}", f"- **{labels['rationale']}:** {candidate.state_rationale}", "", text["status_note"], "", sections[2], ""))
+                  f"- **{labels['state']}:** {text['state_labels'][candidate.state.value]}", f"- **{labels['rationale']}:** {candidate.state_rationale}"))
+    if screening_decision is None:
+        lines.extend(("", text["no_screening"]))
+    else:
+        lines.extend(
+            (
+                f"- **{labels['proposed_state']}:** {text['state_labels'][screening_decision.proposed_state.value]}",
+                f"- **{labels['policy_id']}:** {screening_decision.policy_id}",
+                f"- **{labels['policy_version']}:** {screening_decision.policy_version}",
+                f"- **{labels['reason_codes']}:**",
+            )
+        )
+        for reason in screening_decision.reason_codes:
+            lines.append(f"  - {_format_screening_reason(reason.value, locale)}")
+        lines.extend(
+            (
+                "",
+                SCREENING_STATE_EXPLANATIONS[locale][
+                    screening_decision.proposed_state.value
+                ],
+            )
+        )
+    lines.extend(("", text["status_note"], "", sections[2], ""))
     lines.extend((f"- {item.statement}" for item in candidate.supporting_evidence) if candidate.supporting_evidence else (text["no_support"],))
     lines.extend(("", sections[3], "", f"**{labels['weakening']}**", ""))
     lines.extend((f"- {item.statement}" for item in candidate.weakening_evidence) if candidate.weakening_evidence else (text["no_weakening"],))
@@ -1085,7 +1323,11 @@ def _append_overview(lines: list, candidate: CandidateResearchRecord, locale: st
         lines.append(f"{index}. {condition}")
 
 
-def _technical_body(candidate: CandidateResearchRecord, locale: str) -> str:
+def _technical_body(
+    candidate: CandidateResearchRecord,
+    locale: str,
+    screening_decision: Optional["ScreeningDecision"],
+) -> str:
     lines = _render_technical_english(candidate).rstrip("\n").split("\n")
     lines = lines[2:]
     if candidate.candidate_id.startswith("SYNTHETIC-"):
@@ -1098,18 +1340,37 @@ def _technical_body(candidate: CandidateResearchRecord, locale: str) -> str:
     if locale == "zh-CN":
         for source, translated in ZH_TECHNICAL_REPLACEMENTS.items():
             body = body.replace(source, translated)
+    if screening_decision is not None:
+        research_heading = (
+            "### Research hypothesis"
+            if locale == "en"
+            else "### 研究假设"
+        )
+        screening_lines = []
+        _append_screening_decision(screening_lines, screening_decision, locale)
+        screening_body = "\n".join(screening_lines).rstrip("\n")
+        body = body.replace(
+            research_heading,
+            f"{screening_body}\n\n{research_heading}",
+            1,
+        )
     return body
 
 
-def render_candidate_markdown(candidate: CandidateResearchRecord, locale: str = "en") -> str:
+def render_candidate_markdown(
+    candidate: CandidateResearchRecord,
+    locale: str = "en",
+    screening_decision: Optional["ScreeningDecision"] = None,
+) -> str:
     """Render one deterministic bilingual candidate research report."""
     if not isinstance(candidate, CandidateResearchRecord):
         raise TypeError("candidate must be a CandidateResearchRecord")
     normalized = _normalize_report_locale(locale)
+    _validate_screening_decision(screening_decision)
     text = REPORT_TEXT[normalized]
     lines = [text["title"], ""]
     if candidate.candidate_id.startswith("SYNTHETIC-"):
         lines.extend((text["warning"], ""))
-    _append_overview(lines, candidate, normalized)
-    lines.extend(("", "---", "", text["technical"], "", _technical_body(candidate, normalized), "", text["footer"]))
+    _append_overview(lines, candidate, normalized, screening_decision)
+    lines.extend(("", "---", "", text["technical"], "", _technical_body(candidate, normalized, screening_decision), "", text["footer"]))
     return "\n".join(lines).rstrip("\n") + "\n"

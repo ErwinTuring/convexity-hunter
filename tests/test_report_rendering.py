@@ -1,7 +1,9 @@
 """Tests for deterministic bilingual candidate Markdown rendering."""
 
 import datetime
+import os
 import pathlib
+import subprocess
 import sys
 import unittest
 
@@ -18,7 +20,21 @@ from convexity_hunter.evidence import (
     OptionLeg,
     OptionStructure,
 )
-from convexity_hunter.report import CandidateResearchRecord, render_candidate_markdown
+from convexity_hunter.report import (
+    SCREENING_REASON_PRESENTATION,
+    CandidateResearchRecord,
+    render_candidate_markdown,
+)
+from convexity_hunter.scanner import (
+    DATA_INSUFFICIENT_REASON_ORDER,
+    INVESTIGATE_REASON_ORDER,
+    REJECT_REASON_ORDER,
+    WATCH_REASON_ORDER,
+    ScreeningDecision,
+    ScreeningPolicy,
+    ScreeningReasonCode,
+    screen_candidate,
+)
 
 
 def build_minimal_watch() -> CandidateResearchRecord:
@@ -142,6 +158,42 @@ class LocaleValidationTests(unittest.TestCase):
             render_candidate_markdown(self.candidate, 1)  # type: ignore[arg-type]
         with self.assertRaises(ValueError):
             render_candidate_markdown(self.candidate, "fr")
+        with self.assertRaises(TypeError):
+            render_candidate_markdown(
+                self.candidate,
+                screening_decision=object(),  # type: ignore[arg-type]
+            )
+
+    def test_none_preserves_backward_compatible_rendering(self) -> None:
+        implicit = render_candidate_markdown(self.candidate)
+        explicit = render_candidate_markdown(
+            self.candidate, screening_decision=None
+        )
+        self.assertEqual(implicit, explicit)
+        self.assertIn(
+            "No deterministic screening decision was supplied for this report.",
+            explicit,
+        )
+        self.assertNotIn("### Deterministic screening decision", explicit)
+        self.assertTrue(explicit.endswith("\n"))
+        self.assertFalse(explicit.endswith("\n\n"))
+
+    def test_custom_policy_identity_renders_without_mutation(self) -> None:
+        decision = ScreeningDecision(
+            CandidateState.WATCH,
+            (ScreeningReasonCode.TAIL_PRICING_NOT_SUPPORTIVE,),
+            "custom-family",
+            "custom-7",
+        )
+        candidate_before = repr(self.candidate)
+        decision_before = repr(decision)
+        rendered = render_candidate_markdown(
+            self.candidate, screening_decision=decision
+        )
+        self.assertIn("custom-family", rendered)
+        self.assertIn("custom-7", rendered)
+        self.assertEqual(repr(self.candidate), candidate_before)
+        self.assertEqual(repr(decision), decision_before)
 
     def test_builder_accepts_supported_locales_and_defaults_to_english(self) -> None:
         self.assertEqual(build_synthetic_candidate().state_rationale, build_synthetic_candidate("en").state_rationale)
@@ -158,8 +210,15 @@ class BilingualReportTests(unittest.TestCase):
     def setUp(self) -> None:
         self.en_candidate = build_synthetic_candidate("en")
         self.zh_candidate = build_synthetic_candidate("zh-CN")
-        self.en = render_candidate_markdown(self.en_candidate, "en")
-        self.zh = render_candidate_markdown(self.zh_candidate, "zh-CN")
+        policy = ScreeningPolicy()
+        self.en_decision = screen_candidate(self.en_candidate, policy)
+        self.zh_decision = screen_candidate(self.zh_candidate, policy)
+        self.en = render_candidate_markdown(
+            self.en_candidate, "en", self.en_decision
+        )
+        self.zh = render_candidate_markdown(
+            self.zh_candidate, "zh-CN", self.zh_decision
+        )
 
     def test_chinese_title_warning_and_overview_order(self) -> None:
         self.assertTrue(self.zh.startswith("# Convexity Hunter 候选研究报告\n"))
@@ -170,7 +229,7 @@ class BilingualReportTests(unittest.TestCase):
 
     def test_chinese_seven_overview_sections_are_ordered(self) -> None:
         headings = (
-            "### 1. 研究的是什么？", "### 2. 当前状态是什么？",
+            "### 1. 研究的是什么？", "### 2. 两种状态分别代表什么？",
             "### 3. 为什么可能值得关注？", "### 4. 为什么仍然需要谨慎？",
             "### 5. 最多可能损失多少？", "### 6. 在给定情景下，结果可能怎样？",
             "### 7. 接下来需要人工核实什么？",
@@ -191,6 +250,15 @@ class BilingualReportTests(unittest.TestCase):
         self.assertIn("已提供情景中的最低结果", self.zh)
         self.assertIn("-$912.60", self.zh)
         self.assertIn("这里只比较报告中已提供的情景，不代表所有可能结果，也不是收益预测。", self.zh)
+        self.assertIn("研究记录状态", self.zh)
+        self.assertIn("确定性筛选建议状态", self.zh)
+        self.assertIn("观察（watch）", self.zh)
+        self.assertIn("数据不足（data_insufficient）", self.zh)
+        self.assertIn("筛选政策 ID", self.zh)
+        self.assertIn("筛选政策版本", self.zh)
+        self.assertIn("确定性理由码", self.zh)
+        self.assertIn("缺少政策要求的目标变动情景", self.zh)
+        self.assertIn("该决策独立于已提供的研究记录状态", self.zh)
 
     def test_chinese_technical_report_is_localized(self) -> None:
         for text in (
@@ -228,7 +296,7 @@ class BilingualReportTests(unittest.TestCase):
 
     def test_english_seven_overview_sections_and_content(self) -> None:
         headings = tuple(f"### {number}. {title}" for number, title in (
-            (1, "What is being studied?"), (2, "What is the current status?"),
+            (1, "What is being studied?"), (2, "What do the two statuses mean?"),
             (3, "Why might it deserve attention?"), (4, "Why is caution still necessary?"),
             (5, "How much could be lost?"), (6, "What happens in the supplied scenarios?"),
             (7, "What should a human verify next?"),
@@ -240,6 +308,13 @@ class BilingualReportTests(unittest.TestCase):
         self.assertIn("Among the supplied scenarios: 3 positive, 1 negative", self.en)
         self.assertIn("Highest result among supplied scenarios", self.en)
         self.assertIn("Lowest result among supplied scenarios", self.en)
+        self.assertIn("Research-record state", self.en)
+        self.assertIn("Deterministic proposed state", self.en)
+        self.assertIn("Screening policy ID", self.en)
+        self.assertIn("Screening policy version", self.en)
+        self.assertIn("Deterministic reason codes", self.en)
+        self.assertIn("A required target-move scenario is missing", self.en)
+        self.assertIn("This decision is separate from the supplied research-record state", self.en)
 
     def test_existing_english_technical_semantics_remain(self) -> None:
         for text in (
@@ -268,11 +343,21 @@ class BilingualReportTests(unittest.TestCase):
                 self.assertNotIn(f"## {heading}", lines)
         for heading in ("Supporting evidence", "Weakening evidence", "Neutral evidence"):
             self.assertGreater(lines.index(f"#### {heading}"), lines.index("### Evidence"))
+        self.assertLess(
+            lines.index("### Deterministic screening decision"),
+            lines.index("### Research hypothesis"),
+        )
 
     def test_shared_determinism_newlines_and_no_repr(self) -> None:
-        for locale, candidate, rendered in (("en", self.en_candidate, self.en), ("zh-CN", self.zh_candidate, self.zh)):
+        for locale, candidate, decision, rendered in (
+            ("en", self.en_candidate, self.en_decision, self.en),
+            ("zh-CN", self.zh_candidate, self.zh_decision, self.zh),
+        ):
             with self.subTest(locale=locale):
-                self.assertEqual(rendered, render_candidate_markdown(candidate, locale))
+                self.assertEqual(
+                    rendered,
+                    render_candidate_markdown(candidate, locale, decision),
+                )
                 self.assertTrue(rendered.endswith("\n"))
                 self.assertFalse(rendered.endswith("\n\n"))
                 self.assertNotIn("CandidateResearchRecord(", rendered)
@@ -308,6 +393,127 @@ class BilingualReportTests(unittest.TestCase):
         self.assertEqual(zh_path.read_text(), self.zh)
         self.assertEqual(en_path.read_text(), self.en)
         self.assertFalse(old_path.exists())
+        for rendered in (self.en, self.zh):
+            self.assertIn("watch", rendered)
+            self.assertIn("data_insufficient", rendered)
+            first = rendered.index("`missing_target_move_scenario`")
+            second = rendered.index("`missing_volatility_crush_scenario`")
+            self.assertLess(first, second)
+
+
+class ScreeningPresentationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.candidate = build_minimal_watch()
+
+    def test_all_26_reason_codes_have_bilingual_presentations(self) -> None:
+        expected_values = {reason.value for reason in ScreeningReasonCode}
+        self.assertEqual(set(SCREENING_REASON_PRESENTATION), expected_values)
+        self.assertEqual(len(expected_values), 26)
+        for reason_value, presentation in SCREENING_REASON_PRESENTATION.items():
+            with self.subTest(reason=reason_value):
+                self.assertTrue(presentation["en"])
+                self.assertTrue(presentation["zh-CN"])
+
+    def test_each_state_group_renders_localized_reasons_and_explanation(self) -> None:
+        cases = (
+            (CandidateState.REJECT, REJECT_REASON_ORDER),
+            (CandidateState.DATA_INSUFFICIENT, DATA_INSUFFICIENT_REASON_ORDER),
+            (CandidateState.WATCH, WATCH_REASON_ORDER),
+            (CandidateState.INVESTIGATE, INVESTIGATE_REASON_ORDER),
+        )
+        for state, reasons in cases:
+            decision = ScreeningDecision(state, reasons, "test-policy", "1")
+            for locale in ("en", "zh-CN"):
+                with self.subTest(state=state, locale=locale):
+                    rendered = render_candidate_markdown(
+                        self.candidate, locale, decision
+                    )
+                    for reason in reasons:
+                        self.assertIn(
+                            SCREENING_REASON_PRESENTATION[reason.value][locale],
+                            rendered,
+                        )
+                        self.assertIn(f"`{reason.value}`", rendered)
+
+    def test_reason_order_is_preserved_and_no_reason_is_inferred(self) -> None:
+        reasons = (
+            ScreeningReasonCode.OPEN_INTEREST_BELOW_INVESTIGATE_MINIMUM,
+            ScreeningReasonCode.DAILY_VOLUME_BELOW_INVESTIGATE_MINIMUM,
+        )
+        decision = ScreeningDecision(
+            CandidateState.WATCH, reasons, "test-policy", "1"
+        )
+        rendered = render_candidate_markdown(
+            self.candidate, screening_decision=decision
+        )
+        self.assertLess(
+            rendered.index(f"`{reasons[0].value}`"),
+            rendered.index(f"`{reasons[1].value}`"),
+        )
+        self.assertNotIn("`tail_pricing_not_supportive`", rendered)
+        self.assertNotIn("`missing_costs`", rendered)
+
+    def test_missing_reason_mapping_raises_instead_of_falling_back(self) -> None:
+        reason = ScreeningReasonCode.MISSING_COSTS
+        presentation = SCREENING_REASON_PRESENTATION.pop(reason.value)
+        try:
+            decision = ScreeningDecision(
+                CandidateState.DATA_INSUFFICIENT,
+                (reason,),
+                "test-policy",
+                "1",
+            )
+            with self.assertRaises(ValueError):
+                render_candidate_markdown(
+                    self.candidate, screening_decision=decision
+                )
+        finally:
+            SCREENING_REASON_PRESENTATION[reason.value] = presentation
+
+    def test_sample_decision_and_state_separation_are_exact(self) -> None:
+        candidate = build_synthetic_candidate("en")
+        decision = screen_candidate(candidate, ScreeningPolicy())
+        self.assertIs(candidate.state, CandidateState.WATCH)
+        self.assertIs(decision.proposed_state, CandidateState.DATA_INSUFFICIENT)
+        self.assertEqual(
+            decision.reason_codes,
+            (
+                ScreeningReasonCode.MISSING_TARGET_MOVE_SCENARIO,
+                ScreeningReasonCode.MISSING_VOLATILITY_CRUSH_SCENARIO,
+            ),
+        )
+        self.assertEqual(decision.policy_id, "synthetic-screening-v0.1")
+        self.assertEqual(decision.policy_version, "0.1")
+
+
+class CircularImportSafetyTests(unittest.TestCase):
+    def test_import_orders_and_rendering_succeed_in_clean_interpreters(self) -> None:
+        scripts = (
+            "import convexity_hunter.report as report; "
+            "import convexity_hunter.scanner as scanner; ",
+            "import convexity_hunter.scanner as scanner; "
+            "import convexity_hunter.report as report; ",
+        )
+        suffix = (
+            "from examples.sample_candidate_report import build_synthetic_candidate; "
+            "candidate=build_synthetic_candidate('en'); "
+            "decision=scanner.screen_candidate(candidate, scanner.ScreeningPolicy()); "
+            "assert 'Deterministic proposed state' in "
+            "report.render_candidate_markdown(candidate, 'en', decision)"
+        )
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = f"{ROOT / 'src'}:{ROOT}"
+        for prefix in scripts:
+            with self.subTest(prefix=prefix):
+                result = subprocess.run(
+                    [sys.executable, "-c", prefix + suffix],
+                    cwd=ROOT,
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

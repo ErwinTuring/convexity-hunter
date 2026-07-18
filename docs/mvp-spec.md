@@ -238,6 +238,8 @@ User-facing reports must support separate Chinese and English output built from 
 
 The overview must be derived deterministically from the research record and must not invent evidence, probabilities, prices, or conclusions. Complete auditable technical detail must remain below the overview. Localization is a presentation concern and must not change the candidate’s underlying economics.
 
+A report may receive a separate, already-calculated `ScreeningDecision`. When supplied, the report must clearly distinguish the research-record state from the deterministic proposed state and show the policy ID, policy version, and canonical reason-code values in their original order. Localized labels may explain the reason codes, but their canonical values and order must remain visible. The report must not calculate a screening decision or mutate, replace, or silently merge `CandidateResearchRecord`. If no `ScreeningDecision` is supplied, the report must say so explicitly rather than screening automatically. Any disagreement between the two states must remain visible, and neither state is a trade recommendation.
+
 ## 9. Explicit non-goals
 
 The MVP does not aim to:

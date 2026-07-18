@@ -6,7 +6,7 @@ Convexity Hunter is an investigation assistant for identifying concrete long-opt
 
 ## Current milestone
 
-Milestone 2: Define and implement deterministic candidate screening policy using synthetic fixtures before connecting external data.
+Milestone 3: Define auditable, provider-neutral external market-data contracts before connecting live data sources.
 
 ## Decisions locked
 
@@ -37,16 +37,17 @@ Milestone 2: Define and implement deterministic candidate screening policy using
 - Milestone 1.1 completed: separate Chinese and English deterministic candidate reports now place a plain-language overview before fully auditable technical details.
 - Deterministic screening policy v0.1 documented and reviewed with provisional thresholds, structure-specific scenarios, decision precedence, immutable version semantics, and canonical reason codes.
 - Deterministic screening policy v0.1 implemented and validated with immutable policy and decision records, protected policy identity, canonical reason codes, strict decision precedence, scenario-ambiguity checks, and purpose-built synthetic fixtures.
+- Milestone 2 completed: deterministic ScreeningDecision results are integrated into Chinese and English reports with policy provenance, localized canonical reasons, and explicit separation from CandidateResearchRecord.
 
 ## Current task
 
-Integrate the deterministic ScreeningDecision into bilingual reports while preserving separation from CandidateResearchRecord.
+Define the external market-data entities, provenance requirements, timestamps, units, freshness rules, and validation boundaries needed by the existing screening pipeline.
 
-Policy v0.1 thresholds remain synthetic-development assumptions, not calibrated market rules. External market data remains deferred, and ScreeningDecision must not overwrite CandidateResearchRecord.state.
+No provider has been selected, no network integration is authorized yet, and live market data remains deferred. The next design must distinguish raw provider observations from normalized calculated records. Every external value must retain source, observation time, retrieval time, units, and methodology where applicable.
 
 ## Next task
 
-Create bilingual report sections that clearly distinguish the supplied research-record state from the deterministic proposed screening state.
+Implement provider-neutral market-data contract records and validate them with fixed synthetic fixtures before adding any network adapter.
 
 ## Deferred
 
@@ -59,6 +60,8 @@ Create bilingual report sections that clearly distinguish the supplied research-
 - user interface
 - automatic execution
 - portfolio-level barbell monitoring
+- Markdown escaping before untrusted external narrative text is rendered
+- global custom-policy registration or fingerprinting
 
 Deferred does not mean rejected. These items remain outside the current milestone and may be reconsidered later.
 

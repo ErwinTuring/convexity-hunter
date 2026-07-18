@@ -23,6 +23,7 @@ from convexity_hunter.report import (
     StructureLiquidity,
     render_candidate_markdown,
 )
+from convexity_hunter.scanner import ScreeningPolicy, screen_candidate
 
 
 FIXTURE_TEXT = {
@@ -296,9 +297,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Render a synthetic candidate report.")
     parser.add_argument("--locale", choices=("en", "zh-CN"), default="zh-CN")
     arguments = parser.parse_args()
+    candidate = build_synthetic_candidate(arguments.locale)
+    decision = screen_candidate(candidate, ScreeningPolicy())
     print(
         render_candidate_markdown(
-            build_synthetic_candidate(arguments.locale), arguments.locale
+            candidate,
+            locale=arguments.locale,
+            screening_decision=decision,
         ),
         end="",
     )

@@ -20,7 +20,9 @@ The repository contains only the initial project skeleton and documentation. Mar
 
 ## Run the bilingual synthetic reports
 
-Both reports use invented demonstration values. Neither is current market analysis or a trade recommendation. Each begins with a plain-language overview while retaining the complete technical detail below it. Scanning, screening policy, real-data integration, and the AI agent are not operational.
+Both reports use invented demonstration values. Neither is current market analysis or a trade recommendation. Each begins with a plain-language overview while retaining the complete technical detail below it.
+
+The sample deliberately displays two separate states: a supplied `WATCH` research-record state and an independently calculated `DATA_INSUFFICIENT` deterministic proposed screening state. The difference is intentional because the synthetic fixture does not include the holding-horizon scenarios required by policy v0.1. `ScreeningDecision` does not overwrite `CandidateResearchRecord`, and neither state is a trade recommendation. Screening thresholds remain synthetic-development assumptions rather than calibrated market rules; real-data scanning and the AI agent are not operational.
 
 Run the Chinese report with:
 

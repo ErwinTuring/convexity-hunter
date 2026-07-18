@@ -14,12 +14,20 @@ This report studies buying a call and a put with the same strike and expiration.
 - **Expiration:** 2030-02-16
 - **Expected holding days:** 14
 
-### 2. What is the current status?
+### 2. What do the two statuses mean?
 
-- **State:** watch
-- **State rationale:** WATCH is supplied only to exercise the report model and is not a screening conclusion.
+- **Research-record state:** watch
+- **Research-record state rationale:** WATCH is supplied only to exercise the report model and is not a screening conclusion.
+- **Deterministic proposed state:** data_insufficient
+- **Screening policy ID:** synthetic-screening-v0.1
+- **Screening policy version:** 0.1
+- **Deterministic reason codes:**
+  - A required target-move scenario is missing (`missing_target_move_scenario`)
+  - The required volatility-crush scenario is missing (`missing_volatility_crush_scenario`)
 
-This status is supplied by the research record. Milestone 1.1 does not independently calculate it, and it is not a trade recommendation.
+The policy cannot complete classification because one or more required structured inputs are missing.
+
+The research-record state is supplied with the candidate and may reflect fixture, analyst, or workflow context. The deterministic proposed state is calculated separately under the named policy. It does not modify the research record, and neither state is a trade recommendation.
 
 ### 3. Why might it deserve attention?
 
@@ -76,13 +84,26 @@ This compares only the scenarios supplied in the report. It does not represent e
 ## Technical research details
 
 - **Candidate ID:** SYNTHETIC-SPY-STRADDLE-001
-- **State:** watch
-- **State rationale:** WATCH is supplied only to exercise the report model and is not a screening conclusion.
+- **Research-record state:** watch
+- **Research-record state rationale:** WATCH is supplied only to exercise the report model and is not a screening conclusion.
 - **As-of date:** 2030-01-02
 - **Underlying:** SPY
 - **Structure type:** long_straddle
 - **Expiration:** 2030-02-16
 - **Expected holding days:** 14
+
+### Deterministic screening decision
+
+- **Deterministic proposed state:** data_insufficient
+- **Screening policy ID:** synthetic-screening-v0.1
+- **Screening policy version:** 0.1
+- **Deterministic reason codes:**
+  - A required target-move scenario is missing (`missing_target_move_scenario`)
+  - The required volatility-crush scenario is missing (`missing_volatility_crush_scenario`)
+
+The policy cannot complete classification because one or more required structured inputs are missing.
+
+This decision is separate from the supplied research-record state and does not modify CandidateResearchRecord.
 
 ### Research hypothesis
 
