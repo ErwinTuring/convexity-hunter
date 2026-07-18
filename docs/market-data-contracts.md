@@ -1202,24 +1202,40 @@ CalculationInputReference
 
 Record ID is trimmed and non-empty. Normalized time is timezone-aware and stored as UTC. At least one source ID is required; source IDs are trimmed, non-empty, unique, and sorted. The frozen, hashable record references one immutable normalized-record version without embedding it.
 
+`source_ids` accepts only a tuple or list. Any other container type raises `TypeError`. Every member must have exact type `str`; string subclasses raise `TypeError`. Each member is trimmed, an ID that is empty after trimming raises `ValueError`, and duplicates after trimming raise `ValueError`. An empty collection raises `ValueError`. The stored value is a tuple in ascending lexicographic order.
+
+`normalized_at` must have exact type `datetime`; datetime subclasses raise `TypeError`. It must be timezone-aware and is normalized to UTC. A naive value raises `ValueError`. If UTC normalization would cross below year 1 or above year 9999 and therefore cannot be represented by Python's `datetime`, it raises `ValueError`; the value is never clamped, wrapped, or otherwise altered.
+
 ### 14.3 Canonical parameter types
 
-The top-level parameter input is an actual mapping with string keys. Supported recursive values are:
+The top-level parameter input must have exact built-in type `dict`:
+
+```python
+type(parameters) is dict
+```
+
+Dictionary subclasses, `collections.abc.Mapping` implementations, `UserDict`, custom mappings, and every non-`dict` root raise `TypeError`. Nested mappings must also have exact built-in type `dict`; mappings are never silently coerced to dictionaries. Mapping keys must have exact type `str`, not a string subclass. Strict exact-type boundaries are intentional for deterministic canonicalization.
+
+Supported recursive Python values have the following exact types:
 
 ```text
 None
-bool
-int
-str
-Decimal
-date
-timezone-aware datetime
-list
-tuple
-dict
+type(value) is bool
+type(value) is int
+type(value) is str
+type(value) is Decimal
+type(value) is date
+type(value) is datetime
+type(value) is list
+type(value) is tuple
+type(value) is dict
 ```
 
-Boolean is distinct from integer. Floats, nonfinite Decimals, bytes, bytearray, sets, frozensets, Enum objects, and arbitrary objects are prohibited; callers pass an Enum's explicit `.value` string. Mapping keys are actual, non-empty strings without leading or trailing whitespace and are not silently trimmed. Lists and tuples normalize to the same ordered-list representation. Cycles are rejected before serialization. Date rejects datetime, and aware datetimes normalize to UTC.
+Subclasses of every supported type are rejected with `TypeError`. Enum objects are rejected with `TypeError` even when they otherwise resemble strings or integers; callers pass an Enum's explicit `.value` using an exact supported type. Type checks distinguish Boolean from integer and check `datetime` separately from `date`; datetime is never accepted as a date. Floats, bytes, bytearray, sets, frozensets, arbitrary objects, and every other unsupported recursive Python type raise `TypeError`. Nonfinite Decimals raise `ValueError`.
+
+Mapping keys are exact, non-empty strings without leading or trailing whitespace and are not silently trimmed; blank or whitespace-invalid keys raise `ValueError`. Lists and tuples normalize to the same ordered-list representation. Arbitrary iterables are not coerced to lists. Cycles are rejected with `ValueError` before serialization. Date rejects datetime, and aware datetimes normalize to UTC. A naive datetime raises `ValueError`. If an otherwise aware datetime near year 1 or year 9999 would cross Python's supported year range during UTC normalization, it raises `ValueError`; normalization never clamps, wraps, or silently alters the date.
+
+Python string values and mapping keys must contain no Unicode surrogate code points in the range U+D800 through U+DFFF. A surrogate code point raises `ValueError`. Valid Unicode scalar values, including non-BMP characters such as emoji represented as ordinary Python Unicode characters, remain valid. Canonical output must be strictly UTF-8 encodable without replacement characters, `surrogatepass`, or any other surrogate-error handler.
 
 ### 14.4 Canonical tagged representation
 
@@ -1273,7 +1289,11 @@ The `$datetime` value must exactly match `YYYY-MM-DDTHH:MM:SS.ffffffZ`. It alway
 
 The only untagged scalar values are `null`, `true`, `false`, JSON integers, and JSON strings. JSON floating-point values and arbitrary untagged JSON objects are prohibited. Boolean remains distinct from integer.
 
+All parsed JSON strings follow the same Unicode scalar-value rule as Python input. This includes untagged string values, `$map` keys, and the string payloads of `$decimal`, `$date`, and `$datetime`. Any surrogate code point raises `ValueError`. Escaped JSON text that decodes to valid Unicode but differs from canonical output is still rejected by byte-identical reserialization.
+
 Container depth is defined precisely: the root `$map` has depth 1; entering a nested `$map` or `$list` increases depth by 1; scalar and scalar-tag values do not increase depth beyond their containing tagged object. Depth 32 is valid and depth 33 is rejected. The canonicalizer and `CalculationLineage` validation use the same rule.
+
+Cycle detection for Python inputs is based on the active recursion path, not a global set of object identities. Direct and indirect cycles, including tuple/list indirect cycles, raise `ValueError`. Reusing a shared list, tuple, or dictionary in multiple non-cyclic branches is valid and must not be mistaken for a cycle.
 
 ### 14.5 Canonical JSON serialization
 
@@ -1295,7 +1315,9 @@ json.dumps(
 )
 ```
 
-Output is deterministic UTF-8 JSON text with no insignificant whitespace. Identical supported values produce byte-identical text; dictionary insertion order does not affect output, while list order does. Float, unsupported, cyclic, and over-depth inputs raise validation errors. The function reads no files, clocks, environment variables, or external data.
+Output is deterministic UTF-8 JSON text with no insignificant whitespace. Identical supported values produce byte-identical text; dictionary insertion order does not affect output, while list order does. Float and other unsupported Python types raise `TypeError`; cyclic and over-depth inputs raise `ValueError`. The function reads no files, clocks, environment variables, or external data.
+
+The canonicalizer requires an exact `dict` root. A wrong root type, unsupported recursive Python type, prohibited supported-type subclass, or wrong mapping-key type raises `TypeError`. A structurally supported value with invalid content, including a nonfinite Decimal, invalid key, naive or UTC-unrepresentable datetime, prohibited surrogate code point, cycle, or depth above 32, raises `ValueError`. The function never silently coerces a Mapping to `dict`, an arbitrary iterable to `list`, an Enum to `.value`, a float to Decimal or integer, or a supported-type subclass to its base type. Callers perform any such conversion explicitly before invoking the canonicalizer.
 
 When validating existing canonical JSON, parsing must detect duplicate JSON object keys instead of silently overwriting them. Validation must:
 
@@ -1311,6 +1333,10 @@ When validating existing canonical JSON, parsing must detect duplicate JSON obje
 10. require byte-identical text.
 
 No additional public validation function is planned; `CalculationLineage` may use a private parser and validator.
+
+Across the new 3B.3 public APIs, `TypeError` denotes a wrong Python type: a wrong canonicalizer root or recursive value type, a prohibited subclass, a wrong mapping-key type, a wrong constructor collection type, or a wrong constructor element type. `ValueError` denotes an invalid value of an otherwise structurally accepted type: invalid or duplicate keys, nonfinite Decimal, naive or UTC-unrepresentable datetime, chronology failure, an empty required collection, duplicate IDs or flags, calculation/input ID collision, cycle, excessive depth, prohibited surrogate code point, or malformed or noncanonical parameter JSON. No custom public exception class is introduced.
+
+JSON syntax and parsing failures exposed by `CalculationLineage` validation raise `ValueError` and do not leak `json.JSONDecodeError` as the public exception type. Duplicate JSON object keys, duplicate `$map` user keys, JSON floats, malformed or unknown tags, noncanonical Decimal/date/datetime strings, prohibited surrogate code points, and byte-nonidentical canonical JSON likewise raise `ValueError`.
 
 ### 14.6 CalculationLineage
 
@@ -1330,7 +1356,15 @@ CalculationLineage
 
 Required strings are trimmed and non-empty. Calculation time is timezone-aware UTC. At least one `CalculationInputReference` is required; input record IDs are unique, and inputs normalize into ascending record-ID order. `calculation_id` cannot equal an input record ID, and `calculated_at` cannot precede any input normalized time.
 
+`calculated_at` must have exact type `datetime`; datetime subclasses raise `TypeError`. A naive value raises `ValueError`. An aware value is normalized to UTC, and UTC-normalization overflow below year 1 or above year 9999 raises `ValueError` without clamping, wrapping, or silent alteration.
+
+`inputs` accepts only a tuple or list; another container raises `TypeError`. Every element must satisfy `type(item) is CalculationInputReference`; subclasses and all other elements raise `TypeError`. An empty collection, duplicate normalized `record_id`, calculation-ID/input-ID collision, or chronology violation raises `ValueError`. The stored value is a tuple in ascending `record_id` order.
+
 `parameters_json` is a trimmed, non-empty string whose root is a canonical `$map`. The empty canonical mapping `{"$map":[]}` is valid. The string must be produced by, or be byte-equivalent to, `canonicalize_lineage_parameters`; no untagged mapping is accepted and no JSON float may survive parsing. Validation uses duplicate-key-safe parsing, validates the complete grammar and depth, and requires byte-identical canonical reserialization. Quality flags contain no duplicates and normalize to declaration order. The record is frozen and hashable. No input is hidden. Lineage remains separate from the calculated numeric record and does not calculate the research value itself.
+
+`parameters_json` must have exact type `str`; string subclasses raise `TypeError`. Required-string normalization first trims leading and trailing whitespace, and the normalized string is the value validated and stored. Surrounding whitespace may therefore be removed, but after trimming the stored text must be byte-identical to canonical reserialization. Internal insignificant whitespace, noncanonical escapes, ordering, or number spellings remain invalid and raise `ValueError`.
+
+`quality_flags` accepts only a tuple or list; another container raises `TypeError`. Every element must have exact type `CalculationQualityFlag`; foreign Enum values, subclasses, and all other elements raise `TypeError`. Duplicate flags raise `ValueError`. Empty flags are valid, and the stored tuple follows enum declaration order. Flags are never inferred from calculation behavior.
 
 A sidecar is necessary because existing research records mostly use date-only `as_of_date`, while real inputs have intraday timestamps and individual source identities. Existing research records do not receive lineage fields in 3B. Future 3C transformations will select corrected inputs, require fresh assessments, perform deterministic calculations, produce existing research records, and create `CalculationLineage` sidecars.
 
