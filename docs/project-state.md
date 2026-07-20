@@ -49,32 +49,29 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3B completed: deterministic freshness assessment, provider-correction selection, and canonical calculation lineage are implemented, independently reviewed, and validated with fixed synthetic fixtures.
 - Milestone 3C.1 completed: deterministic provider-neutral semantic observation identity implemented and independently reviewed for all ten normalized market-data record types, with versioned canonical tagged-JSON keys, exact identity-field boundaries, provider-neutral provenance exclusion, and deterministic fixed synthetic tests.
 - Milestone 3C.2 completed: deterministic per-record selected/fresh market-data binding implemented and independently reviewed, including complete semantic candidate-group verification, deterministic correction selection, explicit correction-context trust boundaries, authoritative freshness recomputation, deterministic validation precedence, and fixed synthetic tests.
-- Milestone 3C.3 binding-set temporal coherence implemented, independently reviewed, and validated with 541 tests passed and 42 public `market_data` names; the implementation is included in the current changeset and is ready for its implementation commit.
+- Milestone 3C.3 binding-set temporal coherence implemented, independently reviewed with REVIEW RESULT: PASS, validated with 541 tests passed and 42 public `market_data` names, and committed and pushed in `1fd33889885cfa7e2e75853e2bb54b3c15260982` (`Implement market data snapshot timing assessment`).
 
 ## Current task
 
 Clarify and review the Milestone 3C.4 explicit relationship/group-coherence
 contract before implementation.
 
-Milestones 3C.1 and 3C.2 are complete and independently reviewed. The Milestone
-3C.3 binding-set temporal-coherence contract has been defined,
-targeted-preflighted, approved, and committed. Milestone 3C.3 binding-set
-temporal coherence is implemented, independently reviewed, and validated. The
-validated implementation result is 541 tests passed and 42 public
-`market_data` names. The implementation is included in the current changeset
-and is ready for its implementation commit. No normalized-record schema change
-was required for narrow Milestone 3C.3. Milestone 3C.4 relationship/group
-coherence, Milestone 3C.5 deterministic observation selection, Milestone 3C.6
-historical-series assembly and completeness, and Milestone 3C.7 transformations
-and `CalculationLineage` remain unimplemented. Broad Milestone 3 remains
-incomplete. No provider has been selected and no network access is authorized.
+Milestones 3C.1, 3C.2, and 3C.3 are complete and independently reviewed.
+Milestone 3C.3 binding-set temporal coherence is implemented, validated with
+541 tests passed and 42 public `market_data` names, and committed at
+`1fd33889885cfa7e2e75853e2bb54b3c15260982`. No normalized-record schema change
+was required for 3C.3. Milestone 3C.4 relationship/group coherence, Milestone
+3C.5 deterministic cross-observation selection, Milestone 3C.6 historical-series
+assembly and completeness, and Milestone 3C.7 transformations and
+`CalculationLineage` remain unimplemented. Broad Milestone 3 remains incomplete.
+No provider has been selected and no network access is authorized.
 `market_data.py` remains independent of the evidence, report, and scanner
 modules.
 
 ## Last validated checkpoint
 
 - Checkpoint: Milestone 3C.3 complete
-- Base commit: `f406ec7b1747184bf18d28455d6e65ce5f046ce4`
+- Commit: `1fd33889885cfa7e2e75853e2bb54b3c15260982`
 - Tests: 541 passed
 - Public `market_data` API: 42 names
 - Milestone 3C.1 semantic observation identity complete
