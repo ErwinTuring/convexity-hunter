@@ -51,19 +51,18 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 
 ## Current task
 
-Clarify and review the next Milestone 3C.2+ specification before any later 3C implementation.
+Implement and independently review Milestone 3C.2 selected/fresh market-data
+binding.
 
-Broad Milestone 3C preflight completed: NOT READY FOR IMPLEMENTATION. Milestone
-3C is being decomposed to resolve specification blockers. The Milestone 3C.1
-contract and implementation are complete, and
-`semantic_observation_key(record) -> str` is implemented. The public
-`market_data` API now contains 37 names. Broad Milestone 3C remains incomplete.
-Remaining selected/fresh binding, snapshot coherence, deterministic input
+Milestone 3C.1 is complete. The Milestone 3C.2 selected/fresh binding contract
+is approved and committed. Milestone 3C.2 implementation has not started. The
+latest implementation result remains 495 tests and 37 public `market_data`
+names. Milestone 3C.3+ snapshot coherence, deterministic cross-observation
 selection, historical completeness, and research-record transformations remain
-specification-blocked and unimplemented; final later 3C sub-milestone numbering
-and public APIs are not yet locked. No provider has been selected and no network
-access is authorized. `market_data.py` remains independent of the evidence,
-report, and scanner modules.
+specification-blocked and unimplemented. Broad Milestone 3 remains incomplete.
+No provider has been selected and no network access is authorized.
+`market_data.py` remains independent of the evidence, report, and scanner
+modules.
 
 ## Last validated checkpoint
 
@@ -79,7 +78,7 @@ report, and scanner modules.
 
 ## Next task
 
-Perform an A-level specification preflight for the next dependency-ordered Milestone 3C.2+ contract before implementation.
+Complete independent review of Milestone 3C.2 before implementation commit.
 
 ## Deferred
 

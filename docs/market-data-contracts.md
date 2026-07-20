@@ -665,7 +665,7 @@ MarketDataFreshnessPolicy
 | `rate` | `maximum_rate_age_seconds` |
 | `dividend` | `maximum_dividend_age_seconds` |
 
-`maximum_cross_record_skew_seconds` is retained for later multi-record snapshot assembly. Single-record freshness assessment does not apply it; 3C transformations or a separately reviewed snapshot-coherence function will apply it. `maximum_source_observation_span_seconds` is the within-record multi-source limit and is applied in 3B.1.
+`maximum_cross_record_skew_seconds` is retained for later multi-record snapshot assembly. Single-record freshness assessment does not apply it; a separately reviewed snapshot-coherence function will apply it. `maximum_source_observation_span_seconds` is the within-record multi-source limit and is applied in 3B.1.
 
 ### 11.3 FreshnessContext
 
@@ -897,7 +897,7 @@ FreshnessAssessment
 
 ### Cross-record skew remains separate
 
-`maximum_cross_record_skew_seconds` is not applied by single-record freshness assessment. Later snapshot assembly compares `metadata.effective_observed_at` across records and also inspects every record's complete source-time range; no single effective timestamp can hide incompatible source spans. That future operation preserves every individual `FreshnessAssessment`. It is not implemented in 3B.1, and transformation into research records remains 3C work.
+`maximum_cross_record_skew_seconds` is not applied by single-record freshness assessment. Later snapshot assembly compares `metadata.effective_observed_at` across records and also inspects every record's complete source-time range; no single effective timestamp can hide incompatible source spans. That future operation preserves every individual `FreshnessAssessment`. It is not implemented in 3B.1, and snapshot coherence and transformation into research records remain Milestone 3C.3+ work.
 
 ## 12. Snapshot coherence
 
@@ -1408,7 +1408,7 @@ provider methodology descriptions, curve IDs, dividend types or statuses,
 listings or share classes, quote scopes, or venues. It uses no fuzzy matching,
 LLM interpretation, or alias registry. Exact normalized fields define identity.
 
-#### Relationship to later 3C work
+#### Relationship to Milestone 3C.2
 
 Only this directional dependency is locked:
 
@@ -1423,9 +1423,485 @@ normalized immutable records
     -> later transformation
 ```
 
-Milestone 3C.1 specifies only semantic identity. It does not define a later
-binding API, snapshot statuses or reasons, transformation APIs, transformations,
-or pricing behavior.
+Milestone 3C.1 specifies only semantic identity. The selected/fresh binding API
+is defined separately by Milestone 3C.2 below. Milestone 3C.1 does not define
+snapshot statuses or reasons, transformation APIs, transformations, or pricing
+behavior.
+
+### 13.7 Milestone 3C.2 per-record selected/fresh binding
+
+Milestone 3C.2 defines a deterministic proof layer for one complete semantic
+observation candidate group:
+
+```text
+one complete semantic observation candidate group
+    -> deterministic correction selection
+    -> one selected normalized record
+    -> deterministic freshness assessment
+    -> one auditable selected/fresh binding
+```
+
+This stage proves only that one normalized record was selected from its complete
+verified correction group and was fresh under one explicit policy and context.
+It does not perform cross-record skew checks, quote phase/scope/venue
+compatibility, analytics alignment, selection among different semantic
+observations, historical-series completeness, economic transformations,
+pricing, or `CalculationLineage` construction.
+
+#### Planned public API
+
+Milestone 3C.2 adds exactly these two planned public names to
+`convexity_hunter.market_data`:
+
+```text
+SelectedFreshMarketDataBinding
+bind_selected_fresh_market_data
+```
+
+The planned function is:
+
+```text
+bind_selected_fresh_market_data(
+    candidates,
+    correction_evaluated_at,
+    correction_rule_id,
+    correction_rule_version,
+    freshness_policy,
+    freshness_context,
+) -> SelectedFreshMarketDataBinding
+```
+
+The existing 37 public names and their exact order remain unchanged. The two
+names above are appended to `market_data.__all__` after the existing 37 names,
+in exactly the displayed order: first `SelectedFreshMarketDataBinding`, then
+`bind_selected_fresh_market_data`. No public name may be inserted among or
+reorder the existing names. The planned count after 3C.2 implementation is 39.
+Milestone 3C.2 introduces no additional public enum, status, reason code, alias,
+registry, helper, or exception class.
+
+#### Immutable binding artifact
+
+The exact immutable record and field order are:
+
+```text
+SelectedFreshMarketDataBinding
+    candidate_records: Tuple[SupportedNormalizedRecord, ...]
+    correction_selection: CorrectionSelection
+    freshness_policy: MarketDataFreshnessPolicy
+    freshness_context: FreshnessContext
+    freshness_assessment: FreshnessAssessment
+```
+
+`SupportedNormalizedRecord` is descriptive contract notation only and is not a
+new public alias. The supported values are exactly the ten normalized record
+types accepted by both `semantic_observation_key` and
+`assess_market_data_freshness`.
+
+The binding is frozen, immutable in ordinary use, and structurally comparable
+for equality. It is not guaranteed to be hashable in v0.1. Some already-valid
+normalized records may contain nested values accepted by existing contracts
+whose runtime hashability is not guaranteed. Milestone 3C.2 does not strengthen
+those earlier nested validation boundaries or add a runtime `hash(...)`
+eligibility check merely to make the wrapper hashable.
+
+The constructor stores candidate records in a tuple and stores only the supplied
+frozen or immutable contract objects. It performs no mutation. Structural
+equality is deterministic after candidate canonicalization, and equal
+authoritative inputs produce equal bindings regardless of candidate input order.
+Callers must not rely on using a binding as a dictionary key or set member. No
+custom `__hash__` is planned; implementation must not use identity-based hashing,
+catch nested unhashability, or invent a hash value.
+
+The artifact embeds the complete immutable candidate group so the correction
+proof remains auditable without a process-global record registry. It embeds the
+complete immutable freshness policy and context because policy ID/version alone
+do not preserve thresholds, switches, or `latest_completed_session_date`.
+
+The binding exposes exactly these public properties:
+
+```text
+semantic_observation_key -> str
+selected_record -> one exact supported normalized record
+```
+
+After constructor validation succeeds, `semantic_observation_key` returns
+`correction_selection.semantic_observation_key`. `selected_record` returns the
+unique candidate for which:
+
+```text
+candidate.metadata.record_id == correction_selection.selected_record_id
+```
+
+The semantic key and selected record are derived properties, not duplicate
+stored fields.
+
+#### Candidate boundary and semantic-group integrity
+
+Both the public function and direct binding construction accept candidate
+records only through a tuple or list. Any other container raises `TypeError`.
+Every element must satisfy `type(candidate) is SupportedRecordType` for one of
+the exact ten supported normalized record types. Subclasses and unsupported
+objects raise `TypeError`.
+
+The collection must be non-empty and candidate `metadata.record_id` values must
+be unique. An empty collection or duplicate record ID raises `ValueError`.
+Storage is a tuple containing the supplied candidate record objects in ascending
+`candidate.metadata.record_id` order. Caller order has no semantic meaning and
+must not affect the result.
+
+For every candidate, the binding derives:
+
+```text
+semantic_observation_key(candidate)
+```
+
+Every derived key must be exactly equal. A mixed-semantic candidate group raises
+`ValueError`. The common group key is derived from the complete normalized
+records and is never accepted as an independent caller-supplied function
+argument. Candidate metadata alone is insufficient to prove semantic grouping.
+
+#### Global and public-function validation precedence
+
+The general binding-layer validation order is:
+
+```text
+top-level Python type validation
+    -> candidate element type validation
+    -> collection and value canonicalization
+    -> deterministic recomputation
+    -> chronology
+    -> eligibility
+```
+
+No economic or value computation occurs before all required top-level Python
+object types have been validated. Wrong Python types raise `TypeError` before
+value-level `ValueError` conditions are evaluated according to the path-specific
+orders in this section. Errors delegated to the existing correction and
+freshness functions occur only after the binding layer's preceding validation
+steps have completed.
+
+For `bind_selected_fresh_market_data`, the exact observable order is:
+
+**Phase A — top-level types**
+
+1. Validate that `candidates` is a tuple or list.
+2. Require `type(freshness_policy) is MarketDataFreshnessPolicy`.
+3. Require `type(freshness_context) is FreshnessContext`.
+
+The binding layer does not duplicate validation of
+`correction_evaluated_at`, `correction_rule_id`, or
+`correction_rule_version`. Their type and value validation remains authoritative
+in `select_correction_candidate` when it is invoked in Phase D.
+
+**Phase B — candidate element types**
+
+4. Validate every candidate in caller order using the exact supported-record
+   rule. The first wrong element type or subclass raises `TypeError`.
+
+**Phase C — candidate collection values**
+
+5. Reject an empty candidate collection with `ValueError`.
+6. Reject duplicate candidate record IDs with `ValueError`.
+7. Sort candidates by normalized record ID and store the canonical tuple.
+8. Derive every semantic observation key.
+9. Reject mixed semantic keys with `ValueError`.
+
+**Phase D — correction selection**
+
+10. Call `select_correction_candidate` with the derived key, canonical candidate
+    metadata, and explicit correction arguments.
+11. Propagate its existing `TypeError` or `ValueError` taxonomy unchanged.
+12. Reject an ambiguous result with binding-level `ValueError`. After a selected
+    result, resolve the selected record uniquely from the canonical tuple.
+
+**Phase E — chronology and freshness**
+
+13. Enforce `correction_selection.evaluated_at <=
+    freshness_context.evaluation_at`; a violation raises `ValueError`.
+14. Compute freshness from the selected record, exact policy, and exact context.
+15. Reject any non-fresh result with `ValueError`.
+16. Construct the validated binding from the canonical candidates and
+    authoritative sidecars, policy, and context.
+
+Consequently:
+
+```text
+empty candidates + wrong freshness_policy type
+    -> TypeError from freshness_policy validation
+unsupported candidate element + an empty-value condition
+    -> TypeError from candidate element validation
+valid candidate group + invalid correction_rule_id type
+    -> existing selector TypeError
+```
+
+#### Authoritative correction selection and selected-record proof
+
+The public function recomputes correction selection by calling the existing
+`select_correction_candidate` with:
+
+```text
+derived group semantic key
+tuple(candidate.metadata for candidate in canonical candidate order)
+correction_evaluated_at
+correction_rule_id
+correction_rule_version
+```
+
+Every group, including a one-record group, must pass explicit correction
+selection. A one-record group must produce `selected` with exactly
+`only_candidate_selected`; a record never bypasses selection merely because no
+competing correction is currently known.
+
+If the recomputed result is `ambiguous`, the binding function raises
+`ValueError`. It does not return `None` or create a rejection assessment.
+Callers that need to inspect an ambiguous result may call
+`select_correction_candidate` separately.
+
+A successful binding requires all of these relationships:
+
+```text
+correction_selection.status == selected
+correction_selection.selected_record_id is not None
+correction_selection.selected_record_id appears exactly once in candidate_records
+correction_selection.semantic_observation_key
+    == semantic_observation_key(candidate) for every candidate
+```
+
+The selected record is resolved only from the canonical candidate tuple. Record
+ID order, caller or file order, retrieval time, normalization time, and lexical
+correction-ID order never replace the existing correction-selection algorithm.
+
+#### Selection/freshness chronology and authoritative freshness
+
+The exact per-record chronology is:
+
+```text
+correction_selection.evaluated_at <= freshness_context.evaluation_at
+```
+
+Equality is valid. A correction selection evaluated after the freshness context
+raises `ValueError`. This preserves the operational sequence of selection first
+and freshness second. Later snapshot logic may impose common evaluation or
+as-of-time requirements across bindings. Milestone 3C.2 defines no relationship
+to a future snapshot time or `CalculationLineage.calculated_at`.
+
+The public binding function computes freshness through:
+
+```text
+assess_market_data_freshness(
+    selected_record,
+    freshness_policy,
+    freshness_context,
+)
+```
+
+A successful binding requires exactly:
+
+```text
+freshness_assessment.status == fresh
+freshness_assessment.reason_codes == (fresh_within_policy,)
+```
+
+`stale`, `ineligible`, and `unknown` results all raise `ValueError`. They are not
+converted into missing data, zero values, a binding, or a new status. The
+complete recomputed `FreshnessAssessment` is stored in the binding.
+
+#### Direct-construction trust boundary
+
+Direct construction must not trust supplied sidecars merely because their own
+constructors accepted them. The binding constructor independently performs this
+exact observable validation sequence:
+
+**Phase A — top-level types**
+
+1. Validate that `candidate_records` is a tuple or list.
+2. Require `type(correction_selection) is CorrectionSelection`.
+3. Require `type(freshness_policy) is MarketDataFreshnessPolicy`.
+4. Require `type(freshness_context) is FreshnessContext`.
+5. Require `type(freshness_assessment) is FreshnessAssessment`.
+
+**Phase B — candidate element types**
+
+6. Validate every candidate in caller order using the exact supported-record
+   rule. The first wrong element type or subclass raises `TypeError`.
+
+**Phase C — candidate collection values**
+
+7. Reject an empty candidate collection with `ValueError`.
+8. Reject duplicate candidate record IDs with `ValueError`.
+9. Sort candidates by record ID into the canonical tuple.
+10. Derive every semantic observation key.
+11. Reject mixed semantic keys with `ValueError`.
+
+**Phase D — correction proof**
+
+12. Recompute correction selection from the canonical candidate metadata,
+    derived key, and supplied selection rule identity, version, and evaluation
+    time.
+13. Propagate existing selector validation errors unchanged.
+14. Require exact equality with the supplied `correction_selection`; a mismatch
+    raises `ValueError`.
+15. Require selected status and resolve the selected record uniquely from the
+    canonical tuple; invalid proof raises `ValueError`.
+
+**Phase E — chronology**
+
+16. Enforce `correction_selection.evaluated_at <=
+    freshness_context.evaluation_at`; a violation raises `ValueError`.
+
+**Phase F — freshness proof**
+
+17. Recompute freshness from the selected record, supplied policy, and supplied
+    context.
+18. Require exact equality with the supplied `freshness_assessment`; a mismatch
+    raises `ValueError`.
+19. Require `fresh` status and only `fresh_within_policy`; otherwise raise
+    `ValueError`.
+20. Store the canonical candidate tuple and supplied authoritative selection,
+    policy, context, and assessment objects.
+
+Consequently:
+
+```text
+empty candidate_records + wrong correction_selection type
+    -> TypeError from correction_selection validation
+forged freshness sidecar + late correction chronology
+    -> chronology ValueError before freshness-sidecar equality validation
+freshness-sidecar mismatch + non-fresh supplied status
+    -> freshness equality-mismatch ValueError before the fresh-only check
+```
+
+A structurally valid but forged, mismatched, stale, ambiguous, or unrelated
+sidecar raises `ValueError`. The public function accepts no caller-supplied
+correction or freshness sidecar; it calculates both and then constructs the
+validated binding.
+
+For direct construction, all sidecars and freshness inputs require exact types:
+
+```text
+type(correction_selection) is CorrectionSelection
+type(freshness_policy) is MarketDataFreshnessPolicy
+type(freshness_context) is FreshnessContext
+type(freshness_assessment) is FreshnessAssessment
+```
+
+The public function likewise requires exact `MarketDataFreshnessPolicy` and
+`FreshnessContext` objects. Subclasses and other objects raise `TypeError`.
+Existing functions remain authoritative for validation of correction evaluation
+time, correction rule identity/version, policy fields, and context fields; the
+binding contract neither weakens nor duplicates that validation.
+
+#### Failure behavior
+
+`TypeError` is used for:
+
+```text
+wrong candidate container type
+wrong candidate element type or subclass
+wrong policy, context, or sidecar Python type or subclass
+wrong correction argument types propagated from select_correction_candidate
+wrong types propagated from an invoked existing authoritative function
+```
+
+`ValueError` is used for:
+
+```text
+empty candidate collection
+duplicate candidate record IDs
+mixed semantic observation keys
+ambiguous correction selection
+selection/result mismatch
+selection evaluated after freshness evaluation
+non-fresh freshness result
+freshness/result mismatch
+record, category, policy, context, or metric mismatch exposed by recomputation
+invalid correction argument values propagated from select_correction_candidate
+invalid values propagated from an invoked existing authoritative function
+```
+
+No custom public exception, binding status, or binding reason enum is introduced.
+
+The path-specific orders above define deterministic precedence when multiple
+defects coexist. Within those orders:
+
+- candidate elements are checked in caller order;
+- duplicate record IDs are checked before semantic-key derivation;
+- mixed semantic keys are checked before correction recomputation;
+- correction recomputation, and direct-constructor equality, are checked before
+  chronology;
+- chronology is checked before freshness recomputation or equality; and
+- direct-constructor freshness equality is checked before the final fresh-only
+  condition.
+
+No public rejection status or reason code is returned. The binding contract does
+not define finer precedence among multiple defects discovered inside one
+delegated existing function; that function's existing deterministic validation
+order and exception taxonomy remain authoritative.
+
+#### Successful-path equivalence and future test expectations
+
+The public function and direct constructor have identical successful semantics:
+
+```text
+same canonical candidate records
+same authoritative correction result
+same freshness policy and context
+same authoritative freshness result
+    -> structurally equal bindings
+```
+
+Candidate input order does not affect successful binding equality. Equal hashes
+are not promised. The public function should conceptually compute the
+authoritative sidecars and pass them to the validated constructor, but this is
+not required as an internal implementation technique. Observable validation and
+successful output semantics must follow this contract in either implementation.
+
+Future 3C.2 tests must cover:
+
+- frozen behavior and no mutation;
+- deterministic structural equality and candidate-order independence;
+- the absence of a hashability promise, with an optional regression showing
+  that callers cannot depend on hashing when an existing valid nested value is
+  unhashable;
+- exact append order of the two public exports after the existing 37 names;
+- exact top-level and path-specific validation precedence; and
+- equivalent successful output from the public function and direct constructor.
+
+Tests must not require bindings to be hashable.
+
+#### Determinism, snapshot boundary, and lineage
+
+The record and function are pure. They do not mutate inputs; inspect the wall
+clock; call `date.today` or `datetime.now`; read files or environment variables;
+use randomness; access a network, provider SDK, or LLM; or use a process-global
+registry. All time, rule, policy, and context values are explicit inputs. Input
+order does not affect the resulting binding or its structural equality.
+
+Milestone 3C.2 proves only per-record selected/fresh eligibility. A later
+snapshot stage may consume multiple bindings and inspect their preserved
+selected records, candidate records and sources, freshness policies and
+contexts, correction and freshness evaluation times, market phase, quote scope,
+venue, session and effective dates, and source observation times.
+
+Milestone 3C.2 does not evaluate `maximum_cross_record_skew_seconds`, global
+timestamp ranges, common cross-record policy or context, phase/scope/venue
+compatibility, analytics/quote alignment, activity/reference/rate/dividend
+selection, or historical completeness. Its output remains stable before those
+future algorithms are specified because it retains all required immutable
+inputs and proof objects.
+
+Milestone 3C.2 does not create or modify `CalculationLineage`. The dependency is:
+
+```text
+SelectedFreshMarketDataBinding
+    -> later snapshot and cross-observation selection
+    -> later transformation
+    -> CalculationLineage
+```
+
+Later transformation lineage may use
+`CalculationQualityFlag.correction_selected`, but that flag does not replace the
+detailed binding proof.
 
 ## 14. Canonical calculation lineage
 
@@ -1625,7 +2101,7 @@ Required strings are trimmed and non-empty. Calculation time is timezone-aware U
 
 `quality_flags` accepts only a tuple or list; another container raises `TypeError`. Every element must have exact type `CalculationQualityFlag`; foreign Enum values, subclasses, and all other elements raise `TypeError`. Duplicate flags raise `ValueError`. Empty flags are valid, and the stored tuple follows enum declaration order. Flags are never inferred from calculation behavior.
 
-A sidecar is necessary because existing research records mostly use date-only `as_of_date`, while real inputs have intraday timestamps and individual source identities. Existing research records do not receive lineage fields in 3B. Future 3C transformations will select corrected inputs, require fresh assessments, perform deterministic calculations, produce existing research records, and create `CalculationLineage` sidecars.
+A sidecar is necessary because existing research records mostly use date-only `as_of_date`, while real inputs have intraday timestamps and individual source identities. Existing research records do not receive lineage fields in 3B. Future Milestone 3C.3+ transformations will consume selected/fresh bindings, perform deterministic calculations, produce existing research records, and create `CalculationLineage` sidecars.
 
 ## 15. Mapping to existing research records
 
@@ -1645,6 +2121,7 @@ Normalized observations never directly produce `CandidateState`. Calculated reco
 | --- | --- | --- |
 | Provider adapter | Authentication and transport; provider schema parsing; raw-meaning preservation; provider timestamp extraction; `SourceReference` construction | No economic screening |
 | Core normalization records | Types; finite values; canonical units; timezone awareness; identifier consistency; basic quote/bar invariants; provenance presence | No historical calculations or provider fetching |
+| Selected/fresh binding layer | Complete semantic candidate-group verification; authoritative correction selection; selected-record resolution; authoritative single-record freshness; immutable proof retention | No cross-record coherence, cross-observation selection, historical completeness, economic transformation, or calculation lineage |
 | Calculation layer | Interpolation; annualization; percentiles; realized volatility; structure aggregation; pricing scenarios; `CalculationLineage` | No hidden inputs or state classification |
 | `CandidateResearchRecord` | Aggregate consistency; evidence classification; research disclosures | No provider parsing |
 | `ScreeningPolicy` and `screen_candidate` | Deterministic state classification | No provider normalization or fetching |
@@ -1762,27 +2239,41 @@ canonicalize_lineage_parameters
 
 Use fixed synthetic inputs. Implement the complete canonical tagged-tree grammar and duplicate-key-safe JSON validation. No provider or network access is authorized in any 3B subphase.
 
-### Milestone 3C.1 — Semantic observation identity
+### Milestone 3C.1 — Semantic observation identity (complete)
 
-After all 3B subphases are reviewed, define and review the deterministic
-provider-neutral semantic observation identity contract in Section 13.6.
-Milestone 3C.1 must be reviewed and stable before correction or snapshot binding
-depends on semantic keys. Its only planned public API is:
+The deterministic provider-neutral semantic observation identity contract in
+Section 13.6 is implemented, reviewed, and stable. Its only public API is:
 
 ```text
 semantic_observation_key(record) -> str
 ```
 
-Completing this contract clarification does not authorize transformation
+### Milestone 3C.2 — Per-record selected/fresh binding
+
+After Milestone 3C.1, implement and review only the Section 13.7 per-record
+selected/fresh binding contract. Its exact two planned public additions are:
+
+```text
+SelectedFreshMarketDataBinding
+bind_selected_fresh_market_data
+```
+
+The current public `market_data` API count is 37; the planned count after 3C.2
+implementation is 39. The binding verifies a complete semantic candidate group,
+recomputes correction selection, resolves one selected record, recomputes
+freshness, and retains the complete immutable proof. Milestone 3C.2 must be
+reviewed and stable before snapshot assembly consumes bindings.
+
+Completing the 3C.2 contract does not authorize snapshot or transformation
 implementation.
 
-### Milestone 3C.2+ — Remaining Milestone 3C work
+### Milestone 3C.3+ — Remaining Milestone 3C work
 
-Remaining selected/fresh binding, snapshot coherence, deterministic input
-selection, historical completeness, and research-record transformations stay
-grouped at dependency level only. Later 3C work remains specification-blocked.
-Final sub-milestone numbering and public APIs are intentionally not assigned
-until their contracts are clarified.
+Snapshot coherence, deterministic cross-observation selection, historical
+completeness, and research-record transformations stay grouped at dependency
+level only. Milestone 3C.3+ remains specification-blocked and unimplemented.
+Final numbering and public APIs beyond 3C.2 are intentionally not assigned until
+their contracts are clarified.
 
 ### Milestone 3D — Provider adapter
 
@@ -1804,15 +2295,17 @@ The full implementation sequence is:
 4. Implement and review Milestone 3B.1 freshness contracts and assessment.
 5. Implement and review Milestone 3B.2 correction selection.
 6. Implement and review Milestone 3B.3 calculation lineage.
-7. Review and stabilize the Milestone 3C.1 semantic observation identity
+7. Complete and review Milestone 3C.1 semantic observation identity.
+8. Review and stabilize the Milestone 3C.2 per-record selected/fresh binding
    contract, then implement it only after approval.
-8. Clarify and review the remaining Milestone 3C.2+ specifications before any
-   later 3C implementation.
-9. Select a provider only after Milestones 3A–3C are stable.
-10. Add recorded provider fixture payloads.
-11. Implement one adapter behind the contracts.
-12. Review licensing and retention constraints.
-13. Separately authorize live-network testing.
+9. Clarify and review Milestone 3C.3+ snapshot coherence, deterministic
+   cross-observation selection, historical completeness, and transformation
+   specifications before implementing them.
+10. Select a provider only after Milestones 3A–3C are stable.
+11. Add recorded provider fixture payloads.
+12. Implement one adapter behind the contracts.
+13. Review licensing and retention constraints.
+14. Separately authorize live-network testing.
 
 ## 20. Non-goals
 
@@ -1843,6 +2336,31 @@ Resolved for v0.1 by the Milestone 3C.1 contract:
   semantic observation key. The key is derived by the planned pure
   `semantic_observation_key(record) -> str` function; no new stored field is
   added.
+
+Resolved for v0.1 by the Milestone 3C.2 contract:
+
+- A standalone per-record selected/fresh binding stage precedes snapshot
+  coherence.
+- The binding retains and verifies the complete candidate records; metadata
+  alone does not prove a semantic candidate group.
+- Correction selection and freshness assessment are recomputed from their
+  authoritative inputs rather than trusted as supplied sidecars.
+- Every record, including a one-candidate group, requires explicit correction
+  selection.
+- Correction evaluation time must be less than or equal to freshness context
+  evaluation time.
+- The complete freshness policy and context are retained in the binding.
+- Successful output is the frozen public `SelectedFreshMarketDataBinding`
+  artifact.
+- The binding has deterministic structural equality after candidate
+  canonicalization but no v0.1 hashability guarantee and no new nested
+  hashability eligibility rule.
+- The two 3C.2 public names append, in contract order, after the unchanged
+  existing 37-name public API sequence.
+- Public-function and direct-constructor validation use the exact path-specific
+  precedence defined in Section 13.7.
+- A valid-but-ambiguous correction group or non-fresh assessment raises
+  `ValueError`; no new rejection status or assessment is introduced.
 
 The following questions remain open:
 
