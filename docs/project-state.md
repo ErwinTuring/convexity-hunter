@@ -52,10 +52,11 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 ## Current task
 
 Implement and independently review Milestone 3C.2 selected/fresh market-data
-binding.
+binding against the corrected trust-boundary contract.
 
-Milestone 3C.1 is complete. The Milestone 3C.2 selected/fresh binding contract
-is approved and committed. Milestone 3C.2 implementation has not started. The
+Milestone 3C.1 is complete. The Milestone 3C.2 correction trust-boundary
+contradiction has been resolved, and the corrected trust-boundary contract is
+approved and committed. Milestone 3C.2 implementation has not restarted. The
 latest implementation result remains 495 tests and 37 public `market_data`
 names. Milestone 3C.3+ snapshot coherence, deterministic cross-observation
 selection, historical completeness, and research-record transformations remain
@@ -78,7 +79,7 @@ modules.
 
 ## Next task
 
-Complete independent review of Milestone 3C.2 before implementation commit.
+Complete independent review of Milestone 3C.2 before the implementation commit.
 
 ## Deferred
 

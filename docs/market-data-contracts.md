@@ -1507,10 +1507,11 @@ eligibility check merely to make the wrapper hashable.
 The constructor stores candidate records in a tuple and stores only the supplied
 frozen or immutable contract objects. It performs no mutation. Structural
 equality is deterministic after candidate canonicalization, and equal
-authoritative inputs produce equal bindings regardless of candidate input order.
-Callers must not rely on using a binding as a dictionary key or set member. No
-custom `__hash__` is planned; implementation must not use identity-based hashing,
-catch nested unhashability, or invent a hash value.
+authoritative inputs, including the same correction-evaluation context, produce
+equal bindings regardless of candidate input order. Callers must not rely on
+using a binding as a dictionary key or set member. No custom `__hash__` is
+planned; implementation must not use identity-based hashing, catch nested
+unhashability, or invent a hash value.
 
 The artifact embeds the complete immutable candidate group so the correction
 proof remains auditable without a process-global record registry. It embeds the
@@ -1671,6 +1672,44 @@ The selected record is resolved only from the canonical candidate tuple. Record
 ID order, caller or file order, retrieval time, normalization time, and lexical
 correction-ID order never replace the existing correction-selection algorithm.
 
+#### Correction-evaluation context trust boundary
+
+For the public function, the explicit `correction_rule_id`,
+`correction_rule_version`, and `correction_evaluated_at` arguments are the
+authoritative correction-evaluation context. For direct construction, the
+supplied `correction_selection.rule_id`, `correction_selection.rule_version`,
+and `correction_selection.evaluated_at` fields are the authoritative
+correction-evaluation context used for recomputation.
+
+These values remain subject to the existing selector's type, normalization, and
+value validation. Every candidate must satisfy
+`candidate.metadata.normalized_at <= correction_selection.evaluated_at`, and the
+binding chronology rule still requires
+`correction_selection.evaluated_at <= freshness_context.evaluation_at`. The
+binding contract does not prove that a rule identity was approved or registered
+by an external authority, or that the evaluation time was chosen by one. v0.1
+introduces no process-global rule registry, rule fingerprint, configuration
+object, or external trust source.
+
+Direct construction still recomputes the complete correction selection from the
+derived common semantic key, canonical candidate metadata, and that supplied
+authoritative correction-evaluation context. Exact equality between the
+supplied and recomputed `CorrectionSelection` proves that:
+
+- the semantic observation key agrees with the complete candidate group;
+- the candidate record IDs agree with the complete candidate group;
+- the selected record ID agrees with deterministic correction ordering;
+- status and the terminal reason agree with the selector outcome; and
+- the rule fields and evaluation time are valid, normalized, and preserved
+  consistently.
+
+Exact equality does not prove that the supplied rule ID/version is the only
+legitimate rule identity, that the evaluation time came from a trusted external
+authority, or that another valid rule label or valid evaluation time must be
+rejected. A different valid rule ID, rule version, or evaluation time may
+therefore produce a different but valid binding when all candidate-existence,
+selection, and chronology constraints still pass.
+
 #### Selection/freshness chronology and authoritative freshness
 
 The exact per-record chronology is:
@@ -1735,12 +1774,15 @@ exact observable validation sequence:
 
 **Phase D — correction proof**
 
-12. Recompute correction selection from the canonical candidate metadata,
-    derived key, and supplied selection rule identity, version, and evaluation
-    time.
-13. Propagate existing selector validation errors unchanged.
+12. Use the supplied selection's rule ID, rule version, and evaluation time as
+    the authoritative correction-evaluation context for recomputation.
+13. Recompute the full correction selection from the canonical candidate
+    metadata, derived key, and that context, propagating existing selector
+    validation errors unchanged.
 14. Require exact equality with the supplied `correction_selection`; a mismatch
-    raises `ValueError`.
+    raises `ValueError`. Equality establishes candidate-group and
+    selector-result consistency, not external authorization of the rule or
+    evaluation time.
 15. Require selected status and resolve the selected record uniquely from the
     canonical tuple; invalid proof raises `ValueError`.
 
@@ -1771,10 +1813,22 @@ freshness-sidecar mismatch + non-fresh supplied status
     -> freshness equality-mismatch ValueError before the fresh-only check
 ```
 
-A structurally valid but forged, mismatched, stale, ambiguous, or unrelated
-sidecar raises `ValueError`. The public function accepts no caller-supplied
-correction or freshness sidecar; it calculates both and then constructs the
-validated binding.
+A correction sidecar raises `ValueError` when its independently derivable
+selection claims are inconsistent with the complete candidate group or the
+deterministic selector result. This includes mismatches in semantic observation
+key, candidate record IDs, selected record ID, status, or reason codes. Invalid
+rule fields or evaluation times still fail through existing selector validation,
+candidate-existence validation, or binding chronology. A sidecar is not rejected
+solely because a valid alternative rule ID, rule version, or evaluation time was
+used consistently. The public function accepts no caller-supplied correction or
+freshness sidecar; it calculates both and then constructs the validated binding.
+
+The freshness trust boundary is unchanged. Direct construction independently
+recomputes freshness from the selected record, complete supplied
+`MarketDataFreshnessPolicy`, and complete supplied `FreshnessContext`.
+Consequently every `FreshnessAssessment` field remains independently verifiable,
+and any structurally valid but inconsistent freshness sidecar raises
+`ValueError`.
 
 For direct construction, all sidecars and freshness inputs require exact types:
 
@@ -1844,17 +1898,23 @@ The public function and direct constructor have identical successful semantics:
 
 ```text
 same canonical candidate records
-same authoritative correction result
+same authoritative correction-selection context and result
 same freshness policy and context
 same authoritative freshness result
     -> structurally equal bindings
 ```
 
-Candidate input order does not affect successful binding equality. Equal hashes
-are not promised. The public function should conceptually compute the
-authoritative sidecars and pass them to the validated constructor, but this is
-not required as an internal implementation technique. Observable validation and
-successful output semantics must follow this contract in either implementation.
+Candidate input order does not affect successful binding equality. Bindings
+with identical candidate records, policy, context, and selected record may
+nevertheless be structurally unequal when their valid correction selections
+differ by rule ID, rule version, or evaluation time. This is intentional: the
+binding preserves the exact correction-evaluation event. Public-function and
+direct-constructor equivalence applies only when both paths use the same
+authoritative correction-evaluation context. Equal hashes are not promised. The
+public function should conceptually compute the authoritative sidecars and pass
+them to the validated constructor, but this is not required as an internal
+implementation technique. Observable validation and successful output semantics
+must follow this contract in either implementation.
 
 Future 3C.2 tests must cover:
 
@@ -1864,8 +1924,20 @@ Future 3C.2 tests must cover:
   that callers cannot depend on hashing when an existing valid nested value is
   unhashable;
 - exact append order of the two public exports after the existing 37 names;
-- exact top-level and path-specific validation precedence; and
-- equivalent successful output from the public function and direct constructor.
+- exact top-level and path-specific validation precedence;
+- equivalent successful output from the public function and direct constructor
+  when both use the same correction-evaluation context;
+- valid but structurally unequal bindings produced by a different valid rule ID,
+  a different valid rule version, and a different valid evaluation time when all
+  candidates existed, selection is unchanged, and chronology passes;
+- rejection of invalid or empty correction rule IDs/versions, wrong rule-field
+  Python types, evaluation before candidate normalization, and evaluation after
+  freshness evaluation;
+- rejection of correction-sidecar mismatches in semantic key, candidate IDs,
+  selected ID, status, and terminal reason, plus ambiguous recomputed selection;
+  and
+- independent rejection of every freshness-sidecar field mismatch through
+  recomputation from the selected record, full policy, and full context.
 
 Tests must not require bindings to be hashable.
 
@@ -2343,8 +2415,13 @@ Resolved for v0.1 by the Milestone 3C.2 contract:
   coherence.
 - The binding retains and verifies the complete candidate records; metadata
   alone does not prove a semantic candidate group.
-- Correction selection and freshness assessment are recomputed from their
-  authoritative inputs rather than trusted as supplied sidecars.
+- Correction selection is recomputed from the complete candidate group and the
+  supplied authoritative correction-evaluation context. Exact equality verifies
+  candidate-group and selector-result consistency but does not externally
+  authorize the supplied rule ID/version or evaluation time.
+- Freshness assessment is independently recomputed from the selected record,
+  full freshness policy, and full freshness context rather than trusted as a
+  supplied sidecar.
 - Every record, including a one-candidate group, requires explicit correction
   selection.
 - Correction evaluation time must be less than or equal to freshness context
