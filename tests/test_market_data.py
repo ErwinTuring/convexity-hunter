@@ -4,6 +4,7 @@ import dataclasses
 import collections
 import datetime
 import decimal
+import inspect
 import itertools
 import json
 import os
@@ -45,6 +46,7 @@ from convexity_hunter.market_data import (
     OptionVolumeObservation,
     QuoteScope,
     RateCurvePointObservation,
+    SelectedFreshMarketDataBinding,
     SourceQualityFlag,
     SourceReference,
     UnderlyingKey,
@@ -52,6 +54,7 @@ from convexity_hunter.market_data import (
     UnderlyingQuoteObservation,
     UnderlyingSecurityType,
     assess_market_data_freshness,
+    bind_selected_fresh_market_data,
     canonicalize_lineage_parameters,
     semantic_observation_key,
     select_correction_candidate,
@@ -64,8 +67,10 @@ from tests.market_data_fixtures import (
     NORMALIZED_AT,
     OBSERVED_AT,
     RETRIEVED_AT,
+    SESSION_DATE,
     UTC,
     build_correction_candidate,
+    build_correction_quote_observation,
     build_correction_selection,
     build_correction_source,
     build_calculation_input_reference,
@@ -173,6 +178,41 @@ def select_corrections(candidates: object, **overrides: object) -> CorrectionSel
     return select_correction_candidate(**values)
 
 
+def bind_fresh_candidates(
+    candidates: object,
+    **overrides: object,
+) -> SelectedFreshMarketDataBinding:
+    """Bind fixed candidates under explicit synthetic correction context."""
+
+    values = {
+        "candidates": candidates,
+        "correction_evaluated_at": EVALUATION_AT,
+        "correction_rule_id": "provider-correction-selection",
+        "correction_rule_version": "v0.1",
+        "freshness_policy": build_freshness_policy(),
+        "freshness_context": build_freshness_context(),
+    }
+    values.update(overrides)
+    return bind_selected_fresh_market_data(**values)
+
+
+def reconstruct_binding(
+    binding: SelectedFreshMarketDataBinding,
+    **overrides: object,
+) -> SelectedFreshMarketDataBinding:
+    """Directly reconstruct one binding with selected field overrides."""
+
+    values = {
+        "candidate_records": binding.candidate_records,
+        "correction_selection": binding.correction_selection,
+        "freshness_policy": binding.freshness_policy,
+        "freshness_context": binding.freshness_context,
+        "freshness_assessment": binding.freshness_assessment,
+    }
+    values.update(overrides)
+    return SelectedFreshMarketDataBinding(**values)
+
+
 class PublicSurfaceTests(unittest.TestCase):
     def test_exact_all_and_public_names_exist(self) -> None:
         expected = (
@@ -213,9 +253,11 @@ class PublicSurfaceTests(unittest.TestCase):
             "CalculationLineage",
             "canonicalize_lineage_parameters",
             "semantic_observation_key",
+            "SelectedFreshMarketDataBinding",
+            "bind_selected_fresh_market_data",
         )
         self.assertEqual(market_data.__all__, expected)
-        self.assertEqual(len(market_data.__all__), 37)
+        self.assertEqual(len(market_data.__all__), 39)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
@@ -324,6 +366,11 @@ class PublicSurfaceTests(unittest.TestCase):
                 "semantic_observation_key", "candidate_record_ids",
                 "selected_record_id", "status", "reason_codes", "rule_id",
                 "rule_version", "evaluated_at",
+            ),
+            SelectedFreshMarketDataBinding: (
+                "candidate_records", "correction_selection",
+                "freshness_policy", "freshness_context",
+                "freshness_assessment",
             ),
             CalculationInputReference: (
                 "record_id", "normalized_at", "source_ids",
@@ -4042,6 +4089,582 @@ class SemanticObservationIdentityTests(unittest.TestCase):
                 )
 
 
+class SelectedFreshBindingSurfaceAndCandidateTests(unittest.TestCase):
+    def test_exact_function_signature_fields_properties_and_frozen_behavior(
+        self,
+    ) -> None:
+        signature = inspect.signature(bind_selected_fresh_market_data)
+        self.assertEqual(
+            tuple(signature.parameters),
+            (
+                "candidates", "correction_evaluated_at",
+                "correction_rule_id", "correction_rule_version",
+                "freshness_policy", "freshness_context",
+            ),
+        )
+        self.assertTrue(all(
+            parameter.default is inspect.Parameter.empty
+            for parameter in signature.parameters.values()
+        ))
+        self.assertIs(signature.return_annotation, SelectedFreshMarketDataBinding)
+
+        binding = bind_fresh_candidates((build_underlying_quote_observation(),))
+        fields = tuple(
+            field.name for field in dataclasses.fields(binding)
+        )
+        self.assertEqual(fields, (
+            "candidate_records", "correction_selection", "freshness_policy",
+            "freshness_context", "freshness_assessment",
+        ))
+        self.assertNotIn("semantic_observation_key", fields)
+        self.assertNotIn("selected_record", fields)
+        self.assertEqual(
+            binding.semantic_observation_key,
+            binding.correction_selection.semantic_observation_key,
+        )
+        self.assertIs(binding.selected_record, binding.candidate_records[0])
+        with self.assertRaises(FrozenInstanceError):
+            binding.freshness_context = build_freshness_context()  # type: ignore[misc]
+
+    def test_all_ten_exact_normalized_record_types_are_supported(self) -> None:
+        records = (
+            build_underlying_quote_observation(),
+            build_option_contract_reference(),
+            build_option_quote_observation(),
+            build_option_volume_observation(),
+            build_option_open_interest_observation(),
+            build_option_implied_volatility_observation(),
+            build_option_greeks_observation(),
+            build_underlying_daily_bar_observation(),
+            build_rate_curve_point_observation(),
+            build_dividend_observation(),
+        )
+        self.assertEqual(len(records), 10)
+        for record in records:
+            with self.subTest(record_type=type(record).__name__):
+                binding = bind_fresh_candidates((record,))
+                self.assertIs(binding.selected_record, record)
+
+    def test_tuple_and_list_are_accepted_canonicalized_and_equal(self) -> None:
+        older = build_correction_quote_observation("candidate-z", (1, 1))
+        newer = build_correction_quote_observation("candidate-a", (2, 1))
+        tuple_binding = bind_fresh_candidates((older, newer))
+        list_binding = bind_fresh_candidates([newer, older])
+        self.assertIs(type(list_binding.candidate_records), tuple)
+        self.assertEqual(
+            tuple(record.metadata.record_id for record in list_binding.candidate_records),
+            ("candidate-a", "candidate-z"),
+        )
+        self.assertEqual(tuple_binding, list_binding)
+        self.assertIs(list_binding.selected_record, newer)
+
+    def test_wrong_container_empty_duplicate_and_mixed_groups_are_rejected(
+        self,
+    ) -> None:
+        record = build_underlying_quote_observation()
+        with self.assertRaisesRegex(TypeError, "tuple or list"):
+            bind_fresh_candidates({record})
+        binding = bind_fresh_candidates((record,))
+        with self.assertRaisesRegex(TypeError, "tuple or list"):
+            reconstruct_binding(binding, candidate_records={record})
+        with self.assertRaisesRegex(ValueError, "at least one"):
+            bind_fresh_candidates(())
+        with self.assertRaisesRegex(ValueError, "duplicates"):
+            bind_fresh_candidates((record, record))
+        option_quote = build_option_quote_observation()
+        option_quote = dataclasses.replace(
+            option_quote,
+            metadata=dataclasses.replace(
+                option_quote.metadata, record_id="option-quote-mixed"
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "semantic observation key"):
+            bind_fresh_candidates((record, option_quote))
+
+    def test_unsupported_element_and_supported_record_subclass_are_rejected(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(TypeError, "exact supported"):
+            bind_fresh_candidates((object(),))
+
+        class UnderlyingQuoteSubclass(UnderlyingQuoteObservation):
+            pass
+
+        base = build_underlying_quote_observation()
+        subclass = UnderlyingQuoteSubclass(**{
+            field.name: getattr(base, field.name)
+            for field in dataclasses.fields(base)
+        })
+        with self.assertRaisesRegex(TypeError, "exact supported"):
+            bind_fresh_candidates((subclass,))
+
+    def test_public_policy_context_and_direct_sidecars_require_exact_types(
+        self,
+    ) -> None:
+        class PolicySubclass(MarketDataFreshnessPolicy):
+            pass
+
+        class ContextSubclass(FreshnessContext):
+            pass
+
+        policy = build_freshness_policy()
+        context = build_freshness_context()
+        policy_subclass = PolicySubclass(**{
+            field.name: getattr(policy, field.name)
+            for field in dataclasses.fields(policy)
+        })
+        context_subclass = ContextSubclass(**{
+            field.name: getattr(context, field.name)
+            for field in dataclasses.fields(context)
+        })
+        record = build_underlying_quote_observation()
+        with self.assertRaises(TypeError):
+            bind_fresh_candidates((record,), freshness_policy=policy_subclass)
+        with self.assertRaises(TypeError):
+            bind_fresh_candidates((record,), freshness_context=context_subclass)
+
+        binding = bind_fresh_candidates((record,))
+        exact_type_cases = (
+            ("correction_selection", binding.correction_selection),
+            ("freshness_policy", binding.freshness_policy),
+            ("freshness_context", binding.freshness_context),
+            ("freshness_assessment", binding.freshness_assessment),
+        )
+        for field_name, value in exact_type_cases:
+            subclass_type = type(
+                f"{type(value).__name__}Subclass", (type(value),), {}
+            )
+            subclass_value = subclass_type(**{
+                field.name: getattr(value, field.name)
+                for field in dataclasses.fields(value)
+            })
+            with self.subTest(field=field_name), self.assertRaises(TypeError):
+                reconstruct_binding(binding, **{field_name: subclass_value})
+
+
+class SelectedFreshBindingCorrectionTests(unittest.TestCase):
+    def test_one_candidate_uses_explicit_selector(self) -> None:
+        record = build_underlying_quote_observation()
+        binding = bind_fresh_candidates((record,))
+        self.assertIs(
+            binding.correction_selection.status,
+            CorrectionSelectionStatus.SELECTED,
+        )
+        self.assertEqual(
+            binding.correction_selection.reason_codes,
+            (CorrectionSelectionReasonCode.ONLY_CANDIDATE_SELECTED,),
+        )
+        self.assertEqual(
+            binding.correction_selection.candidate_record_ids,
+            (record.metadata.record_id,),
+        )
+
+    def test_dominating_revision_selects_exact_canonical_candidate(self) -> None:
+        older = build_correction_quote_observation("candidate-z", (1, 1))
+        newer = build_correction_quote_observation("candidate-a", (2, 1))
+        binding = bind_fresh_candidates((older, newer))
+        self.assertEqual(
+            binding.correction_selection.reason_codes,
+            (CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,),
+        )
+        self.assertEqual(
+            binding.correction_selection.selected_record_id,
+            "candidate-a",
+        )
+        self.assertIs(binding.selected_record, newer)
+        self.assertIs(binding.selected_record, binding.candidate_records[0])
+
+    def test_all_required_ambiguous_groups_raise_value_error(self) -> None:
+        cases = {
+            "missing-provider-id": (
+                build_correction_quote_observation(
+                    "a", (1,), source_overrides=({"provider_record_id": None},)
+                ),
+                build_correction_quote_observation("b", (2,)),
+            ),
+            "lineage-mismatch": (
+                build_correction_quote_observation(
+                    "a", (1,), lineage_names=("a",)
+                ),
+                build_correction_quote_observation(
+                    "b", (2,), lineage_names=("b",)
+                ),
+            ),
+            "tied": (
+                build_correction_quote_observation("a", (2,)),
+                build_correction_quote_observation("b", (2,)),
+            ),
+            "incomparable": (
+                build_correction_quote_observation("a", (2, 1)),
+                build_correction_quote_observation("b", (1, 2)),
+            ),
+        }
+        for name, candidates in cases.items():
+            with self.subTest(case=name), self.assertRaisesRegex(
+                ValueError, "ambiguous"
+            ):
+                bind_fresh_candidates(candidates)
+
+        tied_candidates = cases["tied"]
+        semantic_key = semantic_observation_key(tied_candidates[0])
+        ambiguous = select_correction_candidate(
+            semantic_key,
+            tuple(candidate.metadata for candidate in tied_candidates),
+            EVALUATION_AT,
+            "provider-correction-selection",
+            "v0.1",
+        )
+        assessment = assess_market_data_freshness(
+            tied_candidates[0],
+            build_freshness_policy(),
+            build_freshness_context(),
+        )
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            SelectedFreshMarketDataBinding(
+                candidate_records=tied_candidates,
+                correction_selection=ambiguous,
+                freshness_policy=build_freshness_policy(),
+                freshness_context=build_freshness_context(),
+                freshness_assessment=assessment,
+            )
+
+    def test_direct_constructor_rejects_all_derivable_selection_mismatches(
+        self,
+    ) -> None:
+        baseline = bind_fresh_candidates((build_underlying_quote_observation(),))
+        selection = baseline.correction_selection
+        multi = bind_fresh_candidates((
+            build_correction_quote_observation("a", (1, 1)),
+            build_correction_quote_observation("b", (2, 1)),
+        ))
+        cases = (
+            (baseline, dataclasses.replace(
+                selection, semantic_observation_key="other semantic key"
+            )),
+            (baseline, dataclasses.replace(
+                selection,
+                candidate_record_ids=("other-record",),
+                selected_record_id="other-record",
+            )),
+            (multi, dataclasses.replace(
+                multi.correction_selection, selected_record_id="a"
+            )),
+            (baseline, dataclasses.replace(
+                selection,
+                selected_record_id=None,
+                status=CorrectionSelectionStatus.AMBIGUOUS,
+                reason_codes=(
+                    CorrectionSelectionReasonCode.MISSING_PROVIDER_RECORD_ID,
+                ),
+            )),
+            (baseline, dataclasses.replace(
+                selection,
+                reason_codes=(
+                    CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,
+                ),
+            )),
+        )
+        labels = (
+            "semantic-key", "candidate-ids", "selected-id", "status", "reason"
+        )
+        for label, (binding, forged) in zip(labels, cases):
+            with self.subTest(field=label), self.assertRaisesRegex(
+                ValueError, "correction_selection does not match"
+            ):
+                reconstruct_binding(binding, correction_selection=forged)
+
+    def test_valid_alternative_correction_contexts_are_valid_and_unequal(
+        self,
+    ) -> None:
+        record = build_underlying_quote_observation()
+        baseline = bind_fresh_candidates((record,))
+        alternatives = (
+            bind_fresh_candidates(
+                (record,), correction_rule_id="alternate-correction-rule"
+            ),
+            bind_fresh_candidates(
+                (record,), correction_rule_version="v0.2"
+            ),
+            bind_fresh_candidates(
+                (record,),
+                correction_evaluated_at=(
+                    NORMALIZED_AT + datetime.timedelta(seconds=1)
+                ),
+            ),
+        )
+        for alternative in alternatives:
+            with self.subTest(selection=alternative.correction_selection):
+                self.assertNotEqual(alternative, baseline)
+                self.assertIs(alternative.selected_record, record)
+                direct = reconstruct_binding(
+                    alternative, candidate_records=[record]
+                )
+                self.assertEqual(direct, alternative)
+
+    def test_invalid_correction_context_uses_existing_taxonomy(self) -> None:
+        record = build_underlying_quote_observation()
+        value_errors = (
+            {"correction_rule_id": ""},
+            {"correction_rule_version": " "},
+            {"correction_evaluated_at": datetime.datetime(2030, 1, 2, 15, 31)},
+            {"correction_evaluated_at": NORMALIZED_AT - datetime.timedelta(seconds=1)},
+        )
+        type_errors = (
+            {"correction_rule_id": 1},
+            {"correction_rule_version": object()},
+        )
+        for overrides in value_errors:
+            with self.subTest(overrides=overrides), self.assertRaises(ValueError):
+                bind_fresh_candidates((record,), **overrides)
+        for overrides in type_errors:
+            with self.subTest(overrides=overrides), self.assertRaises(TypeError):
+                bind_fresh_candidates((record,), **overrides)
+
+
+class SelectedFreshBindingFreshnessAndChronologyTests(unittest.TestCase):
+    def test_fresh_quote_retains_complete_exact_assessment(self) -> None:
+        record = build_underlying_quote_observation()
+        policy = build_freshness_policy()
+        context = build_freshness_context()
+        binding = bind_fresh_candidates(
+            (record,), freshness_policy=policy, freshness_context=context
+        )
+        expected = assess_market_data_freshness(record, policy, context)
+        self.assertIs(binding.freshness_policy, policy)
+        self.assertIs(binding.freshness_context, context)
+        self.assertEqual(binding.freshness_assessment, expected)
+        self.assertEqual(expected.effective_age_seconds, decimal.Decimal("60"))
+        self.assertEqual(expected.oldest_source_age_seconds, decimal.Decimal("60"))
+        self.assertEqual(
+            expected.maximum_retrieval_lag_seconds_observed,
+            decimal.Decimal("2"),
+        )
+        self.assertEqual(
+            expected.source_observation_span_seconds, decimal.Decimal("0")
+        )
+
+    def test_stale_ineligible_and_unknown_results_are_rejected(self) -> None:
+        cases = (
+            (
+                "stale",
+                build_underlying_quote_observation(),
+                build_freshness_policy(maximum_quote_age_seconds=59),
+            ),
+            (
+                "ineligible",
+                build_underlying_quote_observation(
+                    market_phase=MarketPhase.PRE_MARKET
+                ),
+                build_freshness_policy(),
+            ),
+            (
+                "unknown",
+                build_underlying_quote_observation(
+                    market_phase=MarketPhase.UNKNOWN
+                ),
+                build_freshness_policy(require_regular_session_quotes=False),
+            ),
+        )
+        for name, record, policy in cases:
+            assessment = assess_market_data_freshness(
+                record, policy, build_freshness_context()
+            )
+            with self.subTest(status=name):
+                self.assertEqual(assessment.status.value, name)
+                with self.assertRaisesRegex(ValueError, "fresh within policy"):
+                    bind_fresh_candidates((record,), freshness_policy=policy)
+
+        stale_record = cases[0][1]
+        stale_policy = cases[0][2]
+        stale_context = build_freshness_context()
+        stale_selection = select_correction_candidate(
+            semantic_observation_key(stale_record),
+            (stale_record.metadata,),
+            EVALUATION_AT,
+            "provider-correction-selection",
+            "v0.1",
+        )
+        stale_assessment = assess_market_data_freshness(
+            stale_record, stale_policy, stale_context
+        )
+        with self.assertRaisesRegex(ValueError, "fresh within policy"):
+            SelectedFreshMarketDataBinding(
+                candidate_records=(stale_record,),
+                correction_selection=stale_selection,
+                freshness_policy=stale_policy,
+                freshness_context=stale_context,
+                freshness_assessment=stale_assessment,
+            )
+
+    def test_date_based_record_retains_session_date_gap(self) -> None:
+        record = build_option_open_interest_observation(
+            open_interest_session_date=SESSION_DATE - datetime.timedelta(days=1)
+        )
+        binding = bind_fresh_candidates((record,))
+        self.assertEqual(binding.freshness_assessment.session_date_gap_days, 1)
+        self.assertIs(binding.freshness_assessment.status, FreshnessStatus.FRESH)
+
+    def test_selection_chronology_before_equal_after_and_before_normalization(
+        self,
+    ) -> None:
+        record = build_underlying_quote_observation()
+        before = bind_fresh_candidates(
+            (record,),
+            correction_evaluated_at=NORMALIZED_AT + datetime.timedelta(seconds=1),
+        )
+        equal = bind_fresh_candidates((record,))
+        self.assertLess(
+            before.correction_selection.evaluated_at,
+            before.freshness_context.evaluation_at,
+        )
+        self.assertEqual(
+            equal.correction_selection.evaluated_at,
+            equal.freshness_context.evaluation_at,
+        )
+        with self.assertRaisesRegex(ValueError, "must not be after"):
+            bind_fresh_candidates(
+                (record,),
+                correction_evaluated_at=EVALUATION_AT + datetime.timedelta(seconds=1),
+            )
+        with self.assertRaisesRegex(ValueError, "normalized by evaluated_at"):
+            bind_fresh_candidates(
+                (record,),
+                correction_evaluated_at=NORMALIZED_AT - datetime.timedelta(seconds=1),
+            )
+
+    def test_direct_constructor_rejects_every_freshness_field_mismatch(
+        self,
+    ) -> None:
+        binding = bind_fresh_candidates((build_underlying_quote_observation(),))
+        assessment = binding.freshness_assessment
+        forged_assessments = {
+            "record_id": dataclasses.replace(assessment, record_id="other-record"),
+            "category": dataclasses.replace(
+                assessment, category=MarketDataCategory.ANALYTICS
+            ),
+            "status/reasons": dataclasses.replace(
+                assessment,
+                status=FreshnessStatus.STALE,
+                reason_codes=(FreshnessReasonCode.EFFECTIVE_AGE_EXCEEDED,),
+            ),
+            "policy_id": dataclasses.replace(assessment, policy_id="other-policy"),
+            "policy_version": dataclasses.replace(
+                assessment, policy_version="v2"
+            ),
+            "evaluated_at": dataclasses.replace(
+                assessment,
+                evaluated_at=assessment.evaluated_at + datetime.timedelta(seconds=1),
+            ),
+            "effective_age_seconds": dataclasses.replace(
+                assessment,
+                effective_age_seconds=decimal.Decimal("61"),
+                oldest_source_age_seconds=decimal.Decimal("61"),
+            ),
+            "oldest_source_age_seconds": dataclasses.replace(
+                assessment,
+                effective_age_seconds=decimal.Decimal("59"),
+                oldest_source_age_seconds=decimal.Decimal("59"),
+            ),
+            "maximum_retrieval_lag_seconds_observed": dataclasses.replace(
+                assessment,
+                maximum_retrieval_lag_seconds_observed=decimal.Decimal("3"),
+            ),
+            "source_observation_span_seconds": dataclasses.replace(
+                assessment,
+                source_observation_span_seconds=decimal.Decimal("1"),
+            ),
+        }
+        for field_name, forged in forged_assessments.items():
+            with self.subTest(field=field_name), self.assertRaisesRegex(
+                ValueError, "freshness_assessment does not match"
+            ):
+                reconstruct_binding(binding, freshness_assessment=forged)
+
+        open_interest = bind_fresh_candidates(
+            (build_option_open_interest_observation(),)
+        )
+        forged_gap = dataclasses.replace(
+            open_interest.freshness_assessment, session_date_gap_days=2
+        )
+        with self.assertRaisesRegex(ValueError, "freshness_assessment does not match"):
+            reconstruct_binding(
+                open_interest, freshness_assessment=forged_gap
+            )
+
+    def test_public_function_and_direct_constructor_are_equivalent(self) -> None:
+        first = build_correction_quote_observation("z", (1, 1))
+        second = build_correction_quote_observation("a", (2, 1))
+        public = bind_fresh_candidates((first, second))
+        direct = SelectedFreshMarketDataBinding(
+            candidate_records=[second, first],
+            correction_selection=public.correction_selection,
+            freshness_policy=public.freshness_policy,
+            freshness_context=public.freshness_context,
+            freshness_assessment=public.freshness_assessment,
+        )
+        self.assertEqual(direct, public)
+        self.assertIs(direct.correction_selection, public.correction_selection)
+        self.assertIs(direct.freshness_assessment, public.freshness_assessment)
+
+
+class SelectedFreshBindingPrecedenceTests(unittest.TestCase):
+    def test_public_top_level_and_element_precedence(self) -> None:
+        context = build_freshness_context()
+        with self.assertRaisesRegex(TypeError, "freshness_policy"):
+            bind_selected_fresh_market_data(
+                [], EVALUATION_AT, object(), object(), object(), context
+            )
+        with self.assertRaisesRegex(TypeError, "exact supported"):
+            bind_selected_fresh_market_data(
+                [object(), object()],
+                EVALUATION_AT,
+                object(),
+                object(),
+                build_freshness_policy(),
+                context,
+            )
+        with self.assertRaisesRegex(TypeError, "rule_id must be a string"):
+            bind_fresh_candidates(
+                (build_underlying_quote_observation(),),
+                correction_rule_id=object(),
+            )
+
+    def test_direct_top_level_chronology_and_freshness_precedence(self) -> None:
+        with self.assertRaisesRegex(TypeError, "correction_selection"):
+            SelectedFreshMarketDataBinding([], object(), object(), object(), object())
+
+        baseline = bind_fresh_candidates((build_underlying_quote_observation(),))
+        late_at = EVALUATION_AT + datetime.timedelta(seconds=1)
+        late_selection = select_correction_candidate(
+            baseline.semantic_observation_key,
+            tuple(record.metadata for record in baseline.candidate_records),
+            late_at,
+            baseline.correction_selection.rule_id,
+            baseline.correction_selection.rule_version,
+        )
+        forged_freshness = dataclasses.replace(
+            baseline.freshness_assessment, record_id="forged-record"
+        )
+        with self.assertRaisesRegex(ValueError, "must not be after"):
+            reconstruct_binding(
+                baseline,
+                correction_selection=late_selection,
+                freshness_assessment=forged_freshness,
+            )
+
+        nonfresh_mismatch = dataclasses.replace(
+            baseline.freshness_assessment,
+            status=FreshnessStatus.STALE,
+            reason_codes=(FreshnessReasonCode.EFFECTIVE_AGE_EXCEEDED,),
+        )
+        with self.assertRaisesRegex(
+            ValueError, "freshness_assessment does not match"
+        ):
+            reconstruct_binding(
+                baseline, freshness_assessment=nonfresh_mismatch
+            )
+
+
 class ImportAndDeterminismTests(unittest.TestCase):
     def test_clean_import_has_no_later_layer_or_network_modules(self) -> None:
         script = """
@@ -4071,6 +4694,10 @@ print('clean market-data import passed')
         self.assertEqual(build_option_contract_key(), build_option_contract_key())
         self.assertEqual(build_correction_source(), build_correction_source())
         self.assertEqual(build_correction_candidate(), build_correction_candidate())
+        self.assertEqual(
+            build_correction_quote_observation(),
+            build_correction_quote_observation(),
+        )
         self.assertEqual(
             build_calculation_input_reference(),
             build_calculation_input_reference(),

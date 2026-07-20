@@ -48,6 +48,8 @@ __all__ = (
     "CalculationLineage",
     "canonicalize_lineage_parameters",
     "semantic_observation_key",
+    "SelectedFreshMarketDataBinding",
+    "bind_selected_fresh_market_data",
 )
 
 
@@ -2508,4 +2510,220 @@ def select_correction_candidate(
     return result(
         CorrectionSelectionStatus.AMBIGUOUS,
         CorrectionSelectionReasonCode.INCOMPARABLE_REVISION_VECTORS,
+    )
+
+
+def _validate_binding_candidate_container(
+    name: str,
+    candidates: object,
+) -> None:
+    """Require the binding contract's tuple-or-list candidate boundary."""
+
+    if not isinstance(candidates, (tuple, list)):
+        raise TypeError(f"{name} must be a tuple or list")
+
+
+def _validate_binding_candidate_elements(candidates: object) -> None:
+    """Require exact supported normalized record types in caller order."""
+
+    for candidate in candidates:  # type: ignore[union-attr]
+        if type(candidate) not in _MARKET_DATA_CATEGORY_BY_RECORD_TYPE:
+            raise TypeError(
+                "every candidate must have an exact supported normalized "
+                "market-data record type"
+            )
+
+
+def _canonicalize_binding_candidates(candidates: object) -> Tuple[object, ...]:
+    """Validate collection values and return record-ID canonical order."""
+
+    candidate_tuple = tuple(candidates)  # type: ignore[arg-type]
+    if not candidate_tuple:
+        raise ValueError("candidate records must contain at least one item")
+    record_ids = tuple(
+        candidate.metadata.record_id for candidate in candidate_tuple
+    )
+    if len(set(record_ids)) != len(record_ids):
+        raise ValueError("candidate record IDs must not contain duplicates")
+    return tuple(
+        sorted(
+            candidate_tuple,
+            key=lambda candidate: candidate.metadata.record_id,
+        )
+    )
+
+
+def _derive_binding_semantic_key(candidates: Tuple[object, ...]) -> str:
+    """Derive and validate the complete semantic candidate group."""
+
+    keys = tuple(semantic_observation_key(candidate) for candidate in candidates)
+    if any(key != keys[0] for key in keys[1:]):
+        raise ValueError("candidate records must share one semantic observation key")
+    return keys[0]
+
+
+def _resolve_binding_selected_record(
+    candidates: Tuple[object, ...],
+    selection: CorrectionSelection,
+) -> object:
+    """Require selected status and resolve one canonical candidate."""
+
+    if (
+        selection.status is not CorrectionSelectionStatus.SELECTED
+        or selection.selected_record_id is None
+    ):
+        raise ValueError("correction selection is ambiguous")
+    matches = tuple(
+        candidate
+        for candidate in candidates
+        if candidate.metadata.record_id == selection.selected_record_id
+    )
+    if len(matches) != 1:
+        raise ValueError(
+            "correction selection must identify exactly one candidate record"
+        )
+    return matches[0]
+
+
+def _validate_binding_chronology(
+    selection: CorrectionSelection,
+    context: FreshnessContext,
+) -> None:
+    """Require correction selection no later than freshness evaluation."""
+
+    if selection.evaluated_at > context.evaluation_at:
+        raise ValueError(
+            "correction selection evaluated_at must not be after freshness "
+            "evaluation_at"
+        )
+
+
+def _validate_binding_fresh_only(assessment: FreshnessAssessment) -> None:
+    """Require the exact successful freshness terminal result."""
+
+    if not (
+        assessment.status is FreshnessStatus.FRESH
+        and assessment.reason_codes
+        == (FreshnessReasonCode.FRESH_WITHIN_POLICY,)
+    ):
+        raise ValueError("selected candidate must be fresh within policy")
+
+
+@dataclass(frozen=True)
+class SelectedFreshMarketDataBinding:
+    """Immutable proof that one correction-selected record is fresh."""
+
+    candidate_records: Tuple[object, ...]
+    correction_selection: CorrectionSelection
+    freshness_policy: MarketDataFreshnessPolicy
+    freshness_context: FreshnessContext
+    freshness_assessment: FreshnessAssessment
+
+    def __post_init__(self) -> None:
+        _validate_binding_candidate_container(
+            "candidate_records", self.candidate_records
+        )
+        if type(self.correction_selection) is not CorrectionSelection:
+            raise TypeError("correction_selection must be a CorrectionSelection")
+        if type(self.freshness_policy) is not MarketDataFreshnessPolicy:
+            raise TypeError(
+                "freshness_policy must be a MarketDataFreshnessPolicy"
+            )
+        if type(self.freshness_context) is not FreshnessContext:
+            raise TypeError("freshness_context must be a FreshnessContext")
+        if type(self.freshness_assessment) is not FreshnessAssessment:
+            raise TypeError("freshness_assessment must be a FreshnessAssessment")
+
+        _validate_binding_candidate_elements(self.candidate_records)
+        candidates = _canonicalize_binding_candidates(self.candidate_records)
+        semantic_key = _derive_binding_semantic_key(candidates)
+        expected_selection = select_correction_candidate(
+            semantic_key,
+            tuple(candidate.metadata for candidate in candidates),
+            self.correction_selection.evaluated_at,
+            self.correction_selection.rule_id,
+            self.correction_selection.rule_version,
+        )
+        if expected_selection != self.correction_selection:
+            raise ValueError(
+                "correction_selection does not match authoritative recomputation"
+            )
+        selected_record = _resolve_binding_selected_record(
+            candidates, self.correction_selection
+        )
+        _validate_binding_chronology(
+            self.correction_selection, self.freshness_context
+        )
+        expected_freshness = assess_market_data_freshness(
+            selected_record,
+            self.freshness_policy,
+            self.freshness_context,
+        )
+        if expected_freshness != self.freshness_assessment:
+            raise ValueError(
+                "freshness_assessment does not match authoritative recomputation"
+            )
+        _validate_binding_fresh_only(self.freshness_assessment)
+        object.__setattr__(self, "candidate_records", candidates)
+
+    @property
+    def semantic_observation_key(self) -> str:
+        """Return the correction proof's semantic observation key."""
+
+        return self.correction_selection.semantic_observation_key
+
+    @property
+    def selected_record(self) -> object:
+        """Return the exact stored correction-selected candidate."""
+
+        return next(
+            candidate
+            for candidate in self.candidate_records
+            if candidate.metadata.record_id
+            == self.correction_selection.selected_record_id
+        )
+
+
+def bind_selected_fresh_market_data(
+    candidates: object,
+    correction_evaluated_at: object,
+    correction_rule_id: object,
+    correction_rule_version: object,
+    freshness_policy: object,
+    freshness_context: object,
+) -> SelectedFreshMarketDataBinding:
+    """Bind one correction-selected record when it is exactly fresh."""
+
+    _validate_binding_candidate_container("candidates", candidates)
+    if type(freshness_policy) is not MarketDataFreshnessPolicy:
+        raise TypeError("freshness_policy must be a MarketDataFreshnessPolicy")
+    if type(freshness_context) is not FreshnessContext:
+        raise TypeError("freshness_context must be a FreshnessContext")
+
+    _validate_binding_candidate_elements(candidates)
+    canonical_candidates = _canonicalize_binding_candidates(candidates)
+    semantic_key = _derive_binding_semantic_key(canonical_candidates)
+    correction_selection = select_correction_candidate(
+        semantic_key,
+        tuple(candidate.metadata for candidate in canonical_candidates),
+        correction_evaluated_at,
+        correction_rule_id,
+        correction_rule_version,
+    )
+    selected_record = _resolve_binding_selected_record(
+        canonical_candidates, correction_selection
+    )
+    _validate_binding_chronology(correction_selection, freshness_context)
+    freshness_assessment = assess_market_data_freshness(
+        selected_record,
+        freshness_policy,
+        freshness_context,
+    )
+    _validate_binding_fresh_only(freshness_assessment)
+    return SelectedFreshMarketDataBinding(
+        candidate_records=canonical_candidates,
+        correction_selection=correction_selection,
+        freshness_policy=freshness_policy,
+        freshness_context=freshness_context,
+        freshness_assessment=freshness_assessment,
     )

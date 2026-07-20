@@ -48,22 +48,23 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3B.3 completed: canonical calculation lineage implemented and validated with immutable input references, deterministic tagged-JSON parameter serialization, exact type boundaries, duplicate-key-safe validation, Decimal/date/datetime canonicalization, depth and cycle controls, and auditable calculation-lineage sidecars.
 - Milestone 3B completed: deterministic freshness assessment, provider-correction selection, and canonical calculation lineage are implemented, independently reviewed, and validated with fixed synthetic fixtures.
 - Milestone 3C.1 completed: deterministic provider-neutral semantic observation identity implemented and independently reviewed for all ten normalized market-data record types, with versioned canonical tagged-JSON keys, exact identity-field boundaries, provider-neutral provenance exclusion, and deterministic fixed synthetic tests.
+- Milestone 3C.2 completed: deterministic per-record selected/fresh market-data binding implemented and independently reviewed, including complete semantic candidate-group verification, deterministic correction selection, explicit correction-context trust boundaries, authoritative freshness recomputation, deterministic validation precedence, and fixed synthetic tests.
 
 ## Current task
 
-Implement and independently review Milestone 3C.2 selected/fresh market-data
-binding against the corrected trust-boundary contract.
+Clarify and review the next dependency-ordered Milestone 3C.3+ contract before
+implementation.
 
 Milestone 3C.1 is complete. The Milestone 3C.2 correction trust-boundary
 contradiction has been resolved, and the corrected trust-boundary contract is
-approved and committed. Milestone 3C.2 implementation has not restarted. The
-latest implementation result remains 495 tests and 37 public `market_data`
-names. Milestone 3C.3+ snapshot coherence, deterministic cross-observation
-selection, historical completeness, and research-record transformations remain
-specification-blocked and unimplemented. Broad Milestone 3 remains incomplete.
-No provider has been selected and no network access is authorized.
-`market_data.py` remains independent of the evidence, report, and scanner
-modules.
+approved and committed. Milestone 3C.2 is complete and independently reviewed.
+The latest implementation result is 515 tests passed and 39 public
+`market_data` names. Milestone 3C.3+ snapshot coherence, deterministic
+cross-observation selection, historical completeness, and research-record
+transformations remain specification-blocked and unimplemented. Broad Milestone
+3 remains incomplete. No provider has been selected and no network access is
+authorized. `market_data.py` remains independent of the evidence, report, and
+scanner modules.
 
 ## Last validated checkpoint
 
@@ -79,7 +80,8 @@ modules.
 
 ## Next task
 
-Complete independent review of Milestone 3C.2 before the implementation commit.
+Perform an A-level specification preflight for the next Milestone 3C.3+
+contract.
 
 ## Deferred
 

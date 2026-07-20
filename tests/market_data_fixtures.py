@@ -300,6 +300,44 @@ def build_underlying_quote_observation(
     return UnderlyingQuoteObservation(**values)  # type: ignore[arg-type]
 
 
+def build_correction_quote_observation(
+    record_id: str = "candidate-001",
+    revisions: tuple = (0,),
+    correction_ids: Optional[tuple] = None,
+    lineage_names: Optional[tuple] = None,
+    source_overrides: Optional[tuple] = None,
+    **overrides: object,
+) -> UnderlyingQuoteObservation:
+    """Build one same-semantic quote with explicit correction lineage."""
+
+    identities = (
+        (None,) * len(revisions) if correction_ids is None else correction_ids
+    )
+    names = (
+        tuple(chr(ord("a") + index) for index in range(len(revisions)))
+        if lineage_names is None
+        else lineage_names
+    )
+    source_values = (
+        ({},) * len(revisions)
+        if source_overrides is None
+        else source_overrides
+    )
+    sources = tuple(
+        build_correction_source(
+            lineage_name=names[index],
+            revision_number=revision,
+            provider_correction_id=identities[index],
+            **source_values[index],
+        )
+        for index, revision in enumerate(revisions)
+    )
+    metadata = build_correction_candidate(record_id, sources)
+    values = {"metadata": metadata}
+    values.update(overrides)
+    return build_underlying_quote_observation(**values)
+
+
 def build_option_contract_reference(
     **overrides: object,
 ) -> OptionContractReference:
