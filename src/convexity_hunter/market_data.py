@@ -50,6 +50,9 @@ __all__ = (
     "semantic_observation_key",
     "SelectedFreshMarketDataBinding",
     "bind_selected_fresh_market_data",
+    "MarketDataSnapshotTimingReasonCode",
+    "MarketDataSnapshotTimingAssessment",
+    "assess_market_data_snapshot_timing",
 )
 
 
@@ -745,6 +748,17 @@ class FreshnessReasonCode(str, Enum):
         "historical_bar_session_date_gap_exceeded"
     )
     FRESH_WITHIN_POLICY = "fresh_within_policy"
+
+
+class MarketDataSnapshotTimingReasonCode(str, Enum):
+    """Canonical reasons produced by binding-set temporal assessment."""
+
+    MIXED_FRESHNESS_POLICY = "mixed_freshness_policy"
+    MIXED_FRESHNESS_CONTEXT = "mixed_freshness_context"
+    EFFECTIVE_TIME_SPAN_EXCEEDED = "effective_time_span_exceeded"
+    SOURCE_OBSERVATION_SPAN_EXCEEDED = (
+        "source_observation_span_exceeded"
+    )
 
 
 class CorrectionSelectionStatus(str, Enum):
@@ -2727,3 +2741,216 @@ def bind_selected_fresh_market_data(
         freshness_context=freshness_context,
         freshness_assessment=freshness_assessment,
     )
+
+
+_SNAPSHOT_TIMING_TEMPORAL_RECORD_TYPES = frozenset({
+    UnderlyingQuoteObservation,
+    OptionQuoteObservation,
+    OptionVolumeObservation,
+    OptionImpliedVolatilityObservation,
+    OptionGreeksObservation,
+})
+
+
+def _canonicalize_snapshot_timing_bindings(
+    bindings: object,
+) -> Tuple[SelectedFreshMarketDataBinding, ...]:
+    """Validate exact bindings and return the canonical retained tuple."""
+
+    if type(bindings) is not tuple and type(bindings) is not list:
+        raise TypeError("bindings must be an exact tuple or list")
+    for binding in bindings:
+        if type(binding) is not SelectedFreshMarketDataBinding:
+            raise TypeError(
+                "every bindings item must have exact type "
+                "SelectedFreshMarketDataBinding"
+            )
+
+    normalized = tuple(bindings)
+    if not normalized:
+        raise ValueError("bindings must contain at least one item")
+
+    selected_record_ids = tuple(
+        binding.selected_record.metadata.record_id
+        for binding in normalized
+    )
+    if len(set(selected_record_ids)) != len(selected_record_ids):
+        raise ValueError("selected record IDs must not contain duplicates")
+
+    semantic_keys = tuple(
+        binding.semantic_observation_key for binding in normalized
+    )
+    if len(set(semantic_keys)) != len(semantic_keys):
+        raise ValueError(
+            "semantic observation keys must not contain duplicates"
+        )
+
+    return tuple(sorted(
+        normalized,
+        key=lambda binding: (
+            binding.semantic_observation_key,
+            binding.selected_record.metadata.record_id,
+        ),
+    ))
+
+
+def _derive_snapshot_timing_state(
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...],
+) -> Tuple[
+    Optional[MarketDataFreshnessPolicy],
+    Optional[FreshnessContext],
+    Optional[decimal.Decimal],
+    Optional[decimal.Decimal],
+    Tuple[MarketDataSnapshotTimingReasonCode, ...],
+    bool,
+]:
+    """Derive complete binding-set timing state without external inputs."""
+
+    first = bindings[0]
+    common_policy = (
+        first.freshness_policy
+        if all(
+            binding.freshness_policy == first.freshness_policy
+            for binding in bindings[1:]
+        )
+        else None
+    )
+    common_context = (
+        first.freshness_context
+        if all(
+            binding.freshness_context == first.freshness_context
+            for binding in bindings[1:]
+        )
+        else None
+    )
+
+    temporal_records = tuple(
+        binding.selected_record
+        for binding in bindings
+        if type(binding.selected_record)
+        in _SNAPSHOT_TIMING_TEMPORAL_RECORD_TYPES
+    )
+    if temporal_records:
+        effective_times = tuple(
+            record.metadata.effective_observed_at
+            for record in temporal_records
+        )
+        effective_span = (
+            decimal.Decimal("0")
+            if len(effective_times) == 1
+            else _timedelta_to_decimal_seconds(
+                max(effective_times) - min(effective_times)
+            )
+        )
+        source_times = tuple(
+            source.observed_at
+            for record in temporal_records
+            for source in record.metadata.source_references
+        )
+        source_span = (
+            decimal.Decimal("0")
+            if len(source_times) == 1
+            else _timedelta_to_decimal_seconds(
+                max(source_times) - min(source_times)
+            )
+        )
+    else:
+        effective_span = None
+        source_span = None
+
+    reasons = set()
+    if common_policy is None:
+        reasons.add(
+            MarketDataSnapshotTimingReasonCode.MIXED_FRESHNESS_POLICY
+        )
+    if common_context is None:
+        reasons.add(
+            MarketDataSnapshotTimingReasonCode.MIXED_FRESHNESS_CONTEXT
+        )
+    if common_policy is not None and common_context is not None:
+        threshold = decimal.Decimal(
+            common_policy.maximum_cross_record_skew_seconds
+        )
+        if effective_span is not None and effective_span > threshold:
+            reasons.add(
+                MarketDataSnapshotTimingReasonCode.EFFECTIVE_TIME_SPAN_EXCEEDED
+            )
+        if source_span is not None and source_span > threshold:
+            reasons.add(
+                MarketDataSnapshotTimingReasonCode.SOURCE_OBSERVATION_SPAN_EXCEEDED
+            )
+
+    canonical_reasons = tuple(
+        reason
+        for reason in MarketDataSnapshotTimingReasonCode
+        if reason in reasons
+    )
+    return (
+        common_policy,
+        common_context,
+        effective_span,
+        source_span,
+        canonical_reasons,
+        not canonical_reasons,
+    )
+
+
+@dataclass(frozen=True)
+class MarketDataSnapshotTimingAssessment:
+    """Immutable temporal-coherence assessment for selected/fresh bindings."""
+
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...]
+
+    def __post_init__(self) -> None:
+        bindings = _canonicalize_snapshot_timing_bindings(self.bindings)
+        object.__setattr__(self, "bindings", bindings)
+
+    @property
+    def is_temporally_coherent(self) -> bool:
+        """Return whether no temporal-coherence reason applies."""
+
+        return _derive_snapshot_timing_state(self.bindings)[5]
+
+    @property
+    def reason_codes(
+        self,
+    ) -> Tuple[MarketDataSnapshotTimingReasonCode, ...]:
+        """Return all applicable reasons in declaration order."""
+
+        return _derive_snapshot_timing_state(self.bindings)[4]
+
+    @property
+    def common_freshness_policy(
+        self,
+    ) -> Optional[MarketDataFreshnessPolicy]:
+        """Return the first retained policy when every policy is equal."""
+
+        return _derive_snapshot_timing_state(self.bindings)[0]
+
+    @property
+    def common_freshness_context(self) -> Optional[FreshnessContext]:
+        """Return the first retained context when every context is equal."""
+
+        return _derive_snapshot_timing_state(self.bindings)[1]
+
+    @property
+    def effective_time_span_seconds(self) -> Optional[decimal.Decimal]:
+        """Return the exact span across temporal effective times."""
+
+        return _derive_snapshot_timing_state(self.bindings)[2]
+
+    @property
+    def source_observation_span_seconds(
+        self,
+    ) -> Optional[decimal.Decimal]:
+        """Return the exact span across all temporal source observations."""
+
+        return _derive_snapshot_timing_state(self.bindings)[3]
+
+
+def assess_market_data_snapshot_timing(
+    bindings: object,
+) -> MarketDataSnapshotTimingAssessment:
+    """Assess temporal coherence for exact selected/fresh bindings."""
+
+    return MarketDataSnapshotTimingAssessment(bindings=bindings)

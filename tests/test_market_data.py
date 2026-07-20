@@ -7,6 +7,7 @@ import decimal
 import inspect
 import itertools
 import json
+import locale
 import os
 import pathlib
 import subprocess
@@ -35,6 +36,8 @@ from convexity_hunter.market_data import (
     MarketPhase,
     MarketDataCategory,
     MarketDataFreshnessPolicy,
+    MarketDataSnapshotTimingAssessment,
+    MarketDataSnapshotTimingReasonCode,
     NormalizationMetadata,
     NormalizationQualityFlag,
     OptionContractKey,
@@ -54,6 +57,7 @@ from convexity_hunter.market_data import (
     UnderlyingQuoteObservation,
     UnderlyingSecurityType,
     assess_market_data_freshness,
+    assess_market_data_snapshot_timing,
     bind_selected_fresh_market_data,
     canonicalize_lineage_parameters,
     semantic_observation_key,
@@ -213,6 +217,77 @@ def reconstruct_binding(
     return SelectedFreshMarketDataBinding(**values)
 
 
+def build_timed_record(
+    builder: object,
+    record_id: str,
+    observed_offsets: tuple = (datetime.timedelta(0),),
+    effective_offset: object = None,
+    system_composite: bool = False,
+    **record_overrides: object,
+) -> object:
+    """Build one deterministic record with controlled timing metadata."""
+
+    record = builder(**record_overrides)  # type: ignore[operator]
+    source_origin = record.metadata.source_references[0].origin
+    sources = tuple(
+        build_source_reference(
+            source_id=f"{record_id}-source-{index}",
+            provider_record_id=f"{record_id}-provider-record-{index}",
+            provider_request_id=f"{record_id}-request-{index}",
+            source_uri=f"synthetic://snapshot-timing/{record_id}/{index}",
+            observed_at=OBSERVED_AT + offset,
+            retrieved_at=(
+                OBSERVED_AT + offset + datetime.timedelta(microseconds=1)
+            ),
+            origin=source_origin,
+        )
+        for index, offset in enumerate(observed_offsets)
+    )
+    selected_effective_offset = (
+        observed_offsets[0]
+        if effective_offset is None
+        else effective_offset
+    )
+    metadata = build_normalization_metadata(
+        sources,
+        record_id=record_id,
+        effective_observed_at=OBSERVED_AT + selected_effective_offset,
+        normalized_at=(
+            max(source.retrieved_at for source in sources)
+            + datetime.timedelta(microseconds=1)
+        ),
+        record_origin=(
+            DataOrigin.SYSTEM_COMPOSITE
+            if system_composite
+            else record.metadata.record_origin
+        ),
+        quality_flags=(
+            (NormalizationQualityFlag.COMPOSITE_SOURCE,)
+            if system_composite
+            else ()
+        ),
+    )
+    return dataclasses.replace(record, metadata=metadata)
+
+
+def build_timing_binding(
+    record: object,
+    policy: object = None,
+    context: object = None,
+) -> SelectedFreshMarketDataBinding:
+    """Bind one controlled record for snapshot-timing tests."""
+
+    return bind_fresh_candidates(
+        (record,),
+        freshness_policy=(
+            build_freshness_policy() if policy is None else policy
+        ),
+        freshness_context=(
+            build_freshness_context() if context is None else context
+        ),
+    )
+
+
 class PublicSurfaceTests(unittest.TestCase):
     def test_exact_all_and_public_names_exist(self) -> None:
         expected = (
@@ -255,15 +330,22 @@ class PublicSurfaceTests(unittest.TestCase):
             "semantic_observation_key",
             "SelectedFreshMarketDataBinding",
             "bind_selected_fresh_market_data",
+            "MarketDataSnapshotTimingReasonCode",
+            "MarketDataSnapshotTimingAssessment",
+            "assess_market_data_snapshot_timing",
         )
         self.assertEqual(market_data.__all__, expected)
-        self.assertEqual(len(market_data.__all__), 39)
+        self.assertEqual(len(market_data.__all__), 42)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
         later_types = (
             "SemanticObservationKey",
             "MarketDataSnapshot",
+            "MarketDataSnapshotTimingStatus",
+            "MarketDataSnapshotPolicy",
+            "MarketDataRelationshipRequest",
+            "ValidatedMarketDataSnapshot",
             "transform_market_data",
         )
         self.assertTrue(all(not hasattr(market_data, name) for name in later_types))
@@ -372,6 +454,7 @@ class PublicSurfaceTests(unittest.TestCase):
                 "freshness_policy", "freshness_context",
                 "freshness_assessment",
             ),
+            MarketDataSnapshotTimingAssessment: ("bindings",),
             CalculationInputReference: (
                 "record_id", "normalized_at", "source_ids",
             ),
@@ -433,6 +516,11 @@ class EnumContractTests(unittest.TestCase):
             "open_interest_session_date_gap_exceeded",
             "historical_bar_session_date_gap_exceeded",
             "fresh_within_policy",
+        ),
+        MarketDataSnapshotTimingReasonCode: (
+            "mixed_freshness_policy", "mixed_freshness_context",
+            "effective_time_span_exceeded",
+            "source_observation_span_exceeded",
         ),
         CorrectionSelectionStatus: ("selected", "ambiguous"),
         CorrectionSelectionReasonCode: (
@@ -4663,6 +4751,721 @@ class SelectedFreshBindingPrecedenceTests(unittest.TestCase):
             reconstruct_binding(
                 baseline, freshness_assessment=nonfresh_mismatch
             )
+
+
+class SnapshotTimingSurfaceAndValidationTests(unittest.TestCase):
+    def test_signature_fields_properties_and_frozen_behavior(self) -> None:
+        signature = inspect.signature(assess_market_data_snapshot_timing)
+        self.assertEqual(tuple(signature.parameters), ("bindings",))
+        self.assertIs(
+            signature.parameters["bindings"].annotation, object
+        )
+        self.assertIs(
+            signature.return_annotation,
+            MarketDataSnapshotTimingAssessment,
+        )
+        self.assertEqual(
+            tuple(
+                field.name
+                for field in dataclasses.fields(
+                    MarketDataSnapshotTimingAssessment
+                )
+            ),
+            ("bindings",),
+        )
+        property_names = (
+            "is_temporally_coherent",
+            "reason_codes",
+            "common_freshness_policy",
+            "common_freshness_context",
+            "effective_time_span_seconds",
+            "source_observation_span_seconds",
+        )
+        self.assertTrue(all(
+            isinstance(
+                getattr(MarketDataSnapshotTimingAssessment, name), property
+            )
+            for name in property_names
+        ))
+        binding = build_timing_binding(
+            build_underlying_quote_observation()
+        )
+        assessment = assess_market_data_snapshot_timing((binding,))
+        with self.assertRaises(FrozenInstanceError):
+            assessment.bindings = ()  # type: ignore[misc]
+
+    def test_exact_tuple_and_list_succeed(self) -> None:
+        binding = build_timing_binding(
+            build_underlying_quote_observation()
+        )
+        tuple_result = assess_market_data_snapshot_timing((binding,))
+        list_input = [binding]
+        list_result = assess_market_data_snapshot_timing(list_input)
+        self.assertEqual(tuple_result, list_result)
+        self.assertIs(type(tuple_result.bindings), tuple)
+        self.assertIs(type(list_result.bindings), tuple)
+        self.assertIs(tuple_result.bindings[0], binding)
+        self.assertIs(list_result.bindings[0], binding)
+        self.assertEqual(list_input, [binding])
+
+    def test_container_subclasses_and_other_containers_are_rejected(self) -> None:
+        binding = build_timing_binding(
+            build_underlying_quote_observation()
+        )
+
+        class TupleSubclass(tuple):
+            pass
+
+        class ListSubclass(list):
+            pass
+
+        class CustomSequence:
+            def __iter__(self):
+                return iter((binding,))
+
+        cases = (
+            TupleSubclass((binding,)),
+            ListSubclass([binding]),
+            (item for item in (binding,)),
+            {binding.selected_record.metadata.record_id},
+            CustomSequence(),
+        )
+        for value in cases:
+            with self.subTest(container=type(value).__name__):
+                with self.assertRaisesRegex(TypeError, "exact tuple or list"):
+                    assess_market_data_snapshot_timing(value)
+
+    def test_element_subclass_raw_record_and_objects_are_rejected(self) -> None:
+        binding = build_timing_binding(
+            build_underlying_quote_observation()
+        )
+
+        class BindingSubclass(SelectedFreshMarketDataBinding):
+            pass
+
+        subclass = BindingSubclass(**{
+            field.name: getattr(binding, field.name)
+            for field in dataclasses.fields(binding)
+        })
+        cases = (
+            subclass,
+            build_underlying_quote_observation(),
+            object(),
+        )
+        for value in cases:
+            with self.subTest(element=type(value).__name__):
+                with self.assertRaisesRegex(
+                    TypeError, "exact type SelectedFreshMarketDataBinding"
+                ):
+                    assess_market_data_snapshot_timing((value,))
+
+        with self.assertRaisesRegex(
+            TypeError, "exact type SelectedFreshMarketDataBinding"
+        ):
+            assess_market_data_snapshot_timing((object(), binding))
+
+    def test_empty_inputs_follow_element_then_value_precedence(self) -> None:
+        for value in ((), []):
+            with self.subTest(container=type(value).__name__):
+                with self.assertRaisesRegex(ValueError, "at least one"):
+                    assess_market_data_snapshot_timing(value)
+        with self.assertRaises(TypeError):
+            assess_market_data_snapshot_timing([object(), object()])
+
+    def test_duplicate_rules_and_selected_id_precedence(self) -> None:
+        repeated = build_timing_binding(
+            build_timed_record(
+                build_underlying_quote_observation, "repeated", (datetime.timedelta(0),)
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "selected record IDs"):
+            assess_market_data_snapshot_timing((repeated, repeated))
+
+        same_key_first = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "same-key-a",
+            (datetime.timedelta(0),),
+        ))
+        same_key_second = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "same-key-b",
+            (datetime.timedelta(0),),
+        ))
+        self.assertNotEqual(
+            same_key_first.selected_record.metadata.record_id,
+            same_key_second.selected_record.metadata.record_id,
+        )
+        with self.assertRaisesRegex(ValueError, "semantic observation keys"):
+            assess_market_data_snapshot_timing((
+                same_key_first, same_key_second,
+            ))
+
+        duplicate_id_first = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "duplicate-id",
+            (datetime.timedelta(0),),
+        ))
+        duplicate_id_second = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "duplicate-id",
+            (datetime.timedelta(microseconds=1),),
+        ))
+        self.assertNotEqual(
+            duplicate_id_first.semantic_observation_key,
+            duplicate_id_second.semantic_observation_key,
+        )
+        with self.assertRaisesRegex(ValueError, "selected record IDs"):
+            assess_market_data_snapshot_timing((
+                duplicate_id_first, duplicate_id_second,
+            ))
+
+        simultaneous_first = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "simultaneous-id",
+            (datetime.timedelta(0),),
+        ))
+        simultaneous_second = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "simultaneous-id",
+            (datetime.timedelta(0),),
+        ))
+        self.assertEqual(
+            simultaneous_first.semantic_observation_key,
+            simultaneous_second.semantic_observation_key,
+        )
+        with self.assertRaisesRegex(ValueError, "selected record IDs"):
+            assess_market_data_snapshot_timing((
+                simultaneous_first, simultaneous_second,
+            ))
+
+
+class SnapshotTimingCanonicalIdentityTests(unittest.TestCase):
+    def test_canonical_order_permutation_equality_and_identity(self) -> None:
+        first = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "canonical-z",
+            (datetime.timedelta(0),),
+        ))
+        second = build_timing_binding(build_timed_record(
+            build_option_volume_observation,
+            "canonical-a",
+            (datetime.timedelta(seconds=1),),
+        ))
+        supplied = [second, first]
+        expected = tuple(sorted(
+            supplied,
+            key=lambda binding: (
+                binding.semantic_observation_key,
+                binding.selected_record.metadata.record_id,
+            ),
+        ))
+        public = assess_market_data_snapshot_timing(supplied)
+        permuted = assess_market_data_snapshot_timing((first, second))
+        self.assertEqual(public, permuted)
+        self.assertEqual(supplied, [second, first])
+        for actual, original in zip(public.bindings, expected):
+            self.assertIs(actual, original)
+            self.assertIs(actual.selected_record, original.selected_record)
+            self.assertIs(actual.freshness_policy, original.freshness_policy)
+            self.assertIs(actual.freshness_context, original.freshness_context)
+            self.assertIs(
+                actual.correction_selection, original.correction_selection
+            )
+            self.assertIs(
+                actual.freshness_assessment, original.freshness_assessment
+            )
+
+    def test_direct_and_public_construction_are_equivalent(self) -> None:
+        first = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "direct-a",
+            (datetime.timedelta(0),),
+        ))
+        second = build_timing_binding(build_timed_record(
+            build_option_quote_observation,
+            "direct-b",
+            (datetime.timedelta(seconds=1),),
+        ))
+        public = assess_market_data_snapshot_timing([second, first])
+        direct = MarketDataSnapshotTimingAssessment(
+            bindings=(first, second)
+        )
+        self.assertEqual(public, direct)
+        self.assertTrue(all(
+            any(retained is original for original in (first, second))
+            for retained in direct.bindings
+        ))
+
+    def test_same_record_type_with_different_semantic_keys_is_valid(self) -> None:
+        bindings = tuple(
+            build_timing_binding(build_timed_record(
+                build_underlying_quote_observation,
+                f"same-type-{index}",
+                (datetime.timedelta(microseconds=index),),
+            ))
+            for index in (0, 1)
+        )
+        assessment = assess_market_data_snapshot_timing(bindings)
+        self.assertEqual(len(assessment.bindings), 2)
+        self.assertTrue(assessment.is_temporally_coherent)
+
+
+class SnapshotTimingPolicyContextTests(unittest.TestCase):
+    def test_common_equal_artifacts_return_first_canonical_objects(self) -> None:
+        policies = (build_freshness_policy(), build_freshness_policy())
+        contexts = (build_freshness_context(), build_freshness_context())
+        self.assertIsNot(policies[0], policies[1])
+        self.assertIsNot(contexts[0], contexts[1])
+        bindings = (
+            build_timing_binding(build_timed_record(
+                build_underlying_quote_observation,
+                "equal-artifact-a",
+                (datetime.timedelta(0),),
+            ), policies[0], contexts[0]),
+            build_timing_binding(build_timed_record(
+                build_option_volume_observation,
+                "equal-artifact-b",
+                (datetime.timedelta(seconds=1),),
+            ), policies[1], contexts[1]),
+        )
+        assessment = assess_market_data_snapshot_timing(bindings)
+        self.assertIs(
+            assessment.common_freshness_policy,
+            assessment.bindings[0].freshness_policy,
+        )
+        self.assertIs(
+            assessment.common_freshness_context,
+            assessment.bindings[0].freshness_context,
+        )
+
+    def test_mixed_policy_uses_complete_structural_equality(self) -> None:
+        context = build_freshness_context()
+        policies = (
+            build_freshness_policy(maximum_cross_record_skew_seconds=10),
+            build_freshness_policy(maximum_cross_record_skew_seconds=11),
+        )
+        bindings = (
+            build_timing_binding(build_timed_record(
+                build_underlying_quote_observation,
+                "mixed-policy-a",
+                (datetime.timedelta(0),),
+            ), policies[0], context),
+            build_timing_binding(build_timed_record(
+                build_option_volume_observation,
+                "mixed-policy-b",
+                (datetime.timedelta(seconds=12),),
+            ), policies[1], context),
+        )
+        assessment = assess_market_data_snapshot_timing(bindings)
+        self.assertIsNone(assessment.common_freshness_policy)
+        self.assertIs(assessment.common_freshness_context, context)
+        self.assertEqual(
+            assessment.effective_time_span_seconds, decimal.Decimal("12")
+        )
+        self.assertEqual(
+            assessment.source_observation_span_seconds,
+            decimal.Decimal("12"),
+        )
+        self.assertEqual(assessment.reason_codes, (
+            MarketDataSnapshotTimingReasonCode.MIXED_FRESHNESS_POLICY,
+        ))
+
+    def test_mixed_context_covers_both_complete_fields(self) -> None:
+        policy = build_freshness_policy()
+        base = build_freshness_context()
+        contexts = (
+            dataclasses.replace(
+                base,
+                evaluation_at=base.evaluation_at + datetime.timedelta(seconds=1),
+            ),
+            dataclasses.replace(
+                base,
+                latest_completed_session_date=(
+                    base.latest_completed_session_date
+                    + datetime.timedelta(days=1)
+                ),
+            ),
+        )
+        for label, changed in zip(("evaluation", "session"), contexts):
+            bindings = (
+                build_timing_binding(build_timed_record(
+                    build_underlying_quote_observation,
+                    f"mixed-context-{label}-a",
+                    (datetime.timedelta(0),),
+                ), policy, base),
+                build_timing_binding(build_timed_record(
+                    build_option_volume_observation,
+                    f"mixed-context-{label}-b",
+                    (datetime.timedelta(seconds=12),),
+                ), policy, changed),
+            )
+            assessment = assess_market_data_snapshot_timing(bindings)
+            with self.subTest(field=label):
+                self.assertIs(assessment.common_freshness_policy, policy)
+                self.assertIsNone(assessment.common_freshness_context)
+                self.assertEqual(assessment.reason_codes, (
+                    MarketDataSnapshotTimingReasonCode.MIXED_FRESHNESS_CONTEXT,
+                ))
+                self.assertEqual(
+                    assessment.effective_time_span_seconds,
+                    decimal.Decimal("12"),
+                )
+
+    def test_both_mixed_reasons_are_ordered_and_suppress_thresholds(self) -> None:
+        first_policy = build_freshness_policy(
+            maximum_cross_record_skew_seconds=1
+        )
+        second_policy = build_freshness_policy(
+            maximum_cross_record_skew_seconds=2
+        )
+        first_context = build_freshness_context()
+        second_context = dataclasses.replace(
+            first_context,
+            evaluation_at=(
+                first_context.evaluation_at + datetime.timedelta(seconds=1)
+            ),
+        )
+        bindings = (
+            build_timing_binding(build_timed_record(
+                build_underlying_quote_observation,
+                "both-mixed-a",
+                (datetime.timedelta(0),),
+            ), first_policy, first_context),
+            build_timing_binding(build_timed_record(
+                build_option_volume_observation,
+                "both-mixed-b",
+                (datetime.timedelta(seconds=20),),
+            ), second_policy, second_context),
+        )
+        assessment = assess_market_data_snapshot_timing(bindings)
+        self.assertEqual(assessment.reason_codes, (
+            MarketDataSnapshotTimingReasonCode.MIXED_FRESHNESS_POLICY,
+            MarketDataSnapshotTimingReasonCode.MIXED_FRESHNESS_CONTEXT,
+        ))
+        self.assertEqual(len(set(assessment.reason_codes)), 2)
+        self.assertFalse(assessment.is_temporally_coherent)
+        self.assertEqual(
+            assessment.source_observation_span_seconds,
+            decimal.Decimal("20"),
+        )
+
+
+class SnapshotTimingParticipantAndMetricTests(unittest.TestCase):
+    INCLUDED_BUILDERS = (
+        build_underlying_quote_observation,
+        build_option_quote_observation,
+        build_option_volume_observation,
+        build_option_implied_volatility_observation,
+        build_option_greeks_observation,
+    )
+    EXCLUDED_BUILDERS = (
+        build_option_contract_reference,
+        build_option_open_interest_observation,
+        build_underlying_daily_bar_observation,
+        build_rate_curve_point_observation,
+        build_dividend_observation,
+    )
+
+    def test_each_included_type_contributes_effective_and_all_source_times(
+        self,
+    ) -> None:
+        for index, builder in enumerate(self.INCLUDED_BUILDERS):
+            record = build_timed_record(
+                builder,
+                f"included-{index}",
+                (
+                    datetime.timedelta(0),
+                    datetime.timedelta(microseconds=1),
+                ),
+                effective_offset=datetime.timedelta(0),
+            )
+            assessment = assess_market_data_snapshot_timing((
+                build_timing_binding(record),
+            ))
+            with self.subTest(record_type=type(record).__name__):
+                self.assertEqual(
+                    assessment.effective_time_span_seconds,
+                    decimal.Decimal("0"),
+                )
+                self.assertEqual(
+                    assessment.source_observation_span_seconds,
+                    decimal.Decimal("0.000001"),
+                )
+
+    def test_each_excluded_type_is_retained_but_contributes_no_times(
+        self,
+    ) -> None:
+        for index, builder in enumerate(self.EXCLUDED_BUILDERS):
+            record = build_timed_record(
+                builder,
+                f"excluded-{index}",
+                (
+                    datetime.timedelta(seconds=-1),
+                    datetime.timedelta(0),
+                ),
+                effective_offset=datetime.timedelta(0),
+            )
+            binding = build_timing_binding(record)
+            assessment = assess_market_data_snapshot_timing((binding,))
+            with self.subTest(record_type=type(record).__name__):
+                self.assertIs(assessment.bindings[0], binding)
+                self.assertIsNone(assessment.effective_time_span_seconds)
+                self.assertIsNone(
+                    assessment.source_observation_span_seconds
+                )
+                self.assertTrue(assessment.is_temporally_coherent)
+
+    def test_multiple_participants_are_microsecond_exact_and_permutation_safe(
+        self,
+    ) -> None:
+        first = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "microsecond-a",
+            (datetime.timedelta(0),),
+        ))
+        second = build_timing_binding(build_timed_record(
+            build_option_volume_observation,
+            "microsecond-b",
+            (datetime.timedelta(seconds=2, microseconds=3),),
+        ))
+        forward = assess_market_data_snapshot_timing((first, second))
+        reverse = assess_market_data_snapshot_timing((second, first))
+        self.assertEqual(forward, reverse)
+        self.assertEqual(
+            forward.effective_time_span_seconds,
+            decimal.Decimal("2.000003"),
+        )
+        self.assertEqual(
+            forward.source_observation_span_seconds,
+            decimal.Decimal("2.000003"),
+        )
+        self.assertEqual(
+            forward.effective_time_span_seconds.as_tuple().exponent, -6
+        )
+
+    def test_system_composite_and_old_source_are_fully_included(self) -> None:
+        policy = build_freshness_policy(
+            maximum_quote_age_seconds=100,
+            maximum_source_observation_span_seconds=30,
+            maximum_cross_record_skew_seconds=10,
+        )
+        record = build_timed_record(
+            build_underlying_quote_observation,
+            "system-composite",
+            (
+                datetime.timedelta(seconds=-20),
+                datetime.timedelta(0),
+            ),
+            effective_offset=datetime.timedelta(0),
+            system_composite=True,
+        )
+        assessment = assess_market_data_snapshot_timing((
+            build_timing_binding(record, policy),
+        ))
+        self.assertEqual(
+            assessment.effective_time_span_seconds, decimal.Decimal("0")
+        )
+        self.assertEqual(
+            assessment.source_observation_span_seconds,
+            decimal.Decimal("20"),
+        )
+        self.assertEqual(assessment.reason_codes, (
+            MarketDataSnapshotTimingReasonCode
+            .SOURCE_OBSERVATION_SPAN_EXCEEDED,
+        ))
+
+    def test_excluded_old_sources_do_not_widen_participant_metrics(self) -> None:
+        participant = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "included-current",
+            (datetime.timedelta(0),),
+        ))
+        excluded = build_timing_binding(build_timed_record(
+            build_option_contract_reference,
+            "excluded-old",
+            (datetime.timedelta(seconds=-20),),
+        ))
+        assessment = assess_market_data_snapshot_timing((
+            participant, excluded,
+        ))
+        self.assertEqual(
+            assessment.effective_time_span_seconds, decimal.Decimal("0")
+        )
+        self.assertEqual(
+            assessment.source_observation_span_seconds,
+            decimal.Decimal("0"),
+        )
+
+
+class SnapshotTimingThresholdAndReasonTests(unittest.TestCase):
+    def _two_single_source_assessment(
+        self, span: datetime.timedelta, threshold: int
+    ) -> MarketDataSnapshotTimingAssessment:
+        policy = build_freshness_policy(
+            maximum_cross_record_skew_seconds=threshold
+        )
+        context = build_freshness_context()
+        bindings = (
+            build_timing_binding(build_timed_record(
+                build_underlying_quote_observation,
+                f"threshold-a-{span}",
+                (datetime.timedelta(0),),
+            ), policy, context),
+            build_timing_binding(build_timed_record(
+                build_option_volume_observation,
+                f"threshold-b-{span}",
+                (span,),
+            ), policy, context),
+        )
+        return assess_market_data_snapshot_timing(bindings)
+
+    def test_below_and_equal_threshold_are_coherent(self) -> None:
+        for label, span in (
+            ("below", datetime.timedelta(seconds=9, microseconds=999999)),
+            ("equal", datetime.timedelta(seconds=10)),
+        ):
+            assessment = self._two_single_source_assessment(span, 10)
+            with self.subTest(boundary=label):
+                self.assertEqual(assessment.reason_codes, ())
+                self.assertTrue(assessment.is_temporally_coherent)
+
+    def test_source_only_exceeded_is_valid_incoherence(self) -> None:
+        policy = build_freshness_policy(
+            maximum_source_observation_span_seconds=20,
+            maximum_cross_record_skew_seconds=10,
+        )
+        record = build_timed_record(
+            build_underlying_quote_observation,
+            "source-only",
+            (
+                datetime.timedelta(0),
+                datetime.timedelta(seconds=12),
+            ),
+            effective_offset=datetime.timedelta(seconds=6),
+        )
+        assessment = assess_market_data_snapshot_timing((
+            build_timing_binding(record, policy),
+        ))
+        self.assertIsInstance(
+            assessment, MarketDataSnapshotTimingAssessment
+        )
+        self.assertEqual(assessment.reason_codes, (
+            MarketDataSnapshotTimingReasonCode
+            .SOURCE_OBSERVATION_SPAN_EXCEEDED,
+        ))
+        self.assertFalse(assessment.is_temporally_coherent)
+
+    def test_effective_exceeded_implies_source_exceeded_for_valid_records(
+        self,
+    ) -> None:
+        assessment = self._two_single_source_assessment(
+            datetime.timedelta(seconds=11), 10
+        )
+        self.assertGreaterEqual(
+            assessment.source_observation_span_seconds,
+            assessment.effective_time_span_seconds,
+        )
+        self.assertEqual(assessment.reason_codes, (
+            MarketDataSnapshotTimingReasonCode.EFFECTIVE_TIME_SPAN_EXCEEDED,
+            MarketDataSnapshotTimingReasonCode
+            .SOURCE_OBSERVATION_SPAN_EXCEEDED,
+        ))
+        self.assertEqual(len(set(assessment.reason_codes)), 2)
+
+    def test_none_metrics_have_empty_reasons(self) -> None:
+        bindings = (
+            build_timing_binding(build_option_contract_reference()),
+            build_timing_binding(build_rate_curve_point_observation()),
+        )
+        assessment = assess_market_data_snapshot_timing(bindings)
+        self.assertIsNone(assessment.effective_time_span_seconds)
+        self.assertIsNone(assessment.source_observation_span_seconds)
+        self.assertEqual(assessment.reason_codes, ())
+        self.assertTrue(assessment.is_temporally_coherent)
+
+    def test_reason_order_is_declaration_order_not_alphabetical(self) -> None:
+        assessment = self._two_single_source_assessment(
+            datetime.timedelta(seconds=11), 10
+        )
+        values = tuple(reason.value for reason in assessment.reason_codes)
+        self.assertEqual(values, (
+            "effective_time_span_exceeded",
+            "source_observation_span_exceeded",
+        ))
+        self.assertNotEqual(values, tuple(sorted(values, reverse=True)))
+
+
+class SnapshotTimingLocalePurityAndScopeTests(unittest.TestCase):
+    def test_locale_sensitive_ordering_is_never_called(self) -> None:
+        first = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "locale-Z",
+            (datetime.timedelta(0),),
+        ))
+        second = build_timing_binding(build_timed_record(
+            build_option_volume_observation,
+            "locale-a",
+            (datetime.timedelta(seconds=11),),
+        ))
+        original = locale.strxfrm
+        locale.strxfrm = lambda value: (_ for _ in ()).throw(
+            AssertionError(value)
+        )
+        try:
+            forward = assess_market_data_snapshot_timing((first, second))
+            reverse = assess_market_data_snapshot_timing((second, first))
+            self.assertEqual(forward, reverse)
+            self.assertEqual(
+                forward.effective_time_span_seconds,
+                decimal.Decimal("11"),
+            )
+            self.assertEqual(
+                tuple(forward.reason_codes),
+                tuple(MarketDataSnapshotTimingReasonCode)[2:],
+            )
+        finally:
+            locale.strxfrm = original
+
+    def test_new_implementation_has_no_external_or_float_dependency(self) -> None:
+        source = "\n".join((
+            inspect.getsource(
+                market_data._canonicalize_snapshot_timing_bindings
+            ),
+            inspect.getsource(market_data._derive_snapshot_timing_state),
+            inspect.getsource(MarketDataSnapshotTimingAssessment),
+            inspect.getsource(assess_market_data_snapshot_timing),
+        ))
+        prohibited = (
+            "total_seconds(", "datetime.now", "date.today", "locale.",
+            "random.", "os.environ", "open(", "requests", "socket",
+            "provider", "CalculationLineage(", "CandidateResearchRecord(",
+        )
+        for token in prohibited:
+            with self.subTest(token=token):
+                self.assertNotIn(token, source)
+
+    def test_economically_unrelated_bindings_can_be_temporally_coherent(
+        self,
+    ) -> None:
+        underlying = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "unrelated-underlying",
+            (datetime.timedelta(0),),
+        ))
+        unrelated_contract = build_option_contract_key(
+            underlying_key=build_underlying_key(symbol="QQQ")
+        )
+        option = build_timing_binding(build_timed_record(
+            build_option_quote_observation,
+            "unrelated-option",
+            (datetime.timedelta(0),),
+            contract_key=unrelated_contract,
+        ))
+        assessment = assess_market_data_snapshot_timing((
+            underlying, option,
+        ))
+        self.assertTrue(assessment.is_temporally_coherent)
+        self.assertEqual(assessment.reason_codes, ())
 
 
 class ImportAndDeterminismTests(unittest.TestCase):

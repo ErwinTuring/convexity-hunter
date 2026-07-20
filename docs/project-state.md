@@ -49,41 +49,43 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3B completed: deterministic freshness assessment, provider-correction selection, and canonical calculation lineage are implemented, independently reviewed, and validated with fixed synthetic fixtures.
 - Milestone 3C.1 completed: deterministic provider-neutral semantic observation identity implemented and independently reviewed for all ten normalized market-data record types, with versioned canonical tagged-JSON keys, exact identity-field boundaries, provider-neutral provenance exclusion, and deterministic fixed synthetic tests.
 - Milestone 3C.2 completed: deterministic per-record selected/fresh market-data binding implemented and independently reviewed, including complete semantic candidate-group verification, deterministic correction selection, explicit correction-context trust boundaries, authoritative freshness recomputation, deterministic validation precedence, and fixed synthetic tests.
-- Milestone 3C.3 binding-set temporal-coherence contract defined, targeted-preflighted, approved, and committed; implementation has not started.
+- Milestone 3C.3 binding-set temporal coherence implemented, independently reviewed, and validated with 541 tests passed and 42 public `market_data` names; the implementation is included in the current changeset and is ready for its implementation commit.
 
 ## Current task
 
-Implement and independently review Milestone 3C.3 binding-set temporal coherence
-against the approved contract.
+Clarify and review the Milestone 3C.4 explicit relationship/group-coherence
+contract before implementation.
 
 Milestones 3C.1 and 3C.2 are complete and independently reviewed. The Milestone
 3C.3 binding-set temporal-coherence contract has been defined,
-targeted-preflighted, approved, and committed; its implementation has not
-started. The current implementation baseline remains 515 tests passed and 39
-public `market_data` names. The planned post-3C.3 public count is 42, but those
-APIs are not yet implemented. No normalized-record schema change is required
-for narrow Milestone 3C.3. Milestone 3C.4 relationship/group coherence,
-Milestone 3C.5 deterministic observation selection, Milestone 3C.6
-historical-series completeness, and Milestone 3C.7 transformations and
-`CalculationLineage` remain unimplemented. Broad Milestone 3 remains
+targeted-preflighted, approved, and committed. Milestone 3C.3 binding-set
+temporal coherence is implemented, independently reviewed, and validated. The
+validated implementation result is 541 tests passed and 42 public
+`market_data` names. The implementation is included in the current changeset
+and is ready for its implementation commit. No normalized-record schema change
+was required for narrow Milestone 3C.3. Milestone 3C.4 relationship/group
+coherence, Milestone 3C.5 deterministic observation selection, Milestone 3C.6
+historical-series assembly and completeness, and Milestone 3C.7 transformations
+and `CalculationLineage` remain unimplemented. Broad Milestone 3 remains
 incomplete. No provider has been selected and no network access is authorized.
 `market_data.py` remains independent of the evidence, report, and scanner
 modules.
 
 ## Last validated checkpoint
 
-- Checkpoint: Milestone 3C.2 complete
-- Commit: `320e4288f8071a2ee263e33a0198e76585b78fc3`
-- Tests: 515 passed
-- Public `market_data` API: 39 names
+- Checkpoint: Milestone 3C.3 complete
+- Base commit: `f406ec7b1747184bf18d28455d6e65ce5f046ce4`
+- Tests: 541 passed
+- Public `market_data` API: 42 names
 - Milestone 3C.1 semantic observation identity complete
 - Milestone 3C.2 per-record selected/fresh binding complete
-- Milestones 3C.3 through 3C.7 implementation not started
+- Milestone 3C.3 binding-set temporal coherence complete
+- Milestones 3C.4 through 3C.7 implementation not started
 
 ## Next task
 
-Complete independent review of the Milestone 3C.3 implementation before its
-implementation commit.
+Perform an A-level specification preflight for the Milestone 3C.4
+relationship/group-coherence contract.
 
 ## Deferred
 
