@@ -225,9 +225,13 @@ effective_observed_at == source_reference.observed_at
 
 An adapter must not silently shift or replace the source observation time.
 
-For a normalized record with multiple source references, `normalization_methodology` states how the effective time was selected. The timestamp is timezone-aware UTC, is not earlier than the earliest source `observed_at`, and is not later than the latest source `observed_at`. The selected time must not conceal individual source timestamps or make an old component appear newer than it is. Downstream snapshot-coherence and freshness checks still inspect every source observation time.
+For a normalized record with multiple source references, `normalization_methodology` states how the effective time was selected. The timestamp is timezone-aware UTC, is not earlier than the earliest source `observed_at`, and is not later than the latest source `observed_at`. The selected time must not conceal individual source timestamps or make an old component appear newer than it is. Single-record freshness inspects every source observation time. For 3C.3 cross-binding spans, every source is inspected only for the temporal-participant selected records defined in Section 13.8.
 
-A future freshness assessment will use the normalized record's `effective_observed_at`, the complete source-reference observation-time range, and configured cross-record skew rules. The final freshness algorithm remains deferred.
+Single-record freshness assessment uses the normalized record's
+`effective_observed_at` and complete source-reference observation-time range.
+Milestone 3C.3 binding-set temporal coherence applies the configured
+cross-record skew rule only to the exact temporal-participant types defined in
+Section 13.8. Date-oriented fields are never converted to synthetic datetimes.
 
 ### 5.6 Market-session date
 
@@ -665,7 +669,11 @@ MarketDataFreshnessPolicy
 | `rate` | `maximum_rate_age_seconds` |
 | `dividend` | `maximum_dividend_age_seconds` |
 
-`maximum_cross_record_skew_seconds` is retained for later multi-record snapshot assembly. Single-record freshness assessment does not apply it; a separately reviewed snapshot-coherence function will apply it. `maximum_source_observation_span_seconds` is the within-record multi-source limit and is applied in 3B.1.
+`maximum_cross_record_skew_seconds` is retained for Milestone 3C.3 binding-set
+temporal coherence. Single-record freshness assessment does not apply it.
+Section 13.8 applies it only to selected records in the exact temporal-
+participation matrix defined there. `maximum_source_observation_span_seconds`
+is the within-record multi-source limit and is applied in 3B.1.
 
 ### 11.3 FreshnessContext
 
@@ -897,27 +905,61 @@ FreshnessAssessment
 
 ### Cross-record skew remains separate
 
-`maximum_cross_record_skew_seconds` is not applied by single-record freshness assessment. Later snapshot assembly compares `metadata.effective_observed_at` across records and also inspects every record's complete source-time range; no single effective timestamp can hide incompatible source spans. That future operation preserves every individual `FreshnessAssessment`. It is not implemented in 3B.1, and snapshot coherence and transformation into research records remain Milestone 3C.3+ work.
+`maximum_cross_record_skew_seconds` is not applied by single-record freshness
+assessment. Milestone 3C.3 compares `metadata.effective_observed_at` and the
+complete source-time range across only the five temporal-participant record
+types locked in Section 13.8; no single effective timestamp can hide an older
+participating source. It preserves every individual `FreshnessAssessment`.
+Date/reference-oriented records retain their individual 3C.2 freshness proof
+but do not enter 3C.3 seconds-based spans. Relationship coherence, selection,
+historical completeness, and transformation remain later Milestone 3C units.
 
 ## 12. Snapshot coherence
 
-Future snapshot checks use each normalized record's `effective_observed_at`, every underlying `SourceReference.observed_at`, market phase, quote scope, venue where relevant, session date, and the freshness policy. No effective timestamp replaces inspection of source timestamps.
+Snapshot coherence is dependency-ordered rather than one broad operation.
+Milestone 3C.3 assesses only binding-set temporal coherence under Section 13.8.
+Milestone 3C.4 will consume an explicit relationship or grouping request before
+deciding which supplied records are intended counterparts and applying the
+relationship requirements below. Later units separately perform deterministic
+selection, historical completeness, and economic transformation.
+
+The relationship requirements in Sections 12.1 through 12.3 are therefore
+future 3C.4 work, not 3C.3 timing rules. Section 12.4 is future 3C.6 historical-
+series work. No stage may replace inspection of a participating source time
+with one effective timestamp or convert a calendar date to a synthetic
+datetime.
 
 ### 12.1 Quote alignment
 
-Underlying and option quotes used together must refer to the same underlying, use compatible market phases and quote scopes, use compatible venues where relevant, fall within configured effective and source observation-time skew, pass the freshness policy, and disclose delayed or indicative status.
+When an explicit 3C.4 relationship request identifies underlying and option
+quotes as counterparts, they must refer to the same underlying, use compatible
+market phases and quote scopes, use compatible venues where relevant, pass the
+freshness policy, and disclose delayed or indicative status. Their configured
+effective and source observation-time skew is assessed earlier by 3C.3 when
+they are supplied in the same binding set.
 
 ### 12.2 Analytics alignment
 
-Option IV and Greeks must match the exact `OptionContractKey`, same market session, observation time compatible with the quote snapshot, and declared model plus rate and dividend inputs.
+When an explicit 3C.4 relationship request identifies option quotes, IV, and
+Greeks as counterparts, their exact `OptionContractKey`, market session,
+declared model, and rate and dividend input descriptions must satisfy the 3C.4
+compatibility contract. 3C.3 proves timing only and does not infer this
+relationship.
 
 ### 12.3 Volume and open interest
 
 Quote, volume, and open interest need not have identical timestamps. Each keeps its own observation time or session date, and differences remain visible. Calculations use the latest eligible completed open-interest session. Cumulative volume is used only under its declared as-of time. Stale open interest must not be presented as current intraday open interest without disclosure.
 
+Relationship and applicability checks belong to 3C.4. Choosing the latest
+eligible observation belongs to 3C.5. Open-interest session dates do not enter
+3C.3 seconds-based spans.
+
 ### 12.4 Historical series
 
 Historical percentile and realized-volatility inputs require one observation per valid completed US trading session, no duplicate session dates, consistent adjustment methodology, consistent sampling frequency, declared lookback count, and no mixing of intraday, weekly, or end-of-day observations.
+
+These are Milestone 3C.6 historical-series assembly and completeness rules.
+Daily-bar dates do not enter 3C.3 seconds-based spans.
 
 ### 12.5 Multiple providers
 
@@ -1419,8 +1461,11 @@ normalized immutable records
     -> explicit CorrectionSelection
     -> selected normalized record
     -> explicit FreshnessAssessment
-    -> later snapshot coherence
-    -> later transformation
+    -> 3C.3 binding-set temporal coherence
+    -> 3C.4 explicit relationship/group coherence
+    -> 3C.5 deterministic cross-observation selection
+    -> 3C.6 historical-series assembly and completeness
+    -> 3C.7 transformation and CalculationLineage
 ```
 
 Milestone 3C.1 specifies only semantic identity. The selected/fresh binding API
@@ -1448,9 +1493,9 @@ compatibility, analytics alignment, selection among different semantic
 observations, historical-series completeness, economic transformations,
 pricing, or `CalculationLineage` construction.
 
-#### Planned public API
+#### Public API
 
-Milestone 3C.2 adds exactly these two planned public names to
+Milestone 3C.2 added exactly these two public names to
 `convexity_hunter.market_data`:
 
 ```text
@@ -1471,11 +1516,11 @@ bind_selected_fresh_market_data(
 ) -> SelectedFreshMarketDataBinding
 ```
 
-The existing 37 public names and their exact order remain unchanged. The two
-names above are appended to `market_data.__all__` after the existing 37 names,
+The original 37 public names and their exact order remain unchanged. The two
+names above are appended to `market_data.__all__` after those 37 names,
 in exactly the displayed order: first `SelectedFreshMarketDataBinding`, then
 `bind_selected_fresh_market_data`. No public name may be inserted among or
-reorder the existing names. The planned count after 3C.2 implementation is 39.
+reorder the original names. The current count after 3C.2 implementation is 39.
 Milestone 3C.2 introduces no additional public enum, status, reason code, alias,
 registry, helper, or exception class.
 
@@ -1720,9 +1765,11 @@ correction_selection.evaluated_at <= freshness_context.evaluation_at
 
 Equality is valid. A correction selection evaluated after the freshness context
 raises `ValueError`. This preserves the operational sequence of selection first
-and freshness second. Later snapshot logic may impose common evaluation or
-as-of-time requirements across bindings. Milestone 3C.2 defines no relationship
-to a future snapshot time or `CalculationLineage.calculated_at`.
+and freshness second. Milestone 3C.3 requires structurally equal complete
+freshness contexts across a temporally coherent binding set but introduces no
+separate snapshot time. Later relationship or transformation contracts may
+define explicit as-of-time requirements. Milestone 3C.2 defines no relationship
+to `CalculationLineage.calculated_at`.
 
 The public binding function computes freshness through:
 
@@ -1949,11 +1996,13 @@ use randomness; access a network, provider SDK, or LLM; or use a process-global
 registry. All time, rule, policy, and context values are explicit inputs. Input
 order does not affect the resulting binding or its structural equality.
 
-Milestone 3C.2 proves only per-record selected/fresh eligibility. A later
-snapshot stage may consume multiple bindings and inspect their preserved
-selected records, candidate records and sources, freshness policies and
-contexts, correction and freshness evaluation times, market phase, quote scope,
-venue, session and effective dates, and source observation times.
+Milestone 3C.2 proves only per-record selected/fresh eligibility. Milestone 3C.3
+may consume multiple bindings and inspect their preserved selected records,
+candidate records and sources, freshness policies and contexts, correction and
+freshness evaluation times, effective times, and source observation times.
+Milestone 3C.4 separately consumes explicit relationship/group requests before
+using market phase, quote scope, venue, session, contract, or other economic-
+relationship fields.
 
 Milestone 3C.2 does not evaluate `maximum_cross_record_skew_seconds`, global
 timestamp ranges, common cross-record policy or context, phase/scope/venue
@@ -1966,14 +2015,486 @@ Milestone 3C.2 does not create or modify `CalculationLineage`. The dependency is
 
 ```text
 SelectedFreshMarketDataBinding
-    -> later snapshot and cross-observation selection
-    -> later transformation
+    -> 3C.3 binding-set temporal coherence
+    -> 3C.4 explicit relationship/group coherence
+    -> 3C.5 deterministic cross-observation selection
+    -> 3C.6 historical-series assembly and completeness
+    -> 3C.7 transformation
     -> CalculationLineage
 ```
 
 Later transformation lineage may use
 `CalculationQualityFlag.correction_selected`, but that flag does not replace the
 detailed binding proof.
+
+### 13.8 Milestone 3C.3 binding-set temporal coherence
+
+Milestone 3C.3 is the pure temporal-coherence layer for one explicit caller-
+supplied set of already validated `SelectedFreshMarketDataBinding` objects:
+
+```text
+per-record eligibility
+    -> 3C.3 binding-set temporal coherence
+    -> 3C.4 explicit relationship/group coherence
+    -> 3C.5 deterministic cross-observation selection
+    -> 3C.6 historical-series assembly and completeness
+    -> 3C.7 market-data-to-research transformations and CalculationLineage
+```
+
+It assesses only whether the supplied bindings use compatible complete
+freshness policies and contexts and whether the applicable selected records
+fall within common cross-record effective-time and complete-source-observation-
+time limits. It does not claim that the set is a complete calculation snapshot
+or that any two records are intended economic counterparts. A temporally
+coherent set may contain unrelated records.
+
+#### Planned public API
+
+Milestone 3C.3 plans exactly these three public additions, in this order:
+
+```text
+MarketDataSnapshotTimingReasonCode
+MarketDataSnapshotTimingAssessment
+assess_market_data_snapshot_timing
+```
+
+The existing 39 `convexity_hunter.market_data` public names and their exact
+order remain unchanged. The three names above append after those 39 names in
+the displayed order. The planned public count after 3C.3 implementation is 42;
+the current implemented count remains 39.
+
+Milestone 3C.3 introduces no public status enum, snapshot policy,
+relationship/group alias, registry, exception class, validated-success
+snapshot class, or helper.
+
+The reason-code enum has this exact declaration order and values:
+
+```text
+MarketDataSnapshotTimingReasonCode
+    mixed_freshness_policy
+    mixed_freshness_context
+    effective_time_span_exceeded
+    source_observation_span_exceeded
+```
+
+All applicable reasons are collected without duplicates and stored in enum
+declaration order. There is no coherent reason code. An empty reason tuple is
+the exact successful terminal result.
+
+The planned function is:
+
+```text
+assess_market_data_snapshot_timing(
+    bindings,
+) -> MarketDataSnapshotTimingAssessment
+```
+
+It accepts no separate policy, context, threshold, snapshot time, reason,
+metric, raw normalized record, correction sidecar, or freshness sidecar.
+
+#### Immutable assessment artifact
+
+The frozen assessment has exactly one stored dataclass field:
+
+```text
+MarketDataSnapshotTimingAssessment
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...]
+```
+
+It exposes exactly these derived public properties:
+
+```text
+is_temporally_coherent -> bool
+
+reason_codes
+    -> Tuple[MarketDataSnapshotTimingReasonCode, ...]
+
+common_freshness_policy
+    -> Optional[MarketDataFreshnessPolicy]
+
+common_freshness_context
+    -> Optional[FreshnessContext]
+
+effective_time_span_seconds
+    -> Optional[Decimal]
+
+source_observation_span_seconds
+    -> Optional[Decimal]
+```
+
+Status, reasons, common artifacts, and metrics are derived from the canonical
+stored bindings, never independently supplied. No private dataclass field may
+be added to store a derived sidecar or appear in public dataclass field
+introspection. Direct construction therefore cannot forge calculated timing
+facts.
+
+Ordinary frozen-dataclass structural equality applies. Hashability is not
+guaranteed because a nested binding may contain an already-valid unhashable
+value. No custom hash or successful-hashing promise is introduced. The public
+function and direct construction have identical successful semantics.
+
+#### Input, duplicate, and canonicalization boundary
+
+Both paths accept only an exact built-in `tuple` or `list`. Tuple/list
+subclasses and every other container raise `TypeError`. Every element is
+validated in caller order and must satisfy:
+
+```text
+type(binding) is SelectedFreshMarketDataBinding
+```
+
+Binding subclasses, raw normalized records, and unsupported objects raise
+`TypeError`. The collection must be non-empty; empty input raises `ValueError`.
+
+Duplicate selected record IDs and duplicate semantic observation keys each
+raise `ValueError`:
+
+```text
+binding.selected_record.metadata.record_id
+binding.semantic_observation_key
+```
+
+A repeated binding object is rejected by the duplicate selected-record-ID
+rule; object identity is not a separate duplicate criterion. One 3C.3 binding
+set contains at most one selected/fresh proof for one semantic observation
+slot. Corrections for that slot must already have been resolved inside the
+complete 3C.2 candidate group. Repeated normalized record types with different
+semantic keys remain valid.
+
+The stored tuple is sorted by this exact key:
+
+```text
+(
+    binding.semantic_observation_key,
+    binding.selected_record.metadata.record_id,
+)
+```
+
+Caller order has no semantic meaning. Equivalent permutations produce
+structurally equal assessments.
+
+The sort uses ordinary deterministic Python string lexicographic ordering of
+the already validated stored semantic keys and record IDs. It does not use
+`locale.strxfrm`, locale-aware or platform-specific collation, case folding,
+3C.3 Unicode normalization, or the process environment locale. 3C.3 does not
+renormalize either string. A process-locale change cannot alter canonical
+binding order.
+
+After validation and sorting, `assessment.bindings` is an outer tuple
+containing the exact original `SelectedFreshMarketDataBinding` objects supplied
+by the caller. For each binding at its canonical index:
+
+```python
+assessment.bindings[canonical_index] is supplied_binding
+```
+
+List input is normalized only by creating this outer canonical tuple. The
+implementation may reorder the supplied bindings but must not copy,
+reconstruct, recompute, serialize and deserialize, or replace a binding with an
+equal binding; unwrap and rebind its selected record; or replace any object
+already retained by that binding. Nested binding-object identity is preserved.
+The public function and direct construction have identical object-retention
+semantics.
+
+#### Binding trust boundary
+
+Each exact `SelectedFreshMarketDataBinding` is treated as the previously
+validated immutable 3C.2 proof. 3C.3 does not repeat semantic candidate-group
+reconstruction, correction selection, freshness assessment, or 3C.2 sidecar-
+equality validation. It may inspect every retained selected record, source
+reference, freshness policy, freshness context, freshness assessment,
+correction selection, and semantic observation key.
+
+All cross-binding compatibility, canonicalization, spans, reasons, and outcome
+properties are recomputed from the canonical bindings. No binding or nested
+object is mutated.
+
+#### Complete policy and context compatibility
+
+Policy compatibility uses exact structural equality of the complete
+`MarketDataFreshnessPolicy` objects. Policy ID/version equality alone is
+insufficient. If every binding's policy is structurally equal,
+`common_freshness_policy` returns the exact policy object belonging to the first
+canonical binding. Otherwise it returns `None` and
+`mixed_freshness_policy` applies. Structurally different policies with equal
+IDs/versions are mixed.
+
+When common, the returned policy is exactly:
+
+```python
+assessment.common_freshness_policy is assessment.bindings[0].freshness_policy
+```
+
+It is never a copy or reconstructed equal policy.
+
+The assessment never chooses the strictest, loosest, first, average, or
+pairwise threshold. It introduces no separate snapshot policy.
+
+Context compatibility likewise uses exact structural equality of the complete
+`FreshnessContext`, including `evaluation_at` and
+`latest_completed_session_date`. If every context is structurally equal,
+`common_freshness_context` returns the exact context object belonging to the
+first canonical binding. Otherwise it returns `None` and
+`mixed_freshness_context` applies.
+
+When common, the returned context is exactly:
+
+```python
+assessment.common_freshness_context is assessment.bindings[0].freshness_context
+```
+
+It is never a copy or reconstructed equal context.
+
+Different policies and contexts are valid 3C.2 inputs. They produce a valid
+but temporally incoherent 3C.3 assessment rather than an exception.
+
+#### Exact temporal-participation matrix
+
+Seconds-based 3C.3 spans include exactly the five normalized record types whose
+`metadata.effective_observed_at` participates in semantic observation identity:
+
+```text
+UnderlyingQuoteObservation
+OptionQuoteObservation
+OptionVolumeObservation
+OptionImpliedVolatilityObservation
+OptionGreeksObservation
+```
+
+These are the temporal participants. Exact selected-record type determines
+participation; subclasses cannot occur through a valid 3C.2 binding.
+
+The five date/reference-oriented types are excluded from both seconds-based
+spans:
+
+```text
+OptionContractReference
+OptionOpenInterestObservation
+UnderlyingDailyBarObservation
+RateCurvePointObservation
+DividendObservation
+```
+
+Their individual freshness remains proven by 3C.2. Their session-date,
+effective-date, ex-date, reference applicability, and historical relationships
+belong to 3C.4 through 3C.6. No calendar date is converted to midnight or any
+other synthetic datetime.
+
+#### Exact timing metrics
+
+For every temporal participant, the effective-time span uses:
+
+```text
+binding.selected_record.metadata.effective_observed_at
+```
+
+The metric is:
+
+```text
+max(effective_observed_at) - min(effective_observed_at)
+```
+
+Zero temporal participants produce `None`; one produces `Decimal("0")`; two or
+more produce the exact nonnegative span.
+
+The complete-source-observation span includes every
+`SourceReference.observed_at` from every temporal participant's selected
+record:
+
+```text
+max(all participating source observed_at values)
+    - min(all participating source observed_at values)
+```
+
+Zero temporal participants produce `None`. Every participating record already
+has at least one source. One total source produces `Decimal("0")`. All sources
+from multi-source and system-composite records participate; there is no
+system-composite exception. A single old participating source may exceed the
+global limit, and an effective timestamp never hides it.
+
+Both timedeltas are converted to exact `Decimal` seconds from integer
+components:
+
+```text
+days * 86400
+    + seconds
+    + microseconds / 1_000_000
+```
+
+Binary-float `total_seconds()` is not the audit-critical calculation. Neither
+metric truncates or rounds microseconds.
+
+#### Threshold evaluation and outcome
+
+The only governing threshold is:
+
+```text
+common_freshness_policy.maximum_cross_record_skew_seconds
+```
+
+Threshold reasons are evaluated only when both
+`common_freshness_policy` and `common_freshness_context` are non-`None`. When
+either policies or contexts are mixed, raw spans remain available and every
+applicable mixed reason is returned, but neither exceeded reason is added
+because there is no fully common policy/context basis for one timing decision.
+
+With common artifacts:
+
+```text
+effective_time_span_seconds > maximum_cross_record_skew_seconds
+    -> effective_time_span_exceeded
+
+source_observation_span_seconds > maximum_cross_record_skew_seconds
+    -> source_observation_span_exceeded
+```
+
+Equality with the configured maximum passes. A `None` span cannot produce an
+exceeded reason.
+
+Every applicable reason is returned in enum declaration order. The exact
+outcome is:
+
+```text
+reason_codes == ()
+    -> is_temporally_coherent is True
+
+one or more reason codes
+    -> is_temporally_coherent is False
+```
+
+An incoherent set returns an assessment rather than `None` or an exception.
+Exceptions are limited to malformed collection input and prohibited
+duplicates. The assessment expresses no attractiveness, recommendation, or
+candidate-state meaning.
+
+#### Exact validation precedence
+
+The public function and direct constructor use this observable order:
+
+**Phase A — top-level collection**
+
+1. Require an exact built-in tuple or list.
+
+**Phase B — element types**
+
+2. Validate every element in caller order as an exact
+   `SelectedFreshMarketDataBinding`.
+
+**Phase C — collection values**
+
+3. Reject empty input.
+4. Reject duplicate selected record IDs.
+5. Reject duplicate semantic observation keys.
+6. Sort into the canonical tuple.
+
+**Phase D — compatibility and metrics**
+
+7. Derive the common structural policy or `None`.
+8. Derive the common structural context or `None`.
+9. Identify temporal participants by exact selected-record type.
+10. Calculate the effective-time span.
+11. Calculate the complete-source-observation span.
+
+**Phase E — reasons and outcome**
+
+12. Add the mixed-policy reason when applicable.
+13. Add the mixed-context reason when applicable.
+14. Only when both common artifacts exist, evaluate both thresholds.
+15. Normalize reasons into enum declaration order.
+16. Derive the Boolean outcome.
+
+Malformed-input exception precedence completes before compatibility or metric
+work. Multiple valid incoherence conditions are collected rather than short-
+circuited.
+
+#### Explicit exclusions and purity
+
+Milestone 3C.3 does not evaluate underlying or option-contract relationships,
+session-date relationships, market-phase, quote-scope, or venue compatibility,
+quote/IV/Greek relationships, analytics methodology compatibility, analytics-
+to-rate or analytics-to-dividend linkage, activity/reference applicability,
+rate-tenor or dividend-event applicability, latest or preferred observations,
+missing records, calculation completeness, historical-series completeness,
+economic formulas, pricing, research evidence, `CandidateResearchRecord`,
+`CalculationLineage`, or candidate states.
+
+Those boundaries are dependency-ordered as follows:
+
+- 3C.4 receives an explicit relationship or grouping request before deciding
+  which records are intended counterparts. It defines underlying/option,
+  session, phase, scope, venue, quote/analytics methodology, activity,
+  reference, rate, dividend, and contract applicability rules. Its API is not
+  defined by 3C.3.
+- 3C.5 performs deterministic selection among different semantic
+  observations.
+- 3C.6 assembles and proves historical-series completeness.
+- 3C.7 performs economic transformation, pricing where authorized, research-
+  evidence construction, and `CalculationLineage` construction.
+
+The assessment preserves all nested source and normalization flags but adds no
+stricter delayed, indicative, halted, or other quality rule. Those conditions
+were already assessed under each binding's complete freshness policy. No 3C.3
+timing reason represents source quality.
+
+The record and function are pure. They do not mutate inputs; inspect a wall
+clock or exchange calendar; read files or environment variables; depend on
+locale; use randomness; access a network, provider SDK, LLM, or process-global
+registry; or perform hidden selection. Canonical string ordering, exact
+`Decimal` timing conversion, reason ordering, and structural equality are
+locale-independent. Decimal separators are never locale-derived, enum reasons
+are never locale-sorted, and no string is formatted or parsed through a
+locale-sensitive function.
+
+#### Future test expectations
+
+Future fixed synthetic tests cover:
+
+- exact tuple/list containers and container-subclass rejection;
+- exact binding elements and binding-subclass rejection;
+- empty input, duplicate selected IDs, and duplicate semantic keys, including a
+  simultaneous-defect regression that deterministically proves duplicate
+  selected-record-ID `ValueError` occurs before semantic-key duplicate
+  validation without creating a public exception subclass or broad public
+  error-message contract;
+- canonical order, input-order-independent equality, and ordinary frozen
+  behavior without a hashability promise;
+- exact supplied-binding identity retention after canonical reordering for
+  tuple input and for list input whose outer container becomes a tuple;
+- structurally equal public-function and direct-construction results that retain
+  the same supplied binding objects across different caller orders;
+- exact common-artifact identity with the first canonical binding's policy and
+  context, with no copied or reconstructed equal object;
+- full structural policy equality, including equal ID/version with different
+  policy fields;
+- full structural context equality, including different evaluation times and
+  latest-completed-session dates;
+- zero, one, and multiple temporal participants;
+- parameterized or subtest coverage independently proving that each of
+  `UnderlyingQuoteObservation`, `OptionQuoteObservation`,
+  `OptionVolumeObservation`, `OptionImpliedVolatilityObservation`, and
+  `OptionGreeksObservation` contributes its effective time and every selected-
+  record source time, has a one-binding effective span of `Decimal("0")`, and
+  is not treated as excluded;
+- exclusion coverage independently proving that each of
+  `OptionContractReference`, `OptionOpenInterestObservation`,
+  `UnderlyingDailyBarObservation`, `RateCurvePointObservation`, and
+  `DividendObservation` contributes to neither seconds-based metric;
+- effective and source spans below, equal to, and above the threshold;
+- microsecond-exact `Decimal` calculation, one old source, and complete multi-
+  source/system-composite participation;
+- a one-binding, multi-source participant whose within-record source range
+  produces a nonzero global source span;
+- mixed policy/context results with raw metrics but skipped threshold reasons;
+- multiple simultaneous reasons in declaration order;
+- valid incoherent assessments versus invalid-input exceptions;
+- locale-independence coverage for canonical binding order, reason order,
+  `Decimal` timing values, and structural equality, using restored available
+  locale settings or a portable controlled probe that does not require any
+  non-default locale installation and never manipulates locale in production;
+- no mutation or wall-clock, network, filesystem, environment, locale,
+  randomness, provider, or LLM dependency; and
+- no relationship, selection, completeness, calculation, pricing, research,
+  or lineage leakage.
 
 ## 14. Canonical calculation lineage
 
@@ -2173,7 +2694,7 @@ Required strings are trimmed and non-empty. Calculation time is timezone-aware U
 
 `quality_flags` accepts only a tuple or list; another container raises `TypeError`. Every element must have exact type `CalculationQualityFlag`; foreign Enum values, subclasses, and all other elements raise `TypeError`. Duplicate flags raise `ValueError`. Empty flags are valid, and the stored tuple follows enum declaration order. Flags are never inferred from calculation behavior.
 
-A sidecar is necessary because existing research records mostly use date-only `as_of_date`, while real inputs have intraday timestamps and individual source identities. Existing research records do not receive lineage fields in 3B. Future Milestone 3C.3+ transformations will consume selected/fresh bindings, perform deterministic calculations, produce existing research records, and create `CalculationLineage` sidecars.
+A sidecar is necessary because existing research records mostly use date-only `as_of_date`, while real inputs have intraday timestamps and individual source identities. Existing research records do not receive lineage fields in 3B. Future Milestone 3C.7 transformations will consume temporally coherent, relationship-validated, deterministically selected, and where applicable historically complete inputs; perform deterministic calculations; produce existing research records; and create `CalculationLineage` sidecars.
 
 ## 15. Mapping to existing research records
 
@@ -2194,6 +2715,8 @@ Normalized observations never directly produce `CandidateState`. Calculated reco
 | Provider adapter | Authentication and transport; provider schema parsing; raw-meaning preservation; provider timestamp extraction; `SourceReference` construction | No economic screening |
 | Core normalization records | Types; finite values; canonical units; timezone awareness; identifier consistency; basic quote/bar invariants; provenance presence | No historical calculations or provider fetching |
 | Selected/fresh binding layer | Complete semantic candidate-group verification; authoritative correction selection; selected-record resolution; authoritative single-record freshness; immutable proof retention | No cross-record coherence, cross-observation selection, historical completeness, economic transformation, or calculation lineage |
+| Binding-set temporal-coherence layer | Exact binding-set canonicalization; complete policy/context compatibility; effective and complete-source spans for exact temporal participants | No relationship inference, selection, completeness, economic transformation, or calculation lineage |
+| Explicit relationship/group-coherence layer | Caller-declared counterpart grouping; contract, session, phase, scope, venue, analytics, activity, reference, rate, and dividend compatibility | No observation selection, completeness, economic transformation, or calculation lineage |
 | Calculation layer | Interpolation; annualization; percentiles; realized volatility; structure aggregation; pricing scenarios; `CalculationLineage` | No hidden inputs or state classification |
 | `CandidateResearchRecord` | Aggregate consistency; evidence classification; research disclosures | No provider parsing |
 | `ScreeningPolicy` and `screen_candidate` | Deterministic state classification | No provider normalization or fetching |
@@ -2322,30 +2845,66 @@ semantic_observation_key(record) -> str
 
 ### Milestone 3C.2 — Per-record selected/fresh binding
 
-After Milestone 3C.1, implement and review only the Section 13.7 per-record
-selected/fresh binding contract. Its exact two planned public additions are:
+The Section 13.7 per-record selected/fresh binding contract is implemented,
+reviewed, and stable. Its exact two public additions are:
 
 ```text
 SelectedFreshMarketDataBinding
 bind_selected_fresh_market_data
 ```
 
-The current public `market_data` API count is 37; the planned count after 3C.2
-implementation is 39. The binding verifies a complete semantic candidate group,
-recomputes correction selection, resolves one selected record, recomputes
-freshness, and retains the complete immutable proof. Milestone 3C.2 must be
-reviewed and stable before snapshot assembly consumes bindings.
+The current public `market_data` API count is 39. The binding verifies a
+complete semantic candidate group, recomputes correction selection, resolves
+one selected record, recomputes freshness, and retains the complete immutable
+proof.
 
 Completing the 3C.2 contract does not authorize snapshot or transformation
 implementation.
 
-### Milestone 3C.3+ — Remaining Milestone 3C work
+### Milestone 3C.3 — Binding-set temporal coherence
 
-Snapshot coherence, deterministic cross-observation selection, historical
-completeness, and research-record transformations stay grouped at dependency
-level only. Milestone 3C.3+ remains specification-blocked and unimplemented.
-Final numbering and public APIs beyond 3C.2 are intentionally not assigned until
-their contracts are clarified.
+Define and review only the Section 13.8 contract. Its exact three planned
+public additions are:
+
+```text
+MarketDataSnapshotTimingReasonCode
+MarketDataSnapshotTimingAssessment
+assess_market_data_snapshot_timing
+```
+
+The current public count remains 39. The planned count after 3C.3
+implementation is 42. 3C.3 assesses complete policy/context compatibility and
+the effective/source spans of the exact temporal-participant types. It does not
+infer relationships, choose observations, prove completeness, or transform
+market data.
+
+### Milestone 3C.4 — Explicit relationship/group coherence
+
+Require an explicit relationship or grouping request before deciding which
+records are intended counterparts. Define underlying/option, session, market-
+phase, quote-scope, venue, quote/IV/Greek, analytics-methodology,
+activity/reference, rate, dividend, and contract applicability rules. The 3C.4
+API remains deferred to its own preflight.
+
+### Milestone 3C.5 — Deterministic cross-observation selection
+
+Choose among different eligible semantic observations only after temporal and
+explicit relationship coherence. Do not silently choose a latest or preferred
+observation before this contract is defined.
+
+### Milestone 3C.6 — Historical-series assembly and completeness
+
+Define expected-session, lookback, frequency, adjustment-methodology, and
+duplicate/missing-session rules separately from current snapshot timing and
+selection.
+
+### Milestone 3C.7 — Market-data-to-research transformations
+
+Perform economic calculations, pricing where authorized, research-evidence and
+research-record construction, and `CalculationLineage` construction only after
+the required temporal, relationship, selection, and historical-completeness
+proofs. Selection, completeness, calculation, pricing, research evidence, and
+lineage remain separate responsibilities.
 
 ### Milestone 3D — Provider adapter
 
@@ -2368,16 +2927,22 @@ The full implementation sequence is:
 5. Implement and review Milestone 3B.2 correction selection.
 6. Implement and review Milestone 3B.3 calculation lineage.
 7. Complete and review Milestone 3C.1 semantic observation identity.
-8. Review and stabilize the Milestone 3C.2 per-record selected/fresh binding
-   contract, then implement it only after approval.
-9. Clarify and review Milestone 3C.3+ snapshot coherence, deterministic
-   cross-observation selection, historical completeness, and transformation
-   specifications before implementing them.
-10. Select a provider only after Milestones 3A–3C are stable.
-11. Add recorded provider fixture payloads.
-12. Implement one adapter behind the contracts.
-13. Review licensing and retention constraints.
-14. Separately authorize live-network testing.
+8. Complete and review Milestone 3C.2 per-record selected/fresh binding.
+9. Define, review, then implement Milestone 3C.3 binding-set temporal
+   coherence.
+10. Define, review, then implement Milestone 3C.4 explicit relationship/group
+    coherence.
+11. Define, review, then implement Milestone 3C.5 deterministic cross-
+    observation selection.
+12. Define, review, then implement Milestone 3C.6 historical-series assembly
+    and completeness.
+13. Define, review, then implement Milestone 3C.7 market-data-to-research
+    transformations and `CalculationLineage` construction.
+14. Select a provider only after Milestones 3A–3C are stable.
+15. Add recorded provider fixture payloads.
+16. Implement one adapter behind the contracts.
+17. Review licensing and retention constraints.
+18. Separately authorize live-network testing.
 
 ## 20. Non-goals
 
@@ -2411,8 +2976,8 @@ Resolved for v0.1 by the Milestone 3C.1 contract:
 
 Resolved for v0.1 by the Milestone 3C.2 contract:
 
-- A standalone per-record selected/fresh binding stage precedes snapshot
-  coherence.
+- A standalone per-record selected/fresh binding stage precedes binding-set
+  temporal coherence.
 - The binding retains and verifies the complete candidate records; metadata
   alone does not prove a semantic candidate group.
 - Correction selection is recomputed from the complete candidate group and the
@@ -2439,6 +3004,32 @@ Resolved for v0.1 by the Milestone 3C.2 contract:
 - A valid-but-ambiguous correction group or non-fresh assessment raises
   `ValueError`; no new rejection status or assessment is introduced.
 
+Resolved for v0.1 by the Milestone 3C.3 contract:
+
+- The broad standalone snapshot-coherence contract was not viable without an
+  explicit relationship request. 3C.3 is narrowed to binding-set temporal
+  coherence; 3C.4 separately defines relationship/group coherence.
+- The assessment accepts only a non-empty exact tuple/list of exact
+  `SelectedFreshMarketDataBinding` objects, rejects duplicate selected record
+  IDs and semantic keys, and stores bindings in the canonical semantic-key/
+  record-ID order.
+- Complete policies and contexts require exact structural equality. Mixed
+  artifacts produce canonical incoherence reasons rather than exceptions, and
+  threshold conclusions are skipped while raw spans remain available.
+- Seconds-based spans include exactly underlying quotes, option quotes, option
+  volume, option IV, and option Greeks. The five date/reference-oriented record
+  types do not participate, and calendar dates are never converted to
+  datetimes.
+- The effective span and complete participating-source span use exact
+  `Decimal` seconds. Equality with the common cross-record threshold passes.
+- The frozen assessment stores only canonical bindings and derives all common
+  artifacts, metrics, reasons, and its Boolean outcome. It has no status enum,
+  success-only snapshot class, separate snapshot policy, or hashability
+  promise.
+- The current public API remains 39 names. The exact three planned 3C.3 names
+  append in Section 13.8 order for a planned post-implementation count of 42.
+- No normalized-record schema change is required for the narrow 3C.3 contract.
+
 The following questions remain open:
 
 - Which MIC or listing registry should supply `listing_mic`?
@@ -2450,7 +3041,6 @@ The following questions remain open:
 - Should `AFTER_HOURS` source flags create an explicit policy reason in a later version?
 - Should `UNKNOWN_CONDITION` source flags become policy-controlled?
 - Should future policies make halted-source handling configurable by category?
-- Should cross-record snapshot assessment become a separate public record?
 - Which exchange calendar implementation would support trading-session counting?
 - Which provider correction schemes expose genuinely comparable numeric revisions?
 - Which provider licenses permit retention of correction histories?
