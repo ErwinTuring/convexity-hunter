@@ -918,21 +918,22 @@ historical completeness, and transformation remain later Milestone 3C units.
 
 Snapshot coherence is dependency-ordered rather than one broad operation.
 Milestone 3C.3 assesses only binding-set temporal coherence under Section 13.8.
-Milestone 3C.4 will consume an explicit relationship or grouping request before
-deciding which supplied records are intended counterparts and applying the
-relationship requirements below. Later units separately perform deterministic
-selection, historical completeness, and economic transformation.
+Milestone 3C.4a first supplies portable binding references. Milestones 3C.4b
+through 3C.4e will then consume explicit relationship or grouping requests
+before deciding which supplied records are intended counterparts and applying
+the relationship requirements below. Later units separately perform
+deterministic selection, historical completeness, and economic transformation.
 
 The relationship requirements in Sections 12.1 through 12.3 are therefore
-future 3C.4 work, not 3C.3 timing rules. Section 12.4 is future 3C.6 historical-
-series work. No stage may replace inspection of a participating source time
-with one effective timestamp or convert a calendar date to a synthetic
-datetime.
+future 3C.4b through 3C.4e work, not 3C.3 timing or 3C.4a reference rules.
+Section 12.4 is future 3C.6 historical-series work. No stage may replace
+inspection of a participating source time with one effective timestamp or
+convert a calendar date to a synthetic datetime.
 
 ### 12.1 Quote alignment
 
-When an explicit 3C.4 relationship request identifies underlying and option
-quotes as counterparts, they must refer to the same underlying, use compatible
+When a future explicit 3C.4b relationship request identifies underlying and
+option quotes as counterparts, they must refer to the same underlying, use compatible
 market phases and quote scopes, use compatible venues where relevant, pass the
 freshness policy, and disclose delayed or indicative status. Their configured
 effective and source observation-time skew is assessed earlier by 3C.3 when
@@ -940,18 +941,18 @@ they are supplied in the same binding set.
 
 ### 12.2 Analytics alignment
 
-When an explicit 3C.4 relationship request identifies option quotes, IV, and
-Greeks as counterparts, their exact `OptionContractKey`, market session,
-declared model, and rate and dividend input descriptions must satisfy the 3C.4
-compatibility contract. 3C.3 proves timing only and does not infer this
+When a future explicit 3C.4b relationship request identifies option quotes, IV,
+and Greeks as counterparts, their exact `OptionContractKey`, market session,
+declared model, and rate and dividend input descriptions must satisfy the later
+3C.4 compatibility contracts. 3C.3 proves timing only and does not infer this
 relationship.
 
 ### 12.3 Volume and open interest
 
 Quote, volume, and open interest need not have identical timestamps. Each keeps its own observation time or session date, and differences remain visible. Calculations use the latest eligible completed open-interest session. Cumulative volume is used only under its declared as-of time. Stale open interest must not be presented as current intraday open interest without disclosure.
 
-Relationship and applicability checks belong to 3C.4. Choosing the latest
-eligible observation belongs to 3C.5. Open-interest session dates do not enter
+Relationship and activity-applicability checks belong to 3C.4e. Choosing the
+latest eligible observation belongs to 3C.5. Open-interest session dates do not enter
 3C.3 seconds-based spans.
 
 ### 12.4 Historical series
@@ -1462,7 +1463,8 @@ normalized immutable records
     -> selected normalized record
     -> explicit FreshnessAssessment
     -> 3C.3 binding-set temporal coherence
-    -> 3C.4 explicit relationship/group coherence
+    -> 3C.4a auditable binding references
+    -> 3C.4b through 3C.4e explicit relationship/group coherence
     -> 3C.5 deterministic cross-observation selection
     -> 3C.6 historical-series assembly and completeness
     -> 3C.7 transformation and CalculationLineage
@@ -1520,7 +1522,8 @@ The original 37 public names and their exact order remain unchanged. The two
 names above are appended to `market_data.__all__` after those 37 names,
 in exactly the displayed order: first `SelectedFreshMarketDataBinding`, then
 `bind_selected_fresh_market_data`. No public name may be inserted among or
-reorder the original names. The current count after 3C.2 implementation is 39.
+reorder the original names. The implemented count at completion of 3C.2 was 39;
+the current count after 3C.3 is 42.
 Milestone 3C.2 introduces no additional public enum, status, reason code, alias,
 registry, helper, or exception class.
 
@@ -2000,9 +2003,9 @@ Milestone 3C.2 proves only per-record selected/fresh eligibility. Milestone 3C.3
 may consume multiple bindings and inspect their preserved selected records,
 candidate records and sources, freshness policies and contexts, correction and
 freshness evaluation times, effective times, and source observation times.
-Milestone 3C.4 separately consumes explicit relationship/group requests before
-using market phase, quote scope, venue, session, contract, or other economic-
-relationship fields.
+Milestones 3C.4b through 3C.4e separately consume explicit relationship/group
+requests after 3C.4a references and before using market phase, quote scope,
+venue, session, contract, or other economic-relationship fields.
 
 Milestone 3C.2 does not evaluate `maximum_cross_record_skew_seconds`, global
 timestamp ranges, common cross-record policy or context, phase/scope/venue
@@ -2016,7 +2019,8 @@ Milestone 3C.2 does not create or modify `CalculationLineage`. The dependency is
 ```text
 SelectedFreshMarketDataBinding
     -> 3C.3 binding-set temporal coherence
-    -> 3C.4 explicit relationship/group coherence
+    -> 3C.4a auditable binding references
+    -> 3C.4b through 3C.4e explicit relationship/group coherence
     -> 3C.5 deterministic cross-observation selection
     -> 3C.6 historical-series assembly and completeness
     -> 3C.7 transformation
@@ -2035,7 +2039,8 @@ supplied set of already validated `SelectedFreshMarketDataBinding` objects:
 ```text
 per-record eligibility
     -> 3C.3 binding-set temporal coherence
-    -> 3C.4 explicit relationship/group coherence
+    -> 3C.4a auditable binding references
+    -> 3C.4b through 3C.4e explicit relationship/group coherence
     -> 3C.5 deterministic cross-observation selection
     -> 3C.6 historical-series assembly and completeness
     -> 3C.7 market-data-to-research transformations and CalculationLineage
@@ -2048,9 +2053,9 @@ time limits. It does not claim that the set is a complete calculation snapshot
 or that any two records are intended economic counterparts. A temporally
 coherent set may contain unrelated records.
 
-#### Planned public API
+#### Public API
 
-Milestone 3C.3 plans exactly these three public additions, in this order:
+Milestone 3C.3 added exactly these three public names, in this order:
 
 ```text
 MarketDataSnapshotTimingReasonCode
@@ -2058,10 +2063,9 @@ MarketDataSnapshotTimingAssessment
 assess_market_data_snapshot_timing
 ```
 
-The existing 39 `convexity_hunter.market_data` public names and their exact
-order remain unchanged. The three names above append after those 39 names in
-the displayed order. The planned public count after 3C.3 implementation is 42;
-the current implemented count remains 39.
+The preceding 39 `convexity_hunter.market_data` public names and their exact
+order remained unchanged. The three names above append after those 39 names in
+the displayed order. The current implemented public count is 42.
 
 Milestone 3C.3 introduces no public status enum, snapshot policy,
 relationship/group alias, registry, exception class, validated-success
@@ -2277,7 +2281,7 @@ DividendObservation
 
 Their individual freshness remains proven by 3C.2. Their session-date,
 effective-date, ex-date, reference applicability, and historical relationships
-belong to 3C.4 through 3C.6. No calendar date is converted to midnight or any
+belong to later 3C.4 through 3C.7 units. No calendar date is converted to midnight or any
 other synthetic datetime.
 
 #### Exact timing metrics
@@ -2420,11 +2424,13 @@ economic formulas, pricing, research evidence, `CandidateResearchRecord`,
 
 Those boundaries are dependency-ordered as follows:
 
-- 3C.4 receives an explicit relationship or grouping request before deciding
-  which records are intended counterparts. It defines underlying/option,
+- 3C.4a defines only portable references. 3C.4b through 3C.4e receive explicit
+  relationship or grouping requests before deciding
+  which records are intended counterparts. They define underlying/option,
   session, phase, scope, venue, quote/analytics methodology, activity,
-  reference, rate, dividend, and contract applicability rules. Its API is not
-  defined by 3C.3.
+  reference, contract, and non-economic rate/dividend identity compatibility.
+  Their APIs are not defined by 3C.3. Rate and dividend economic applicability
+  remains 3C.7 work.
 - 3C.5 performs deterministic selection among different semantic
   observations.
 - 3C.6 assembles and proves historical-series completeness.
@@ -2495,6 +2501,360 @@ Future fixed synthetic tests cover:
   randomness, provider, or LLM dependency; and
 - no relationship, selection, completeness, calculation, pricing, research,
   or lineage leakage.
+
+### 13.9 Milestone 3C.4a auditable binding-reference foundation
+
+The broad standalone Milestone 3C.4 relationship/group-coherence contract was
+preflighted and found not yet viable. Relationship group kinds, roles,
+cardinalities, temporal-block behavior, assessment architecture, structured
+issue evidence, and phase/scope/venue compatibility remain unresolved.
+Milestone 3C.4a therefore extracts only the independently determined portable
+binding-reference foundation:
+
+```text
+portable binding reference
+    -> exact resolution inside one existing 3C.3 timing assessment
+    -> exact retained 3C.2 binding object
+```
+
+3C.4a does exactly four things:
+
+1. represents one portable reference to one selected/fresh binding;
+2. constructs that reference from one exact 3C.2 binding;
+3. resolves that reference inside one exact 3C.3 timing assessment; and
+4. returns the exact binding object retained by that assessment.
+
+A 3C.4a reference is a locator, not proof that any relationship is valid. This
+sub-unit does not declare relationships, groups, or roles; evaluate relationship
+or timing coherence; select observations or groups; require missing roles;
+prove completeness; assemble historical series; apply rate or dividend
+applicability; perform calculations or pricing; construct research evidence or
+`CalculationLineage`; or produce candidate states.
+
+#### Public API
+
+Milestone 3C.4a plans exactly these three public additions, in this order:
+
+```text
+MarketDataBindingReference
+market_data_binding_reference
+resolve_market_data_binding_reference
+```
+
+The existing 42 `convexity_hunter.market_data` public names and their exact
+order remain unchanged. The three names above append after those 42 names in
+the displayed order. The current implemented public count is 42. The planned
+post-3C.4a implementation count is 45.
+
+3C.4a introduces no public group-kind enum, role enum, relationship request,
+relationship group, reason-code enum, status enum, issue record, relationship
+assessment, success-only artifact, registry, exception class, or compatibility
+policy.
+
+#### Immutable reference artifact
+
+The planned frozen record has exactly these two stored dataclass fields, in
+this order:
+
+```python
+@dataclass(frozen=True)
+class MarketDataBindingReference:
+    semantic_observation_key: str
+    selected_record_id: str
+```
+
+No additional field stores a binding object, timing assessment, canonical
+index, record type, provider, policy, context, correction selection, freshness
+assessment, relationship role, or group ID. The record is a portable value
+artifact rather than a Python object-identity reference. Ordinary frozen-
+dataclass structural equality applies. No custom hash is planned.
+
+For both strings, the constructor requires exact built-in `str` and applies
+exactly this normalization:
+
+```python
+normalized = value.strip()
+```
+
+This is Python's no-argument built-in `str.strip()` behavior. No explicit
+character set is supplied: every leading and trailing character recognized by
+Python as whitespace is removed, while internal characters remain unchanged.
+An empty normalized result raises `ValueError`; otherwise the normalized value
+is stored. Case and Unicode code points remaining after stripping are
+preserved. No case folding, Unicode normalization, parsing, or locale-aware
+transformation occurs.
+
+The exact observable validation order is:
+
+```text
+1. semantic_observation_key exact built-in str type
+2. selected_record_id exact built-in str type
+3. semantic_observation_key nonempty after `value.strip()`
+4. selected_record_id nonempty after `value.strip()`
+5. store both stripped strings
+```
+
+String subclasses and every non-string value raise `TypeError`. Direct
+construction validates only the two string values and does not prove that
+either value belongs to a real binding. A reference becomes authoritative only
+when it resolves inside a supplied 3C.3 timing assessment.
+
+#### Factory function
+
+The planned factory is:
+
+```python
+market_data_binding_reference(
+    binding,
+) -> MarketDataBindingReference
+```
+
+It requires:
+
+```python
+type(binding) is SelectedFreshMarketDataBinding
+```
+
+A binding subclass, raw normalized record, timing assessment, binding
+reference, or any unsupported object raises `TypeError`. After that exact-type
+check, the function derives only:
+
+```python
+binding.semantic_observation_key
+binding.selected_record.metadata.record_id
+```
+
+It does not recompute semantic identity, reconstruct correction or freshness
+evidence, mutate the binding, or copy the binding. It returns a new value
+reference. The exact equivalence is:
+
+```python
+market_data_binding_reference(binding)
+    == MarketDataBindingReference(
+        semantic_observation_key=binding.semantic_observation_key,
+        selected_record_id=binding.selected_record.metadata.record_id,
+    )
+```
+
+The factory requires no timing assessment and introduces no hidden
+authorization beyond the direct reference constructor.
+
+Its exact validation phases are:
+
+```text
+1. exact SelectedFreshMarketDataBinding type
+2. derive the two retained strings
+3. construct and return the reference
+```
+
+#### Resolver function
+
+The planned resolver is:
+
+```python
+resolve_market_data_binding_reference(
+    reference,
+    timing_assessment,
+) -> SelectedFreshMarketDataBinding
+```
+
+Its exact successful behavior is:
+
+1. require `type(reference) is MarketDataBindingReference`;
+2. require `type(timing_assessment) is MarketDataSnapshotTimingAssessment`;
+3. search only `timing_assessment.bindings` in its already-canonical order;
+4. match both reference fields by exact stored-string equality;
+5. require exactly one complete-pair match; and
+6. return the exact retained binding object at the matching assessment index.
+
+The complete-pair predicate is:
+
+```python
+binding.semantic_observation_key
+    == reference.semantic_observation_key
+and binding.selected_record.metadata.record_id
+    == reference.selected_record_id
+```
+
+Successful resolution guarantees:
+
+```python
+resolved_binding is timing_assessment.bindings[index]
+```
+
+The resolver never resolves by semantic key alone or record ID alone, falls
+back from one field to the other, uses a canonical index as a reference,
+chooses a close or latest match, parses the semantic key, recomputes semantic
+identity, reconstructs a binding, copies a binding, or resorts the assessment.
+A cross-paired reference containing one binding's semantic key and another
+binding's record ID raises `ValueError` unless that exact complete pair
+independently exists in the supplied target assessment. Because a valid 3C.3
+assessment has unique semantic keys and unique selected record IDs, such a
+cross-pair normally has no match.
+
+The exact resolver validation order is:
+
+```text
+1. exact MarketDataBindingReference type
+2. exact MarketDataSnapshotTimingAssessment type
+3. exact complete-pair resolution
+4. return the exact retained binding
+```
+
+The resolver does not access `timing_assessment.bindings` before both public
+argument types pass.
+
+#### Resolution failures
+
+Malformed public argument types raise `TypeError`. A well-formed reference that
+does not resolve to exactly one complete pair in the supplied assessment raises
+`ValueError`. Resolution failure includes an unknown semantic key, unknown
+selected record ID, stale reference, forged reference, cross-paired values
+without an independently matching complete pair, or a reference of any origin
+whose complete pair is absent from the supplied target assessment.
+
+3C.4a introduces no public exception class or reason enum. Full private error-
+message text is not a public contract; tests may distinguish the exception
+category without locking implementation-specific wording.
+
+#### Trust and assessment-membership boundary
+
+`MarketDataBindingReference` is only a two-string portable locator. Direct
+construction does not prove that a binding exists. The exact supplied
+`MarketDataSnapshotTimingAssessment` is the authoritative binding universe.
+Successful resolution proves only that the exact pair occurs in that supplied
+assessment and returns the exact already-validated 3C.2 binding retained by
+the 3C.3 assessment.
+
+3C.4a trusts the already-valid exact timing assessment. It does not repeat
+3C.2 semantic candidate-group reconstruction, correction selection, selected-
+record resolution, or freshness validation. It does not repeat 3C.3 duplicate,
+canonicalization, policy, context, metric, reason, or timing validation.
+
+A reference carries no assessment origin or assessment identity. Resolution
+depends only on whether its complete `(semantic_observation_key,
+selected_record_id)` pair exists in the timing assessment explicitly supplied
+as the resolver's target. A reference created from a binding in Assessment A
+resolves successfully in Assessment B when Assessment B contains the same
+complete pair, and the resolver returns the exact matching binding retained by
+Assessment B. It raises `ValueError` in Assessment B when Assessment B does not
+contain that complete pair.
+
+The same reference may therefore resolve successfully in multiple assessments.
+A reference is not foreign in any observable sense merely because it was
+constructed using a binding retained elsewhere. No assessment ID, fingerprint,
+object identity, version, registry entry, or hidden origin metadata exists, and
+the resolver must not attempt to determine where a reference was created.
+Target-assessment complete-pair membership is the sole resolution criterion.
+No process-global registry, provider lookup, repository lookup, filesystem
+lookup, cache, or network lookup exists.
+
+A valid 3C.3 timing assessment already guarantees unique selected record IDs
+and unique semantic observation keys within its canonical binding set. The
+composite pair remains mandatory because it carries semantic context, provides
+stronger audit evidence, detects cross-paired or stale references, and remains
+suitable for later serialized group requests. Neither field is claimed to be
+globally unique outside the supplied assessment.
+
+#### Temporal-coherence independence
+
+The resolver accepts an exact valid timing assessment whether it is temporally
+coherent or temporally incoherent. Reference resolution is structural and must
+not inspect:
+
+```text
+is_temporally_coherent
+reason_codes
+common_freshness_policy
+common_freshness_context
+effective_time_span_seconds
+source_observation_span_seconds
+timing thresholds
+```
+
+Later relationship work will decide whether temporal incoherence blocks
+relationship evaluation. 3C.4a neither makes nor pre-empts that decision.
+
+#### Canonical behavior, locale independence, and purity
+
+Construction and resolution use exact stored-string equality. They prohibit
+`locale.strxfrm`, locale-aware comparison, case folding, lowercasing,
+uppercasing, Unicode renormalization, platform collation, fuzzy matching,
+prefix matching, and substring matching. Resolution follows the canonical
+order already retained by `timing_assessment.bindings` and does not resort or
+mutate it. Results do not depend on caller locale, environment locale,
+platform, or process-global state.
+
+Both public functions are provider neutral, clock free, calendar free,
+filesystem free, environment free, network free, locale independent,
+randomness free, LLM free, registry free, and non-mutating. They do not inspect
+or alter source URIs, provider IDs, provider symbols, listing MIC as a fallback,
+relationship fields, or economic fields.
+
+#### Explicit exclusions
+
+3C.4a defines no semantics for same-underlying, same-option-contract, same-
+session, market-phase, quote-scope, quote-venue, analytics-methodology,
+volume/open-interest, contract-reference, rate, dividend, or historical-series
+relationships. It defines no group kinds, roles, role cardinalities, required
+roles, relationship findings, relationship reason order, relationship outcome,
+upstream temporal blocking, or validated coherent groups. These are
+intentionally deferred.
+
+#### Revised dependency decomposition
+
+The completed broad 3C.4 preflight establishes this revised order:
+
+```text
+3C.2 selected/fresh binding
+    -> 3C.3 binding-set temporal coherence
+    -> 3C.4a auditable binding references
+    -> 3C.4b explicit relationship/group request representation
+    -> 3C.4c exact identity and comparable-session coherence
+    -> 3C.4d quote phase/scope/venue compatibility
+    -> 3C.4e analytics/activity/contract-reference coherence
+    -> 3C.5 deterministic cross-observation/group selection
+    -> 3C.6 historical-series assembly and completeness
+    -> 3C.7 transformations, pricing where authorized,
+       research evidence, and CalculationLineage
+```
+
+Only 3C.4a is defined here. APIs for 3C.4b through 3C.4e remain undefined.
+Rate and dividend economic applicability remains 3C.7 work. Historical-series
+membership and completeness remain 3C.6 work.
+
+#### Future test expectations
+
+Future fixed synthetic 3C.4a tests cover:
+
+- the unchanged existing 42 public names, exact three-name append order,
+  planned total of 45, public signatures, exact two-field dataclass
+  introspection, and absence of unauthorized relationship APIs;
+- exact-string constructor boundaries, string-subclass and non-string
+  rejection, validation precedence, no-argument `str.strip()` behavior, ASCII
+  surrounding whitespace, non-ASCII Python-recognized surrounding whitespace,
+  internal whitespace preservation, whitespace-only rejection, case and
+  Unicode preservation, absence of case folding or Unicode normalization,
+  field order, frozen behavior, and structural equality;
+- exact binding factory success; rejection of binding subclasses, raw records,
+  timing assessments, references, and unsupported objects; factory/direct
+  structural equality; and no binding mutation;
+- exact reference and timing-assessment resolver success; rejection of
+  reference and assessment subclasses; argument precedence; unknown semantic
+  key, unknown record ID, both unknown, stale and forged pairs, and cross-paired
+  values without an independent exact-pair match; a foreign-origin reference
+  whose complete pair is present returning the exact retained binding from the
+  supplied target assessment; a foreign-origin reference whose complete pair
+  is absent raising `ValueError`; exact retained binding identity; and unchanged
+  nested object identity;
+- successful structural resolution for both coherent and temporally incoherent
+  timing assessments, with a controlled regression proving that no derived
+  timing property is accessed;
+- canonical assessment order independence of the reference value, no resolver
+  resorting or mutation, and absence of locale-sensitive comparison; and
+- no clock, calendar, network, filesystem, environment, randomness, provider,
+  LLM, registry, selection, relationship, completeness, calculation, pricing,
+  research, or lineage dependency.
 
 ## 14. Canonical calculation lineage
 
@@ -2716,7 +3076,8 @@ Normalized observations never directly produce `CandidateState`. Calculated reco
 | Core normalization records | Types; finite values; canonical units; timezone awareness; identifier consistency; basic quote/bar invariants; provenance presence | No historical calculations or provider fetching |
 | Selected/fresh binding layer | Complete semantic candidate-group verification; authoritative correction selection; selected-record resolution; authoritative single-record freshness; immutable proof retention | No cross-record coherence, cross-observation selection, historical completeness, economic transformation, or calculation lineage |
 | Binding-set temporal-coherence layer | Exact binding-set canonicalization; complete policy/context compatibility; effective and complete-source spans for exact temporal participants | No relationship inference, selection, completeness, economic transformation, or calculation lineage |
-| Explicit relationship/group-coherence layer | Caller-declared counterpart grouping; contract, session, phase, scope, venue, analytics, activity, reference, rate, and dividend compatibility | No observation selection, completeness, economic transformation, or calculation lineage |
+| Auditable binding-reference layer | Portable semantic-key/selected-record-ID references; exact resolution within one supplied timing assessment; exact retained-binding identity | No timing decision, relationship/group semantics, selection, completeness, economic transformation, or calculation lineage |
+| Explicit relationship/group-coherence layer | Caller-declared counterpart grouping; contract, session, phase, scope, venue, analytics, activity, reference, and non-economic rate/dividend identity compatibility | No observation selection, completeness, rate/dividend economic applicability, economic transformation, or calculation lineage |
 | Calculation layer | Interpolation; annualization; percentiles; realized volatility; structure aggregation; pricing scenarios; `CalculationLineage` | No hidden inputs or state classification |
 | `CandidateResearchRecord` | Aggregate consistency; evidence classification; research disclosures | No provider parsing |
 | `ScreeningPolicy` and `screen_candidate` | Deterministic state classification | No provider normalization or fetching |
@@ -2853,7 +3214,8 @@ SelectedFreshMarketDataBinding
 bind_selected_fresh_market_data
 ```
 
-The current public `market_data` API count is 39. The binding verifies a
+The implemented public `market_data` API count at completion of 3C.2 was 39;
+the current count after 3C.3 is 42. The binding verifies a
 complete semantic candidate group, recomputes correction selection, resolves
 one selected record, recomputes freshness, and retains the complete immutable
 proof.
@@ -2863,8 +3225,8 @@ implementation.
 
 ### Milestone 3C.3 — Binding-set temporal coherence
 
-Define and review only the Section 13.8 contract. Its exact three planned
-public additions are:
+The Section 13.8 binding-set temporal-coherence contract is implemented and
+reviewed. Its exact three public additions are:
 
 ```text
 MarketDataSnapshotTimingReasonCode
@@ -2872,19 +3234,25 @@ MarketDataSnapshotTimingAssessment
 assess_market_data_snapshot_timing
 ```
 
-The current public count remains 39. The planned count after 3C.3
-implementation is 42. 3C.3 assesses complete policy/context compatibility and
-the effective/source spans of the exact temporal-participant types. It does not
-infer relationships, choose observations, prove completeness, or transform
-market data.
+The current implemented public count is 42. 3C.3 assesses complete
+policy/context compatibility and the effective/source spans of the exact
+temporal-participant types. It does not infer relationships, choose
+observations, prove completeness, or transform market data.
 
-### Milestone 3C.4 — Explicit relationship/group coherence
+### Milestone 3C.4a — Auditable binding references
 
-Require an explicit relationship or grouping request before deciding which
-records are intended counterparts. Define underlying/option, session, market-
-phase, quote-scope, venue, quote/IV/Greek, analytics-methodology,
-activity/reference, rate, dividend, and contract applicability rules. The 3C.4
-API remains deferred to its own preflight.
+Define only the Section 13.9 portable two-string binding reference, exact
+factory from one selected/fresh binding, and exact resolution inside one
+binding-set timing assessment. The current implemented public count remains
+42. The planned post-3C.4a implementation count is 45.
+
+### Milestones 3C.4b through 3C.4e — Explicit relationship/group coherence
+
+After 3C.4a review, separately define relationship/group request
+representation, exact identity and comparable-session coherence, quote phase/
+scope/venue compatibility, and analytics/activity/contract-reference
+coherence. Their APIs remain undefined. Rate and dividend economic
+applicability remains 3C.7 work.
 
 ### Milestone 3C.5 — Deterministic cross-observation selection
 
@@ -2930,19 +3298,21 @@ The full implementation sequence is:
 8. Complete and review Milestone 3C.2 per-record selected/fresh binding.
 9. Define, review, then implement Milestone 3C.3 binding-set temporal
    coherence.
-10. Define, review, then implement Milestone 3C.4 explicit relationship/group
-    coherence.
-11. Define, review, then implement Milestone 3C.5 deterministic cross-
+10. Define, review, then implement Milestone 3C.4a auditable binding
+    references.
+11. Define, review, then implement Milestones 3C.4b through 3C.4e explicit
+    relationship/group coherence.
+12. Define, review, then implement Milestone 3C.5 deterministic cross-
     observation selection.
-12. Define, review, then implement Milestone 3C.6 historical-series assembly
+13. Define, review, then implement Milestone 3C.6 historical-series assembly
     and completeness.
-13. Define, review, then implement Milestone 3C.7 market-data-to-research
+14. Define, review, then implement Milestone 3C.7 market-data-to-research
     transformations and `CalculationLineage` construction.
-14. Select a provider only after Milestones 3A–3C are stable.
-15. Add recorded provider fixture payloads.
-16. Implement one adapter behind the contracts.
-17. Review licensing and retention constraints.
-18. Separately authorize live-network testing.
+15. Select a provider only after Milestones 3A–3C are stable.
+16. Add recorded provider fixture payloads.
+17. Implement one adapter behind the contracts.
+18. Review licensing and retention constraints.
+19. Separately authorize live-network testing.
 
 ## 20. Non-goals
 
@@ -3008,7 +3378,8 @@ Resolved for v0.1 by the Milestone 3C.3 contract:
 
 - The broad standalone snapshot-coherence contract was not viable without an
   explicit relationship request. 3C.3 is narrowed to binding-set temporal
-  coherence; 3C.4 separately defines relationship/group coherence.
+  coherence; decomposed 3C.4 work separately defines portable references and
+  later relationship/group coherence.
 - The assessment accepts only a non-empty exact tuple/list of exact
   `SelectedFreshMarketDataBinding` objects, rejects duplicate selected record
   IDs and semantic keys, and stores bindings in the canonical semantic-key/
@@ -3026,9 +3397,29 @@ Resolved for v0.1 by the Milestone 3C.3 contract:
   artifacts, metrics, reasons, and its Boolean outcome. It has no status enum,
   success-only snapshot class, separate snapshot policy, or hashability
   promise.
-- The current public API remains 39 names. The exact three planned 3C.3 names
-  append in Section 13.8 order for a planned post-implementation count of 42.
+- The current implemented public API has 42 names. The exact three 3C.3 names
+  append in Section 13.8 order after the preceding 39 names.
 - No normalized-record schema change is required for the narrow 3C.3 contract.
+
+Resolved for v0.1 by the drafted Milestone 3C.4a contract. The contract has
+completed targeted specification preflight with a passing result and is
+approved for implementation. Implementation has not started. The approved
+contract decisions are:
+
+- One portable binding reference contains exactly the semantic observation key
+  and selected record ID as exact strings normalized by Python's no-argument
+  `str.strip()`, with remaining case and Unicode code points preserved.
+- The factory derives those strings from one exact
+  `SelectedFreshMarketDataBinding` without recomputing its proofs.
+- The resolver requires one exact complete-pair match inside one exact
+  `MarketDataSnapshotTimingAssessment` and returns the exact retained binding.
+- Direct reference construction supplies no existence proof; the explicitly
+  supplied timing assessment is the only authoritative binding universe.
+- Resolution is independent of the timing assessment's coherent or incoherent
+  outcome and defines no relationship, group, role, compatibility, issue, or
+  selection behavior.
+- The three planned 3C.4a names append after the existing 42 names for a
+  planned post-implementation count of 45.
 
 The following questions remain open:
 

@@ -50,23 +50,34 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3C.1 completed: deterministic provider-neutral semantic observation identity implemented and independently reviewed for all ten normalized market-data record types, with versioned canonical tagged-JSON keys, exact identity-field boundaries, provider-neutral provenance exclusion, and deterministic fixed synthetic tests.
 - Milestone 3C.2 completed: deterministic per-record selected/fresh market-data binding implemented and independently reviewed, including complete semantic candidate-group verification, deterministic correction selection, explicit correction-context trust boundaries, authoritative freshness recomputation, deterministic validation precedence, and fixed synthetic tests.
 - Milestone 3C.3 binding-set temporal coherence implemented, independently reviewed with REVIEW RESULT: PASS, validated with 541 tests passed and 42 public `market_data` names, and committed and pushed in `1fd33889885cfa7e2e75853e2bb54b3c15260982` (`Implement market data snapshot timing assessment`).
+- The broad standalone Milestone 3C.4 relationship/group-coherence contract was preflighted and found not yet viable because relationship groups, roles, cardinalities, result architecture, issue evidence, and compatibility matrices remain unresolved.
+- Milestone 3C.4 is decomposed into 3C.4a auditable binding references, 3C.4b explicit relationship/group request representation, 3C.4c exact identity and comparable-session coherence, 3C.4d quote phase/scope/venue compatibility, and 3C.4e analytics/activity/contract-reference coherence.
+- Milestone 3C.4a defines only the auditable binding-reference foundation. Its contract has been drafted, targeted-preflighted, and approved. It is the authoritative contract baseline for the Milestone 3C.4a implementation preflight. Its implementation has not started.
 
 ## Current task
 
-Clarify and review the Milestone 3C.4 explicit relationship/group-coherence
-contract before implementation.
+Perform an A-level implementation preflight for Milestone 3C.4a auditable
+binding references against the approved contract.
 
 Milestones 3C.1, 3C.2, and 3C.3 are complete and independently reviewed.
 Milestone 3C.3 binding-set temporal coherence is implemented, validated with
 541 tests passed and 42 public `market_data` names, and committed at
 `1fd33889885cfa7e2e75853e2bb54b3c15260982`. No normalized-record schema change
-was required for 3C.3. Milestone 3C.4 relationship/group coherence, Milestone
-3C.5 deterministic cross-observation selection, Milestone 3C.6 historical-series
-assembly and completeness, and Milestone 3C.7 transformations and
-`CalculationLineage` remain unimplemented. Broad Milestone 3 remains incomplete.
-No provider has been selected and no network access is authorized.
-`market_data.py` remains independent of the evidence, report, and scanner
-modules.
+was required for 3C.3. The broad standalone 3C.4 contract was preflighted and
+found not yet viable, so the milestone is decomposed. Milestone 3C.4a defines
+only the auditable binding-reference foundation. Its contract has been drafted,
+targeted-preflighted, and approved. It is the authoritative contract baseline
+for the Milestone 3C.4a implementation preflight. Its implementation has not
+started. The current implemented public
+`market_data` count is 42. The planned post-3C.4a implementation count is 45,
+and the three planned 3C.4a names are not yet implemented. Milestones 3C.4b
+through 3C.4e remain undefined and unimplemented. Milestone 3C.5 deterministic
+cross-observation and group
+selection, Milestone 3C.6 historical-series assembly and completeness, and
+Milestone 3C.7 transformations and `CalculationLineage` remain unimplemented.
+Broad Milestone 3 remains incomplete. No provider has been selected and no
+network access is authorized. `market_data.py` remains independent of the
+evidence, report, and scanner modules.
 
 ## Last validated checkpoint
 
@@ -74,15 +85,20 @@ modules.
 - Commit: `1fd33889885cfa7e2e75853e2bb54b3c15260982`
 - Tests: 541 passed
 - Public `market_data` API: 42 names
+- Planned post-3C.4a public `market_data` API: 45 names; not implemented
 - Milestone 3C.1 semantic observation identity complete
 - Milestone 3C.2 per-record selected/fresh binding complete
 - Milestone 3C.3 binding-set temporal coherence complete
-- Milestones 3C.4 through 3C.7 implementation not started
+- Milestone 3C.4a contract drafted, targeted-preflighted, and approved;
+  authoritative contract baseline for the implementation preflight;
+  implementation not started
+- Milestones 3C.4b through 3C.4e undefined and unimplemented
+- Milestones 3C.5 through 3C.7 unimplemented
 
 ## Next task
 
-Perform an A-level specification preflight for the Milestone 3C.4
-relationship/group-coherence contract.
+Implement and independently review Milestone 3C.4a only after the
+implementation preflight passes.
 
 ## Deferred
 
