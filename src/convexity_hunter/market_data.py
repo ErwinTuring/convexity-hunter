@@ -53,6 +53,9 @@ __all__ = (
     "MarketDataSnapshotTimingReasonCode",
     "MarketDataSnapshotTimingAssessment",
     "assess_market_data_snapshot_timing",
+    "MarketDataBindingReference",
+    "market_data_binding_reference",
+    "resolve_market_data_binding_reference",
 )
 
 
@@ -2954,3 +2957,75 @@ def assess_market_data_snapshot_timing(
     """Assess temporal coherence for exact selected/fresh bindings."""
 
     return MarketDataSnapshotTimingAssessment(bindings=bindings)
+
+
+@dataclass(frozen=True)
+class MarketDataBindingReference:
+    """Portable reference to one selected/fresh market-data binding."""
+
+    semantic_observation_key: str
+    selected_record_id: str
+
+    def __post_init__(self) -> None:
+        if type(self.semantic_observation_key) is not str:
+            raise TypeError("semantic_observation_key must be an exact string")
+        if type(self.selected_record_id) is not str:
+            raise TypeError("selected_record_id must be an exact string")
+
+        semantic_key = self.semantic_observation_key.strip()
+        record_id = self.selected_record_id.strip()
+        if not semantic_key:
+            raise ValueError("semantic_observation_key must not be empty")
+        if not record_id:
+            raise ValueError("selected_record_id must not be empty")
+
+        object.__setattr__(self, "semantic_observation_key", semantic_key)
+        object.__setattr__(self, "selected_record_id", record_id)
+
+
+def market_data_binding_reference(
+    binding: object,
+) -> MarketDataBindingReference:
+    """Return a portable reference derived from one exact binding."""
+
+    if type(binding) is not SelectedFreshMarketDataBinding:
+        raise TypeError(
+            "binding must have exact type SelectedFreshMarketDataBinding"
+        )
+    return MarketDataBindingReference(
+        semantic_observation_key=binding.semantic_observation_key,
+        selected_record_id=binding.selected_record.metadata.record_id,
+    )
+
+
+def resolve_market_data_binding_reference(
+    reference: object,
+    timing_assessment: object,
+) -> SelectedFreshMarketDataBinding:
+    """Resolve one complete binding-reference pair in an exact assessment."""
+
+    if type(reference) is not MarketDataBindingReference:
+        raise TypeError(
+            "reference must have exact type MarketDataBindingReference"
+        )
+    if type(timing_assessment) is not MarketDataSnapshotTimingAssessment:
+        raise TypeError(
+            "timing_assessment must have exact type "
+            "MarketDataSnapshotTimingAssessment"
+        )
+
+    matches = tuple(
+        binding
+        for binding in timing_assessment.bindings
+        if (
+            binding.semantic_observation_key
+            == reference.semantic_observation_key
+            and binding.selected_record.metadata.record_id
+            == reference.selected_record_id
+        )
+    )
+    if len(matches) != 1:
+        raise ValueError(
+            "reference must resolve to exactly one binding in timing_assessment"
+        )
+    return matches[0]

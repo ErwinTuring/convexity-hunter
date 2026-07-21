@@ -35,6 +35,7 @@ from convexity_hunter.market_data import (
     FreshnessStatus,
     MarketPhase,
     MarketDataCategory,
+    MarketDataBindingReference,
     MarketDataFreshnessPolicy,
     MarketDataSnapshotTimingAssessment,
     MarketDataSnapshotTimingReasonCode,
@@ -60,6 +61,8 @@ from convexity_hunter.market_data import (
     assess_market_data_snapshot_timing,
     bind_selected_fresh_market_data,
     canonicalize_lineage_parameters,
+    market_data_binding_reference,
+    resolve_market_data_binding_reference,
     semantic_observation_key,
     select_correction_candidate,
 )
@@ -333,9 +336,12 @@ class PublicSurfaceTests(unittest.TestCase):
             "MarketDataSnapshotTimingReasonCode",
             "MarketDataSnapshotTimingAssessment",
             "assess_market_data_snapshot_timing",
+            "MarketDataBindingReference",
+            "market_data_binding_reference",
+            "resolve_market_data_binding_reference",
         )
         self.assertEqual(market_data.__all__, expected)
-        self.assertEqual(len(market_data.__all__), 42)
+        self.assertEqual(len(market_data.__all__), 45)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
@@ -5466,6 +5472,536 @@ class SnapshotTimingLocalePurityAndScopeTests(unittest.TestCase):
         ))
         self.assertTrue(assessment.is_temporally_coherent)
         self.assertEqual(assessment.reason_codes, ())
+
+
+class BindingReferenceSurfaceAndConstructorTests(unittest.TestCase):
+    EXPECTED_3C3_PUBLIC_NAMES = (
+        "DataOrigin",
+        "SourceQualityFlag",
+        "NormalizationQualityFlag",
+        "MarketPhase",
+        "QuoteScope",
+        "UnderlyingSecurityType",
+        "DividendStatus",
+        "SourceReference",
+        "NormalizationMetadata",
+        "UnderlyingKey",
+        "OptionContractKey",
+        "UnderlyingQuoteObservation",
+        "OptionContractReference",
+        "OptionQuoteObservation",
+        "OptionVolumeObservation",
+        "OptionOpenInterestObservation",
+        "OptionImpliedVolatilityObservation",
+        "OptionGreeksObservation",
+        "UnderlyingDailyBarObservation",
+        "RateCurvePointObservation",
+        "DividendObservation",
+        "MarketDataCategory",
+        "MarketDataFreshnessPolicy",
+        "FreshnessContext",
+        "FreshnessStatus",
+        "FreshnessReasonCode",
+        "FreshnessAssessment",
+        "assess_market_data_freshness",
+        "CorrectionSelectionStatus",
+        "CorrectionSelectionReasonCode",
+        "CorrectionSelection",
+        "select_correction_candidate",
+        "CalculationQualityFlag",
+        "CalculationInputReference",
+        "CalculationLineage",
+        "canonicalize_lineage_parameters",
+        "semantic_observation_key",
+        "SelectedFreshMarketDataBinding",
+        "bind_selected_fresh_market_data",
+        "MarketDataSnapshotTimingReasonCode",
+        "MarketDataSnapshotTimingAssessment",
+        "assess_market_data_snapshot_timing",
+    )
+
+    def test_public_surface_signatures_fields_and_exclusions(self) -> None:
+        additions = (
+            "MarketDataBindingReference",
+            "market_data_binding_reference",
+            "resolve_market_data_binding_reference",
+        )
+        self.assertEqual(
+            market_data.__all__[:42], self.EXPECTED_3C3_PUBLIC_NAMES
+        )
+        self.assertEqual(market_data.__all__[42:], additions)
+        self.assertEqual(len(market_data.__all__), 45)
+        self.assertTrue(all(hasattr(market_data, name) for name in additions))
+
+        factory_signature = inspect.signature(market_data_binding_reference)
+        self.assertEqual(tuple(factory_signature.parameters), ("binding",))
+        self.assertIs(factory_signature.parameters["binding"].annotation, object)
+        self.assertIs(
+            factory_signature.return_annotation, MarketDataBindingReference
+        )
+        resolver_signature = inspect.signature(
+            resolve_market_data_binding_reference
+        )
+        self.assertEqual(
+            tuple(resolver_signature.parameters),
+            ("reference", "timing_assessment"),
+        )
+        self.assertTrue(all(
+            parameter.annotation is object
+            and parameter.default is inspect.Parameter.empty
+            for parameter in resolver_signature.parameters.values()
+        ))
+        self.assertIs(
+            resolver_signature.return_annotation,
+            SelectedFreshMarketDataBinding,
+        )
+        self.assertEqual(
+            tuple(
+                field.name
+                for field in dataclasses.fields(MarketDataBindingReference)
+            ),
+            ("semantic_observation_key", "selected_record_id"),
+        )
+        unauthorized = (
+            "MarketDataRelationshipRequest",
+            "MarketDataRelationshipGroup",
+            "MarketDataRelationshipRole",
+            "MarketDataRelationshipAssessment",
+            "MarketDataRelationshipStatus",
+            "MarketDataRelationshipIssue",
+        )
+        self.assertTrue(all(
+            not hasattr(market_data, name) for name in unauthorized
+        ))
+
+    def test_constructor_normalizes_boundaries_and_preserves_content(self) -> None:
+        cases = (
+            ("Key", "Record", "Key", "Record"),
+            (" \t\nKey\r ", "\n record-1\t", "Key", "record-1"),
+            (
+                "\u00a0\u2003Key\u2003\u00a0",
+                "\u2003record-2\u00a0",
+                "Key",
+                "record-2",
+            ),
+            ("A B", "Record ID", "A B", "Record ID"),
+            ("MiXeD", "Case-ID", "MiXeD", "Case-ID"),
+        )
+        for semantic_key, record_id, expected_key, expected_id in cases:
+            with self.subTest(semantic_key=semantic_key, record_id=record_id):
+                reference = MarketDataBindingReference(semantic_key, record_id)
+                self.assertEqual(reference.semantic_observation_key, expected_key)
+                self.assertEqual(reference.selected_record_id, expected_id)
+
+        composed = MarketDataBindingReference("é", "record")
+        decomposed = MarketDataBindingReference("e\u0301", "record")
+        self.assertNotEqual(composed.semantic_observation_key,
+                            decomposed.semantic_observation_key)
+
+    def test_constructor_rejects_ascii_and_unicode_whitespace_only(self) -> None:
+        for value in (" \t\n\r", "\u00a0\u2003"):
+            with self.subTest(field="semantic", value=repr(value)):
+                with self.assertRaises(ValueError):
+                    MarketDataBindingReference(value, "record")
+            with self.subTest(field="record", value=repr(value)):
+                with self.assertRaises(ValueError):
+                    MarketDataBindingReference("key", value)
+
+    def test_constructor_requires_exact_builtin_strings(self) -> None:
+        class StringSubclass(str):
+            pass
+
+        cases = (
+            (StringSubclass("key"), "record", "semantic_observation_key"),
+            (object(), "record", "semantic_observation_key"),
+            ("key", StringSubclass("record"), "selected_record_id"),
+            ("key", object(), "selected_record_id"),
+        )
+        for semantic_key, record_id, expected_field in cases:
+            with self.subTest(field=expected_field):
+                with self.assertRaisesRegex(TypeError, expected_field):
+                    MarketDataBindingReference(semantic_key, record_id)
+
+    def test_constructor_validation_precedence(self) -> None:
+        with self.assertRaisesRegex(TypeError, "semantic_observation_key"):
+            MarketDataBindingReference(object(), object())
+        with self.assertRaisesRegex(TypeError, "selected_record_id"):
+            MarketDataBindingReference("   ", object())
+        with self.assertRaisesRegex(ValueError, "semantic_observation_key"):
+            MarketDataBindingReference("   ", "\t")
+
+    def test_constructor_is_frozen_and_structurally_equal(self) -> None:
+        first = MarketDataBindingReference(" key ", " record ")
+        second = MarketDataBindingReference("key", "record")
+        self.assertEqual(first, second)
+        with self.assertRaises(FrozenInstanceError):
+            first.selected_record_id = "other"  # type: ignore[misc]
+
+
+class BindingReferenceFactoryTests(unittest.TestCase):
+    def test_factory_matches_direct_construction_without_mutation(self) -> None:
+        binding = build_timing_binding(build_underlying_quote_observation())
+        before = repr(binding)
+        nested = (
+            binding.selected_record,
+            binding.candidate_records,
+            binding.freshness_policy,
+            binding.freshness_context,
+            binding.correction_selection,
+            binding.freshness_assessment,
+        )
+        reference = market_data_binding_reference(binding)
+        direct = MarketDataBindingReference(
+            binding.semantic_observation_key,
+            binding.selected_record.metadata.record_id,
+        )
+        self.assertEqual(reference, direct)
+        self.assertEqual(repr(binding), before)
+        retained = (
+            binding.selected_record,
+            binding.candidate_records,
+            binding.freshness_policy,
+            binding.freshness_context,
+            binding.correction_selection,
+            binding.freshness_assessment,
+        )
+        for original, after in zip(nested, retained):
+            self.assertIs(after, original)
+
+    def test_factory_rejects_binding_subclass(self) -> None:
+        binding = build_timing_binding(build_underlying_quote_observation())
+
+        class BindingSubclass(SelectedFreshMarketDataBinding):
+            pass
+
+        subclass = BindingSubclass(**{
+            field.name: getattr(binding, field.name)
+            for field in dataclasses.fields(binding)
+        })
+        with self.assertRaisesRegex(TypeError, "exact type"):
+            market_data_binding_reference(subclass)
+
+    def test_factory_rejects_all_other_object_kinds(self) -> None:
+        binding = build_timing_binding(build_underlying_quote_observation())
+        assessment = assess_market_data_snapshot_timing((binding,))
+        reference = MarketDataBindingReference("key", "record")
+        cases = (
+            build_underlying_quote_observation(),
+            assessment,
+            reference,
+            object(),
+        )
+        for value in cases:
+            with self.subTest(value_type=type(value).__name__):
+                with self.assertRaises(TypeError):
+                    market_data_binding_reference(value)
+
+
+class BindingReferenceResolverTests(unittest.TestCase):
+    def test_exact_argument_types_subclasses_precedence_and_no_early_access(
+        self,
+    ) -> None:
+        binding = build_timing_binding(build_underlying_quote_observation())
+        assessment = assess_market_data_snapshot_timing((binding,))
+        reference = market_data_binding_reference(binding)
+
+        class ReferenceSubclass(MarketDataBindingReference):
+            pass
+
+        class AssessmentSubclass(MarketDataSnapshotTimingAssessment):
+            pass
+
+        reference_subclass = ReferenceSubclass(
+            reference.semantic_observation_key, reference.selected_record_id
+        )
+        assessment_subclass = AssessmentSubclass(assessment.bindings)
+        with self.assertRaisesRegex(TypeError, "reference"):
+            resolve_market_data_binding_reference(
+                reference_subclass, assessment
+            )
+        with self.assertRaisesRegex(TypeError, "timing_assessment"):
+            resolve_market_data_binding_reference(
+                reference, assessment_subclass
+            )
+        with self.assertRaisesRegex(TypeError, "reference"):
+            resolve_market_data_binding_reference(object(), object())
+
+        class BindingsTrap:
+            @property
+            def bindings(self):
+                raise AssertionError("bindings accessed before exact type check")
+
+        with self.assertRaisesRegex(TypeError, "timing_assessment"):
+            resolve_market_data_binding_reference(reference, BindingsTrap())
+
+    def test_known_pair_returns_exact_outer_and_nested_objects(self) -> None:
+        first = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "identity-a",
+            (datetime.timedelta(0),),
+        ))
+        second = build_timing_binding(build_timed_record(
+            build_option_volume_observation,
+            "identity-b",
+            (datetime.timedelta(seconds=1),),
+        ))
+        assessment = assess_market_data_snapshot_timing((second, first))
+        before_bindings = assessment.bindings
+        target = assessment.bindings[1]
+        reference = market_data_binding_reference(target)
+        resolved = resolve_market_data_binding_reference(reference, assessment)
+        self.assertIs(resolved, target)
+        self.assertIs(assessment.bindings, before_bindings)
+        self.assertIs(resolved.selected_record, target.selected_record)
+        self.assertIs(resolved.candidate_records, target.candidate_records)
+        self.assertIs(resolved.freshness_policy, target.freshness_policy)
+        self.assertIs(resolved.freshness_context, target.freshness_context)
+        self.assertIs(
+            resolved.correction_selection, target.correction_selection
+        )
+        self.assertIs(
+            resolved.freshness_assessment, target.freshness_assessment
+        )
+
+    def test_unknown_stale_and_forged_pairs_raise_value_error(self) -> None:
+        binding = build_timing_binding(build_underlying_quote_observation())
+        assessment = assess_market_data_snapshot_timing((binding,))
+        key = binding.semantic_observation_key
+        record_id = binding.selected_record.metadata.record_id
+        stale_binding = build_timing_binding(build_timed_record(
+            build_option_volume_observation,
+            "stale-record",
+            (datetime.timedelta(seconds=1),),
+        ))
+        cases = {
+            "unknown-key": MarketDataBindingReference("unknown", record_id),
+            "unknown-id": MarketDataBindingReference(key, "unknown"),
+            "both-unknown": MarketDataBindingReference("unknown", "unknown"),
+            "stale": market_data_binding_reference(stale_binding),
+            "forged": MarketDataBindingReference(key, "forged-record"),
+        }
+        for label, reference in cases.items():
+            with self.subTest(case=label):
+                with self.assertRaises(ValueError):
+                    resolve_market_data_binding_reference(
+                        reference, assessment
+                    )
+
+    def test_cross_paired_reference_is_rejected(self) -> None:
+        first = build_timing_binding(build_timed_record(
+            build_underlying_quote_observation,
+            "cross-pair-a",
+            (datetime.timedelta(0),),
+        ))
+        second = build_timing_binding(build_timed_record(
+            build_option_volume_observation,
+            "cross-pair-b",
+            (datetime.timedelta(seconds=1),),
+        ))
+        assessment = assess_market_data_snapshot_timing((first, second))
+        cross_pair = MarketDataBindingReference(
+            first.semantic_observation_key,
+            second.selected_record.metadata.record_id,
+        )
+        with self.assertRaises(ValueError):
+            resolve_market_data_binding_reference(cross_pair, assessment)
+
+    def test_cross_assessment_present_and_absent_behavior(self) -> None:
+        first_record = build_timed_record(
+            build_underlying_quote_observation,
+            "portable-pair",
+            (datetime.timedelta(0),),
+        )
+        second_record = build_timed_record(
+            build_underlying_quote_observation,
+            "portable-pair",
+            (datetime.timedelta(0),),
+        )
+        binding_a = build_timing_binding(first_record)
+        binding_b = build_timing_binding(second_record)
+        assessment_a = assess_market_data_snapshot_timing((binding_a,))
+        assessment_b = assess_market_data_snapshot_timing((binding_b,))
+        self.assertIsNot(binding_a, binding_b)
+        reference = market_data_binding_reference(assessment_a.bindings[0])
+        self.assertIs(
+            resolve_market_data_binding_reference(reference, assessment_b),
+            assessment_b.bindings[0],
+        )
+
+        absent = assess_market_data_snapshot_timing((
+            build_timing_binding(build_timed_record(
+                build_option_volume_observation,
+                "absent-pair",
+                (datetime.timedelta(seconds=1),),
+            )),
+        ))
+        with self.assertRaises(ValueError):
+            resolve_market_data_binding_reference(reference, absent)
+
+    def test_resolution_accepts_all_temporal_coherence_outcomes(self) -> None:
+        policy = build_freshness_policy()
+        context = build_freshness_context()
+        coherent = assess_market_data_snapshot_timing((
+            build_timing_binding(build_timed_record(
+                build_underlying_quote_observation,
+                "coherent",
+                (datetime.timedelta(0),),
+            ), policy, context),
+        ))
+        mixed_policy = assess_market_data_snapshot_timing((
+            build_timing_binding(build_timed_record(
+                build_underlying_quote_observation,
+                "mixed-policy-a",
+                (datetime.timedelta(0),),
+            ), build_freshness_policy(maximum_cross_record_skew_seconds=10), context),
+            build_timing_binding(build_timed_record(
+                build_option_volume_observation,
+                "mixed-policy-b",
+                (datetime.timedelta(seconds=1),),
+            ), build_freshness_policy(maximum_cross_record_skew_seconds=11), context),
+        ))
+        changed_context = dataclasses.replace(
+            context,
+            evaluation_at=context.evaluation_at + datetime.timedelta(seconds=1),
+        )
+        mixed_context = assess_market_data_snapshot_timing((
+            build_timing_binding(build_timed_record(
+                build_underlying_quote_observation,
+                "mixed-context-a",
+                (datetime.timedelta(0),),
+            ), policy, context),
+            build_timing_binding(build_timed_record(
+                build_option_volume_observation,
+                "mixed-context-b",
+                (datetime.timedelta(seconds=1),),
+            ), policy, changed_context),
+        ))
+        skew_policy = build_freshness_policy(
+            maximum_cross_record_skew_seconds=10
+        )
+        skew = assess_market_data_snapshot_timing((
+            build_timing_binding(build_timed_record(
+                build_underlying_quote_observation,
+                "skew-a",
+                (datetime.timedelta(0),),
+            ), skew_policy, context),
+            build_timing_binding(build_timed_record(
+                build_option_volume_observation,
+                "skew-b",
+                (datetime.timedelta(seconds=11),),
+            ), skew_policy, context),
+        ))
+        self.assertTrue(coherent.is_temporally_coherent)
+        self.assertFalse(mixed_policy.is_temporally_coherent)
+        self.assertFalse(mixed_context.is_temporally_coherent)
+        self.assertFalse(skew.is_temporally_coherent)
+        for assessment in (coherent, mixed_policy, mixed_context, skew):
+            target = assessment.bindings[0]
+            with self.subTest(reasons=assessment.reason_codes):
+                self.assertIs(
+                    resolve_market_data_binding_reference(
+                        market_data_binding_reference(target), assessment
+                    ),
+                    target,
+                )
+
+    def test_resolver_never_accesses_derived_timing_properties(self) -> None:
+        binding = build_timing_binding(build_underlying_quote_observation())
+        assessment = assess_market_data_snapshot_timing((binding,))
+        reference = market_data_binding_reference(binding)
+        property_names = (
+            "is_temporally_coherent",
+            "reason_codes",
+            "common_freshness_policy",
+            "common_freshness_context",
+            "effective_time_span_seconds",
+            "source_observation_span_seconds",
+        )
+        originals = {
+            name: getattr(MarketDataSnapshotTimingAssessment, name)
+            for name in property_names
+        }
+
+        def fail_on_access(_assessment):
+            raise AssertionError("derived timing property was accessed")
+
+        try:
+            for name in property_names:
+                setattr(
+                    MarketDataSnapshotTimingAssessment,
+                    name,
+                    property(fail_on_access),
+                )
+            self.assertIs(
+                resolve_market_data_binding_reference(reference, assessment),
+                binding,
+            )
+        finally:
+            for name, descriptor in originals.items():
+                setattr(
+                    MarketDataSnapshotTimingAssessment, name, descriptor
+                )
+
+
+class BindingReferencePurityTests(unittest.TestCase):
+    def test_locale_transformations_are_never_called(self) -> None:
+        binding = build_timing_binding(build_underlying_quote_observation())
+        assessment = assess_market_data_snapshot_timing((binding,))
+        original_strxfrm = locale.strxfrm
+        original_strcoll = locale.strcoll
+
+        def fail(value):
+            raise AssertionError(value)
+
+        locale.strxfrm = fail
+        locale.strcoll = lambda first, second: fail((first, second))
+        try:
+            reference = MarketDataBindingReference(
+                " \u2003Key\u00a0 ", " record "
+            )
+            self.assertEqual(reference.semantic_observation_key, "Key")
+            exact_reference = market_data_binding_reference(binding)
+            self.assertIs(
+                resolve_market_data_binding_reference(
+                    exact_reference, assessment
+                ),
+                binding,
+            )
+        finally:
+            locale.strxfrm = original_strxfrm
+            locale.strcoll = original_strcoll
+
+    def test_implementation_has_no_external_or_later_layer_dependency(self) -> None:
+        source = "\n".join((
+            inspect.getsource(MarketDataBindingReference),
+            inspect.getsource(market_data_binding_reference),
+            inspect.getsource(resolve_market_data_binding_reference),
+        ))
+        prohibited = (
+            "semantic_observation_key(",
+            "select_correction_candidate(",
+            "assess_market_data_freshness(",
+            "assess_market_data_snapshot_timing(",
+            "_derive_snapshot_timing_state(",
+            "datetime.now",
+            "date.today",
+            "locale.",
+            "unicodedata.",
+            "random.",
+            "os.environ",
+            "pathlib.",
+            "open(",
+            "requests",
+            "socket",
+            "provider SDK",
+            "registry",
+            "MarketDataRelationship",
+            "CalculationLineage(",
+            "CandidateResearchRecord(",
+        )
+        for token in prohibited:
+            with self.subTest(token=token):
+                self.assertNotIn(token, source)
 
 
 class ImportAndDeterminismTests(unittest.TestCase):
