@@ -3300,7 +3300,7 @@ class MarketDataRelationshipRequest:
 
 
 class MarketDataRelationshipIssueCode(str, Enum):
-    """Canonical exact-identity and comparable-session issues."""
+    """Canonical relationship-coherence issues."""
 
     RESOLVED_RECORD_TYPE_MISMATCH = "resolved_record_type_mismatch"
     UNDERLYING_IDENTITY_MISMATCH = "underlying_identity_mismatch"
@@ -3308,6 +3308,9 @@ class MarketDataRelationshipIssueCode(str, Enum):
         "option_contract_identity_mismatch"
     )
     SESSION_DATE_MISMATCH = "session_date_mismatch"
+    MARKET_PHASE_MISMATCH = "market_phase_mismatch"
+    QUOTE_SCOPE_MISMATCH = "quote_scope_mismatch"
+    VENUE_MISMATCH = "venue_mismatch"
 
 
 _RELATIONSHIP_ROLE_RECORD_TYPES = {
@@ -3374,11 +3377,32 @@ def _relationship_records_by_role(
     }
 
 
+def _derive_quote_compatibility_issue_codes(
+    underlying_quote: UnderlyingQuoteObservation,
+    option_quote: OptionQuoteObservation,
+) -> Tuple[MarketDataRelationshipIssueCode, ...]:
+    """Derive narrow cross-quote phase, scope, and venue issues."""
+
+    issues = set()
+    if underlying_quote.market_phase is not option_quote.market_phase:
+        issues.add(MarketDataRelationshipIssueCode.MARKET_PHASE_MISMATCH)
+    if underlying_quote.quote_scope is not option_quote.quote_scope:
+        issues.add(MarketDataRelationshipIssueCode.QUOTE_SCOPE_MISMATCH)
+    elif (
+        underlying_quote.quote_scope is QuoteScope.VENUE_SPECIFIC
+        and underlying_quote.venue_mic != option_quote.venue_mic
+    ):
+        issues.add(MarketDataRelationshipIssueCode.VENUE_MISMATCH)
+    return tuple(
+        issue for issue in MarketDataRelationshipIssueCode if issue in issues
+    )
+
+
 def _derive_relationship_group_issue_codes(
     group: MarketDataRelationshipGroup,
     bindings: Tuple[SelectedFreshMarketDataBinding, ...],
 ) -> Tuple[MarketDataRelationshipIssueCode, ...]:
-    """Derive all applicable 3C.4c issues in declaration order."""
+    """Derive all applicable 3C.4c and 3C.4d issues in declaration order."""
 
     for member, binding in zip(group.members, bindings):
         if type(binding.selected_record) is not _RELATIONSHIP_ROLE_RECORD_TYPES[
@@ -3409,6 +3433,9 @@ def _derive_relationship_group_issue_codes(
             )
         if underlying_quote.session_date != option_quote.session_date:
             issues.add(MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH)
+        issues.update(_derive_quote_compatibility_issue_codes(
+            underlying_quote, option_quote
+        ))
 
     elif kind is MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1:
         option_quote = records[MarketDataRelationshipRole.OPTION_QUOTE]
@@ -3481,7 +3508,7 @@ def _derive_relationship_group_issue_codes(
 
 @dataclass(frozen=True)
 class MarketDataRelationshipGroupAssessment:
-    """One immutable 3C.4c assessment for a resolved relationship group."""
+    """One immutable relationship assessment for a resolved group."""
 
     group: MarketDataRelationshipGroup
     resolved_bindings: Tuple[SelectedFreshMarketDataBinding, ...]
@@ -3506,7 +3533,7 @@ class MarketDataRelationshipGroupAssessment:
 
     @property
     def is_coherent(self) -> bool:
-        """Return whether the group has no 3C.4c issue."""
+        """Return whether the group has no relationship issue."""
 
         return not self.issue_codes
 
@@ -3545,7 +3572,7 @@ def _derive_relationship_group_assessments(
 
 @dataclass(frozen=True)
 class MarketDataRelationshipAssessment:
-    """Immutable 3C.4c assessment for one exact request and timing universe."""
+    """Immutable relationship assessment for one request and timing universe."""
 
     request: MarketDataRelationshipRequest
     timing_assessment: MarketDataSnapshotTimingAssessment
@@ -3588,6 +3615,6 @@ def assess_market_data_relationships(
     request: object,
     timing_assessment: object,
 ) -> MarketDataRelationshipAssessment:
-    """Assess exact identity and comparable sessions for one request."""
+    """Assess implemented relationship coherence for one request."""
 
     return MarketDataRelationshipAssessment(request, timing_assessment)

@@ -7318,6 +7318,9 @@ class RelationshipAssessmentSurfaceTests(unittest.TestCase):
                 "underlying_identity_mismatch",
                 "option_contract_identity_mismatch",
                 "session_date_mismatch",
+                "market_phase_mismatch",
+                "quote_scope_mismatch",
+                "venue_mismatch",
             ),
         )
         self.assertEqual(
@@ -7899,6 +7902,421 @@ class RelationshipSessionTests(unittest.TestCase):
         )
 
 
+class RelationshipQuoteCompatibilityTests(unittest.TestCase):
+    def build_quote_binding(
+        self,
+        role: MarketDataRelationshipRole,
+        label: str,
+        **overrides: object,
+    ) -> SelectedFreshMarketDataBinding:
+        record = build_timed_record(
+            _RELATIONSHIP_ROLE_BUILDERS[role], label, **overrides
+        )
+        return build_timing_binding(
+            record,
+            policy=build_freshness_policy(
+                require_regular_session_quotes=False
+            ),
+        )
+
+    def assess_snapshot(
+        self,
+        label: str,
+        underlying_overrides: dict,
+        option_overrides: dict,
+    ) -> tuple:
+        underlying = self.build_quote_binding(
+            MarketDataRelationshipRole.UNDERLYING_QUOTE,
+            f"{label}-underlying",
+            **underlying_overrides,
+        )
+        option = self.build_quote_binding(
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            f"{label}-option",
+            **option_overrides,
+        )
+        group, aligned = build_resolved_relationship_group(
+            label,
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+            {
+                MarketDataRelationshipRole.UNDERLYING_QUOTE: underlying,
+                MarketDataRelationshipRole.OPTION_QUOTE: option,
+            },
+        )
+        result = assess_resolved_relationship_group(group, aligned)
+        return result.group_assessments[0].issue_codes
+
+    def test_exact_public_surface_and_issue_order(self) -> None:
+        self.assertEqual(len(market_data.__all__), 54)
+        self.assertEqual(
+            market_data.__all__[-4:],
+            (
+                "MarketDataRelationshipIssueCode",
+                "MarketDataRelationshipGroupAssessment",
+                "MarketDataRelationshipAssessment",
+                "assess_market_data_relationships",
+            ),
+        )
+        self.assertEqual(
+            tuple(MarketDataRelationshipIssueCode),
+            (
+                MarketDataRelationshipIssueCode.RESOLVED_RECORD_TYPE_MISMATCH,
+                MarketDataRelationshipIssueCode.UNDERLYING_IDENTITY_MISMATCH,
+                MarketDataRelationshipIssueCode
+                .OPTION_CONTRACT_IDENTITY_MISMATCH,
+                MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH,
+                MarketDataRelationshipIssueCode.MARKET_PHASE_MISMATCH,
+                MarketDataRelationshipIssueCode.QUOTE_SCOPE_MISMATCH,
+                MarketDataRelationshipIssueCode.VENUE_MISMATCH,
+            ),
+        )
+
+    def test_every_equal_and_unequal_ordered_phase_pairing(self) -> None:
+        phases = (
+            MarketPhase.REGULAR,
+            MarketPhase.PRE_MARKET,
+            MarketPhase.POST_MARKET,
+            MarketPhase.CLOSED,
+        )
+        for underlying_phase, option_phase in itertools.product(phases, repeat=2):
+            with self.subTest(
+                underlying=underlying_phase, option=option_phase
+            ):
+                actual = self.assess_snapshot(
+                    f"phase-{underlying_phase.value}-{option_phase.value}",
+                    {"market_phase": underlying_phase},
+                    {"market_phase": option_phase},
+                )
+                expected = (
+                    ()
+                    if underlying_phase is option_phase
+                    else (MarketDataRelationshipIssueCode.MARKET_PHASE_MISMATCH,)
+                )
+                self.assertEqual(actual, expected)
+
+    def test_every_equal_and_unequal_ordered_scope_pairing(self) -> None:
+        scopes = (
+            QuoteScope.CONSOLIDATED,
+            QuoteScope.VENUE_SPECIFIC,
+            QuoteScope.PROVIDER_COMPOSITE,
+        )
+        for underlying_scope, option_scope in itertools.product(scopes, repeat=2):
+            with self.subTest(
+                underlying=underlying_scope, option=option_scope
+            ):
+                underlying_venue = (
+                    "XNAS"
+                    if underlying_scope is QuoteScope.VENUE_SPECIFIC
+                    else None
+                )
+                option_venue = (
+                    "XNAS" if option_scope is QuoteScope.VENUE_SPECIFIC else None
+                )
+                actual = self.assess_snapshot(
+                    f"scope-{underlying_scope.value}-{option_scope.value}",
+                    {
+                        "quote_scope": underlying_scope,
+                        "venue_mic": underlying_venue,
+                    },
+                    {
+                        "quote_scope": option_scope,
+                        "venue_mic": option_venue,
+                    },
+                )
+                expected = (
+                    ()
+                    if underlying_scope is option_scope
+                    else (MarketDataRelationshipIssueCode.QUOTE_SCOPE_MISMATCH,)
+                )
+                self.assertEqual(actual, expected)
+
+    def test_normalized_equal_and_different_venue_mics(self) -> None:
+        common = {"quote_scope": QuoteScope.VENUE_SPECIFIC}
+        self.assertEqual(
+            self.assess_snapshot(
+                "venue-normalized",
+                {**common, "venue_mic": " xnas "},
+                {**common, "venue_mic": "XNAS"},
+            ),
+            (),
+        )
+        self.assertEqual(
+            self.assess_snapshot(
+                "venue-different",
+                {**common, "venue_mic": "XNAS"},
+                {**common, "venue_mic": "XCBO"},
+            ),
+            (MarketDataRelationshipIssueCode.VENUE_MISMATCH,),
+        )
+
+    def test_scope_mismatch_suppresses_venue_and_nonvenue_skips_it(self) -> None:
+        for venue_on_underlying in (True, False):
+            with self.subTest(venue_on_underlying=venue_on_underlying):
+                underlying_scope = (
+                    QuoteScope.VENUE_SPECIFIC
+                    if venue_on_underlying
+                    else QuoteScope.CONSOLIDATED
+                )
+                option_scope = (
+                    QuoteScope.CONSOLIDATED
+                    if venue_on_underlying
+                    else QuoteScope.VENUE_SPECIFIC
+                )
+                self.assertEqual(
+                    self.assess_snapshot(
+                        f"scope-suppresses-{venue_on_underlying}",
+                        {
+                            "quote_scope": underlying_scope,
+                            "venue_mic": "XNAS" if venue_on_underlying else None,
+                        },
+                        {
+                            "quote_scope": option_scope,
+                            "venue_mic": None if venue_on_underlying else "XCBO",
+                        },
+                    ),
+                    (MarketDataRelationshipIssueCode.QUOTE_SCOPE_MISMATCH,),
+                )
+        for scope in (
+            QuoteScope.CONSOLIDATED,
+            QuoteScope.PROVIDER_COMPOSITE,
+        ):
+            underlying = self.build_quote_binding(
+                MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                f"nonvenue-{scope.value}-underlying",
+                quote_scope=scope,
+                venue_mic=None,
+            )
+            option = self.build_quote_binding(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                f"nonvenue-{scope.value}-option",
+                quote_scope=scope,
+                venue_mic=None,
+            )
+            object.__setattr__(option.selected_record, "venue_mic", "POISON")
+            group, aligned = build_resolved_relationship_group(
+                f"nonvenue-{scope.value}",
+                MarketDataRelationshipGroupKind
+                .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+                {
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE: underlying,
+                    MarketDataRelationshipRole.OPTION_QUOTE: option,
+                },
+            )
+            self.assertEqual(
+                assess_resolved_relationship_group(
+                    group, aligned
+                ).group_assessments[0].issue_codes,
+                (),
+            )
+
+    def test_other_group_kinds_perform_no_quote_compatibility_checks(self) -> None:
+        quote = self.build_quote_binding(
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            "nonparticipant-quote",
+            market_phase=MarketPhase.PRE_MARKET,
+            quote_scope=QuoteScope.VENUE_SPECIFIC,
+            venue_mic="XCBO",
+        )
+        cases = (
+            (
+                MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+                {
+                    MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+                        build_relationship_binding(
+                            MarketDataRelationshipRole
+                            .OPTION_IMPLIED_VOLATILITY,
+                            "nonparticipant-iv",
+                        )
+                    ),
+                },
+            ),
+            (
+                MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1,
+                {
+                    MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                    MarketDataRelationshipRole.OPTION_VOLUME: (
+                        build_relationship_binding(
+                            MarketDataRelationshipRole.OPTION_VOLUME,
+                            "nonparticipant-volume",
+                        )
+                    ),
+                    MarketDataRelationshipRole.OPTION_OPEN_INTEREST: (
+                        build_relationship_binding(
+                            MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                            "nonparticipant-open-interest",
+                        )
+                    ),
+                },
+            ),
+            (
+                MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1,
+                {
+                    MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: (
+                        build_relationship_binding(
+                            MarketDataRelationshipRole
+                            .OPTION_CONTRACT_REFERENCE,
+                            "nonparticipant-reference",
+                        )
+                    ),
+                },
+            ),
+        )
+        new_issues = {
+            MarketDataRelationshipIssueCode.MARKET_PHASE_MISMATCH,
+            MarketDataRelationshipIssueCode.QUOTE_SCOPE_MISMATCH,
+            MarketDataRelationshipIssueCode.VENUE_MISMATCH,
+        }
+        for index, (kind, bindings) in enumerate(cases):
+            with self.subTest(kind=kind):
+                group, aligned = build_resolved_relationship_group(
+                    f"nonparticipant-{index}", kind, bindings
+                )
+                issues = assess_resolved_relationship_group(
+                    group, aligned
+                ).group_assessments[0].issue_codes
+                self.assertTrue(new_issues.isdisjoint(issues))
+
+    def test_issue_coexistence_and_declaration_order(self) -> None:
+        alternate_underlying = build_underlying_key(symbol="QQQ")
+        later = SESSION_DATE + datetime.timedelta(days=1)
+        scope_issues = self.assess_snapshot(
+            "coexist-scope",
+            {
+                "market_phase": MarketPhase.REGULAR,
+                "quote_scope": QuoteScope.CONSOLIDATED,
+            },
+            {
+                "contract_key": build_option_contract_key(
+                    underlying_key=alternate_underlying
+                ),
+                "session_date": later,
+                "market_phase": MarketPhase.POST_MARKET,
+                "quote_scope": QuoteScope.PROVIDER_COMPOSITE,
+            },
+        )
+        self.assertEqual(
+            scope_issues,
+            (
+                MarketDataRelationshipIssueCode.UNDERLYING_IDENTITY_MISMATCH,
+                MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH,
+                MarketDataRelationshipIssueCode.MARKET_PHASE_MISMATCH,
+                MarketDataRelationshipIssueCode.QUOTE_SCOPE_MISMATCH,
+            ),
+        )
+        venue_issues = self.assess_snapshot(
+            "coexist-venue",
+            {
+                "market_phase": MarketPhase.REGULAR,
+                "quote_scope": QuoteScope.VENUE_SPECIFIC,
+                "venue_mic": "XNAS",
+            },
+            {
+                "contract_key": build_option_contract_key(
+                    underlying_key=alternate_underlying
+                ),
+                "session_date": later,
+                "market_phase": MarketPhase.POST_MARKET,
+                "quote_scope": QuoteScope.VENUE_SPECIFIC,
+                "venue_mic": "XCBO",
+            },
+        )
+        self.assertEqual(
+            venue_issues,
+            (
+                MarketDataRelationshipIssueCode.UNDERLYING_IDENTITY_MISMATCH,
+                MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH,
+                MarketDataRelationshipIssueCode.MARKET_PHASE_MISMATCH,
+                MarketDataRelationshipIssueCode.VENUE_MISMATCH,
+            ),
+        )
+
+    def test_wrong_type_short_circuits_all_quote_field_access(self) -> None:
+        underlying = build_timing_binding(build_timed_record(
+            build_underlying_daily_bar_observation, "wrong-type-underlying"
+        ))
+        option = self.build_quote_binding(
+            MarketDataRelationshipRole.OPTION_QUOTE, "wrong-type-option"
+        )
+        group, aligned = build_resolved_relationship_group(
+            "wrong-type-quote-fields",
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+            {
+                MarketDataRelationshipRole.UNDERLYING_QUOTE: underlying,
+                MarketDataRelationshipRole.OPTION_QUOTE: option,
+            },
+        )
+        self.assertEqual(
+            assess_resolved_relationship_group(
+                group, aligned
+            ).group_assessments[0].issue_codes,
+            (MarketDataRelationshipIssueCode.RESOLVED_RECORD_TYPE_MISMATCH,),
+        )
+
+    def test_freshness_and_timing_derived_properties_are_not_accessed(self) -> None:
+        underlying = self.build_quote_binding(
+            MarketDataRelationshipRole.UNDERLYING_QUOTE, "no-derived-underlying"
+        )
+        option = self.build_quote_binding(
+            MarketDataRelationshipRole.OPTION_QUOTE, "no-derived-option"
+        )
+        group, aligned = build_resolved_relationship_group(
+            "no-derived-properties",
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+            {
+                MarketDataRelationshipRole.UNDERLYING_QUOTE: underlying,
+                MarketDataRelationshipRole.OPTION_QUOTE: option,
+            },
+        )
+        timing = assess_market_data_snapshot_timing(aligned)
+
+        class Explosive:
+            def __getattribute__(self, name: str) -> object:
+                raise AssertionError(f"freshness field accessed: {name}")
+
+        for binding in aligned:
+            object.__setattr__(binding, "freshness_policy", Explosive())
+            object.__setattr__(binding, "freshness_context", Explosive())
+            object.__setattr__(binding, "freshness_assessment", Explosive())
+
+        property_names = (
+            "is_temporally_coherent",
+            "reason_codes",
+            "common_freshness_policy",
+            "common_freshness_context",
+            "effective_time_span_seconds",
+            "source_observation_span_seconds",
+        )
+        originals = {
+            name: getattr(MarketDataSnapshotTimingAssessment, name)
+            for name in property_names
+        }
+        try:
+            for name in property_names:
+                setattr(
+                    MarketDataSnapshotTimingAssessment,
+                    name,
+                    property(lambda _value: (_ for _ in ()).throw(
+                        AssertionError("timing property accessed")
+                    )),
+                )
+            result = assess_market_data_relationships(
+                MarketDataRelationshipRequest((group,)), timing
+            )
+            self.assertTrue(result.is_coherent)
+            self.assertIs(result.request.groups[0], group)
+            self.assertIs(
+                result.group_assessments[0].resolved_bindings[0], underlying
+            )
+        finally:
+            for name, descriptor in originals.items():
+                setattr(MarketDataSnapshotTimingAssessment, name, descriptor)
+
+
 class RelationshipAssessmentOrderingAndScopeTests(unittest.TestCase):
     def test_canonical_group_binding_order_and_cross_group_reference_reuse(self) -> None:
         underlying = build_relationship_binding(
@@ -8005,7 +8423,7 @@ class RelationshipAssessmentOrderingAndScopeTests(unittest.TestCase):
             for name, descriptor in originals.items():
                 setattr(MarketDataSnapshotTimingAssessment, name, descriptor)
 
-    def test_phase_scope_venue_and_later_fields_are_not_evaluated(self) -> None:
+    def test_later_fields_are_not_evaluated(self) -> None:
         underlying = build_relationship_binding(
             MarketDataRelationshipRole.UNDERLYING_QUOTE,
             "excluded-underlying",
@@ -8016,9 +8434,9 @@ class RelationshipAssessmentOrderingAndScopeTests(unittest.TestCase):
         option_record = build_timed_record(
             build_option_quote_observation,
             "excluded-option",
-            market_phase=MarketPhase.PRE_MARKET,
-            quote_scope=QuoteScope.VENUE_SPECIFIC,
-            venue_mic="XNAS",
+            market_phase=MarketPhase.REGULAR,
+            quote_scope=QuoteScope.CONSOLIDATED,
+            venue_mic=None,
         )
         option = build_timing_binding(
             option_record,
@@ -8045,7 +8463,7 @@ class RelationshipAssessmentOrderingAndScopeTests(unittest.TestCase):
             inspect.getsource(MarketDataRelationshipAssessment),
         ))
         for token in (
-            "market_phase", "quote_scope", "venue_mic", "model_name",
+            "model_name",
             "is_session_complete", "open_interest_session_date",
             "CalculationLineage", "RateCurvePointObservation",
             "DividendObservation",

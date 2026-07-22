@@ -2861,8 +2861,9 @@ The completed broad 3C.4 preflight establishes this revised order:
 
 The 3C.4a contract is defined here. Section 13.10 defines the approved,
 implemented, and committed 3C.4b structural request contract. Section 13.11
-defines the locally implemented 3C.4c contract pending independent review.
-APIs for 3C.4d and 3C.4e remain undefined.
+defines the implemented, reviewed, and committed 3C.4c contract. Section 13.12
+defines the locally implemented 3C.4d contract pending independent review.
+The API and behavior for 3C.4e remain undefined.
 Every rate/dividend relationship, identity, linkage, applicability, and
 economic use remains 3C.7 work. Historical-series membership and completeness
 remain 3C.6 work.
@@ -3303,9 +3304,10 @@ statuses, outcomes, or temporal-blocking behavior:
 | Option activity | exact option-contract identity and comparable session/date relationships among volume, open interest, and the optional option quote when present | none | volume/open-interest coherence and, when the optional quote is present, quote/activity relationship and activity applicability |
 | Option contract reference | exact option-contract identity | none | reference-term coherence against each option observation |
 
-Section 13.11 defines the locally implemented 3C.4c result API. Milestones
-3C.4d and 3C.4e remain undefined and unimplemented. The table expresses
-dependency ownership; the 3C.4b artifacts themselves introduce no result API.
+Section 13.11 defines the implemented 3C.4c result API, and Section 13.12
+defines the locally implemented 3C.4d extension. Milestone 3C.4e remains
+undefined and unimplemented. The table expresses dependency ownership; the
+3C.4b artifacts themselves introduce no result API.
 
 #### Later milestone exclusions
 
@@ -3609,6 +3611,87 @@ selection or ranking, historical completeness, rates, dividends, pricing,
 transformations, evidence, or `CalculationLineage`. Phase/scope/venue belongs
 to 3C.4d. Analytics, activity, and reference coherence beyond the narrow rules
 above belongs to 3C.4e.
+
+### 13.12 Milestone 3C.4d quote phase, scope, and venue compatibility
+
+Milestone 3C.4d extends the existing relationship assessment without adding a
+public name or changing its stored fields, signatures, request grammar, or
+resolution behavior. The public `market_data` API remains 54 names. It appends
+these issue members after `SESSION_DATE_MISMATCH`:
+
+```python
+MARKET_PHASE_MISMATCH = "market_phase_mismatch"
+QUOTE_SCOPE_MISMATCH = "quote_scope_mismatch"
+VENUE_MISMATCH = "venue_mismatch"
+```
+
+The complete issue declaration order is resolved-record type, underlying
+identity, option-contract identity, session date, market phase, quote scope,
+then venue. Applicable issues coexist and are returned in that declaration
+order.
+
+#### Participating groups and compatibility matrix
+
+| Group kind | Exact 3C.4d comparison |
+|---|---|
+| `UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1` | compare the resolved underlying quote and option quote |
+| `OPTION_QUOTE_ANALYTICS_V0_1` | none; the group contains exactly one quote |
+| `OPTION_ACTIVITY_V0_1` | none; the group contains at most one quote |
+| `OPTION_CONTRACT_REFERENCE_V0_1` | none; the group contains at most one quote |
+
+For the participating snapshot group:
+
+| Dimension | Compatible | Incompatible |
+|---|---|---|
+| market phase | exact `MarketPhase` equality | add `MARKET_PHASE_MISMATCH` |
+| quote scope | exact `QuoteScope` equality | add `QUOTE_SCOPE_MISMATCH` |
+| venue | when both scopes are `VENUE_SPECIFIC`, exact normalized `venue_mic` equality | add `VENUE_MISMATCH` when the two normalized MIC values differ |
+
+Equal `REGULAR`, `PRE_MARKET`, `POST_MARKET`, or `CLOSED` values are mutually
+compatible. This is cross-record compatibility, not record eligibility. Each
+quote's selected/fresh binding already proves its eligibility under its own
+retained freshness policy and context; 3C.4d does not re-run or inspect that
+assessment.
+
+Scope comparison is exact for `CONSOLIDATED`, `VENUE_SPECIFIC`, and
+`PROVIDER_COMPOSITE`. When scopes differ, only `QUOTE_SCOPE_MISMATCH` is added
+for this dimension and venue is not evaluated. When both equal scopes are
+non-venue-specific, venue is not compared; normalized quote constructors
+already require both MIC values to be `None`.
+
+#### Interaction, precedence, and exclusions
+
+For one type-safe snapshot, underlying identity, session date, phase, scope,
+and eligible venue checks accumulate independently. A scope mismatch prevents
+the redundant venue check. A wrong resolved role type still produces only
+`RESOLVED_RECORD_TYPE_MISMATCH` and short-circuits all relationship-field
+access for that group. Ordinary incompatibility is represented by issue codes,
+not exceptions.
+
+The complete evaluation precedence remains:
+
+```text
+1. exact request type
+2. exact timing-assessment type
+3. resolve every complete reference in canonical order
+4. exact resolved role-to-record type checks
+5. exact identity checks for type-safe groups
+6. comparable-session checks for type-safe groups
+7. snapshot phase and scope checks
+8. snapshot venue check only when both scopes are venue-specific
+9. canonical issue and assessment construction
+```
+
+Constructor validation and resolve-all-before-result behavior are unchanged.
+3C.4d does not inspect freshness eligibility, freshness policy or assessment
+properties, source quality flags, provider identity, source lineage,
+normalization or analytics methodology, activity completeness, open-interest
+or contract-reference applicability, selection, historical completeness,
+rates, dividends, pricing, transformations, evidence, or
+`CalculationLineage`. Analytics, activity, and contract-reference coherence
+belongs to 3C.4e; selection to 3C.5; historical completeness to 3C.6; and
+rate/dividend linkage, transformations, pricing, evidence, and lineage to
+3C.7.
 
 ## 14. Canonical calculation lineage
 
@@ -4015,17 +4098,25 @@ post-3C.4b count of 50.
 
 ### Milestone 3C.4c — Exact identity and comparable sessions
 
-The Section 13.11 contract is implemented locally pending independent review.
-Its four public names append after the implemented 50-name prefix for a local
-count of 54. It evaluates exact resolved role types, underlying/option-contract
-identity, and only the declared comparable-session matrix.
+The Section 13.11 contract is implemented, independently reviewed, and
+committed. Its four public names append after the implemented 50-name prefix
+for a count of 54. It evaluates exact resolved role types,
+underlying/option-contract identity, and only the declared comparable-session
+matrix.
 
-### Milestones 3C.4d and 3C.4e — Later relationship evaluation
+### Milestone 3C.4d — Quote phase, scope, and venue compatibility
 
-Separately define quote phase/scope/venue compatibility and analytics,
-activity, and contract-reference coherence. Their APIs remain undefined. They
-do not represent or evaluate rate/dividend relationships. Every rate/dividend
-identity, linkage, applicability, and economic use remains 3C.7 work.
+The Section 13.12 contract is implemented and validated locally pending
+independent review. It adds no public name, preserves the count of 54, and
+extends only the underlying/option quote snapshot with exact phase, scope, and
+conditional normalized-MIC comparison.
+
+### Milestone 3C.4e — Later relationship evaluation
+
+Separately define analytics, activity, and contract-reference coherence. Its
+API remains undefined. It does not represent or evaluate rate/dividend
+relationships. Every rate/dividend identity, linkage, applicability, and
+economic use remains 3C.7 work.
 
 ### Milestone 3C.5 — Deterministic cross-observation selection
 
@@ -4226,8 +4317,17 @@ Resolved for local implementation by the Milestone 3C.4c A-level preflight:
   identity and kind-specific session matrices in Section 13.11.
 - Open-interest session lag and contract-reference applicability remain later
   work, and temporal incoherence does not block 3C.4c evaluation.
-- Four 3C.4c names append after the implemented 50-name prefix for a local
-  public count of 54 pending independent review.
+- Four 3C.4c names append after the implemented 50-name prefix for the public
+  count of 54.
+
+Resolved for local implementation by the Milestone 3C.4d preflight:
+
+- Only the underlying/option quote snapshot compares exact market phase and
+  quote scope, then exact normalized MIC when both scopes are venue-specific.
+- Scope mismatch suppresses venue evaluation; wrong resolved types continue
+  to short-circuit all field access.
+- Three issue members append to the existing issue enum without adding a
+  public name, so the public count remains 54.
 
 The following questions remain open:
 
