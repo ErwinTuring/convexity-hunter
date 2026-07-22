@@ -2859,8 +2859,9 @@ The completed broad 3C.4 preflight establishes this revised order:
        research evidence, and CalculationLineage
 ```
 
-The 3C.4a contract is defined here. Section 13.10 separately drafts the 3C.4b
-structural request contract. APIs for 3C.4c through 3C.4e remain undefined.
+The 3C.4a contract is defined here. Section 13.10 defines the approved and
+committed 3C.4b structural request contract. APIs for 3C.4c through 3C.4e remain
+undefined.
 Every rate/dividend relationship, identity, linkage, applicability, and
 economic use remains 3C.7 work. Historical-series membership and completeness
 remain 3C.6 work.
@@ -2900,9 +2901,10 @@ Future fixed synthetic 3C.4a tests cover:
 
 ### 13.10 Milestone 3C.4b explicit relationship/group request representation
 
-The A-level specification preflight found that a standalone 3C.4b structural
-contract is viable. This section drafts that contract locally for targeted
-specification preflight. It is not yet approved, committed, or implemented.
+The A-level specification preflight and targeted specification reviews found
+that the standalone Milestone 3C.4b structural contract is viable. This section
+defines the approved and committed Milestone 3C.4b contract. Its implementation
+has not started.
 
 3C.4b represents explicit caller-declared relationship intent. It answers:
 
@@ -2950,7 +2952,7 @@ The unchanged existing 45 `convexity_hunter.market_data` public names remain
 the implemented prefix. The current implemented public count is 45. The five
 planned names append after that prefix for a planned post-3C.4b implementation
 count of 50. None of the five names is implemented by this documentation-only
-contract draft.
+contract.
 
 No public function is planned. 3C.4b introduces no public policy, status,
 reason-code enum, issue record, assessment, resolver, exception class,
@@ -3463,7 +3465,7 @@ Future fixed synthetic tests cover:
   relationship evaluation, downstream result APIs, and selection APIs.
 
 Tests for resolved record types and compatibility belong to 3C.4c through
-3C.4e. No Python tests are added by this documentation-only contract draft.
+3C.4e. No Python tests are added by this documentation-only contract.
 
 ## 14. Canonical calculation lineage
 
@@ -3859,12 +3861,14 @@ is 45.
 
 The standalone structural contract in Section 13.10 was found viable by A-level
 preflight and drafted locally. Its first targeted specification preflight found
-two cross-document ownership/taxonomy contradictions. The draft now assigns
-all rate/dividend relationship work to 3C.7 and permits an optional option quote
-in `OPTION_ACTIVITY_V0_1`. Targeted specification re-preflight is pending and
-implementation has not started. The exact five planned public names would
-append after the unchanged 45-name implemented prefix for a planned post-3C.4b
-implementation count of 50.
+two cross-document ownership/taxonomy contradictions. The draft was remediated
+by assigning all rate/dividend relationship work to 3C.7 and permitting an
+optional option quote in `OPTION_ACTIVITY_V0_1`. The first targeted re-preflight
+found the remaining Section 12.3 ownership gap, which was corrected. The final
+second targeted re-preflight passed, and the Milestone 3C.4b documentation
+contract is approved and committed. Implementation has not started. The exact
+five planned public names would append after the unchanged 45-name implemented
+prefix for a planned post-3C.4b implementation count of 50.
 
 ### Milestones 3C.4c through 3C.4e — Relationship evaluation
 
@@ -4043,8 +4047,11 @@ review. The implemented contract decisions are:
 
 Resolved for local drafting by the Milestone 3C.4b A-level preflight. The first
 targeted specification preflight did not pass because of two cross-document
-ownership/taxonomy contradictions. The local draft has been remediated, targeted
-specification re-preflight remains pending, and implementation has not started:
+ownership/taxonomy contradictions. The local draft was remediated. The first
+targeted re-preflight found the remaining Section 12.3 ownership gap, which was
+corrected; the final second targeted specification re-preflight passed before
+the contract was committed. The documentation contract is approved and
+committed, while implementation remains not started:
 
 - The structural request model uses exact versioned group kinds, exact global
   roles, one role/reference member, one caller-identified group, and one
