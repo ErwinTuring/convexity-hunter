@@ -924,11 +924,12 @@ before deciding which supplied records are intended counterparts and applying
 the relationship requirements below. Later units separately perform
 deterministic selection, historical completeness, and economic transformation.
 
-The relationship requirements in Sections 12.1 through 12.3 are therefore
-future 3C.4b through 3C.4e work, not 3C.3 timing or 3C.4a reference rules.
-Section 12.4 is future 3C.6 historical-series work. No stage may replace
-inspection of a participating source time with one effective timestamp or
-convert a calendar date to a synthetic datetime.
+The represented option-domain relationship requirements in Sections 12.1
+through 12.3 are therefore future 3C.4b through 3C.4e work, not 3C.3 timing or
+3C.4a reference rules. The rate/dividend linkage and applicability paragraph
+in Section 12.2 is 3C.7 work. Section 12.4 is future 3C.6 historical-series
+work. No stage may replace inspection of a participating source time with one
+effective timestamp or convert a calendar date to a synthetic datetime.
 
 ### 12.1 Quote alignment
 
@@ -941,19 +942,36 @@ they are supplied in the same binding set.
 
 ### 12.2 Analytics alignment
 
-When a future explicit 3C.4b relationship request identifies option quotes, IV,
-and Greeks as counterparts, their exact `OptionContractKey`, market session,
-declared model, and rate and dividend input descriptions must satisfy the later
-3C.4 compatibility contracts. 3C.3 proves timing only and does not infer this
-relationship.
+When an explicit 3C.4b relationship request identifies an option quote, IV,
+and Greeks as counterparts, 3C.4c and 3C.4e own option-contract identity,
+comparable-session, declared-model, and internal quote/analytics methodology
+coherence. 3C.3 proves timing only and does not infer this relationship.
+
+Every linkage from analytics to rate or dividend inputs belongs to 3C.7. This
+includes rate-curve-point identity and tenor applicability; dividend-event
+identity, status, and applicability; and every economic use of rates or
+dividends. 3C.4b through 3C.4e do not represent or evaluate those
+relationships.
 
 ### 12.3 Volume and open interest
 
-Quote, volume, and open interest need not have identical timestamps. Each keeps its own observation time or session date, and differences remain visible. Calculations use the latest eligible completed open-interest session. Cumulative volume is used only under its declared as-of time. Stale open interest must not be presented as current intraday open interest without disclosure.
+A future `OPTION_ACTIVITY_V0_1` group always declares one option-volume
+observation and one option-open-interest observation and may additionally
+declare one option quote. These observations need not have identical
+timestamps. Each keeps its own observation time or session date, and
+differences remain visible.
 
-Relationship and activity-applicability checks belong to 3C.4e. Choosing the
-latest eligible observation belongs to 3C.5. Open-interest session dates do not enter
-3C.3 seconds-based spans.
+Milestone 3C.4c evaluates exact option-contract identity and comparable
+session/date relationships among the resolved volume, open-interest, and
+optional option-quote members.
+
+3C.4e evaluates volume/open-interest coherence and, when the optional quote
+role is present, quote/activity relationship and activity applicability. 3C.5
+chooses the latest eligible completed open-interest observation or any other
+preferred observation. Cumulative volume is used only under its declared as-of
+time, and stale open interest must not be presented as current intraday open
+interest without disclosure. Open-interest session dates do not enter 3C.3
+seconds-based spans.
 
 ### 12.4 Historical series
 
@@ -1464,11 +1482,15 @@ normalized immutable records
     -> explicit FreshnessAssessment
     -> 3C.3 binding-set temporal coherence
     -> 3C.4a auditable binding references
-    -> 3C.4b through 3C.4e explicit relationship/group coherence
+    -> 3C.4b through 3C.4e represented option-domain relationship/group coherence
     -> 3C.5 deterministic cross-observation selection
     -> 3C.6 historical-series assembly and completeness
     -> 3C.7 transformation and CalculationLineage
 ```
+
+The 3C.4b-through-3C.4e step applies only to represented option-domain
+relationships. Rate-curve-point and dividend-event relationship work bypasses
+that step and belongs to 3C.7.
 
 Milestone 3C.1 specifies only semantic identity. The selected/fresh binding API
 is defined separately by Milestone 3C.2 below. Milestone 3C.1 does not define
@@ -2004,13 +2026,17 @@ may consume multiple bindings and inspect their preserved selected records,
 candidate records and sources, freshness policies and contexts, correction and
 freshness evaluation times, effective times, and source observation times.
 Milestones 3C.4b through 3C.4e separately consume explicit relationship/group
-requests after 3C.4a references and before using market phase, quote scope,
-venue, session, contract, or other economic-relationship fields.
+requests for represented option-domain observations after 3C.4a references and
+before using market phase, quote scope, venue, session, contract, or other
+represented option-domain relationship fields.
 
 Milestone 3C.2 does not evaluate `maximum_cross_record_skew_seconds`, global
 timestamp ranges, common cross-record policy or context, phase/scope/venue
-compatibility, analytics/quote alignment, activity/reference/rate/dividend
-selection, or historical completeness. Its output remains stable before those
+compatibility, analytics/quote alignment, activity/reference selection,
+rate/dividend relationship or economic use, or historical completeness.
+Activity/reference selection remains later 3C.5 work. Every rate/dividend
+relationship, identity, linkage, applicability, selection for economic use,
+and economic use belongs to 3C.7. The 3C.2 output remains stable before those
 future algorithms are specified because it retains all required immutable
 inputs and proof objects.
 
@@ -2020,7 +2046,7 @@ Milestone 3C.2 does not create or modify `CalculationLineage`. The dependency is
 SelectedFreshMarketDataBinding
     -> 3C.3 binding-set temporal coherence
     -> 3C.4a auditable binding references
-    -> 3C.4b through 3C.4e explicit relationship/group coherence
+    -> 3C.4b through 3C.4e represented option-domain relationship/group coherence
     -> 3C.5 deterministic cross-observation selection
     -> 3C.6 historical-series assembly and completeness
     -> 3C.7 transformation
@@ -2030,6 +2056,10 @@ SelectedFreshMarketDataBinding
 Later transformation lineage may use
 `CalculationQualityFlag.correction_selected`, but that flag does not replace the
 detailed binding proof.
+
+Only represented option-domain relationships enter 3C.4b through 3C.4e.
+`RateCurvePointObservation` and `DividendObservation` relationships bypass
+that structural/evaluation layer and remain 3C.7 work.
 
 ### 13.8 Milestone 3C.3 binding-set temporal coherence
 
@@ -2045,6 +2075,10 @@ per-record eligibility
     -> 3C.6 historical-series assembly and completeness
     -> 3C.7 market-data-to-research transformations and CalculationLineage
 ```
+
+The 3C.4b-through-3C.4e step applies only to represented option-domain
+relationships. Rate-curve-point and dividend-event relationship work bypasses
+that step and belongs to 3C.7.
 
 It assesses only whether the supplied bindings use compatible complete
 freshness policies and contexts and whether the applicable selected records
@@ -2279,9 +2313,11 @@ RateCurvePointObservation
 DividendObservation
 ```
 
-Their individual freshness remains proven by 3C.2. Their session-date,
-effective-date, ex-date, reference applicability, and historical relationships
-belong to later 3C.4 through 3C.7 units. No calendar date is converted to midnight or any
+Their individual freshness remains proven by 3C.2. Option-contract-reference
+and open-interest relationship checks belong to 3C.4c through 3C.4e;
+historical-bar relationships belong to 3C.6; and all rate-curve-point and
+dividend-event relationship, identity, linkage, applicability, and economic-
+use checks belong to 3C.7. No calendar date is converted to midnight or any
 other synthetic datetime.
 
 #### Exact timing metrics
@@ -2420,7 +2456,9 @@ to-rate or analytics-to-dividend linkage, activity/reference applicability,
 rate-tenor or dividend-event applicability, latest or preferred observations,
 missing records, calculation completeness, historical-series completeness,
 economic formulas, pricing, research evidence, `CandidateResearchRecord`,
-`CalculationLineage`, or candidate states.
+`CalculationLineage`, or candidate states. Analytics-to-rate and analytics-to-
+dividend linkage, rate identity and tenor applicability, and dividend-event
+identity, status, and applicability belong to 3C.7.
 
 Those boundaries are dependency-ordered as follows:
 
@@ -2428,14 +2466,16 @@ Those boundaries are dependency-ordered as follows:
   relationship or grouping requests before deciding
   which records are intended counterparts. They define underlying/option,
   session, phase, scope, venue, quote/analytics methodology, activity,
-  reference, contract, and non-economic rate/dividend identity compatibility.
-  Their APIs are not defined by 3C.3. Rate and dividend economic applicability
-  remains 3C.7 work.
+  reference, and contract compatibility for the represented option-domain
+  observations. Their APIs are not defined by 3C.3.
 - 3C.5 performs deterministic selection among different semantic
   observations.
 - 3C.6 assembles and proves historical-series completeness.
 - 3C.7 performs economic transformation, pricing where authorized, research-
-  evidence construction, and `CalculationLineage` construction.
+  evidence construction, and `CalculationLineage` construction. It also owns
+  every analytics-to-rate and analytics-to-dividend linkage, rate-curve-point
+  identity and tenor applicability, dividend-event identity, status, and
+  applicability, and every economic use of rates or dividends.
 
 The assessment preserves all nested source and normalization flags but adds no
 stricter delayed, indicative, halted, or other quality rule. Those conditions
@@ -2819,9 +2859,11 @@ The completed broad 3C.4 preflight establishes this revised order:
        research evidence, and CalculationLineage
 ```
 
-Only 3C.4a is defined here. APIs for 3C.4b through 3C.4e remain undefined.
-Rate and dividend economic applicability remains 3C.7 work. Historical-series
-membership and completeness remain 3C.6 work.
+The 3C.4a contract is defined here. Section 13.10 separately drafts the 3C.4b
+structural request contract. APIs for 3C.4c through 3C.4e remain undefined.
+Every rate/dividend relationship, identity, linkage, applicability, and
+economic use remains 3C.7 work. Historical-series membership and completeness
+remain 3C.6 work.
 
 #### Future test expectations
 
@@ -2855,6 +2897,573 @@ Future fixed synthetic 3C.4a tests cover:
 - no clock, calendar, network, filesystem, environment, randomness, provider,
   LLM, registry, selection, relationship, completeness, calculation, pricing,
   research, or lineage dependency.
+
+### 13.10 Milestone 3C.4b explicit relationship/group request representation
+
+The A-level specification preflight found that a standalone 3C.4b structural
+contract is viable. This section drafts that contract locally for targeted
+specification preflight. It is not yet approved, committed, or implemented.
+
+3C.4b represents explicit caller-declared relationship intent. It answers:
+
+```text
+Which observations does the caller intend to compare, and in which roles?
+```
+
+It does not answer whether those observations are compatible. It does exactly
+the following:
+
+1. identifies one explicit, versioned relationship-group kind;
+2. assigns portable 3C.4a references to explicit roles;
+3. enforces the fixed structural grammar and cardinalities of that kind;
+4. canonicalizes members and groups deterministically; and
+5. rejects malformed or structurally contradictory requests.
+
+Role allowance and cardinality are structural request grammar. Facts learned
+only after reference resolution belong to 3C.4c through 3C.4e. Structural
+request validity makes no claim that later reference resolution or relationship
+evaluation will succeed.
+
+3C.4b does not resolve references; check resolved record types, underlying or
+option-contract identity, comparable sessions or dates, market phase, quote
+scope, venue, analytics methodology, activity coherence, contract-reference
+coherence, or timing coherence; produce findings, issues, reasons, statuses, or
+outcomes; select or rank observations or groups; prove historical
+completeness; or perform pricing or other transformations. It does not
+represent or evaluate `RateCurvePointObservation` or `DividendObservation`
+relationships, identity, linkage, applicability, or economic use, and it does
+not construct evidence or `CalculationLineage`.
+
+#### Planned public API
+
+3C.4b plans exactly these five public additions, in this order:
+
+```text
+MarketDataRelationshipGroupKind
+MarketDataRelationshipRole
+MarketDataRelationshipGroupMember
+MarketDataRelationshipGroup
+MarketDataRelationshipRequest
+```
+
+The unchanged existing 45 `convexity_hunter.market_data` public names remain
+the implemented prefix. The current implemented public count is 45. The five
+planned names append after that prefix for a planned post-3C.4b implementation
+count of 50. None of the five names is implemented by this documentation-only
+contract draft.
+
+No public function is planned. 3C.4b introduces no public policy, status,
+reason-code enum, issue record, assessment, resolver, exception class,
+registry, alias, serializer, or 3C.4c-or-later artifact.
+
+#### Versioned relationship-group kinds
+
+The planned closed enum has this exact declaration order and exact values:
+
+```python
+class MarketDataRelationshipGroupKind(str, Enum):
+    UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1 = (
+        "underlying_option_quote_snapshot_v0.1"
+    )
+    OPTION_QUOTE_ANALYTICS_V0_1 = "option_quote_analytics_v0.1"
+    OPTION_ACTIVITY_V0_1 = "option_activity_v0.1"
+    OPTION_CONTRACT_REFERENCE_V0_1 = "option_contract_reference_v0.1"
+```
+
+The kind is explicit, provider neutral, domain-named rather than milestone-
+named, and closed for v0.1. It is never inferred from members or resolved
+records. Public construction requires its exact type; subclasses, foreign
+Enums, strings, and every other value are rejected.
+
+The suffix embedded in each value is the group-definition version. Adding or
+removing roles, changing cardinality, or changing a group's meaning requires a
+new versioned group-kind value. 3C.4b adds no separate group version field,
+group-kind record, global request version, or evaluation-policy version. Later
+3C.4c through 3C.4e evaluation-policy versions are separate from group-
+definition versioning.
+
+#### Relationship roles
+
+The planned closed global role enum has this exact declaration order and exact
+values:
+
+```python
+class MarketDataRelationshipRole(str, Enum):
+    UNDERLYING_QUOTE = "underlying_quote"
+    OPTION_QUOTE = "option_quote"
+    OPTION_IMPLIED_VOLATILITY = "option_implied_volatility"
+    OPTION_GREEKS = "option_greeks"
+    OPTION_VOLUME = "option_volume"
+    OPTION_OPEN_INTEREST = "option_open_interest"
+    OPTION_CONTRACT_REFERENCE = "option_contract_reference"
+```
+
+Roles are global, explicit, provider neutral, exact-type validated, and never
+inferred from a reference or resolved record. A role declares caller intent;
+it does not prove that the reference later resolves to an expected record type.
+
+No role is added for `UnderlyingDailyBarObservation`,
+`RateCurvePointObservation`, or `DividendObservation`.
+`UnderlyingDailyBarObservation` relationships remain 3C.6 work.
+`RateCurvePointObservation` and `DividendObservation` relationships, identity,
+linkage, applicability, and economic use remain 3C.7 work.
+
+#### Immutable group member
+
+The planned member is exactly:
+
+```python
+@dataclass(frozen=True)
+class MarketDataRelationshipGroupMember:
+    role: MarketDataRelationshipRole
+    reference: MarketDataBindingReference
+```
+
+The stored dataclass field order is exactly `role`, then `reference`. Public
+construction requires:
+
+```python
+type(role) is MarketDataRelationshipRole
+type(reference) is MarketDataBindingReference
+```
+
+The exact validation order is:
+
+```text
+1. role exact type
+2. reference exact type
+3. store
+```
+
+The member is frozen and uses ordinary dataclass structural equality. It has
+no custom equality or custom hash. It has no member ID. One member contains
+exactly one role and one portable reference.
+
+A member cannot contain a raw normalized record,
+`SelectedFreshMarketDataBinding`, `MarketDataSnapshotTimingAssessment`, a
+resolved binding object, multiple references, metadata, a description, or
+provider fields.
+
+#### Immutable relationship group
+
+The planned group is exactly:
+
+```python
+@dataclass(frozen=True)
+class MarketDataRelationshipGroup:
+    group_id: str
+    group_kind: MarketDataRelationshipGroupKind
+    members: Tuple[MarketDataRelationshipGroupMember, ...]
+```
+
+The stored dataclass field order is exactly `group_id`, `group_kind`, then
+`members`. No additional field is stored.
+
+`group_id` requires exact built-in `str`. It is normalized only by Python's
+no-argument `str.strip()`:
+
+```python
+normalized_group_id = group_id.strip()
+```
+
+An empty normalized result raises `ValueError`. Case, internal characters,
+remaining Unicode code points, and canonically distinct Unicode sequences are
+preserved. Construction performs no case folding, Unicode normalization,
+locale transformation, parsing, automatic generation, or derived
+fingerprinting. A group ID claims no global uniqueness. It is a caller-
+declared group-instance identity and participates in ordinary dataclass
+equality.
+
+`members` accepts only an exact built-in tuple or list. Tuple and list
+subclasses and all other iterables raise `TypeError`. Every element must have
+exact type `MarketDataRelationshipGroupMember`; member subclasses and every
+other element raise `TypeError`. After complete validation, the collection is
+stored as an immutable canonical tuple. At least one member is required.
+
+#### Exact group grammar and cardinality
+
+Callers do not declare cardinality policies. The versioned group-kind contract
+defines the complete v0.1 grammar. No separate cardinality-policy artifact is
+introduced, and no role is repeatable in v0.1.
+
+`OPTION_ACTIVITY_V0_1` declares one option-volume observation and one option-
+open-interest observation as intended activity counterparts, with an optional
+option quote that supplies declared quote/activity context. Allowing the
+optional role expresses caller intent only. 3C.4b does not resolve the
+reference or verify that it identifies an option quote.
+
+| Group kind | Role | Minimum | Maximum |
+|---|---|---:|---:|
+| `UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1` | `UNDERLYING_QUOTE` | 1 | 1 |
+| `UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1` | `OPTION_QUOTE` | 1 | 1 |
+| `OPTION_QUOTE_ANALYTICS_V0_1` | `OPTION_QUOTE` | 1 | 1 |
+| `OPTION_QUOTE_ANALYTICS_V0_1` | `OPTION_IMPLIED_VOLATILITY` | 0 | 1 |
+| `OPTION_QUOTE_ANALYTICS_V0_1` | `OPTION_GREEKS` | 0 | 1 |
+| `OPTION_ACTIVITY_V0_1` | `OPTION_QUOTE` | 0 | 1 |
+| `OPTION_ACTIVITY_V0_1` | `OPTION_VOLUME` | 1 | 1 |
+| `OPTION_ACTIVITY_V0_1` | `OPTION_OPEN_INTEREST` | 1 | 1 |
+| `OPTION_CONTRACT_REFERENCE_V0_1` | `OPTION_CONTRACT_REFERENCE` | 1 | 1 |
+| `OPTION_CONTRACT_REFERENCE_V0_1` | `OPTION_QUOTE` | 0 | 1 |
+| `OPTION_CONTRACT_REFERENCE_V0_1` | `OPTION_IMPLIED_VOLATILITY` | 0 | 1 |
+| `OPTION_CONTRACT_REFERENCE_V0_1` | `OPTION_GREEKS` | 0 | 1 |
+| `OPTION_CONTRACT_REFERENCE_V0_1` | `OPTION_VOLUME` | 0 | 1 |
+| `OPTION_CONTRACT_REFERENCE_V0_1` | `OPTION_OPEN_INTEREST` | 0 | 1 |
+
+Every role not listed for a group kind is prohibited. In particular,
+`UNDERLYING_QUOTE` is prohibited in `OPTION_CONTRACT_REFERENCE_V0_1`.
+
+Two aggregate rules complete the grammar:
+
+- `OPTION_QUOTE_ANALYTICS_V0_1` requires at least one of
+  `OPTION_IMPLIED_VOLATILITY` or `OPTION_GREEKS`.
+- `OPTION_CONTRACT_REFERENCE_V0_1` requires at least one non-reference role.
+
+#### Complete-reference duplication and reuse
+
+Within one group, the same complete `MarketDataBindingReference` may appear at
+most once regardless of role. Duplicate identity is exactly:
+
+```python
+(
+    reference.semantic_observation_key,
+    reference.selected_record_id,
+)
+```
+
+Therefore:
+
+```text
+same role + same complete reference -> duplicate ValueError
+different roles + same complete reference -> duplicate ValueError
+same role + distinct references -> maximum-one cardinality ValueError
+```
+
+The cross-role prohibition is structural: one observation cannot be declared
+as two different roles inside one relationship group. Duplicate detection
+never uses Python object identity, semantic observation key alone, or selected
+record ID alone. Independently constructed but structurally equal references
+are duplicates.
+
+The following remain structurally distinct complete references and are subject
+to the separate role-cardinality rules:
+
+```text
+same semantic key + different selected record IDs
+different semantic keys + same selected record ID
+```
+
+The same complete reference may appear in different groups. Identical group
+contents under distinct group IDs are also allowed.
+
+#### Canonical member order
+
+Caller member order is discarded. The exact member sort key is:
+
+```python
+(
+    role_declaration_index,
+    reference.semantic_observation_key,
+    reference.selected_record_id,
+)
+```
+
+`role_declaration_index` uses `MarketDataRelationshipRole` declaration order.
+Strings use ordinary Python code-point ordering. Canonicalization performs no
+locale collation, Unicode normalization, case folding, semantic-key parsing,
+set iteration, or object-identity comparison. The stored canonical tuple
+determines ordinary group structural equality.
+
+#### Exact group validation precedence
+
+The observable group validation order is exactly:
+
+```text
+1. group_id exact built-in str type
+2. group_kind exact MarketDataRelationshipGroupKind type
+3. members exact built-in tuple/list container type
+4. every member exact type, checked in caller order
+5. normalize group_id using no-argument str.strip()
+6. reject empty normalized group_id
+7. reject empty members
+8. reject repeated complete references, checked in caller order
+9. reject roles prohibited for the declared group kind
+10. validate per-role minimum and maximum counts in role declaration order
+11. validate group-kind aggregate constraints
+12. canonicalize members
+13. store normalized group_id and canonical member tuple
+```
+
+No normalized value is partially stored and no input is mutated before all
+validation passes. Representative simultaneous defects resolve as follows:
+
+```text
+empty group ID + invalid member element
+    -> member TypeError wins
+
+duplicate complete reference + role prohibited for kind
+    -> duplicate ValueError wins
+
+missing required role + excessive optional role
+    -> first failing role in MarketDataRelationshipRole declaration order wins
+```
+
+#### Immutable top-level request
+
+The planned request is exactly:
+
+```python
+@dataclass(frozen=True)
+class MarketDataRelationshipRequest:
+    groups: Tuple[MarketDataRelationshipGroup, ...]
+```
+
+Its only stored field is `groups`. There is no request ID, and no `request_id`
+field is introduced. It also stores no
+priority, evaluation order, fallback, success criteria, temporal policy,
+selection preference, description, metadata, caller identity, or timestamp.
+
+`groups` accepts only an exact built-in tuple or list. Tuple/list subclasses
+and all other containers raise `TypeError`. Every element must have exact type
+`MarketDataRelationshipGroup`; group subclasses and all other elements raise
+`TypeError`. At least one group is required. Normalized group IDs must be
+unique within the request. The same complete reference may appear in several
+different groups.
+
+Caller group order is discarded. Because normalized group IDs are unique, the
+exact request canonical sort key is only:
+
+```python
+group.group_id
+```
+
+No unreachable group-kind or member-content tie breaker is added. Sorting uses
+ordinary Python code-point ordering. The validated collection is stored as an
+immutable canonical tuple, so request equality is caller-order independent.
+Two structurally identical groups with different IDs remain distinct and are
+allowed.
+
+The observable request validation order is exactly:
+
+```text
+1. groups exact built-in tuple/list container type
+2. every group exact type, checked in caller order
+3. reject empty groups
+4. reject duplicate normalized group IDs, checked in caller order
+5. canonicalize groups by group_id
+6. store canonical group tuple
+```
+
+A duplicate group ID therefore raises `ValueError` before noncanonical caller
+order is sorted.
+
+#### Structural versus semantic validation boundary
+
+3C.4b validates only:
+
+- known exact group-kind and role types;
+- role allowance for the declared group kind;
+- required and optional role counts and aggregate structural requirements;
+- exact member and reference artifact types;
+- nonempty member and group collections;
+- complete-reference duplication;
+- normalized group-ID validity and request-local group-ID uniqueness; and
+- canonical tuple order.
+
+It does not validate whether a reference resolves; whether two references
+resolve to the same binding; resolved record type; underlying or option-
+contract equality; comparable sessions or dates; phase, scope, or venue;
+analytics methodology; activity coherence; contract-reference terms; or
+timing coherence.
+
+#### Resolution and temporal boundaries
+
+3C.4b introduces no resolver, resolve-all helper, materialized group, success-
+only artifact, or function accepting `MarketDataSnapshotTimingAssessment`.
+Later evaluators receive a validated group and an exact timing assessment,
+call `resolve_market_data_binding_reference` for each canonical member, and
+perform their own separately contracted semantic evaluation. 3C.4b does not
+duplicate 3C.4a.
+
+A group or request is constructed without any timing assessment. It may later
+be used with a temporally coherent or incoherent assessment. 3C.4b does not
+store or inspect `is_temporally_coherent`, timing reason codes, freshness
+policy or context, timing metrics, or timing thresholds. Temporal blocking
+remains an unresolved later evaluation decision.
+
+#### Non-normative map to later relationship evaluation
+
+This dependency map does not define compatibility matrices, findings, reasons,
+statuses, outcomes, or temporal-blocking behavior:
+
+| Group kind | 3C.4c | 3C.4d | 3C.4e |
+|---|---|---|---|
+| Underlying/option quote snapshot | underlying identity and comparable session | phase, scope, and venue compatibility | none |
+| Option quote analytics | option-contract identity and comparable session | none defined by 3C.4b | quote/IV/Greeks alignment and methodology coherence |
+| Option activity | exact option-contract identity and comparable session/date relationships among volume, open interest, and the optional option quote when present | none | volume/open-interest coherence and, when the optional quote is present, quote/activity relationship and activity applicability |
+| Option contract reference | exact option-contract identity | none | reference-term coherence against each option observation |
+
+3C.4c through 3C.4e remain undefined and unimplemented. The table expresses
+dependency ownership only and does not introduce any result API.
+
+#### Later milestone exclusions
+
+- 3C.5 owns cross-group ranking, selection, fallback, and priorities.
+- 3C.6 owns historical-series membership, ordering, lookback, and
+  completeness.
+- 3C.7 owns analytics-to-rate and analytics-to-dividend linkage; rate-curve-
+  point identity and tenor applicability; dividend-event identity, status, and
+  applicability; every economic use of rates or dividends; transformations;
+  pricing; evidence; and `CalculationLineage`.
+
+No 3C.4b field exists solely for a later milestone.
+
+#### Portability, equality, and purity
+
+Portability means frozen value artifacts, closed enums, normalized strings,
+immutable canonical tuples, portable `MarketDataBindingReference` values, and
+ordinary dataclass equality. No binding or timing-assessment object is
+retained. No JSON serializer is introduced. No free-text rationale or metadata
+participates in equality.
+
+Construction is provider neutral, network free, filesystem free, environment
+free, clock free, calendar free, locale independent, randomness free, LLM
+free, registry free, process-global-state free, pure, and non-mutating.
+
+#### Failure taxonomy
+
+3C.4b uses only `TypeError` and `ValueError`.
+
+`TypeError` covers a wrong exact scalar type, enum subclass or foreign Enum,
+reference/member/group subclass, wrong collection type, collection subclass,
+or invalid collection element type.
+
+`ValueError` covers an empty normalized group ID, empty group or request,
+duplicate complete reference, duplicate group ID, role prohibited for a group
+kind, minimum or maximum cardinality violation, or aggregate structural-
+constraint violation.
+
+Reference-resolution and semantic-incompatibility errors do not occur during
+3C.4b construction. No public exception, reason enum, issue record, status, or
+assessment is introduced. Full private error-message text is not public.
+Future tests may require narrow field or constraint fragments only when needed
+to prove validation precedence.
+
+#### Fixed synthetic examples
+
+The semantic keys below are intentionally synthetic opaque strings. 3C.4b
+does not parse or authenticate them.
+
+```python
+underlying_quote_reference = MarketDataBindingReference(
+    "semantic-observation-v0.1:synthetic-spy-underlying-quote",
+    "synthetic-underlying-quote-001",
+)
+option_quote_reference = MarketDataBindingReference(
+    "semantic-observation-v0.1:synthetic-spy-option-quote",
+    "synthetic-option-quote-001",
+)
+
+snapshot_group = MarketDataRelationshipGroup(
+    group_id="spy-quote-snapshot",
+    group_kind=(
+        MarketDataRelationshipGroupKind
+        .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+    ),
+    members=(
+        MarketDataRelationshipGroupMember(
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            option_quote_reference,
+        ),
+        MarketDataRelationshipGroupMember(
+            MarketDataRelationshipRole.UNDERLYING_QUOTE,
+            underlying_quote_reference,
+        ),
+    ),
+)
+
+# Stored member order is UNDERLYING_QUOTE, then OPTION_QUOTE.
+```
+
+```python
+iv_reference = MarketDataBindingReference(
+    "semantic-observation-v0.1:synthetic-spy-option-iv",
+    "synthetic-option-iv-001",
+)
+greeks_reference = MarketDataBindingReference(
+    "semantic-observation-v0.1:synthetic-spy-option-greeks",
+    "synthetic-option-greeks-001",
+)
+
+analytics_group = MarketDataRelationshipGroup(
+    group_id="spy-option-analytics",
+    group_kind=MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+    members=(
+        MarketDataRelationshipGroupMember(
+            MarketDataRelationshipRole.OPTION_GREEKS,
+            greeks_reference,
+        ),
+        MarketDataRelationshipGroupMember(
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            option_quote_reference,
+        ),
+        MarketDataRelationshipGroupMember(
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+            iv_reference,
+        ),
+    ),
+)
+
+# Stored member order is OPTION_QUOTE, OPTION_IMPLIED_VOLATILITY,
+# then OPTION_GREEKS.
+```
+
+```python
+request = MarketDataRelationshipRequest((snapshot_group, analytics_group))
+
+# The caller supplied noncanonical group order. Stored group order is
+# analytics_group, then snapshot_group, sorted only by normalized group_id.
+```
+
+#### Future test expectations
+
+Future fixed synthetic tests cover:
+
+- the unchanged original 45-name public prefix, exact five-name append order,
+  planned total of 50, and absence of unauthorized public functions or later
+  result APIs;
+- exact enum declaration order and values; exact dataclass field order;
+  frozen behavior and ordinary structural equality;
+- exact enum, reference, member, and group types; subclass and foreign-Enum
+  rejection; exact tuple/list acceptance; tuple/list-subclass rejection; and
+  invalid element types;
+- group-ID no-argument `str.strip()` behavior, ASCII and non-ASCII surrounding
+  whitespace, whitespace-only rejection, case and Unicode preservation, and
+  absence of Unicode normalization;
+- empty group and request; every allowed and prohibited role for each kind;
+  every minimum and maximum cardinality; and both aggregate constraints;
+- valid activity groups without `OPTION_QUOTE` and with exactly one
+  `OPTION_QUOTE`; two option-quote members producing cardinality `ValueError`;
+  missing `OPTION_VOLUME` and missing `OPTION_OPEN_INTEREST` independently
+  producing `ValueError`; and IV, Greeks, contract-reference, and underlying-
+  quote roles each being prohibited in an activity group;
+- canonical activity-member order when the optional quote is present; the same
+  complete reference reused between quote and either activity role producing
+  duplicate `ValueError`; absence of rate/dividend roles and group kinds; and
+  absence of 3C.4b-through-3C.4e rate/dividend evaluation behavior;
+- the same reference repeated under the same role and under different roles;
+  two distinct references under one singular role; structurally equal
+  independently created references; the same reference across groups; the
+  same semantic key with different record IDs; and different semantic keys
+  with the same record ID;
+- duplicate normalized group IDs and identical group contents under distinct
+  IDs;
+- member-order and group-order independence, exact canonical sort keys,
+  validation precedence, locale independence, and input non-mutation; and
+- absence of reference resolution, timing-property access, record-type or
+  relationship evaluation, downstream result APIs, and selection APIs.
+
+Tests for resolved record types and compatibility belong to 3C.4c through
+3C.4e. No Python tests are added by this documentation-only contract draft.
 
 ## 14. Canonical calculation lineage
 
@@ -3077,8 +3686,8 @@ Normalized observations never directly produce `CandidateState`. Calculated reco
 | Selected/fresh binding layer | Complete semantic candidate-group verification; authoritative correction selection; selected-record resolution; authoritative single-record freshness; immutable proof retention | No cross-record coherence, cross-observation selection, historical completeness, economic transformation, or calculation lineage |
 | Binding-set temporal-coherence layer | Exact binding-set canonicalization; complete policy/context compatibility; effective and complete-source spans for exact temporal participants | No relationship inference, selection, completeness, economic transformation, or calculation lineage |
 | Auditable binding-reference layer | Portable semantic-key/selected-record-ID references; exact resolution within one supplied timing assessment; exact retained-binding identity | No timing decision, relationship/group semantics, selection, completeness, economic transformation, or calculation lineage |
-| Explicit relationship/group-coherence layer | Caller-declared counterpart grouping; contract, session, phase, scope, venue, analytics, activity, reference, and non-economic rate/dividend identity compatibility | No observation selection, completeness, rate/dividend economic applicability, economic transformation, or calculation lineage |
-| Calculation layer | Interpolation; annualization; percentiles; realized volatility; structure aggregation; pricing scenarios; `CalculationLineage` | No hidden inputs or state classification |
+| Explicit relationship/group-coherence layer | Caller-declared counterpart grouping; contract, session, phase, scope, venue, analytics, activity, and reference compatibility for represented option-domain observations | No rate/dividend relationship, identity, linkage, applicability, or economic use; observation selection; completeness; economic transformation; or calculation lineage |
+| Calculation layer | Rate/dividend identity, linkage, applicability, and economic use; interpolation; annualization; percentiles; realized volatility; structure aggregation; pricing scenarios; `CalculationLineage` | No hidden inputs or state classification |
 | `CandidateResearchRecord` | Aggregate consistency; evidence classification; research disclosures | No provider parsing |
 | `ScreeningPolicy` and `screen_candidate` | Deterministic state classification | No provider normalization or fetching |
 | Report renderer | Deterministic presentation | No fetching, market calculations, or raw untrusted provider payloads |
@@ -3241,18 +3850,30 @@ observations, prove completeness, or transform market data.
 
 ### Milestone 3C.4a — Auditable binding references
 
-Define only the Section 13.9 portable two-string binding reference, exact
-factory from one selected/fresh binding, and exact resolution inside one
-binding-set timing assessment. The current implemented public count remains
-42. The planned post-3C.4a implementation count is 45.
+The Section 13.9 portable two-string binding reference, exact factory from one
+selected/fresh binding, and exact resolution inside one binding-set timing
+assessment are implemented and reviewed. The current implemented public count
+is 45.
 
-### Milestones 3C.4b through 3C.4e — Explicit relationship/group coherence
+### Milestone 3C.4b — Explicit relationship/group request representation
 
-After 3C.4a review, separately define relationship/group request
-representation, exact identity and comparable-session coherence, quote phase/
-scope/venue compatibility, and analytics/activity/contract-reference
-coherence. Their APIs remain undefined. Rate and dividend economic
-applicability remains 3C.7 work.
+The standalone structural contract in Section 13.10 was found viable by A-level
+preflight and drafted locally. Its first targeted specification preflight found
+two cross-document ownership/taxonomy contradictions. The draft now assigns
+all rate/dividend relationship work to 3C.7 and permits an optional option quote
+in `OPTION_ACTIVITY_V0_1`. Targeted specification re-preflight is pending and
+implementation has not started. The exact five planned public names would
+append after the unchanged 45-name implemented prefix for a planned post-3C.4b
+implementation count of 50.
+
+### Milestones 3C.4c through 3C.4e — Relationship evaluation
+
+Separately define exact identity and comparable-session coherence, quote
+phase/scope/venue compatibility, and analytics/activity/contract-reference
+coherence for represented option-domain observations. Their APIs remain
+undefined. They do not represent or evaluate rate/dividend relationships.
+Every rate/dividend identity, linkage, applicability, and economic use remains
+3C.7 work.
 
 ### Milestone 3C.5 — Deterministic cross-observation selection
 
@@ -3401,10 +4022,9 @@ Resolved for v0.1 by the Milestone 3C.3 contract:
   append in Section 13.8 order after the preceding 39 names.
 - No normalized-record schema change is required for the narrow 3C.3 contract.
 
-Resolved for v0.1 by the drafted Milestone 3C.4a contract. The contract has
-completed targeted specification preflight with a passing result and is
-approved for implementation. Implementation has not started. The approved
-contract decisions are:
+Resolved for v0.1 by the implemented Milestone 3C.4a contract. The contract
+completed targeted specification preflight, implementation, and independent
+review. The implemented contract decisions are:
 
 - One portable binding reference contains exactly the semantic observation key
   and selected record ID as exact strings normalized by Python's no-argument
@@ -3418,8 +4038,31 @@ contract decisions are:
 - Resolution is independent of the timing assessment's coherent or incoherent
   outcome and defines no relationship, group, role, compatibility, issue, or
   selection behavior.
-- The three planned 3C.4a names append after the existing 42 names for a
-  planned post-implementation count of 45.
+- The three 3C.4a names append after the existing 42 names for the current
+  implemented count of 45.
+
+Resolved for local drafting by the Milestone 3C.4b A-level preflight. The first
+targeted specification preflight did not pass because of two cross-document
+ownership/taxonomy contradictions. The local draft has been remediated, targeted
+specification re-preflight remains pending, and implementation has not started:
+
+- The structural request model uses exact versioned group kinds, exact global
+  roles, one role/reference member, one caller-identified group, and one
+  request containing canonical groups.
+- A complete reference may appear only once within one group regardless of
+  role, but may be reused across different groups.
+- Group members canonicalize by role declaration index, semantic observation
+  key, and selected record ID. Request groups canonicalize only by unique
+  normalized `group_id`.
+- `OPTION_ACTIVITY_V0_1` requires volume and open interest and permits zero or
+  one option quote as declared quote/activity context.
+- Every rate/dividend relationship, identity, linkage, applicability, and
+  economic use belongs to 3C.7; no rate/dividend role or group kind exists in
+  3C.4b.
+- 3C.4b performs no reference resolution, timing gating, record-type checking,
+  or relationship evaluation.
+- The current implemented public count remains 45. Five planned 3C.4b names
+  would produce a post-implementation count of 50; none is implemented yet.
 
 The following questions remain open:
 

@@ -53,21 +53,31 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - The broad standalone Milestone 3C.4 relationship/group-coherence contract was preflighted and found not yet viable because relationship groups, roles, cardinalities, result architecture, issue evidence, and compatibility matrices remain unresolved.
 - Milestone 3C.4 is decomposed into 3C.4a auditable binding references, 3C.4b explicit relationship/group request representation, 3C.4c exact identity and comparable-session coherence, 3C.4d quote phase/scope/venue compatibility, and 3C.4e analytics/activity/contract-reference coherence.
 - Milestone 3C.4a auditable binding references are implemented, independently reviewed with REVIEW RESULT: PASS, and validated with 559 tests passed and 45 public `market_data` names. The implementation is the authoritative completed baseline for subsequent Milestone 3C.4b specification work.
+- Milestone 3C.4b explicit relationship/group request representation has an approved and committed documentation contract. It defines a provider-neutral structural request model consisting of `MarketDataRelationshipGroupKind`, `MarketDataRelationshipRole`, `MarketDataRelationshipGroupMember`, `MarketDataRelationshipGroup`, and `MarketDataRelationshipRequest`. The current implemented public `market_data` API remains 45 names; the planned post-3C.4b implementation API is 50 names, and the five planned 3C.4b names are not yet implemented. The contract defines four versioned relationship-group kinds and seven roles, including `OPTION_ACTIVITY_V0_1` with optional `OPTION_QUOTE` and mandatory `OPTION_VOLUME` and `OPTION_OPEN_INTEREST`. Milestone 3C.4b performs structural declaration, validation, duplication control, and canonicalization only. Milestones 3C.4c through 3C.4e remain undefined and unimplemented. Milestones 3C.5 through 3C.7 remain unimplemented. All rate/dividend relationship, identity, linkage, applicability, economic-use, transformation, pricing, evidence, and `CalculationLineage` work belongs to Milestone 3C.7. Broad Milestone 3 remains incomplete.
 
 ## Current task
 
-Perform an A-level specification preflight for Milestone 3C.4b explicit
-relationship/group request representation.
+Perform an A-level implementation preflight for the approved Milestone 3C.4b
+explicit relationship/group request contract.
 
 Milestones 3C.1 through 3C.3 are complete and independently reviewed.
 Milestone 3C.4a auditable binding references are implemented, independently
 reviewed with REVIEW RESULT: PASS, and validated with 559 tests passed and 45
 public `market_data` names. The implementation is the authoritative completed
-baseline for subsequent Milestone 3C.4b specification work. Milestones 3C.4b
-through 3C.4e remain undefined and unimplemented. Milestones 3C.5 through 3C.7
-remain unimplemented. Broad Milestone 3 remains incomplete. No provider has
-been selected and no network access is authorized. `market_data.py` remains
-independent of the evidence, report, and scanner modules.
+baseline for subsequent Milestone 3C.4b work. Milestone 3C.4b explicit
+relationship/group request representation has an approved and committed
+documentation contract. The contract defines the five planned public artifacts,
+four versioned relationship-group kinds, and seven roles. It defines structural
+declaration, validation, duplication control, and canonicalization only. The
+implemented public count remains 45, the planned post-3C.4b implementation count
+is 50, and the five planned 3C.4b names are not yet implemented. Milestones
+3C.4c through 3C.4e remain undefined and unimplemented. Milestones 3C.5 through
+3C.7 remain unimplemented. All rate/dividend relationship, identity, linkage,
+applicability, economic-use, transformation, pricing, evidence, and
+`CalculationLineage` work belongs to Milestone 3C.7. Broad Milestone 3 remains
+incomplete. No provider has been selected and no network access is authorized.
+`market_data.py` remains independent of the evidence, report, and scanner
+modules.
 
 ## Last validated checkpoint
 
@@ -78,15 +88,18 @@ independent of the evidence, report, and scanner modules.
 - Milestone 3C.2 per-record selected/fresh binding complete
 - Milestone 3C.3 binding-set temporal coherence complete
 - Milestone 3C.4a auditable binding references complete
-- Milestones 3C.4b through 3C.4e undefined and unimplemented
+- Milestone 3C.4b contract approved
+- Milestone 3C.4b implementation not started
+- Planned public `market_data` API after implementation: 50 names
+- Milestones 3C.4c through 3C.4e undefined and unimplemented
 - Milestones 3C.5 through 3C.7 unimplemented
 - Broad Milestone 3 incomplete
 
 ## Next task
 
-Draft the Milestone 3C.4b contract only after its specification preflight
-resolves the request, group, role, cardinality, reference, canonicalization,
-and validation boundaries.
+Implement Milestone 3C.4b only after the implementation preflight confirms the
+exact public surface, artifact placement, private tables, canonicalization,
+validation precedence, test matrix, and authorized file scope.
 
 ## Deferred
 
