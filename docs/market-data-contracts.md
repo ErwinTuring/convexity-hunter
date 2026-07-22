@@ -2859,9 +2859,10 @@ The completed broad 3C.4 preflight establishes this revised order:
        research evidence, and CalculationLineage
 ```
 
-The 3C.4a contract is defined here. Section 13.10 defines the approved and
-committed 3C.4b structural request contract. APIs for 3C.4c through 3C.4e remain
-undefined.
+The 3C.4a contract is defined here. Section 13.10 defines the approved,
+implemented, and committed 3C.4b structural request contract. Section 13.11
+defines the locally implemented 3C.4c contract pending independent review.
+APIs for 3C.4d and 3C.4e remain undefined.
 Every rate/dividend relationship, identity, linkage, applicability, and
 economic use remains 3C.7 work. Historical-series membership and completeness
 remain 3C.6 work.
@@ -2904,7 +2905,7 @@ Future fixed synthetic 3C.4a tests cover:
 The A-level specification preflight and targeted specification reviews found
 that the standalone Milestone 3C.4b structural contract is viable. This section
 defines the approved and committed Milestone 3C.4b contract. Its implementation
-has not started.
+is complete and committed.
 
 3C.4b represents explicit caller-declared relationship intent. It answers:
 
@@ -2936,9 +2937,9 @@ represent or evaluate `RateCurvePointObservation` or `DividendObservation`
 relationships, identity, linkage, applicability, or economic use, and it does
 not construct evidence or `CalculationLineage`.
 
-#### Planned public API
+#### Public API
 
-3C.4b plans exactly these five public additions, in this order:
+3C.4b added exactly these five public additions, in this order:
 
 ```text
 MarketDataRelationshipGroupKind
@@ -2949,18 +2950,16 @@ MarketDataRelationshipRequest
 ```
 
 The unchanged existing 45 `convexity_hunter.market_data` public names remain
-the implemented prefix. The current implemented public count is 45. The five
-planned names append after that prefix for a planned post-3C.4b implementation
-count of 50. None of the five names is implemented by this documentation-only
-contract.
+the implemented prefix. The five names append after that prefix for the
+implemented post-3C.4b count of 50.
 
-No public function is planned. 3C.4b introduces no public policy, status,
+No public function was added. 3C.4b introduces no public policy, status,
 reason-code enum, issue record, assessment, resolver, exception class,
 registry, alias, serializer, or 3C.4c-or-later artifact.
 
 #### Versioned relationship-group kinds
 
-The planned closed enum has this exact declaration order and exact values:
+The closed enum has this exact declaration order and exact values:
 
 ```python
 class MarketDataRelationshipGroupKind(str, Enum):
@@ -2986,7 +2985,7 @@ definition versioning.
 
 #### Relationship roles
 
-The planned closed global role enum has this exact declaration order and exact
+The closed global role enum has this exact declaration order and exact
 values:
 
 ```python
@@ -3012,7 +3011,7 @@ linkage, applicability, and economic use remain 3C.7 work.
 
 #### Immutable group member
 
-The planned member is exactly:
+The member is exactly:
 
 ```python
 @dataclass(frozen=True)
@@ -3048,7 +3047,7 @@ provider fields.
 
 #### Immutable relationship group
 
-The planned group is exactly:
+The group is exactly:
 
 ```python
 @dataclass(frozen=True)
@@ -3211,7 +3210,7 @@ missing required role + excessive optional role
 
 #### Immutable top-level request
 
-The planned request is exactly:
+The request is exactly:
 
 ```python
 @dataclass(frozen=True)
@@ -3304,8 +3303,9 @@ statuses, outcomes, or temporal-blocking behavior:
 | Option activity | exact option-contract identity and comparable session/date relationships among volume, open interest, and the optional option quote when present | none | volume/open-interest coherence and, when the optional quote is present, quote/activity relationship and activity applicability |
 | Option contract reference | exact option-contract identity | none | reference-term coherence against each option observation |
 
-3C.4c through 3C.4e remain undefined and unimplemented. The table expresses
-dependency ownership only and does not introduce any result API.
+Section 13.11 defines the locally implemented 3C.4c result API. Milestones
+3C.4d and 3C.4e remain undefined and unimplemented. The table expresses
+dependency ownership; the 3C.4b artifacts themselves introduce no result API.
 
 #### Later milestone exclusions
 
@@ -3426,12 +3426,12 @@ request = MarketDataRelationshipRequest((snapshot_group, analytics_group))
 # analytics_group, then snapshot_group, sorted only by normalized group_id.
 ```
 
-#### Future test expectations
+#### Test expectations
 
-Future fixed synthetic tests cover:
+Implemented fixed synthetic tests cover:
 
 - the unchanged original 45-name public prefix, exact five-name append order,
-  planned total of 50, and absence of unauthorized public functions or later
+  implemented total of 50, and absence of unauthorized public functions or later
   result APIs;
 - exact enum declaration order and values; exact dataclass field order;
   frozen behavior and ordinary structural equality;
@@ -3465,7 +3465,150 @@ Future fixed synthetic tests cover:
   relationship evaluation, downstream result APIs, and selection APIs.
 
 Tests for resolved record types and compatibility belong to 3C.4c through
-3C.4e. No Python tests are added by this documentation-only contract.
+3C.4e and are not part of the 3C.4b structural tests.
+
+### 13.11 Milestone 3C.4c exact identity and comparable-session coherence
+
+Milestone 3C.4c evaluates one exact `MarketDataRelationshipRequest` against
+one exact `MarketDataSnapshotTimingAssessment`. It resolves every declared
+member in the supplied assessment, verifies the resolved role type, and
+evaluates only exact underlying/option-contract identity and the explicitly
+owned comparable-session rules. It does not reinterpret the 3C.3 timing
+outcome or perform 3C.4d-or-later compatibility work.
+
+#### Public API
+
+3C.4c appends exactly these four public names after the implemented 50-name
+prefix, for a total public count of 54:
+
+```text
+MarketDataRelationshipIssueCode
+MarketDataRelationshipGroupAssessment
+MarketDataRelationshipAssessment
+assess_market_data_relationships
+```
+
+The issue enum has this exact declaration order and values:
+
+```python
+class MarketDataRelationshipIssueCode(str, Enum):
+    RESOLVED_RECORD_TYPE_MISMATCH = "resolved_record_type_mismatch"
+    UNDERLYING_IDENTITY_MISMATCH = "underlying_identity_mismatch"
+    OPTION_CONTRACT_IDENTITY_MISMATCH = "option_contract_identity_mismatch"
+    SESSION_DATE_MISMATCH = "session_date_mismatch"
+```
+
+No public policy, configuration, status, evidence object, exception, registry,
+or additional function is introduced.
+
+#### Immutable assessment artifacts and resolution
+
+The frozen group assessment stores exactly:
+
+```python
+MarketDataRelationshipGroupAssessment
+    group: MarketDataRelationshipGroup
+    resolved_bindings: Tuple[SelectedFreshMarketDataBinding, ...]
+```
+
+It derives `issue_codes` and `is_coherent`. Direct construction requires an
+exact group and an exact tuple/list of exact bindings, one per canonical group
+member. Each binding's complete semantic-key/selected-record-ID pair must
+match the corresponding member reference. Count or alignment failure raises
+`ValueError`; successful construction stores an immutable tuple containing the
+exact supplied binding objects.
+
+The frozen top-level assessment stores exactly:
+
+```python
+MarketDataRelationshipAssessment
+    request: MarketDataRelationshipRequest
+    timing_assessment: MarketDataSnapshotTimingAssessment
+```
+
+It derives canonical `group_assessments` and `is_coherent`. Construction and
+the public function require exact request and timing-assessment types. They
+first resolve every reference in canonical request-group and group-member
+order. Only after the complete request resolves may group assessments be
+constructed. A missing, stale, forged, or cross-paired complete reference
+raises `ValueError`; no partial assessment is retained or returned. Wrong
+Python types raise `TypeError`.
+
+The exact supplied request, timing assessment, groups, and resolved binding
+objects are retained. Temporally coherent and incoherent 3C.3 assessments are
+both valid inputs; 3C.4c does not access or gate on any derived 3C.3 timing
+property.
+
+#### Exact resolved types and identity matrix
+
+Role type checking uses exact selected-record type:
+
+| Role | Required exact record type |
+|---|---|
+| `UNDERLYING_QUOTE` | `UnderlyingQuoteObservation` |
+| `OPTION_QUOTE` | `OptionQuoteObservation` |
+| `OPTION_IMPLIED_VOLATILITY` | `OptionImpliedVolatilityObservation` |
+| `OPTION_GREEKS` | `OptionGreeksObservation` |
+| `OPTION_VOLUME` | `OptionVolumeObservation` |
+| `OPTION_OPEN_INTEREST` | `OptionOpenInterestObservation` |
+| `OPTION_CONTRACT_REFERENCE` | `OptionContractReference` |
+
+Any wrong resolved type produces only
+`RESOLVED_RECORD_TYPE_MISMATCH`; identity and session fields are not accessed
+for that group. It is a relationship issue, not an exception.
+
+With exact types established, ordinary structural equality of complete
+normalized keys applies:
+
+| Group kind | Exact identity rule |
+|---|---|
+| `UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1` | underlying quote `underlying_key` equals option quote `contract_key.underlying_key` |
+| `OPTION_QUOTE_ANALYTICS_V0_1` | every present IV/Greeks `contract_key` equals the required quote `contract_key` |
+| `OPTION_ACTIVITY_V0_1` | open-interest and optional quote `contract_key` each equal the required volume `contract_key` |
+| `OPTION_CONTRACT_REFERENCE_V0_1` | every non-reference `contract_key` equals the required contract-reference `contract_key` |
+
+The snapshot failure is `UNDERLYING_IDENTITY_MISMATCH`; the other three use
+`OPTION_CONTRACT_IDENTITY_MISMATCH`.
+
+#### Comparable-session matrix
+
+| Group kind | Exact 3C.4c session rule |
+|---|---|
+| `UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1` | underlying and option quote `session_date` values are equal |
+| `OPTION_QUOTE_ANALYTICS_V0_1` | quote and every present IV/Greeks `session_date` are equal |
+| `OPTION_ACTIVITY_V0_1` | optional quote `session_date`, when present, equals volume `session_date` |
+| `OPTION_CONTRACT_REFERENCE_V0_1` | no session comparison |
+
+A failed comparison adds `SESSION_DATE_MISMATCH`. Identity and session issues
+may coexist and are returned in issue-enum declaration order.
+`OptionOpenInterestObservation.open_interest_session_date` and
+`OptionContractReference` do not participate. Open-interest lag, completed-
+session policy, and applicability remain later work.
+
+#### Ordering, precedence, and exclusions
+
+Group assessments follow canonical `request.groups` order; bindings follow
+canonical member order. A group is coherent exactly when its issue tuple is
+empty, and the top-level assessment is coherent exactly when every group is
+coherent. Validation and evaluation order is:
+
+```text
+1. exact request type
+2. exact timing-assessment type
+3. resolve every complete reference in canonical order
+4. exact resolved role-to-record type checks
+5. exact identity checks for type-safe groups
+6. comparable-session checks for type-safe groups
+7. canonical issue and assessment construction
+```
+
+3C.4c does not inspect market phase, quote scope, venue, analytics
+methodology, activity completeness or freshness, open-interest lag or
+applicability, contract-reference applicability beyond exact identity,
+selection or ranking, historical completeness, rates, dividends, pricing,
+transformations, evidence, or `CalculationLineage`. Phase/scope/venue belongs
+to 3C.4d. Analytics, activity, and reference coherence beyond the narrow rules
+above belongs to 3C.4e.
 
 ## 14. Canonical calculation lineage
 
@@ -3866,18 +4009,23 @@ by assigning all rate/dividend relationship work to 3C.7 and permitting an
 optional option quote in `OPTION_ACTIVITY_V0_1`. The first targeted re-preflight
 found the remaining Section 12.3 ownership gap, which was corrected. The final
 second targeted re-preflight passed, and the Milestone 3C.4b documentation
-contract is approved and committed. Implementation has not started. The exact
-five planned public names would append after the unchanged 45-name implemented
-prefix for a planned post-3C.4b implementation count of 50.
+contract is approved, implemented, reviewed, and committed. Its exact five
+public names append after the unchanged 45-name prefix for an implemented
+post-3C.4b count of 50.
 
-### Milestones 3C.4c through 3C.4e — Relationship evaluation
+### Milestone 3C.4c — Exact identity and comparable sessions
 
-Separately define exact identity and comparable-session coherence, quote
-phase/scope/venue compatibility, and analytics/activity/contract-reference
-coherence for represented option-domain observations. Their APIs remain
-undefined. They do not represent or evaluate rate/dividend relationships.
-Every rate/dividend identity, linkage, applicability, and economic use remains
-3C.7 work.
+The Section 13.11 contract is implemented locally pending independent review.
+Its four public names append after the implemented 50-name prefix for a local
+count of 54. It evaluates exact resolved role types, underlying/option-contract
+identity, and only the declared comparable-session matrix.
+
+### Milestones 3C.4d and 3C.4e — Later relationship evaluation
+
+Separately define quote phase/scope/venue compatibility and analytics,
+activity, and contract-reference coherence. Their APIs remain undefined. They
+do not represent or evaluate rate/dividend relationships. Every rate/dividend
+identity, linkage, applicability, and economic use remains 3C.7 work.
 
 ### Milestone 3C.5 — Deterministic cross-observation selection
 
@@ -4045,13 +4193,12 @@ review. The implemented contract decisions are:
 - The three 3C.4a names append after the existing 42 names for the current
   implemented count of 45.
 
-Resolved for local drafting by the Milestone 3C.4b A-level preflight. The first
+Resolved by the implemented Milestone 3C.4b contract. The first
 targeted specification preflight did not pass because of two cross-document
 ownership/taxonomy contradictions. The local draft was remediated. The first
 targeted re-preflight found the remaining Section 12.3 ownership gap, which was
 corrected; the final second targeted specification re-preflight passed before
-the contract was committed. The documentation contract is approved and
-committed, while implementation remains not started:
+the contract was implemented, reviewed, and committed:
 
 - The structural request model uses exact versioned group kinds, exact global
   roles, one role/reference member, one caller-identified group, and one
@@ -4068,8 +4215,19 @@ committed, while implementation remains not started:
   3C.4b.
 - 3C.4b performs no reference resolution, timing gating, record-type checking,
   or relationship evaluation.
-- The current implemented public count remains 45. Five planned 3C.4b names
-  would produce a post-implementation count of 50; none is implemented yet.
+- The five 3C.4b names append after the existing 45 names for the implemented
+  post-3C.4b count of 50.
+
+Resolved for local implementation by the Milestone 3C.4c A-level preflight:
+
+- Exact resolved role types are assessed before field access; a mismatch is a
+  canonical issue rather than an exception.
+- Snapshot, analytics, activity, and contract-reference groups use the exact
+  identity and kind-specific session matrices in Section 13.11.
+- Open-interest session lag and contract-reference applicability remain later
+  work, and temporal incoherence does not block 3C.4c evaluation.
+- Four 3C.4c names append after the implemented 50-name prefix for a local
+  public count of 54 pending independent review.
 
 The following questions remain open:
 

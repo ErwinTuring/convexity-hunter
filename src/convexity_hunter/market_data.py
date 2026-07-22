@@ -61,6 +61,10 @@ __all__ = (
     "MarketDataRelationshipGroupMember",
     "MarketDataRelationshipGroup",
     "MarketDataRelationshipRequest",
+    "MarketDataRelationshipIssueCode",
+    "MarketDataRelationshipGroupAssessment",
+    "MarketDataRelationshipAssessment",
+    "assess_market_data_relationships",
 )
 
 
@@ -3293,3 +3297,297 @@ class MarketDataRelationshipRequest:
         _validate_unique_relationship_group_ids(groups)
         canonical_groups = _canonicalize_relationship_request_groups(groups)
         object.__setattr__(self, "groups", canonical_groups)
+
+
+class MarketDataRelationshipIssueCode(str, Enum):
+    """Canonical exact-identity and comparable-session issues."""
+
+    RESOLVED_RECORD_TYPE_MISMATCH = "resolved_record_type_mismatch"
+    UNDERLYING_IDENTITY_MISMATCH = "underlying_identity_mismatch"
+    OPTION_CONTRACT_IDENTITY_MISMATCH = (
+        "option_contract_identity_mismatch"
+    )
+    SESSION_DATE_MISMATCH = "session_date_mismatch"
+
+
+_RELATIONSHIP_ROLE_RECORD_TYPES = {
+    MarketDataRelationshipRole.UNDERLYING_QUOTE: UnderlyingQuoteObservation,
+    MarketDataRelationshipRole.OPTION_QUOTE: OptionQuoteObservation,
+    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+        OptionImpliedVolatilityObservation
+    ),
+    MarketDataRelationshipRole.OPTION_GREEKS: OptionGreeksObservation,
+    MarketDataRelationshipRole.OPTION_VOLUME: OptionVolumeObservation,
+    MarketDataRelationshipRole.OPTION_OPEN_INTEREST: (
+        OptionOpenInterestObservation
+    ),
+    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: (
+        OptionContractReference
+    ),
+}
+
+
+def _validate_relationship_resolved_bindings(
+    group: MarketDataRelationshipGroup,
+    resolved_bindings: object,
+) -> Tuple[SelectedFreshMarketDataBinding, ...]:
+    """Validate exact binding types and member-reference alignment."""
+
+    if (
+        type(resolved_bindings) is not tuple
+        and type(resolved_bindings) is not list
+    ):
+        raise TypeError("resolved_bindings must be an exact tuple or list")
+    for binding in resolved_bindings:
+        if type(binding) is not SelectedFreshMarketDataBinding:
+            raise TypeError(
+                "every resolved_bindings item must have exact type "
+                "SelectedFreshMarketDataBinding"
+            )
+    bindings = tuple(resolved_bindings)
+    if len(bindings) != len(group.members):
+        raise ValueError(
+            "resolved_bindings must have one binding for every group member"
+        )
+    for member, binding in zip(group.members, bindings):
+        if (
+            binding.semantic_observation_key
+            != member.reference.semantic_observation_key
+            or binding.selected_record.metadata.record_id
+            != member.reference.selected_record_id
+        ):
+            raise ValueError(
+                "resolved_bindings must match group member references in order"
+            )
+    return bindings
+
+
+def _relationship_records_by_role(
+    group: MarketDataRelationshipGroup,
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...],
+) -> dict:
+    """Return exact selected records keyed by their declared group roles."""
+
+    return {
+        member.role: binding.selected_record
+        for member, binding in zip(group.members, bindings)
+    }
+
+
+def _derive_relationship_group_issue_codes(
+    group: MarketDataRelationshipGroup,
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...],
+) -> Tuple[MarketDataRelationshipIssueCode, ...]:
+    """Derive all applicable 3C.4c issues in declaration order."""
+
+    for member, binding in zip(group.members, bindings):
+        if type(binding.selected_record) is not _RELATIONSHIP_ROLE_RECORD_TYPES[
+            member.role
+        ]:
+            return (
+                MarketDataRelationshipIssueCode.RESOLVED_RECORD_TYPE_MISMATCH,
+            )
+
+    records = _relationship_records_by_role(group, bindings)
+    issues = set()
+    kind = group.group_kind
+
+    if kind is (
+        MarketDataRelationshipGroupKind
+        .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+    ):
+        underlying_quote = records[
+            MarketDataRelationshipRole.UNDERLYING_QUOTE
+        ]
+        option_quote = records[MarketDataRelationshipRole.OPTION_QUOTE]
+        if (
+            underlying_quote.underlying_key
+            != option_quote.contract_key.underlying_key
+        ):
+            issues.add(
+                MarketDataRelationshipIssueCode.UNDERLYING_IDENTITY_MISMATCH
+            )
+        if underlying_quote.session_date != option_quote.session_date:
+            issues.add(MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH)
+
+    elif kind is MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1:
+        option_quote = records[MarketDataRelationshipRole.OPTION_QUOTE]
+        analytics_roles = (
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+            MarketDataRelationshipRole.OPTION_GREEKS,
+        )
+        analytics_records = tuple(
+            records[role] for role in analytics_roles if role in records
+        )
+        if any(
+            record.contract_key != option_quote.contract_key
+            for record in analytics_records
+        ):
+            issues.add(
+                MarketDataRelationshipIssueCode
+                .OPTION_CONTRACT_IDENTITY_MISMATCH
+            )
+        if any(
+            record.session_date != option_quote.session_date
+            for record in analytics_records
+        ):
+            issues.add(MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH)
+
+    elif kind is MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1:
+        volume = records[MarketDataRelationshipRole.OPTION_VOLUME]
+        open_interest = records[
+            MarketDataRelationshipRole.OPTION_OPEN_INTEREST
+        ]
+        option_quote = records.get(MarketDataRelationshipRole.OPTION_QUOTE)
+        if (
+            open_interest.contract_key != volume.contract_key
+            or (
+                option_quote is not None
+                and option_quote.contract_key != volume.contract_key
+            )
+        ):
+            issues.add(
+                MarketDataRelationshipIssueCode
+                .OPTION_CONTRACT_IDENTITY_MISMATCH
+            )
+        if (
+            option_quote is not None
+            and option_quote.session_date != volume.session_date
+        ):
+            issues.add(MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH)
+
+    else:
+        contract_reference = records[
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+        ]
+        non_reference_records = tuple(
+            record
+            for role, record in records.items()
+            if role is not MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+        )
+        if any(
+            record.contract_key != contract_reference.contract_key
+            for record in non_reference_records
+        ):
+            issues.add(
+                MarketDataRelationshipIssueCode
+                .OPTION_CONTRACT_IDENTITY_MISMATCH
+            )
+
+    return tuple(
+        issue for issue in MarketDataRelationshipIssueCode if issue in issues
+    )
+
+
+@dataclass(frozen=True)
+class MarketDataRelationshipGroupAssessment:
+    """One immutable 3C.4c assessment for a resolved relationship group."""
+
+    group: MarketDataRelationshipGroup
+    resolved_bindings: Tuple[SelectedFreshMarketDataBinding, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.group) is not MarketDataRelationshipGroup:
+            raise TypeError(
+                "group must have exact type MarketDataRelationshipGroup"
+            )
+        bindings = _validate_relationship_resolved_bindings(
+            self.group, self.resolved_bindings
+        )
+        object.__setattr__(self, "resolved_bindings", bindings)
+
+    @property
+    def issue_codes(self) -> Tuple[MarketDataRelationshipIssueCode, ...]:
+        """Return all applicable issues in declaration order."""
+
+        return _derive_relationship_group_issue_codes(
+            self.group, self.resolved_bindings
+        )
+
+    @property
+    def is_coherent(self) -> bool:
+        """Return whether the group has no 3C.4c issue."""
+
+        return not self.issue_codes
+
+
+def _resolve_relationship_request_bindings(
+    request: MarketDataRelationshipRequest,
+    timing_assessment: MarketDataSnapshotTimingAssessment,
+) -> Tuple[Tuple[SelectedFreshMarketDataBinding, ...], ...]:
+    """Resolve every request reference before constructing any result."""
+
+    return tuple(
+        tuple(
+            resolve_market_data_binding_reference(
+                member.reference, timing_assessment
+            )
+            for member in group.members
+        )
+        for group in request.groups
+    )
+
+
+def _derive_relationship_group_assessments(
+    request: MarketDataRelationshipRequest,
+    timing_assessment: MarketDataSnapshotTimingAssessment,
+) -> Tuple[MarketDataRelationshipGroupAssessment, ...]:
+    """Resolve all groups, then construct canonical group assessments."""
+
+    resolved_groups = _resolve_relationship_request_bindings(
+        request, timing_assessment
+    )
+    return tuple(
+        MarketDataRelationshipGroupAssessment(group, bindings)
+        for group, bindings in zip(request.groups, resolved_groups)
+    )
+
+
+@dataclass(frozen=True)
+class MarketDataRelationshipAssessment:
+    """Immutable 3C.4c assessment for one exact request and timing universe."""
+
+    request: MarketDataRelationshipRequest
+    timing_assessment: MarketDataSnapshotTimingAssessment
+
+    def __post_init__(self) -> None:
+        if type(self.request) is not MarketDataRelationshipRequest:
+            raise TypeError(
+                "request must have exact type MarketDataRelationshipRequest"
+            )
+        if (
+            type(self.timing_assessment)
+            is not MarketDataSnapshotTimingAssessment
+        ):
+            raise TypeError(
+                "timing_assessment must have exact type "
+                "MarketDataSnapshotTimingAssessment"
+            )
+        _resolve_relationship_request_bindings(
+            self.request, self.timing_assessment
+        )
+
+    @property
+    def group_assessments(
+        self,
+    ) -> Tuple[MarketDataRelationshipGroupAssessment, ...]:
+        """Return group assessments in canonical request order."""
+
+        return _derive_relationship_group_assessments(
+            self.request, self.timing_assessment
+        )
+
+    @property
+    def is_coherent(self) -> bool:
+        """Return whether every requested relationship group is coherent."""
+
+        return all(group.is_coherent for group in self.group_assessments)
+
+
+def assess_market_data_relationships(
+    request: object,
+    timing_assessment: object,
+) -> MarketDataRelationshipAssessment:
+    """Assess exact identity and comparable sessions for one request."""
+
+    return MarketDataRelationshipAssessment(request, timing_assessment)
