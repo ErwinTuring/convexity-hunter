@@ -1,5 +1,6 @@
 """Tests for Milestone 3A.1 market-data provenance and identity records."""
 
+import ast
 import dataclasses
 import collections
 import datetime
@@ -37,6 +38,11 @@ from convexity_hunter.market_data import (
     MarketDataCategory,
     MarketDataBindingReference,
     MarketDataFreshnessPolicy,
+    MarketDataRelationshipGroup,
+    MarketDataRelationshipGroupKind,
+    MarketDataRelationshipGroupMember,
+    MarketDataRelationshipRequest,
+    MarketDataRelationshipRole,
     MarketDataSnapshotTimingAssessment,
     MarketDataSnapshotTimingReasonCode,
     NormalizationMetadata,
@@ -291,6 +297,67 @@ def build_timing_binding(
     )
 
 
+def build_relationship_reference(
+    label: str = "reference",
+    semantic_key: object = None,
+    record_id: object = None,
+) -> MarketDataBindingReference:
+    """Build one portable opaque reference for relationship tests."""
+
+    return MarketDataBindingReference(
+        (
+            f"semantic-observation-v0.1:synthetic-{label}"
+            if semantic_key is None
+            else semantic_key
+        ),
+        f"synthetic-{label}-record" if record_id is None else record_id,
+    )
+
+
+def build_relationship_member(
+    role: MarketDataRelationshipRole,
+    label: str = "reference",
+    reference: object = None,
+) -> MarketDataRelationshipGroupMember:
+    """Build one explicit role/reference member."""
+
+    return MarketDataRelationshipGroupMember(
+        role,
+        build_relationship_reference(label) if reference is None else reference,
+    )
+
+
+def build_relationship_group(
+    group_id: str = "relationship-group",
+    group_kind: MarketDataRelationshipGroupKind = (
+        MarketDataRelationshipGroupKind
+        .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+    ),
+    members: object = None,
+) -> MarketDataRelationshipGroup:
+    """Build one valid explicit relationship group."""
+
+    normalized_members = (
+        (
+            build_relationship_member(
+                MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                "underlying-quote",
+            ),
+            build_relationship_member(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                "option-quote",
+            ),
+        )
+        if members is None
+        else members
+    )
+    return MarketDataRelationshipGroup(
+        group_id,
+        group_kind,
+        normalized_members,
+    )
+
+
 class PublicSurfaceTests(unittest.TestCase):
     def test_exact_all_and_public_names_exist(self) -> None:
         expected = (
@@ -339,9 +406,14 @@ class PublicSurfaceTests(unittest.TestCase):
             "MarketDataBindingReference",
             "market_data_binding_reference",
             "resolve_market_data_binding_reference",
+            "MarketDataRelationshipGroupKind",
+            "MarketDataRelationshipRole",
+            "MarketDataRelationshipGroupMember",
+            "MarketDataRelationshipGroup",
+            "MarketDataRelationshipRequest",
         )
         self.assertEqual(market_data.__all__, expected)
-        self.assertEqual(len(market_data.__all__), 45)
+        self.assertEqual(len(market_data.__all__), 50)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
@@ -350,7 +422,6 @@ class PublicSurfaceTests(unittest.TestCase):
             "MarketDataSnapshot",
             "MarketDataSnapshotTimingStatus",
             "MarketDataSnapshotPolicy",
-            "MarketDataRelationshipRequest",
             "ValidatedMarketDataSnapshot",
             "transform_market_data",
         )
@@ -5529,8 +5600,8 @@ class BindingReferenceSurfaceAndConstructorTests(unittest.TestCase):
         self.assertEqual(
             market_data.__all__[:42], self.EXPECTED_3C3_PUBLIC_NAMES
         )
-        self.assertEqual(market_data.__all__[42:], additions)
-        self.assertEqual(len(market_data.__all__), 45)
+        self.assertEqual(market_data.__all__[42:45], additions)
+        self.assertEqual(len(market_data.__all__), 50)
         self.assertTrue(all(hasattr(market_data, name) for name in additions))
 
         factory_signature = inspect.signature(market_data_binding_reference)
@@ -5563,9 +5634,6 @@ class BindingReferenceSurfaceAndConstructorTests(unittest.TestCase):
             ("semantic_observation_key", "selected_record_id"),
         )
         unauthorized = (
-            "MarketDataRelationshipRequest",
-            "MarketDataRelationshipGroup",
-            "MarketDataRelationshipRole",
             "MarketDataRelationshipAssessment",
             "MarketDataRelationshipStatus",
             "MarketDataRelationshipIssue",
@@ -6002,6 +6070,1147 @@ class BindingReferencePurityTests(unittest.TestCase):
         for token in prohibited:
             with self.subTest(token=token):
                 self.assertNotIn(token, source)
+
+
+class RelationshipSurfaceAndEnumTests(unittest.TestCase):
+    def test_public_surface_has_exact_prefix_suffix_and_count(self) -> None:
+        expected_prefix = (
+            BindingReferenceSurfaceAndConstructorTests
+            .EXPECTED_3C3_PUBLIC_NAMES
+        ) + (
+            "MarketDataBindingReference",
+            "market_data_binding_reference",
+            "resolve_market_data_binding_reference",
+        )
+        expected_suffix = (
+            "MarketDataRelationshipGroupKind",
+            "MarketDataRelationshipRole",
+            "MarketDataRelationshipGroupMember",
+            "MarketDataRelationshipGroup",
+            "MarketDataRelationshipRequest",
+        )
+        self.assertEqual(market_data.__all__[:45], expected_prefix)
+        self.assertEqual(market_data.__all__[45:], expected_suffix)
+        self.assertEqual(len(market_data.__all__), 50)
+        self.assertTrue(all(
+            hasattr(market_data, name) for name in expected_suffix
+        ))
+
+    def test_enums_have_exact_declaration_order_and_values(self) -> None:
+        self.assertEqual(
+            tuple(MarketDataRelationshipGroupKind),
+            (
+                MarketDataRelationshipGroupKind
+                .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+                MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+                MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1,
+                MarketDataRelationshipGroupKind
+                .OPTION_CONTRACT_REFERENCE_V0_1,
+            ),
+        )
+        self.assertEqual(
+            tuple(kind.value for kind in MarketDataRelationshipGroupKind),
+            (
+                "underlying_option_quote_snapshot_v0.1",
+                "option_quote_analytics_v0.1",
+                "option_activity_v0.1",
+                "option_contract_reference_v0.1",
+            ),
+        )
+        self.assertEqual(
+            tuple(role.value for role in MarketDataRelationshipRole),
+            (
+                "underlying_quote",
+                "option_quote",
+                "option_implied_volatility",
+                "option_greeks",
+                "option_volume",
+                "option_open_interest",
+                "option_contract_reference",
+            ),
+        )
+
+    def test_dataclass_fields_frozen_behavior_and_structural_equality(self) -> None:
+        expected_fields = {
+            MarketDataRelationshipGroupMember: ("role", "reference"),
+            MarketDataRelationshipGroup: ("group_id", "group_kind", "members"),
+            MarketDataRelationshipRequest: ("groups",),
+        }
+        for artifact, names in expected_fields.items():
+            with self.subTest(artifact=artifact.__name__):
+                self.assertEqual(
+                    tuple(field.name for field in dataclasses.fields(artifact)),
+                    names,
+                )
+        first_group = build_relationship_group()
+        second_group = build_relationship_group()
+        self.assertEqual(first_group, second_group)
+        first_request = MarketDataRelationshipRequest((first_group,))
+        second_request = MarketDataRelationshipRequest((second_group,))
+        self.assertEqual(first_request, second_request)
+        with self.assertRaises(FrozenInstanceError):
+            first_group.group_id = "changed"  # type: ignore[misc]
+        with self.assertRaises(FrozenInstanceError):
+            first_request.groups = ()  # type: ignore[misc]
+
+    def test_no_unauthorized_public_or_later_artifacts_exist(self) -> None:
+        unauthorized = (
+            "MarketDataRelationshipResolver",
+            "resolve_market_data_relationships",
+            "MarketDataRelationshipPolicy",
+            "MarketDataRelationshipStatus",
+            "MarketDataRelationshipReasonCode",
+            "MarketDataRelationshipIssue",
+            "MarketDataRelationshipAssessment",
+            "MarketDataRelationshipResult",
+            "MarketDataRelationshipSelection",
+        )
+        self.assertTrue(all(
+            not hasattr(market_data, name) for name in unauthorized
+        ))
+        self.assertNotIn("request_id", {
+            field.name
+            for field in dataclasses.fields(MarketDataRelationshipRequest)
+        })
+
+        source_path = ROOT / "src" / "convexity_hunter" / "market_data.py"
+        module = ast.parse(source_path.read_text(encoding="utf-8"))
+        resolver_index = next(
+            index
+            for index, node in enumerate(module.body)
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "resolve_market_data_binding_reference"
+        )
+        definitions = tuple(
+            node
+            for node in module.body[resolver_index + 1:]
+            if isinstance(
+                node,
+                (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef),
+            )
+        )
+        expected_public_definitions = {
+            "MarketDataRelationshipGroupKind",
+            "MarketDataRelationshipRole",
+            "MarketDataRelationshipGroupMember",
+            "MarketDataRelationshipGroup",
+            "MarketDataRelationshipRequest",
+        }
+        self.assertEqual(
+            {
+                node.name
+                for node in definitions
+                if not node.name.startswith("_")
+            },
+            expected_public_definitions,
+        )
+        self.assertTrue(all(
+            node.name in expected_public_definitions
+            or node.name.startswith("_")
+            for node in definitions
+        ))
+
+
+class RelationshipMemberTests(unittest.TestCase):
+    def test_member_retains_identity_is_frozen_and_structurally_equal(self) -> None:
+        role = MarketDataRelationshipRole.OPTION_QUOTE
+        reference = build_relationship_reference("member")
+        member = MarketDataRelationshipGroupMember(role, reference)
+        equal = MarketDataRelationshipGroupMember(
+            role,
+            build_relationship_reference("member"),
+        )
+        self.assertIs(member.role, role)
+        self.assertIs(member.reference, reference)
+        self.assertEqual(member, equal)
+        with self.assertRaises(FrozenInstanceError):
+            member.role = MarketDataRelationshipRole.OPTION_GREEKS  # type: ignore[misc]
+
+    def test_member_requires_exact_role_and_reference_types(self) -> None:
+        class ForeignRole(str, market_data.Enum):
+            OPTION_QUOTE = "option_quote"
+
+        reference = build_relationship_reference("exact-member")
+
+        class ReferenceSubclass(MarketDataBindingReference):
+            pass
+
+        reference_subclass = ReferenceSubclass(
+            reference.semantic_observation_key,
+            reference.selected_record_id,
+        )
+        for role in (ForeignRole.OPTION_QUOTE, "option_quote", object()):
+            with self.subTest(role=role):
+                with self.assertRaisesRegex(TypeError, "role"):
+                    MarketDataRelationshipGroupMember(role, reference)
+        for invalid in (reference_subclass, object(), "reference"):
+            with self.subTest(reference_type=type(invalid).__name__):
+                with self.assertRaisesRegex(TypeError, "reference"):
+                    MarketDataRelationshipGroupMember(
+                        MarketDataRelationshipRole.OPTION_QUOTE,
+                        invalid,
+                    )
+
+    def test_member_role_error_precedes_reference_error(self) -> None:
+        with self.assertRaisesRegex(TypeError, "role"):
+            MarketDataRelationshipGroupMember(object(), object())
+
+
+class RelationshipGroupGrammarTests(unittest.TestCase):
+    def test_group_id_exact_string_strip_and_unicode_behavior(self) -> None:
+        cases = (
+            (" \tGroup ID\n ", "Group ID"),
+            ("\u00a0\u2003Unicode ID\u2003", "Unicode ID"),
+            ("Internal  Space", "Internal  Space"),
+            ("MiXeD", "MiXeD"),
+            ("组-é", "组-é"),
+        )
+        for supplied, expected in cases:
+            with self.subTest(supplied=repr(supplied)):
+                self.assertEqual(
+                    build_relationship_group(supplied).group_id,
+                    expected,
+                )
+        self.assertNotEqual(
+            build_relationship_group("é").group_id,
+            build_relationship_group("e\u0301").group_id,
+        )
+        for value in (" \t\n", "\u00a0\u2003"):
+            with self.subTest(empty=repr(value)):
+                with self.assertRaisesRegex(ValueError, "group_id"):
+                    build_relationship_group(value)
+
+        class StringSubclass(str):
+            pass
+
+        with self.assertRaisesRegex(TypeError, "group_id"):
+            build_relationship_group(StringSubclass("group"))
+
+    def test_member_collection_exact_boundaries_and_elements(self) -> None:
+        members = list(build_relationship_group().members)
+        self.assertEqual(build_relationship_group(members=members).members,
+                         tuple(members))
+        self.assertEqual(build_relationship_group(members=tuple(members)).members,
+                         tuple(members))
+
+        class TupleSubclass(tuple):
+            pass
+
+        class ListSubclass(list):
+            pass
+
+        class ArbitraryIterable:
+            def __iter__(self):
+                return iter(members)
+
+        class ForeignKind(str, market_data.Enum):
+            SNAPSHOT = "underlying_option_quote_snapshot_v0.1"
+
+        for invalid_kind in (
+            ForeignKind.SNAPSHOT,
+            "underlying_option_quote_snapshot_v0.1",
+            object(),
+        ):
+            with self.subTest(group_kind=invalid_kind):
+                with self.assertRaisesRegex(TypeError, "group_kind"):
+                    build_relationship_group(group_kind=invalid_kind)
+
+        invalid_containers = (
+            TupleSubclass(members),
+            ListSubclass(members),
+            (member for member in members),
+            set(members),
+            {"member": members[0]},
+            ArbitraryIterable(),
+        )
+        for invalid in invalid_containers:
+            with self.subTest(container=type(invalid).__name__):
+                with self.assertRaisesRegex(TypeError, "members"):
+                    build_relationship_group(members=invalid)
+        with self.assertRaisesRegex(TypeError, "members item"):
+            build_relationship_group(members=(members[0], object()))
+
+        class MemberSubclass(MarketDataRelationshipGroupMember):
+            pass
+
+        base = members[0]
+        subclass = MemberSubclass(base.role, base.reference)
+        with self.assertRaisesRegex(TypeError, "members item"):
+            build_relationship_group(members=(subclass, members[1]))
+
+    def test_snapshot_and_analytics_valid_forms(self) -> None:
+        snapshot = build_relationship_group()
+        self.assertEqual(
+            tuple(member.role for member in snapshot.members),
+            (
+                MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                MarketDataRelationshipRole.OPTION_QUOTE,
+            ),
+        )
+        analytics_kind = (
+            MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1
+        )
+        valid_role_sets = (
+            (
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+            ),
+            (
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_GREEKS,
+            ),
+            (
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                MarketDataRelationshipRole.OPTION_GREEKS,
+            ),
+        )
+        for case_index, roles in enumerate(valid_role_sets):
+            with self.subTest(roles=roles):
+                members = tuple(
+                    build_relationship_member(role, f"analytics-{case_index}-{i}")
+                    for i, role in enumerate(reversed(roles))
+                )
+                group = build_relationship_group(
+                    f"analytics-{case_index}", analytics_kind, members
+                )
+                self.assertEqual(
+                    tuple(member.role for member in group.members), roles
+                )
+
+    def test_activity_valid_forms_and_canonical_order(self) -> None:
+        kind = MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1
+        valid_role_sets = (
+            (
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+            ),
+            (
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+            ),
+        )
+        for case_index, roles in enumerate(valid_role_sets):
+            members = tuple(
+                build_relationship_member(role, f"activity-{case_index}-{i}")
+                for i, role in enumerate(reversed(roles))
+            )
+            group = build_relationship_group(
+                f"activity-{case_index}", kind, members
+            )
+            self.assertEqual(
+                tuple(member.role for member in group.members), roles
+            )
+
+    def test_contract_reference_valid_optional_role_forms(self) -> None:
+        kind = (
+            MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1
+        )
+        optional_roles = (
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+            MarketDataRelationshipRole.OPTION_GREEKS,
+            MarketDataRelationshipRole.OPTION_VOLUME,
+            MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+        )
+        contract_role = MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+        subset_count = 0
+        for subset_size in range(1, len(optional_roles) + 1):
+            for selected_roles in itertools.combinations(
+                optional_roles, subset_size
+            ):
+                subset_count += 1
+                supplied_members = tuple(
+                    build_relationship_member(
+                        role,
+                        f"contract-{subset_size}-{subset_count}-{index}",
+                    )
+                    for index, role in enumerate(
+                        tuple(reversed(selected_roles)) + (contract_role,)
+                    )
+                )
+                expected_roles = tuple(
+                    role
+                    for role in MarketDataRelationshipRole
+                    if role in selected_roles or role is contract_role
+                )
+                expected_members = tuple(
+                    next(
+                        member
+                        for member in supplied_members
+                        if member.role is role
+                    )
+                    for role in expected_roles
+                )
+                with self.subTest(selected_roles=selected_roles):
+                    group = build_relationship_group(
+                        f"contract-subset-{subset_count}",
+                        kind,
+                        supplied_members,
+                    )
+                    self.assertEqual(
+                        tuple(member.role for member in group.members),
+                        expected_roles,
+                    )
+                    self.assertEqual(len(group.members), subset_size + 1)
+                    for stored, supplied in zip(
+                        group.members, expected_members
+                    ):
+                        self.assertIs(stored, supplied)
+        self.assertEqual(subset_count, 31)
+
+    def test_every_prohibited_role_is_rejected_for_each_kind(self) -> None:
+        allowed_roles = {
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1: {
+                MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                MarketDataRelationshipRole.OPTION_QUOTE,
+            },
+            MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1: {
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                MarketDataRelationshipRole.OPTION_GREEKS,
+            },
+            MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1: {
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+            },
+            MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1: {
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                MarketDataRelationshipRole.OPTION_GREEKS,
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+            },
+        }
+        for kind, allowed in allowed_roles.items():
+            for role in MarketDataRelationshipRole:
+                if role in allowed:
+                    continue
+                with self.subTest(kind=kind, role=role):
+                    with self.assertRaisesRegex(ValueError, "prohibited"):
+                        build_relationship_group(
+                            "prohibited",
+                            kind,
+                            (build_relationship_member(role, "prohibited"),),
+                        )
+
+    def test_required_and_singular_cardinalities_are_enforced(self) -> None:
+        snapshot_kind = (
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+        )
+        analytics_kind = (
+            MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1
+        )
+        activity_kind = MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1
+        contract_kind = (
+            MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1
+        )
+        missing_cases = (
+            (snapshot_kind, (MarketDataRelationshipRole.OPTION_QUOTE,)),
+            (snapshot_kind, (MarketDataRelationshipRole.UNDERLYING_QUOTE,)),
+            (analytics_kind, (MarketDataRelationshipRole.OPTION_GREEKS,)),
+            (activity_kind, (MarketDataRelationshipRole.OPTION_OPEN_INTEREST,)),
+            (activity_kind, (MarketDataRelationshipRole.OPTION_VOLUME,)),
+            (contract_kind, (MarketDataRelationshipRole.OPTION_QUOTE,)),
+        )
+        for case_index, (kind, roles) in enumerate(missing_cases):
+            with self.subTest(kind=kind, roles=roles):
+                with self.assertRaisesRegex(ValueError, "minimum"):
+                    build_relationship_group(
+                        f"missing-{case_index}",
+                        kind,
+                        tuple(
+                            build_relationship_member(role, f"missing-{case_index}-{i}")
+                            for i, role in enumerate(roles)
+                        ),
+                    )
+
+        maximum_one_cases = (
+            (
+                snapshot_kind,
+                MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                (
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                ),
+            ),
+            (
+                snapshot_kind,
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                (
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                ),
+            ),
+            (
+                analytics_kind,
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                (
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                ),
+            ),
+            (
+                analytics_kind,
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                (
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                ),
+            ),
+            (
+                analytics_kind,
+                MarketDataRelationshipRole.OPTION_GREEKS,
+                (
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    MarketDataRelationshipRole.OPTION_GREEKS,
+                ),
+            ),
+            (
+                activity_kind,
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                (
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    MarketDataRelationshipRole.OPTION_VOLUME,
+                    MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                ),
+            ),
+            (
+                activity_kind,
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                (
+                    MarketDataRelationshipRole.OPTION_VOLUME,
+                    MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                ),
+            ),
+            (
+                activity_kind,
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                (
+                    MarketDataRelationshipRole.OPTION_VOLUME,
+                    MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                ),
+            ),
+            (
+                contract_kind,
+                MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                (
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                ),
+            ),
+            (
+                contract_kind,
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                (
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                ),
+            ),
+            (
+                contract_kind,
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                (
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                ),
+            ),
+            (
+                contract_kind,
+                MarketDataRelationshipRole.OPTION_GREEKS,
+                (
+                    MarketDataRelationshipRole.OPTION_GREEKS,
+                    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                ),
+            ),
+            (
+                contract_kind,
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                (
+                    MarketDataRelationshipRole.OPTION_VOLUME,
+                    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                ),
+            ),
+            (
+                contract_kind,
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                (
+                    MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                ),
+            ),
+        )
+        self.assertEqual(len(maximum_one_cases), 14)
+        for case_index, (kind, target_role, valid_roles) in enumerate(
+            maximum_one_cases
+        ):
+            roles = valid_roles + (target_role,)
+            with self.subTest(kind=kind, target_role=target_role):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    f"{target_role.value}.*maximum",
+                ):
+                    build_relationship_group(
+                        f"maximum-one-{case_index}",
+                        kind,
+                        tuple(
+                            build_relationship_member(
+                                role,
+                                f"maximum-one-{case_index}-{i}",
+                            )
+                            for i, role in enumerate(roles)
+                        ),
+                    )
+
+    def test_aggregate_constraints_are_enforced(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError, "implied volatility or Greeks"
+        ):
+            build_relationship_group(
+                "analytics-aggregate",
+                MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+                (build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    "analytics-quote",
+                ),),
+            )
+        with self.assertRaisesRegex(ValueError, "non-reference role"):
+            build_relationship_group(
+                "contract-aggregate",
+                MarketDataRelationshipGroupKind
+                .OPTION_CONTRACT_REFERENCE_V0_1,
+                (build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                    "contract-reference",
+                ),),
+            )
+
+
+class RelationshipGroupDuplicateAndCanonicalizationTests(unittest.TestCase):
+    def test_complete_reference_duplicates_are_rejected_across_roles(self) -> None:
+        reference = build_relationship_reference("duplicate")
+        structurally_equal = MarketDataBindingReference(
+            reference.semantic_observation_key,
+            reference.selected_record_id,
+        )
+        cases = (
+            (
+                build_relationship_member(
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                    reference=reference,
+                ),
+                build_relationship_member(
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                    reference=reference,
+                ),
+            ),
+            (
+                build_relationship_member(
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                    reference=reference,
+                ),
+                build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    reference=reference,
+                ),
+            ),
+            (
+                build_relationship_member(
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                    reference=reference,
+                ),
+                build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    reference=structurally_equal,
+                ),
+            ),
+        )
+        for members in cases:
+            with self.subTest(roles=tuple(member.role for member in members)):
+                with self.assertRaisesRegex(ValueError, "duplicate reference"):
+                    build_relationship_group(members=members)
+
+    def test_partial_reference_matches_are_distinct_then_cardinality_applies(self) -> None:
+        same_key = "semantic-observation-v0.1:same"
+        same_id = "same-record"
+        pairs = (
+            (
+                build_relationship_reference(
+                    "a", semantic_key=same_key, record_id="record-a"
+                ),
+                build_relationship_reference(
+                    "b", semantic_key=same_key, record_id="record-b"
+                ),
+            ),
+            (
+                build_relationship_reference(
+                    "c", semantic_key="key-c", record_id=same_id
+                ),
+                build_relationship_reference(
+                    "d", semantic_key="key-d", record_id=same_id
+                ),
+            ),
+        )
+        for first, second in pairs:
+            with self.subTest(first=first, second=second):
+                with self.assertRaisesRegex(ValueError, "maximum"):
+                    build_relationship_group(members=(
+                        build_relationship_member(
+                            MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                            reference=first,
+                        ),
+                        build_relationship_member(
+                            MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                            reference=second,
+                        ),
+                        build_relationship_member(
+                            MarketDataRelationshipRole.OPTION_QUOTE,
+                            "distinct-option",
+                        ),
+                    ))
+
+    def test_member_order_is_canonical_and_caller_order_independent(self) -> None:
+        underlying = build_relationship_member(
+            MarketDataRelationshipRole.UNDERLYING_QUOTE, "canonical-underlying"
+        )
+        option = build_relationship_member(
+            MarketDataRelationshipRole.OPTION_QUOTE, "canonical-option"
+        )
+        forward = build_relationship_group(members=(underlying, option))
+        reverse = build_relationship_group(members=(option, underlying))
+        self.assertEqual(forward, reverse)
+        self.assertEqual(forward.members, (underlying, option))
+        self.assertIs(reverse.members[0], underlying)
+        self.assertIs(reverse.members[1], option)
+
+    def test_private_member_sort_key_uses_secondary_and_tertiary_strings(self) -> None:
+        role = MarketDataRelationshipRole.OPTION_QUOTE
+        members = (
+            build_relationship_member(
+                role,
+                reference=build_relationship_reference(
+                    "z", semantic_key="key-z", record_id="record-a"
+                ),
+            ),
+            build_relationship_member(
+                role,
+                reference=build_relationship_reference(
+                    "a2", semantic_key="key-a", record_id="record-z"
+                ),
+            ),
+            build_relationship_member(
+                role,
+                reference=build_relationship_reference(
+                    "a1", semantic_key="key-a", record_id="record-a"
+                ),
+            ),
+        )
+        canonical = market_data._canonicalize_relationship_group_members(
+            members
+        )
+        self.assertEqual(
+            tuple(
+                (
+                    member.reference.semantic_observation_key,
+                    member.reference.selected_record_id,
+                )
+                for member in canonical
+            ),
+            (
+                ("key-a", "record-a"),
+                ("key-a", "record-z"),
+                ("key-z", "record-a"),
+            ),
+        )
+
+    def test_canonicalization_is_locale_free_nonmutating_and_retains_identity(self) -> None:
+        underlying = build_relationship_member(
+            MarketDataRelationshipRole.UNDERLYING_QUOTE,
+            reference=build_relationship_reference(
+                "unicode-z", semantic_key="é", record_id="z"
+            ),
+        )
+        option = build_relationship_member(
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            reference=build_relationship_reference(
+                "unicode-a", semantic_key="e\u0301", record_id="a"
+            ),
+        )
+        supplied = [option, underlying]
+        before = tuple(supplied)
+        original_strxfrm = locale.strxfrm
+        original_strcoll = locale.strcoll
+
+        def fail(value):
+            raise AssertionError(value)
+
+        locale.strxfrm = fail
+        locale.strcoll = lambda first, second: fail((first, second))
+        try:
+            group = build_relationship_group(members=supplied)
+        finally:
+            locale.strxfrm = original_strxfrm
+            locale.strcoll = original_strcoll
+        self.assertEqual(tuple(supplied), before)
+        self.assertIs(group.members[0], underlying)
+        self.assertIs(group.members[0].reference, underlying.reference)
+        self.assertIs(group.group_kind,
+                      MarketDataRelationshipGroupKind
+                      .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1)
+
+
+class RelationshipRequestTests(unittest.TestCase):
+    def test_request_exact_collection_boundaries_elements_and_empty(self) -> None:
+        group = build_relationship_group()
+        self.assertIs(MarketDataRelationshipRequest([group]).groups[0], group)
+        self.assertIs(MarketDataRelationshipRequest((group,)).groups[0], group)
+
+        class TupleSubclass(tuple):
+            pass
+
+        class ListSubclass(list):
+            pass
+
+        class ArbitraryIterable:
+            def __iter__(self):
+                return iter((group,))
+
+        invalid = (
+            TupleSubclass((group,)),
+            ListSubclass((group,)),
+            (item for item in (group,)),
+            {group},
+            {"group": group},
+            ArbitraryIterable(),
+        )
+        for value in invalid:
+            with self.subTest(container=type(value).__name__):
+                with self.assertRaisesRegex(TypeError, "groups"):
+                    MarketDataRelationshipRequest(value)
+        with self.assertRaisesRegex(ValueError, "at least one"):
+            MarketDataRelationshipRequest(())
+        with self.assertRaisesRegex(TypeError, "groups item"):
+            MarketDataRelationshipRequest((object(),))
+
+        class GroupSubclass(MarketDataRelationshipGroup):
+            pass
+
+        subclass = GroupSubclass(group.group_id, group.group_kind, group.members)
+        with self.assertRaisesRegex(TypeError, "groups item"):
+            MarketDataRelationshipRequest((subclass,))
+
+    def test_duplicate_normalized_group_ids_are_rejected(self) -> None:
+        first = build_relationship_group("duplicate-id")
+        second = build_relationship_group("  duplicate-id  ")
+        with self.assertRaisesRegex(ValueError, "duplicate group_id"):
+            MarketDataRelationshipRequest((first, second))
+
+    def test_request_order_is_group_id_only_nonmutating_and_identity_retaining(self) -> None:
+        code_point_first = build_relationship_group("e\u0301")
+        code_point_second = build_relationship_group("é")
+        ascii_group = build_relationship_group("A")
+        supplied = [code_point_second, ascii_group, code_point_first]
+        before = tuple(supplied)
+        expected_ids = ("A", "e\u0301", "é")
+        expected_by_id = {group.group_id: group for group in supplied}
+        original_strxfrm = locale.strxfrm
+        original_strcoll = locale.strcoll
+
+        def fail(value):
+            raise AssertionError(value)
+
+        locale.strxfrm = fail
+        locale.strcoll = lambda first, second: fail((first, second))
+        try:
+            request = MarketDataRelationshipRequest(supplied)
+            reverse_request = MarketDataRelationshipRequest(
+                tuple(reversed(supplied))
+            )
+            self.assertEqual(tuple(supplied), before)
+            self.assertEqual(
+                tuple(group.group_id for group in request.groups),
+                expected_ids,
+            )
+            for group in request.groups:
+                self.assertIs(group, expected_by_id[group.group_id])
+            self.assertEqual(request, reverse_request)
+        finally:
+            locale.strxfrm = original_strxfrm
+            locale.strcoll = original_strcoll
+
+    def test_reference_reuse_and_identical_contents_under_distinct_ids_allowed(self) -> None:
+        underlying = build_relationship_member(
+            MarketDataRelationshipRole.UNDERLYING_QUOTE, "shared-underlying"
+        )
+        option = build_relationship_member(
+            MarketDataRelationshipRole.OPTION_QUOTE, "shared-option"
+        )
+        first = build_relationship_group("first", members=(underlying, option))
+        second = build_relationship_group("second", members=(underlying, option))
+        request = MarketDataRelationshipRequest((second, first))
+        self.assertEqual(tuple(group.group_id for group in request.groups),
+                         ("first", "second"))
+        self.assertIs(request.groups[0].members[0].reference,
+                      request.groups[1].members[0].reference)
+
+
+class RelationshipValidationPrecedenceTests(unittest.TestCase):
+    def test_member_and_initial_group_type_precedence(self) -> None:
+        with self.assertRaisesRegex(TypeError, "role"):
+            MarketDataRelationshipGroupMember(object(), object())
+        with self.assertRaisesRegex(TypeError, "group_id"):
+            MarketDataRelationshipGroup(object(), object(), object())
+        with self.assertRaisesRegex(TypeError, "group_kind"):
+            MarketDataRelationshipGroup("group", object(), object())
+        with self.assertRaisesRegex(TypeError, "members"):
+            MarketDataRelationshipGroup(
+                "group",
+                MarketDataRelationshipGroupKind
+                .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+                object(),
+            )
+        with self.assertRaisesRegex(TypeError, "members item"):
+            MarketDataRelationshipGroup(
+                "   ",
+                MarketDataRelationshipGroupKind
+                .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+                (object(),),
+            )
+
+    def test_group_value_duplicate_prohibition_and_cardinality_precedence(self) -> None:
+        with self.assertRaisesRegex(ValueError, "group_id"):
+            MarketDataRelationshipGroup(
+                "   ",
+                MarketDataRelationshipGroupKind
+                .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+                (),
+            )
+        duplicate = build_relationship_reference("precedence-duplicate")
+        with self.assertRaisesRegex(ValueError, "duplicate reference"):
+            build_relationship_group(members=(
+                build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_GREEKS,
+                    reference=duplicate,
+                ),
+                build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    reference=duplicate,
+                ),
+            ))
+        with self.assertRaisesRegex(ValueError, "prohibited"):
+            build_relationship_group(members=(
+                build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_GREEKS,
+                    "precedence-prohibited",
+                ),
+                build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    "precedence-quote-a",
+                ),
+                build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    "precedence-quote-b",
+                ),
+            ))
+
+    def test_declaration_aggregate_and_request_precedence(self) -> None:
+        with self.assertRaisesRegex(ValueError, "underlying_quote.*minimum"):
+            build_relationship_group(members=(
+                build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    "precedence-option-a",
+                ),
+                build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    "precedence-option-b",
+                ),
+            ))
+        with self.assertRaisesRegex(ValueError, "option_quote.*minimum"):
+            build_relationship_group(
+                "analytics-precedence",
+                MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+                (build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                    "analytics-precedence-iv",
+                ),),
+            )
+        with self.assertRaisesRegex(
+            ValueError, "implied volatility or Greeks"
+        ):
+            build_relationship_group(
+                "aggregate-last",
+                MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+                (build_relationship_member(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    "aggregate-last-quote",
+                ),),
+            )
+        with self.assertRaisesRegex(ValueError, "option_quote.*maximum"):
+            build_relationship_group(
+                "analytics-cardinality-before-aggregate",
+                MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+                (
+                    build_relationship_member(
+                        MarketDataRelationshipRole.OPTION_QUOTE,
+                        "analytics-quote-first",
+                    ),
+                    build_relationship_member(
+                        MarketDataRelationshipRole.OPTION_QUOTE,
+                        "analytics-quote-second",
+                    ),
+                ),
+            )
+        with self.assertRaisesRegex(
+            ValueError, "option_contract_reference.*maximum"
+        ):
+            build_relationship_group(
+                "contract-cardinality-before-aggregate",
+                MarketDataRelationshipGroupKind
+                .OPTION_CONTRACT_REFERENCE_V0_1,
+                (
+                    build_relationship_member(
+                        MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                        "contract-reference-first",
+                    ),
+                    build_relationship_member(
+                        MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                        "contract-reference-second",
+                    ),
+                ),
+            )
+        with self.assertRaisesRegex(TypeError, "groups"):
+            MarketDataRelationshipRequest(object())
+        with self.assertRaisesRegex(TypeError, "groups item"):
+            MarketDataRelationshipRequest((object(),))
+
+        original_duplicate = market_data._validate_unique_relationship_group_ids
+        original_canonicalize = (
+            market_data._canonicalize_relationship_request_groups
+        )
+        try:
+            market_data._validate_unique_relationship_group_ids = (
+                lambda groups: (_ for _ in ()).throw(
+                    AssertionError("duplicate check reached")
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "at least one"):
+                MarketDataRelationshipRequest(())
+        finally:
+            market_data._validate_unique_relationship_group_ids = original_duplicate
+
+        duplicate_a = build_relationship_group("duplicate-before-sort")
+        duplicate_b = build_relationship_group(" duplicate-before-sort ")
+        try:
+            market_data._canonicalize_relationship_request_groups = (
+                lambda groups: (_ for _ in ()).throw(
+                    AssertionError("canonical sorting reached")
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate group_id"):
+                MarketDataRelationshipRequest((duplicate_a, duplicate_b))
+        finally:
+            market_data._canonicalize_relationship_request_groups = (
+                original_canonicalize
+            )
+
+
+class RelationshipPurityAndScopeTests(unittest.TestCase):
+    def test_construction_never_calls_resolution_or_semantic_identity(self) -> None:
+        original_resolver = market_data.resolve_market_data_binding_reference
+        original_semantic_key = market_data.semantic_observation_key
+
+        def fail(*args, **kwargs):
+            raise AssertionError((args, kwargs))
+
+        try:
+            market_data.resolve_market_data_binding_reference = fail
+            market_data.semantic_observation_key = fail
+            group = build_relationship_group()
+            request = MarketDataRelationshipRequest((group,))
+            self.assertIs(request.groups[0], group)
+        finally:
+            market_data.resolve_market_data_binding_reference = original_resolver
+            market_data.semantic_observation_key = original_semantic_key
+
+    def test_construction_never_accesses_timing_properties_or_records(self) -> None:
+        property_names = (
+            "is_temporally_coherent",
+            "reason_codes",
+            "common_freshness_policy",
+            "common_freshness_context",
+            "effective_time_span_seconds",
+            "source_observation_span_seconds",
+        )
+        originals = {
+            name: getattr(MarketDataSnapshotTimingAssessment, name)
+            for name in property_names
+        }
+
+        def fail_on_access(_assessment):
+            raise AssertionError("timing property accessed")
+
+        try:
+            for name in property_names:
+                setattr(
+                    MarketDataSnapshotTimingAssessment,
+                    name,
+                    property(fail_on_access),
+                )
+            group = build_relationship_group()
+            self.assertEqual(len(MarketDataRelationshipRequest((group,)).groups), 1)
+        finally:
+            for name, descriptor in originals.items():
+                setattr(MarketDataSnapshotTimingAssessment, name, descriptor)
+
+        source = "\n".join((
+            inspect.getsource(MarketDataRelationshipGroupMember),
+            inspect.getsource(market_data._validate_relationship_group_grammar),
+            inspect.getsource(MarketDataRelationshipGroup),
+            inspect.getsource(MarketDataRelationshipRequest),
+        ))
+        prohibited = (
+            "resolve_market_data_binding_reference(",
+            "semantic_observation_key(",
+            "MarketDataSnapshotTimingAssessment",
+            ".selected_record",
+            "UnderlyingQuoteObservation",
+            "OptionQuoteObservation",
+            "RateCurvePointObservation",
+            "DividendObservation",
+            "CalculationLineage(",
+        )
+        for token in prohibited:
+            with self.subTest(token=token):
+                self.assertNotIn(token, source)
+
+    def test_no_downstream_rate_dividend_selection_or_external_api(self) -> None:
+        self.assertTrue(all(
+            "RATE" not in role.name and "DIVIDEND" not in role.name
+            for role in MarketDataRelationshipRole
+        ))
+        self.assertTrue(all(
+            "RATE" not in kind.name and "DIVIDEND" not in kind.name
+            for kind in MarketDataRelationshipGroupKind
+        ))
+        unauthorized = (
+            "resolve_market_data_relationships",
+            "assess_market_data_relationships",
+            "select_market_data_relationships",
+            "MarketDataRelationshipAssessment",
+            "MarketDataRelationshipStatus",
+            "MarketDataRelationshipReasonCode",
+            "MarketDataRelationshipIssue",
+            "MarketDataRelationshipResult",
+            "MarketDataRelationshipSelection",
+        )
+        self.assertTrue(all(
+            not hasattr(market_data, name) for name in unauthorized
+        ))
 
 
 class ImportAndDeterminismTests(unittest.TestCase):

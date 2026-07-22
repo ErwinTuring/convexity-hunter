@@ -56,6 +56,11 @@ __all__ = (
     "MarketDataBindingReference",
     "market_data_binding_reference",
     "resolve_market_data_binding_reference",
+    "MarketDataRelationshipGroupKind",
+    "MarketDataRelationshipRole",
+    "MarketDataRelationshipGroupMember",
+    "MarketDataRelationshipGroup",
+    "MarketDataRelationshipRequest",
 )
 
 
@@ -3029,3 +3034,262 @@ def resolve_market_data_binding_reference(
             "reference must resolve to exactly one binding in timing_assessment"
         )
     return matches[0]
+
+
+class MarketDataRelationshipGroupKind(str, Enum):
+    """Closed relationship-group grammar versions."""
+
+    UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1 = (
+        "underlying_option_quote_snapshot_v0.1"
+    )
+    OPTION_QUOTE_ANALYTICS_V0_1 = "option_quote_analytics_v0.1"
+    OPTION_ACTIVITY_V0_1 = "option_activity_v0.1"
+    OPTION_CONTRACT_REFERENCE_V0_1 = "option_contract_reference_v0.1"
+
+
+class MarketDataRelationshipRole(str, Enum):
+    """Closed roles for explicit market-data relationships."""
+
+    UNDERLYING_QUOTE = "underlying_quote"
+    OPTION_QUOTE = "option_quote"
+    OPTION_IMPLIED_VOLATILITY = "option_implied_volatility"
+    OPTION_GREEKS = "option_greeks"
+    OPTION_VOLUME = "option_volume"
+    OPTION_OPEN_INTEREST = "option_open_interest"
+    OPTION_CONTRACT_REFERENCE = "option_contract_reference"
+
+
+_RELATIONSHIP_GROUP_KIND_INDEX = {
+    kind: index
+    for index, kind in enumerate(MarketDataRelationshipGroupKind)
+}
+
+_RELATIONSHIP_ROLE_INDEX = {
+    role: index
+    for index, role in enumerate(MarketDataRelationshipRole)
+}
+
+_RELATIONSHIP_GROUP_CARDINALITIES = (
+    # UQ       OQ       IV       Greeks   Volume   OI       ContractRef
+    ((1, 1), (1, 1), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)),
+    ((0, 0), (1, 1), (0, 1), (0, 1), (0, 0), (0, 0), (0, 0)),
+    ((0, 0), (0, 1), (0, 0), (0, 0), (1, 1), (1, 1), (0, 0)),
+    ((0, 0), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (1, 1)),
+)
+
+
+def _normalize_relationship_group_id(group_id: object) -> str:
+    """Require, strip, and return an exact nonempty built-in string."""
+
+    if type(group_id) is not str:
+        raise TypeError("group_id must be an exact string")
+    normalized = group_id.strip()
+    if not normalized:
+        raise ValueError("group_id must not be empty")
+    return normalized
+
+
+@dataclass(frozen=True)
+class MarketDataRelationshipGroupMember:
+    """One explicit role and portable binding reference."""
+
+    role: MarketDataRelationshipRole
+    reference: MarketDataBindingReference
+
+    def __post_init__(self) -> None:
+        if type(self.role) is not MarketDataRelationshipRole:
+            raise TypeError(
+                "role must have exact type MarketDataRelationshipRole"
+            )
+        if type(self.reference) is not MarketDataBindingReference:
+            raise TypeError(
+                "reference must have exact type MarketDataBindingReference"
+            )
+
+
+def _validate_and_tuple_relationship_members(
+    members: object,
+) -> Tuple[MarketDataRelationshipGroupMember, ...]:
+    """Validate the exact member collection boundary in caller order."""
+
+    if type(members) is not tuple and type(members) is not list:
+        raise TypeError("members must be an exact tuple or list")
+    for member in members:
+        if type(member) is not MarketDataRelationshipGroupMember:
+            raise TypeError(
+                "every members item must have exact type "
+                "MarketDataRelationshipGroupMember"
+            )
+    return tuple(members)
+
+
+def _validate_unique_relationship_references(
+    members: Tuple[MarketDataRelationshipGroupMember, ...],
+) -> None:
+    """Reject complete binding-reference duplicates in caller order."""
+
+    seen = set()
+    for member in members:
+        reference_key = (
+            member.reference.semantic_observation_key,
+            member.reference.selected_record_id,
+        )
+        if reference_key in seen:
+            raise ValueError("members must not contain a duplicate reference")
+        seen.add(reference_key)
+
+
+def _validate_relationship_group_grammar(
+    group_kind: MarketDataRelationshipGroupKind,
+    members: Tuple[MarketDataRelationshipGroupMember, ...],
+) -> None:
+    """Validate role allowance, cardinality, and aggregate grammar."""
+
+    cardinalities = _RELATIONSHIP_GROUP_CARDINALITIES[
+        _RELATIONSHIP_GROUP_KIND_INDEX[group_kind]
+    ]
+    role_counts = tuple(
+        sum(member.role is role for member in members)
+        for role in MarketDataRelationshipRole
+    )
+
+    for role in MarketDataRelationshipRole:
+        role_index = _RELATIONSHIP_ROLE_INDEX[role]
+        if cardinalities[role_index] == (0, 0) and role_counts[role_index]:
+            raise ValueError(
+                f"role {role.value} is prohibited for group_kind"
+            )
+
+    for role in MarketDataRelationshipRole:
+        role_index = _RELATIONSHIP_ROLE_INDEX[role]
+        minimum, maximum = cardinalities[role_index]
+        if minimum == maximum == 0:
+            continue
+        count = role_counts[role_index]
+        if count < minimum:
+            raise ValueError(
+                f"role {role.value} violates minimum cardinality {minimum}"
+            )
+        if count > maximum:
+            raise ValueError(
+                f"role {role.value} violates maximum cardinality {maximum}"
+            )
+
+    if (
+        group_kind
+        is MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1
+    ):
+        iv_count = role_counts[_RELATIONSHIP_ROLE_INDEX[
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY
+        ]]
+        greeks_count = role_counts[_RELATIONSHIP_ROLE_INDEX[
+            MarketDataRelationshipRole.OPTION_GREEKS
+        ]]
+        if iv_count + greeks_count < 1:
+            raise ValueError(
+                "analytics group requires implied volatility or Greeks"
+            )
+    elif (
+        group_kind
+        is MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1
+    ):
+        reference_index = _RELATIONSHIP_ROLE_INDEX[
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+        ]
+        if sum(role_counts) - role_counts[reference_index] < 1:
+            raise ValueError(
+                "contract-reference group requires a non-reference role"
+            )
+
+
+def _canonicalize_relationship_group_members(
+    members: Tuple[MarketDataRelationshipGroupMember, ...],
+) -> Tuple[MarketDataRelationshipGroupMember, ...]:
+    """Return exact member objects in canonical relationship order."""
+
+    return tuple(sorted(
+        members,
+        key=lambda member: (
+            _RELATIONSHIP_ROLE_INDEX[member.role],
+            member.reference.semantic_observation_key,
+            member.reference.selected_record_id,
+        ),
+    ))
+
+
+@dataclass(frozen=True)
+class MarketDataRelationshipGroup:
+    """One validated and canonically ordered relationship group."""
+
+    group_id: str
+    group_kind: MarketDataRelationshipGroupKind
+    members: Tuple[MarketDataRelationshipGroupMember, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.group_id) is not str:
+            raise TypeError("group_id must be an exact string")
+        if type(self.group_kind) is not MarketDataRelationshipGroupKind:
+            raise TypeError(
+                "group_kind must have exact type "
+                "MarketDataRelationshipGroupKind"
+            )
+        members = _validate_and_tuple_relationship_members(self.members)
+        normalized_group_id = _normalize_relationship_group_id(self.group_id)
+        if not members:
+            raise ValueError("members must contain at least one item")
+        _validate_unique_relationship_references(members)
+        _validate_relationship_group_grammar(self.group_kind, members)
+        canonical_members = _canonicalize_relationship_group_members(members)
+        object.__setattr__(self, "group_id", normalized_group_id)
+        object.__setattr__(self, "members", canonical_members)
+
+
+def _validate_and_tuple_relationship_groups(
+    groups: object,
+) -> Tuple[MarketDataRelationshipGroup, ...]:
+    """Validate the exact group collection boundary in caller order."""
+
+    if type(groups) is not tuple and type(groups) is not list:
+        raise TypeError("groups must be an exact tuple or list")
+    for group in groups:
+        if type(group) is not MarketDataRelationshipGroup:
+            raise TypeError(
+                "every groups item must have exact type "
+                "MarketDataRelationshipGroup"
+            )
+    return tuple(groups)
+
+
+def _validate_unique_relationship_group_ids(
+    groups: Tuple[MarketDataRelationshipGroup, ...],
+) -> None:
+    """Reject duplicate normalized group IDs in caller order."""
+
+    seen = set()
+    for group in groups:
+        if group.group_id in seen:
+            raise ValueError("groups must not contain a duplicate group_id")
+        seen.add(group.group_id)
+
+
+def _canonicalize_relationship_request_groups(
+    groups: Tuple[MarketDataRelationshipGroup, ...],
+) -> Tuple[MarketDataRelationshipGroup, ...]:
+    """Return exact group objects ordered only by normalized group ID."""
+
+    return tuple(sorted(groups, key=lambda group: group.group_id))
+
+
+@dataclass(frozen=True)
+class MarketDataRelationshipRequest:
+    """One immutable canonical request of explicit relationship groups."""
+
+    groups: Tuple[MarketDataRelationshipGroup, ...]
+
+    def __post_init__(self) -> None:
+        groups = _validate_and_tuple_relationship_groups(self.groups)
+        if not groups:
+            raise ValueError("groups must contain at least one item")
+        _validate_unique_relationship_group_ids(groups)
+        canonical_groups = _canonicalize_relationship_request_groups(groups)
+        object.__setattr__(self, "groups", canonical_groups)
