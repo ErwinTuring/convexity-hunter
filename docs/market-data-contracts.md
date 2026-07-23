@@ -4337,6 +4337,231 @@ synthetic bar, return, realized-volatility, percentile, adjustment
 calculation, rate/dividend linkage, pricing, evidence, lineage, screening,
 recommendation, or execution behavior.
 
+### 13.16 Milestone 3C.7a exact-structure liquidity transformation
+
+Broad Milestone 3C.7 was preflighted and decomposed into independently
+reviewable slices 3C.7a through 3C.7f. Only 3C.7a is implemented locally. It
+constructs an existing `StructureLiquidity` record and a
+`CalculationLineage` sidecar from one exact caller-supplied `OptionStructure`
+and one authoritative `MarketDataRelationshipSelection`. The new module
+exports exactly `StructureLiquidityTransformationResult` and
+`transform_structure_liquidity`; it adds nothing to `market_data.__all__` or
+the package root.
+
+The selection must have `SELECTED` status and one exact selected assessment.
+The implementation consumes that exact candidate without selecting again or
+recomputing correction, freshness, snapshot timing, relationships, selection,
+or historical series. The selected assessment contains exactly one
+`OPTION_ACTIVITY_V0_1` group per structure leg. Every group contains exactly
+one `OPTION_QUOTE`, one `OPTION_VOLUME`, and one `OPTION_OPEN_INTEREST`;
+references resolve exactly once to exact `SelectedFreshMarketDataBinding`
+objects and exact role record types, and no selected timing binding may remain
+unreferenced.
+
+Validation is collection-wide rather than member-at-a-time. One structural
+pass validates the exact selected assessment, request, timing assessment,
+group/member/role/reference types and complete binding-universe shape before
+selected-record access. Because minimal resolution must read a correction
+selected ID, exact `CorrectionSelection`, `FreshnessAssessment`,
+`MarketDataFreshnessPolicy`, and `FreshnessContext` sidecar types are also
+structural prerequisites checked globally before resolution. Raw objects and
+subclasses fail with `TypeError`, and a wrong correction sidecar is never
+accessed for `selected_record_id`. A separate minimal resolution pass then
+uses only member roles, selected record IDs, retained candidate collections,
+and candidate metadata record IDs to identify every exact selected object. It
+does not read semantic keys, correction or freshness terminal contents,
+structure identity, sessions, numerical values, or quality flags. After every
+selected object is identifiable, one global pass validates all selected-
+record exact types.
+Only after that complete type pass succeeds may retained proof integrity be
+examined. Thus a wrong record type anywhere takes precedence over semantic,
+correction, freshness, reference, correspondence, session, or numerical
+defects regardless of group or caller order.
+
+Every consumed binding then validates its retained proof without rerunning
+correction selection or freshness. `CorrectionSelection`,
+`FreshnessAssessment`, `MarketDataFreshnessPolicy`, `FreshnessContext`, and
+`MarketDataBindingReference` require exact types. Retained candidate IDs must
+be exact, nonempty, unique, and equal the correction sidecar's canonical
+candidate-ID tuple; the correction selected ID identifies exactly one
+candidate and that candidate is the exact minimally resolved object.
+Correction status is exactly `SELECTED` with exactly
+`ONLY_CANDIDATE_SELECTED` for a one-candidate universe or
+`DOMINATING_REVISION_VECTOR_SELECTED` for a multiple-candidate universe.
+Correction status and every reason require their exact enum types and the
+reason container is an exact tuple. Matching strings, string subclasses,
+foreign enums, malformed containers, and multiple reasons are invalid even
+when their values compare equal to the string-backed enums.
+
+Freshness status is exactly `FRESH` with only `FRESH_WITHIN_POLICY`, and its
+category is `QUOTE` for option quotes and `ACTIVITY` for volume and open
+interest. Freshness record ID, correction selected ID, selected metadata
+record ID, and member-reference selected ID agree. Freshness policy ID,
+version, and evaluation timestamp agree with the retained policy and context,
+and correction evaluation does not follow freshness evaluation.
+Freshness status, category, and reasons likewise require exact
+`FreshnessStatus`, `MarketDataCategory`, and `FreshnessReasonCode` enum
+objects. Matching strings, foreign enums, enum-like subclasses, malformed
+containers, duplicate reasons, and multiple reasons are rejected.
+
+Every retained proof record ID used here has exact type `str`, is nonempty,
+and already equals its no-argument `strip()` result. Candidate metadata IDs,
+correction candidate-ID items and selected ID, freshness record ID, reference
+selected ID, and consumed selected-record IDs are never trimmed or repaired.
+Empty, whitespace-only, surrounding-whitespace, string-subclass, and
+non-string IDs fail before correspondence or arithmetic. Even coordinated
+forgeries that place the same malformed ID in every retained field are
+rejected. Uniqueness and equality checks operate only after canonical ID
+validation.
+
+Semantic integrity is checked against the actual normalized records by the
+pure `semantic_observation_key` function. The binding, correction sidecar,
+member reference, selected record, and every retained correction candidate
+must share that exact key. This identity check is not correction selection or
+freshness recomputation. Each timing binding is referenced exactly once, no
+binding is reused, no reference resolves outside the selected timing
+assessment, and consumed selected record IDs are unique.
+
+Each group is matched one-to-one to a structure leg by the complete normalized
+option identity: underlying symbol, option type, expiration, exact
+`Decimal(str(leg.strike))` strike, and contract multiplier. Quote, volume, and
+open interest within a group share the same `OptionContractKey`. Caller order
+does not establish correspondence and no nearby or alternate contract may be
+substituted. Quote and volume share one session date within and across all
+groups; that date becomes `StructureLiquidity.as_of_date`, must not follow
+expiration, and each volume must be a completed session. Existing
+`StructureLiquidity` validation remains authoritative and additionally
+requires its date to precede every expiration. Open-interest applicability is
+trusted from the selected relationship proof rather than recalculated.
+
+All arithmetic remains `Decimal` until the research-record boundary:
+
+```text
+leg bid USD = bid premium per underlying unit * quantity * multiplier
+leg ask USD = ask premium per underlying unit * quantity * multiplier
+quoted bid USD = sum of leg bid USD
+quoted ask USD = sum of leg ask USD
+minimum leg daily volume = minimum raw cumulative contract volume
+minimum leg open interest = minimum raw open-interest contract count
+```
+
+Quantity and multiplier scale only quote values. Activity counts remain
+unscaled contracts. Missing values never become zero; genuine zeros remain
+zero. Decimal products and sums execute inside an isolated `localcontext`.
+The precision is not a fixed constant: it is sized from every premium's exact
+coefficient digit count and exponent, the integer scale digit count, exponent
+alignment across terms, term count, carry growth, and an explicit safety
+margin. The local context uses the full Decimal exponent range and traps
+`Inexact` and `Rounded`; therefore every accepted product and sum is exact,
+independent of caller precision, rounding mode, flags, and traps. The caller's
+ambient context remains unchanged on success and failure. Final bid and ask
+conversion must produce finite floats and performs no rounding, quantization,
+or intermediate float arithmetic before that boundary.
+
+Precision alone does not establish exponent representability. Before
+arithmetic, the transformation derives normalized exact product exponent and
+adjusted-exponent bounds from Decimal coefficients and exponents plus exact
+integer scales, then accounts for exponent alignment, `MAX_EMAX`, `MIN_EMIN`,
+and the dynamically sized context's minimum representable exponent.
+Possible coefficient carry from multiple terms enlarges the conservative
+local precision allowance; it does not by itself prove that the sum's
+adjusted exponent grows. Exact sums whose adjusted exponent remains at
+`MAX_EMAX`, including multiple upper-bound terms whose coefficient remains
+representable, are accepted. Individual products outside the supported range
+are rejected by product preflight. Actual sum overflow is determined by the
+mathematical result of trapped exact addition in the isolated context, not by
+a blanket term-count carry estimate.
+
+Products or actual sums outside Python Decimal's supported precision or
+exponent range raise `ValueError`. The isolated arithmetic boundary catches
+and translates every `DecimalException`; overflow, underflow, inexact,
+rounded, subnormal, clamped, and invalid-operation signals never leak from the
+public function. No rounding or quantization occurs before float conversion.
+Exactly representable lower- and upper-exponent results remain exact, while
+unrepresentable upper or lower extremes stop in `decimal_aggregation`.
+An exact Decimal aggregation at `MAX_EMAX` may therefore succeed and then
+separately fail in `float_boundary` when conversion cannot produce a finite
+float.
+
+Contract disclosure uses a canonical complete option-key order consisting of
+symbol, optional listing MIC, security-type value, underlying currency,
+expiration, option type, strike, multiplier, option currency, and optional
+deliverable ID. This order controls `leg_correspondence` and makes parameters
+independent of group, binding, and permitted leg caller order. The supplied
+`OptionStructure` itself is never reordered or reconstructed.
+
+One private input-reference helper creates a `CalculationInputReference` for
+every consumed quote, volume, and open-interest record from its exact record
+ID, normalization time, and complete source-ID tuple. Discarded candidates,
+unused selected records, structures, assumptions, and methodology strings are
+excluded. Duplicate consumed record IDs are errors; `CalculationLineage`
+canonicalizes the final inputs by record ID.
+
+`parameters_json` is produced only by `canonicalize_lineage_parameters`. It
+has exactly the top-level keys `activity_count_unit`, `leg_correspondence`,
+`minimum_leg_rule`, `position_value_rule`, `position_value_unit`, and
+`premium_input_unit`. Their fixed values are respectively `contracts`, the
+canonical leg list,
+`minimum_unscaled_contract_count_across_legs`,
+`sum(premium_per_underlying_unit*quantity*contract_multiplier)`, `usd`, and
+`usd_per_underlying_unit`. Each leg item discloses exact underlying identity,
+option type, expiration, strike, option currency, deliverable ID, multiplier,
+quantity, and the three consumed record IDs without passing floats to the
+canonicalizer.
+
+Lineage uses normalized explicit `calculation_id`, calculation type
+`structure_liquidity`, methodology ID `exact-structure-liquidity`, methodology
+version `v0.1`, the explicit UTC-normalized `calculated_at`, exact consumed
+inputs, canonical parameters, and declaration-ordered quality flags.
+`DECIMAL_TO_FLOAT_CONVERTED` is always present. `INTERPOLATED`,
+`CORRECTION_SELECTED`, `COMPOSITE_INPUT_USED`, and `INCOMPLETE_INPUT_USED`
+appear only when consumed records or bindings establish their exact
+conditions. `CORRECTION_SELECTED` requires
+`DOMINATING_REVISION_VECTOR_SELECTED`, not an only-candidate result.
+`ANNUALIZED`, `ADJUSTED_INPUT_USED`, and `ASSUMPTION_APPLIED` never appear.
+
+Wrong Python types, including prohibited subclasses and wrong exact proof or
+record types, raise `TypeError`. Structurally accepted values with invalid
+selection, shape, resolution, correspondence, session, completion, numeric,
+chronology, canonicalization, construction, or duplicate-ID state raise
+`ValueError`. Validation proceeds in the locked order: four top-level inputs;
+selected status and candidate; structural shape; minimal selected-object
+resolution; global selected-record typing; retained proof integrity; and the
+remaining transformation stages. The exact observable sequence is:
+
+```text
+1. calculation_id
+2. structure
+3. relationship_selection
+4. calculated_at
+5. selection_status
+6. selected_candidate
+7. shape
+8. selected_resolution
+9. selected_record_types
+10. proof_integrity
+11. leg_correspondence
+12. contract_session
+13. required_values
+14. decimal_aggregation
+15. float_boundary
+16. research_record
+17. input_references
+18. parameters
+19. quality_flags
+20. lineage
+21. result
+```
+
+3C.7a introduces no provider adapter, network access, chain scanning,
+implicit contract selection, rate/dividend linkage, interpolation, option
+surface, fill, synthetic observation, realized volatility, tail or structure
+cost calculation, scenario pricing, pricing engine, portfolio construction,
+candidate aggregate, screening, recommendation, execution, registry, generic
+transformation base class, plugin framework, public helper factory, or custom
+exception. Milestones 3C.7b through 3C.7f and broad Milestone 3 remain
+unimplemented.
+
 ## 14. Canonical calculation lineage
 
 A separate input-reference record is required because IDs alone cannot validate calculation chronology.
@@ -4773,8 +4998,8 @@ tie-breaker, option-chain scan, historical completeness, or transformation.
 
 ### Milestone 3C.6 — Historical-series assembly and completeness
 
-The Section 13.15 contract is implemented and validated locally pending
-independent review. It adds six public names for a total of 64 and assesses
+The Section 13.15 contract is implemented, independently reviewed, committed,
+and pushed. It adds six public names for a total of 64 and assesses
 exact selected/fresh daily-bar bindings against a caller-declared expected
 session calendar, with deterministic proof-regime, duplicate, completion, and
 adjustment-consistency rules. It performs no calendar inference, freshness

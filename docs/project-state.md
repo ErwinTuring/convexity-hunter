@@ -60,16 +60,20 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3C.4 relationship/group coherence is fully implemented across Milestones 3C.4a through 3C.4e. Broad Milestone 3 remains incomplete.
 - Milestone 3C.5 deterministic cross-observation selection is implemented, independently reviewed, committed, and pushed in this operation. It adds exactly `MarketDataSelectionStatus`, `MarketDataSelectionReasonCode`, `MarketDataRelationshipSelection`, and `select_market_data_relationship_assessment`, bringing the public `market_data` API to 58 names. It validates and retains complete relationship-assessment candidates covering the complete comparable request/timing universe; comparability requires the same structural shape, target, correction regime, and freshness policy/context. Eligibility trusts the existing authoritative relationship- and timing-coherence properties. All aligned members contribute their `effective_observed_at` coordinate to a componentwise Pareto frontier, producing only selected, no-eligible-candidate, tied, or incomparable outcomes, with no scores, hidden lexical tiebreaks, or caller-order dependence. Exact candidate objects are retained. The initial independent review and targeted re-review failures identified only test-coverage gaps; all gaps were corrected without changing the source implementation or contract documentation, and the final targeted re-review passed. Final validation passed with 29 focused Milestone 3C.5 tests, 340 market-data tests, 649 full-suite tests, compileall, `git diff --check`, and a 58-name public `market_data` API.
 - Milestone 3C.6 historical market-data series assembly and completeness is implemented, independently reviewed with all findings corrected, validated, committed, and pushed in this operation. The initial independent review found one MAJOR implementation validation-precedence defect and one MINOR focused-test adequacy defect; the implementation was refactored into global binding-element, selected-record-type, and integrity passes. The first targeted re-review confirmed the MAJOR defect was resolved but found incomplete late-phase mutation protection and a stale project-state transition; both were corrected. The next targeted re-review found that global phase-name deduplication could hide noncontiguous re-entry; the recorder was changed to collapse only contiguous repeats. The last targeted re-review returned `LAST TARGETED RE-REVIEW RESULT: PASS`. Final validation passed with 25 focused Milestone 3C.6 tests, 365 market-data tests, 674 full-suite tests, compileall, `git diff --check`, and exactly 64 public `market_data` names. The implementation supports only `UnderlyingDailyBarObservation` and `DAILY` frequency; accepts an explicit caller-supplied expected-session set and exact `SelectedFreshMarketDataBinding` objects; retains the exact request, bindings, and selected records; does not recompute correction selection or freshness; permits an empty observed binding set; derives missing, unexpected, duplicate, and incomplete sessions; requires one common correction/freshness proof regime for nonempty series; preserves duplicate-session records; assesses adjusted-close availability and adjustment-methodology consistency; uses deterministic canonical ordering; and exposes only complete or incomplete terminal status. It performs no calendar inference, interpolation, transformation, pricing, evidence construction, or lineage construction. It adds exactly `MarketDataHistoricalSeriesFrequency`, `MarketDataHistoricalSeriesStatus`, `MarketDataHistoricalSeriesReasonCode`, `MarketDataHistoricalSeriesRequest`, `MarketDataHistoricalSeriesAssessment`, and `assess_market_data_historical_series`.
-- Milestone 3C.7 remains unimplemented. Return calculation, realized volatility, adjusted/raw price selection, rate/dividend relationship, identity, linkage, applicability and economic use, pricing, research evidence, transformations, and `CalculationLineage` construction belong to Milestone 3C.7. Exchange-calendar inference and historical option surfaces remain future contracts. Broad Milestone 3 remains incomplete.
+- Broad Milestone 3C.7 was preflighted and found nonviable as one implementation unit, so it is decomposed into Milestones 3C.7a through 3C.7f.
+- Milestone 3C.7a exact-structure liquidity transformation is implemented, independently reviewed, validated, and committed and pushed in this operation. The initial independent review returned `REVIEW RESULT: FAIL` with four MAJOR findings: incomplete retained-proof integrity, selected-record type-versus-integrity precedence, ambient Decimal-context dependence, and insufficient mutation-resistant focused coverage. The first targeted re-review returned `TARGETED RE-REVIEW RESULT: FAIL`: exact global selected-record type precedence was accepted, while exact proof enum/ID/sidecar validation, extreme Decimal behavior, and focused coverage still required correction. The second targeted re-review returned `SECOND TARGETED RE-REVIEW RESULT: FAIL`: proof exactness, Decimal exception normalization, and the requested malformed-proof tests were accepted, but one false-positive `MAX_EMAX` possible-carry rejection remained. After correction, the final targeted re-review returned `FINAL TARGETED RE-REVIEW RESULT: PASS`; all findings are resolved. The transformation consumes authoritative selected relationship proofs without recomputing correction, freshness, timing, relationship, selection, or historical completeness, and constructs an existing `StructureLiquidity` record with exact `CalculationLineage`. Its context-independent exact Decimal aggregation distinguishes exponent overflow at `decimal_aggregation` from finite-float rejection at `float_boundary`. The new module exports exactly `StructureLiquidityTransformationResult` and `transform_structure_liquidity`; `market_data.__all__` remains exactly 64 names and the package root remains unchanged. Final validation passed with 44 focused transformation tests, 365 market-data tests, 718 full-suite tests, compileall, and `git diff --check`.
+- Milestones 3C.7b through 3C.7f remain unimplemented. Return calculation, realized volatility, adjusted/raw price selection, rate/dividend relationship and economic use, other research transformations, and pricing remain later 3C.7 slices. Exchange-calendar inference and historical option surfaces remain future contracts. Broad Milestone 3 remains incomplete.
 
 ## Current task
 
-Perform a short specification preflight for Milestone 3C.7
-market-data-to-research transformations and CalculationLineage construction.
+Finalize, commit, and push Milestone 3C.7a.
 
 ## Last completed checkpoint
 
-- Checkpoint: Milestone 3C.6 complete
+- Checkpoint: Milestone 3C.7a implemented, independently reviewed, and
+  validated; final targeted re-review passed
+- Base commit: `b2259a8859672da209c715bba83418dd428081fc`
+  (`Implement historical market data series assessment`)
 - Base checkpoint: Milestone 3C.4e complete at `6c7566167af503c260f8df67095810002dd12604`
 - Milestone 3C.5 validation: 29 focused, 340 market-data, 649 full-suite
 - Public `market_data` API: 64 names
@@ -89,7 +93,7 @@ market-data-to-research transformations and CalculationLineage construction.
 - Milestone 3C.5 independently reviewed after correction of test-only coverage gaps
 - Final targeted re-review: `FINAL TARGETED RE-REVIEW RESULT: PASS`
 - Milestone 3C.5 commit `7f59c38e238a265f18b529fe10fe3eaebca94ea4`
-- Milestone 3C.5 remains the last committed checkpoint
+- Milestone 3C.6 remains the last committed checkpoint
 - Initial Milestone 3C.6 independent review: `REVIEW RESULT: FAIL`
 - Milestone 3C.6 review findings: one implementation precedence defect and one focused-test adequacy defect
 - Milestone 3C.6 selected-record/type-versus-integrity precedence corrected locally
@@ -112,13 +116,49 @@ market-data-to-research transformations and CalculationLineage construction.
 - Milestone 3C.4e validation: 7 focused, 311 market-data, 620 full-suite
 - Milestone 3C.4e public `market_data` API: 54 names
 - Milestone 3C.4 fully implemented across 3C.4a through 3C.4e
-- Milestone 3C.7 unimplemented
+- Broad Milestone 3C.7 decomposed into Milestones 3C.7a through 3C.7f
+- Initial Milestone 3C.7a independent review: `REVIEW RESULT: FAIL`
+- Initial Milestone 3C.7a findings: four MAJOR defects in retained-proof
+  integrity, type/integrity precedence, ambient Decimal-context isolation, and
+  mutation-resistant focused coverage
+- First Milestone 3C.7a correction pass completed locally
+- Milestone 3C.7a targeted re-review: `TARGETED RE-REVIEW RESULT: FAIL`
+- Targeted re-review accepted global selected-record precedence and ordinary
+  ambient Decimal-context isolation
+- Targeted re-review findings: incomplete exact enum, retained-ID, and
+  correction-sidecar validation; leaked `decimal.Overflow` at extreme
+  exponents; and missing exact-type, exponent, and independent-permutation
+  focused tests
+- Second Milestone 3C.7a targeted re-review:
+  `SECOND TARGETED RE-REVIEW RESULT: FAIL`
+- Second targeted re-review accepted exact proof validation, global
+  selected-record precedence, Decimal exception normalization, and the
+  requested malformed-proof tests
+- Second targeted re-review finding: a blanket possible-carry estimate falsely
+  rejected representable multi-term sums at `decimal.MAX_EMAX`
+- Milestone 3C.7a exponent preflight corrected to reserve possible carry only
+  for coefficient precision and let trapped exact addition determine actual
+  sum overflow
+- Literal representable multi-term `decimal.MAX_EMAX`, actual coefficient-carry
+  overflow, caller-context, and public float-boundary regression tests added
+- Final Milestone 3C.7a targeted re-review:
+  `FINAL TARGETED RE-REVIEW RESULT: PASS`
+- All Milestone 3C.7a review findings resolved
+- Milestone 3C.7a uses global selected-record typing before proof integrity,
+  exact proof-sidecar, enum, and retained-ID validation, exponent-bounded exact
+  local Decimal arithmetic, and a mutation-protected 21-phase sequence
+- Milestone 3C.7a implemented and independently reviewed with 44 focused tests
+- Milestone 3C.7a final validation: 44 focused, 365 market-data, 718 full-suite,
+  compileall, and `git diff --check`
+- Milestone 3C.7a public module API: exactly two names
+- Milestone 3C.7a committed and pushed in this operation
+- Milestones 3C.7b through 3C.7f unimplemented
 - Broad Milestone 3 incomplete
 
 ## Next task
 
-Complete the Milestone 3C.7 specification preflight, then implement only after
-the transformation and `CalculationLineage` construction contract is closed.
+Perform a short specification preflight for Milestone 3C.7b exact-structure
+cost transformation, using MVP-appropriate review scope.
 
 ## Deferred
 
