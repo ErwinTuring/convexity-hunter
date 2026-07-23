@@ -65,6 +65,10 @@ __all__ = (
     "MarketDataRelationshipGroupAssessment",
     "MarketDataRelationshipAssessment",
     "assess_market_data_relationships",
+    "MarketDataSelectionStatus",
+    "MarketDataSelectionReasonCode",
+    "MarketDataRelationshipSelection",
+    "select_market_data_relationship_assessment",
 )
 
 
@@ -3725,3 +3729,431 @@ def assess_market_data_relationships(
     """Assess implemented relationship coherence for one request."""
 
     return MarketDataRelationshipAssessment(request, timing_assessment)
+
+
+class MarketDataSelectionStatus(str, Enum):
+    """Terminal outcome for deterministic relationship-candidate selection."""
+
+    SELECTED = "selected"
+    NO_ELIGIBLE_CANDIDATE = "no_eligible_candidate"
+    ELIGIBLE_CANDIDATES_TIED = "eligible_candidates_tied"
+    ELIGIBLE_CANDIDATES_INCOMPARABLE = (
+        "eligible_candidates_incomparable"
+    )
+
+
+class MarketDataSelectionReasonCode(str, Enum):
+    """Canonical audit reasons for relationship-candidate selection."""
+
+    RELATIONSHIP_INCOHERENT = "relationship_incoherent"
+    TEMPORALLY_INCOHERENT = "temporally_incoherent"
+    NO_ELIGIBLE_CANDIDATE = "no_eligible_candidate"
+    EQUAL_MAXIMAL_SELECTION_VECTORS = (
+        "equal_maximal_selection_vectors"
+    )
+    INCOMPARABLE_MAXIMAL_SELECTION_VECTORS = (
+        "incomparable_maximal_selection_vectors"
+    )
+
+
+def _relationship_candidate_audit_identity(
+    candidate: MarketDataRelationshipAssessment,
+) -> tuple:
+    """Return the canonical complete-reference identity for one candidate."""
+
+    return tuple(
+        (
+            group.group_id,
+            group.group_kind.value,
+            member.role.value,
+            member.reference.semantic_observation_key,
+            member.reference.selected_record_id,
+        )
+        for group in candidate.request.groups
+        for member in group.members
+    )
+
+
+def _validate_selection_candidates(
+    candidates: object,
+) -> Tuple[MarketDataRelationshipAssessment, ...]:
+    """Validate and canonically retain exact relationship assessments."""
+
+    if type(candidates) is not tuple and type(candidates) is not list:
+        raise TypeError("candidates must be an exact tuple or list")
+    for candidate in candidates:
+        if type(candidate) is not MarketDataRelationshipAssessment:
+            raise TypeError(
+                "every candidates item must have exact type "
+                "MarketDataRelationshipAssessment"
+            )
+
+    normalized = tuple(candidates)
+    if not normalized:
+        raise ValueError("candidates must contain at least one item")
+
+    identities = tuple(
+        _relationship_candidate_audit_identity(candidate)
+        for candidate in normalized
+    )
+    if len(set(identities)) != len(identities):
+        raise ValueError("candidates must not contain duplicate audit identities")
+
+    return tuple(sorted(
+        normalized,
+        key=_relationship_candidate_audit_identity,
+    ))
+
+
+def _validate_complete_relationship_candidate(
+    candidate: MarketDataRelationshipAssessment,
+) -> None:
+    """Require request references to cover the exact timing universe."""
+
+    request_references = {
+        (
+            member.reference.semantic_observation_key,
+            member.reference.selected_record_id,
+        )
+        for group in candidate.request.groups
+        for member in group.members
+    }
+    timing_references = {
+        (
+            binding.semantic_observation_key,
+            binding.selected_record.metadata.record_id,
+        )
+        for binding in candidate.timing_assessment.bindings
+    }
+    if request_references != timing_references:
+        raise ValueError(
+            "candidate request references must equal its timing binding set"
+        )
+
+
+def _relationship_candidate_aligned_bindings(
+    candidate: MarketDataRelationshipAssessment,
+) -> tuple:
+    """Return bindings aligned by canonical group and member order."""
+
+    bindings_by_reference = {
+        (
+            binding.semantic_observation_key,
+            binding.selected_record.metadata.record_id,
+        ): binding
+        for binding in candidate.timing_assessment.bindings
+    }
+    return tuple(
+        (
+            group.group_id,
+            group.group_kind,
+            member.role,
+            bindings_by_reference[(
+                member.reference.semantic_observation_key,
+                member.reference.selected_record_id,
+            )],
+        )
+        for group in candidate.request.groups
+        for member in group.members
+    )
+
+
+def _relationship_record_target_identity(record: object) -> tuple:
+    """Return the non-numerical selection target for one resolved record."""
+
+    record_type = type(record)
+    if record_type is UnderlyingQuoteObservation:
+        return (
+            record_type,
+            record.underlying_key,
+            record.session_date,
+            record.market_phase,
+            record.quote_scope,
+            record.venue_mic,
+            record.last_price is not None,
+            record.bid_size is not None,
+            record.ask_size is not None,
+        )
+    if record_type is OptionQuoteObservation:
+        return (
+            record_type,
+            record.contract_key,
+            record.session_date,
+            record.market_phase,
+            record.quote_scope,
+            record.venue_mic,
+            record.bid_size is not None,
+            record.ask_size is not None,
+        )
+    if record_type is OptionImpliedVolatilityObservation:
+        return (
+            record_type,
+            record.contract_key,
+            record.session_date,
+            record.model_name,
+            record.model_version,
+            record.rate_input_description,
+            record.dividend_input_description,
+        )
+    if record_type is OptionGreeksObservation:
+        return (
+            record_type,
+            record.contract_key,
+            record.session_date,
+            record.model_name,
+            record.model_version,
+            record.rate_input_description,
+            record.dividend_input_description,
+            tuple(
+                getattr(record, name) is not None
+                for name in ("delta", "gamma", "theta", "vega")
+            ),
+            record.theta_day_basis,
+        )
+    if record_type is OptionVolumeObservation:
+        return (
+            record_type,
+            record.contract_key,
+            record.session_date,
+            record.is_session_complete,
+        )
+    if record_type is OptionOpenInterestObservation:
+        return (
+            record_type,
+            record.contract_key,
+            record.open_interest_session_date,
+        )
+    if record_type is OptionContractReference:
+        return (
+            record_type,
+            record.contract_key,
+            record.listing_date,
+            record.last_trade_date,
+            record.exercise_style,
+            record.settlement_type,
+        )
+    return (record_type,)
+
+
+def _relationship_candidate_target_identity(
+    candidate: MarketDataRelationshipAssessment,
+) -> tuple:
+    """Return the complete aligned shape, target, and proof projection."""
+
+    return tuple(
+        (
+            group_id,
+            group_kind,
+            role,
+            _relationship_record_target_identity(binding.selected_record),
+            binding.correction_selection.rule_id,
+            binding.correction_selection.rule_version,
+            binding.correction_selection.evaluated_at,
+            binding.freshness_policy,
+            binding.freshness_context,
+        )
+        for group_id, group_kind, role, binding
+        in _relationship_candidate_aligned_bindings(candidate)
+    )
+
+
+def _validate_comparable_relationship_candidates(
+    candidates: Tuple[MarketDataRelationshipAssessment, ...],
+) -> None:
+    """Require one exact selection universe across every candidate."""
+
+    expected = _relationship_candidate_target_identity(candidates[0])
+    if any(
+        _relationship_candidate_target_identity(candidate) != expected
+        for candidate in candidates[1:]
+    ):
+        raise ValueError(
+            "candidates must have identical shape, target, and proof projections"
+        )
+
+
+def _relationship_candidate_eligibility_reasons(
+    candidate: MarketDataRelationshipAssessment,
+) -> Tuple[MarketDataSelectionReasonCode, ...]:
+    """Return canonical eligibility reasons using existing assessments."""
+
+    reasons = set()
+    if not candidate.is_coherent:
+        reasons.add(MarketDataSelectionReasonCode.RELATIONSHIP_INCOHERENT)
+    if not candidate.timing_assessment.is_temporally_coherent:
+        reasons.add(MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT)
+    return tuple(
+        reason for reason in MarketDataSelectionReasonCode if reason in reasons
+    )
+
+
+def _relationship_candidate_selection_vector(
+    candidate: MarketDataRelationshipAssessment,
+) -> tuple:
+    """Return every aligned selected record's effective observation time."""
+
+    return tuple(
+        binding.selected_record.metadata.effective_observed_at
+        for _group_id, _group_kind, _role, binding
+        in _relationship_candidate_aligned_bindings(candidate)
+    )
+
+
+def _selection_vector_dominates(first: tuple, second: tuple) -> bool:
+    """Return whether first strictly Pareto-dominates second."""
+
+    return (
+        all(left >= right for left, right in zip(first, second))
+        and any(left > right for left, right in zip(first, second))
+    )
+
+
+def _derive_market_data_relationship_selection_state(
+    candidates: Tuple[MarketDataRelationshipAssessment, ...],
+) -> tuple:
+    """Derive all auditable selection state without external inputs."""
+
+    candidate_reasons = tuple(
+        _relationship_candidate_eligibility_reasons(candidate)
+        for candidate in candidates
+    )
+    eligible = tuple(
+        candidate
+        for candidate, reasons in zip(candidates, candidate_reasons)
+        if not reasons
+    )
+
+    terminal_reason = None
+    selected = None
+    if not eligible:
+        status = MarketDataSelectionStatus.NO_ELIGIBLE_CANDIDATE
+        terminal_reason = (
+            MarketDataSelectionReasonCode.NO_ELIGIBLE_CANDIDATE
+        )
+    elif len(eligible) == 1:
+        status = MarketDataSelectionStatus.SELECTED
+        selected = eligible[0]
+    else:
+        vectors = tuple(
+            _relationship_candidate_selection_vector(candidate)
+            for candidate in eligible
+        )
+        maximal_indexes = tuple(
+            index
+            for index, vector in enumerate(vectors)
+            if not any(
+                other_index != index
+                and _selection_vector_dominates(other_vector, vector)
+                for other_index, other_vector in enumerate(vectors)
+            )
+        )
+        if len(maximal_indexes) == 1:
+            status = MarketDataSelectionStatus.SELECTED
+            selected = eligible[maximal_indexes[0]]
+        else:
+            maximal_vectors = tuple(
+                vectors[index] for index in maximal_indexes
+            )
+            if all(
+                vector == maximal_vectors[0]
+                for vector in maximal_vectors[1:]
+            ):
+                status = (
+                    MarketDataSelectionStatus.ELIGIBLE_CANDIDATES_TIED
+                )
+                terminal_reason = (
+                    MarketDataSelectionReasonCode
+                    .EQUAL_MAXIMAL_SELECTION_VECTORS
+                )
+            else:
+                status = (
+                    MarketDataSelectionStatus
+                    .ELIGIBLE_CANDIDATES_INCOMPARABLE
+                )
+                terminal_reason = (
+                    MarketDataSelectionReasonCode
+                    .INCOMPARABLE_MAXIMAL_SELECTION_VECTORS
+                )
+
+    reason_set = {
+        reason
+        for reasons in candidate_reasons
+        for reason in reasons
+    }
+    if terminal_reason is not None:
+        reason_set.add(terminal_reason)
+    reasons = tuple(
+        reason
+        for reason in MarketDataSelectionReasonCode
+        if reason in reason_set
+    )
+    return candidate_reasons, eligible, selected, status, reasons
+
+
+@dataclass(frozen=True)
+class MarketDataRelationshipSelection:
+    """Immutable deterministic selection over complete relationship inputs."""
+
+    candidates: Tuple[MarketDataRelationshipAssessment, ...]
+
+    def __post_init__(self) -> None:
+        candidates = _validate_selection_candidates(self.candidates)
+        for candidate in candidates:
+            _validate_complete_relationship_candidate(candidate)
+        _validate_comparable_relationship_candidates(candidates)
+        _derive_market_data_relationship_selection_state(candidates)
+        object.__setattr__(self, "candidates", candidates)
+
+    @property
+    def candidate_reason_codes(
+        self,
+    ) -> Tuple[Tuple[MarketDataSelectionReasonCode, ...], ...]:
+        """Return one canonical eligibility-reason tuple per candidate."""
+
+        return _derive_market_data_relationship_selection_state(
+            self.candidates
+        )[0]
+
+    @property
+    def eligible_candidates(
+        self,
+    ) -> Tuple[MarketDataRelationshipAssessment, ...]:
+        """Return exact eligible candidates in canonical audit order."""
+
+        return _derive_market_data_relationship_selection_state(
+            self.candidates
+        )[1]
+
+    @property
+    def selected_candidate(
+        self,
+    ) -> Optional[MarketDataRelationshipAssessment]:
+        """Return the exact uniquely selected candidate, when one exists."""
+
+        return _derive_market_data_relationship_selection_state(
+            self.candidates
+        )[2]
+
+    @property
+    def status(self) -> MarketDataSelectionStatus:
+        """Return the deterministic terminal selection status."""
+
+        return _derive_market_data_relationship_selection_state(
+            self.candidates
+        )[3]
+
+    @property
+    def reason_codes(self) -> Tuple[MarketDataSelectionReasonCode, ...]:
+        """Return candidate and terminal reasons in declaration order."""
+
+        return _derive_market_data_relationship_selection_state(
+            self.candidates
+        )[4]
+
+
+def select_market_data_relationship_assessment(
+    candidates: object,
+) -> MarketDataRelationshipSelection:
+    """Select one complete coherent relationship assessment when unique."""
+
+    return MarketDataRelationshipSelection(candidates=candidates)

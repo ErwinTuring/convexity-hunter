@@ -45,7 +45,10 @@ from convexity_hunter.market_data import (
     MarketDataRelationshipAssessment,
     MarketDataRelationshipIssueCode,
     MarketDataRelationshipRequest,
+    MarketDataRelationshipSelection,
     MarketDataRelationshipRole,
+    MarketDataSelectionReasonCode,
+    MarketDataSelectionStatus,
     MarketDataSnapshotTimingAssessment,
     MarketDataSnapshotTimingReasonCode,
     NormalizationMetadata,
@@ -75,6 +78,7 @@ from convexity_hunter.market_data import (
     resolve_market_data_binding_reference,
     semantic_observation_key,
     select_correction_candidate,
+    select_market_data_relationship_assessment,
 )
 from tests.market_data_fixtures import (
     CALCULATED_AT,
@@ -432,6 +436,207 @@ def assess_resolved_relationship_group(
     return assess_market_data_relationships(request, timing)
 
 
+def build_selection_candidate(
+    label: str,
+    offsets: object = None,
+    record_overrides: object = None,
+    policy: object = None,
+    context: object = None,
+    correction_overrides: object = None,
+    record_builders: object = None,
+) -> MarketDataRelationshipAssessment:
+    """Build one complete four-group, seven-role selection candidate."""
+
+    normalized_offsets = {} if offsets is None else offsets
+    normalized_overrides = {} if record_overrides is None else record_overrides
+    normalized_correction = (
+        {} if correction_overrides is None else correction_overrides
+    )
+    normalized_builders = (
+        _RELATIONSHIP_ROLE_BUILDERS
+        if record_builders is None
+        else {**_RELATIONSHIP_ROLE_BUILDERS, **record_builders}
+    )
+    selected_policy = build_freshness_policy() if policy is None else policy
+    selected_context = build_freshness_context() if context is None else context
+    bindings = {}
+    for role in MarketDataRelationshipRole:
+        effective_offset = normalized_offsets.get(
+            role, datetime.timedelta(0)
+        )
+        record = build_timed_record(
+            normalized_builders[role],
+            f"{label}-{role.value}",
+            observed_offsets=(effective_offset,),
+            effective_offset=effective_offset,
+            **normalized_overrides.get(role, {}),
+        )
+        bindings[role] = bind_fresh_candidates(
+            (record,),
+            freshness_policy=selected_policy,
+            freshness_context=selected_context,
+            **normalized_correction,
+        )
+
+    group_specs = (
+        (
+            "snapshot",
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+            (
+                MarketDataRelationshipRole.UNDERLYING_QUOTE,
+                MarketDataRelationshipRole.OPTION_QUOTE,
+            ),
+        ),
+        (
+            "analytics",
+            MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+            (
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                MarketDataRelationshipRole.OPTION_GREEKS,
+            ),
+        ),
+        (
+            "activity",
+            MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1,
+            (
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+            ),
+        ),
+        (
+            "reference",
+            MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1,
+            (
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                MarketDataRelationshipRole.OPTION_GREEKS,
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+            ),
+        ),
+    )
+    groups = tuple(
+        build_resolved_relationship_group(
+            group_id,
+            kind,
+            {role: bindings[role] for role in roles},
+        )[0]
+        for group_id, kind, roles in group_specs
+    )
+    timing = assess_market_data_snapshot_timing(tuple(bindings.values()))
+    return assess_market_data_relationships(
+        MarketDataRelationshipRequest(groups), timing
+    )
+
+
+_SELECTION_COORDINATE_SPECS = (
+    (
+        "activity",
+        MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1,
+        (
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            MarketDataRelationshipRole.OPTION_VOLUME,
+            MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+        ),
+    ),
+    (
+        "analytics",
+        MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+        (
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+            MarketDataRelationshipRole.OPTION_GREEKS,
+        ),
+    ),
+    (
+        "reference",
+        MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1,
+        (
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+            MarketDataRelationshipRole.OPTION_GREEKS,
+            MarketDataRelationshipRole.OPTION_VOLUME,
+            MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+        ),
+    ),
+    (
+        "snapshot",
+        MarketDataRelationshipGroupKind
+        .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+        (
+            MarketDataRelationshipRole.UNDERLYING_QUOTE,
+            MarketDataRelationshipRole.OPTION_QUOTE,
+        ),
+    ),
+)
+
+
+def build_coordinate_selection_candidate(
+    label: str,
+    advanced_coordinate: object = None,
+) -> MarketDataRelationshipAssessment:
+    """Build a complete candidate with fourteen independently backed slots."""
+
+    groups = []
+    bindings = []
+    coordinate_index = 0
+    for group_id, group_kind, roles in _SELECTION_COORDINATE_SPECS:
+        group_bindings = {}
+        for role in roles:
+            offset = datetime.timedelta(microseconds=coordinate_index + 1)
+            if coordinate_index == advanced_coordinate:
+                offset += datetime.timedelta(microseconds=100)
+            overrides = {}
+            if role is MarketDataRelationshipRole.OPTION_OPEN_INTEREST:
+                overrides["open_interest_session_date"] = (
+                    datetime.date(2030, 1, 1)
+                    if group_id == "activity"
+                    else datetime.date(2029, 12, 31)
+                )
+            record = build_timed_record(
+                _RELATIONSHIP_ROLE_BUILDERS[role],
+                f"{label}-{group_id}-{role.value}",
+                observed_offsets=(offset,),
+                effective_offset=offset,
+                **overrides,
+            )
+            binding = build_timing_binding(record)
+            group_bindings[role] = binding
+            bindings.append(binding)
+            coordinate_index += 1
+        group, _aligned = build_resolved_relationship_group(
+            group_id, group_kind, group_bindings
+        )
+        groups.append(group)
+    timing = assess_market_data_snapshot_timing(tuple(bindings))
+    return assess_market_data_relationships(
+        MarketDataRelationshipRequest(tuple(groups)), timing
+    )
+
+
+def build_over_complete_selection_candidate(
+    label: str,
+) -> MarketDataRelationshipAssessment:
+    """Return a valid relationship assessment with one unused timing binding."""
+
+    candidate = build_selection_candidate(label)
+    extra = build_timing_binding(build_timed_record(
+        build_underlying_daily_bar_observation,
+        f"{label}-unreferenced-daily-bar",
+    ))
+    return MarketDataRelationshipAssessment(
+        candidate.request,
+        assess_market_data_snapshot_timing(
+            candidate.timing_assessment.bindings + (extra,)
+        ),
+    )
+
+
 class PublicSurfaceTests(unittest.TestCase):
     def test_exact_all_and_public_names_exist(self) -> None:
         expected = (
@@ -489,9 +694,13 @@ class PublicSurfaceTests(unittest.TestCase):
             "MarketDataRelationshipGroupAssessment",
             "MarketDataRelationshipAssessment",
             "assess_market_data_relationships",
+            "MarketDataSelectionStatus",
+            "MarketDataSelectionReasonCode",
+            "MarketDataRelationshipSelection",
+            "select_market_data_relationship_assessment",
         )
         self.assertEqual(market_data.__all__, expected)
-        self.assertEqual(len(market_data.__all__), 54)
+        self.assertEqual(len(market_data.__all__), 58)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
@@ -5679,7 +5888,7 @@ class BindingReferenceSurfaceAndConstructorTests(unittest.TestCase):
             market_data.__all__[:42], self.EXPECTED_3C3_PUBLIC_NAMES
         )
         self.assertEqual(market_data.__all__[42:45], additions)
-        self.assertEqual(len(market_data.__all__), 54)
+        self.assertEqual(len(market_data.__all__), 58)
         self.assertTrue(all(hasattr(market_data, name) for name in additions))
 
         factory_signature = inspect.signature(market_data_binding_reference)
@@ -6174,8 +6383,8 @@ class RelationshipSurfaceAndEnumTests(unittest.TestCase):
         )
         self.assertEqual(market_data.__all__[:45], expected_prefix)
         self.assertEqual(market_data.__all__[45:50], expected_3c4b_suffix)
-        self.assertEqual(market_data.__all__[-4:], expected_3c4c_suffix)
-        self.assertEqual(len(market_data.__all__), 54)
+        self.assertEqual(market_data.__all__[50:54], expected_3c4c_suffix)
+        self.assertEqual(len(market_data.__all__), 58)
         self.assertTrue(all(
             hasattr(market_data, name)
             for name in expected_3c4b_suffix + expected_3c4c_suffix
@@ -6247,7 +6456,6 @@ class RelationshipSurfaceAndEnumTests(unittest.TestCase):
             "MarketDataRelationshipReasonCode",
             "MarketDataRelationshipIssue",
             "MarketDataRelationshipResult",
-            "MarketDataRelationshipSelection",
         )
         self.assertTrue(all(
             not hasattr(market_data, name) for name in unauthorized
@@ -6283,6 +6491,10 @@ class RelationshipSurfaceAndEnumTests(unittest.TestCase):
             "MarketDataRelationshipGroupAssessment",
             "MarketDataRelationshipAssessment",
             "assess_market_data_relationships",
+            "MarketDataSelectionStatus",
+            "MarketDataSelectionReasonCode",
+            "MarketDataRelationshipSelection",
+            "select_market_data_relationship_assessment",
         }
         self.assertEqual(
             {
@@ -7292,7 +7504,6 @@ class RelationshipPurityAndScopeTests(unittest.TestCase):
             "MarketDataRelationshipReasonCode",
             "MarketDataRelationshipIssue",
             "MarketDataRelationshipResult",
-            "MarketDataRelationshipSelection",
         )
         self.assertTrue(all(
             not hasattr(market_data, name) for name in unauthorized
@@ -7302,7 +7513,7 @@ class RelationshipPurityAndScopeTests(unittest.TestCase):
 class RelationshipAssessmentSurfaceTests(unittest.TestCase):
     def test_exact_public_suffix_enum_fields_and_frozen_identity(self) -> None:
         self.assertEqual(
-            market_data.__all__[-4:],
+            market_data.__all__[50:54],
             (
                 "MarketDataRelationshipIssueCode",
                 "MarketDataRelationshipGroupAssessment",
@@ -7310,7 +7521,7 @@ class RelationshipAssessmentSurfaceTests(unittest.TestCase):
                 "assess_market_data_relationships",
             ),
         )
-        self.assertEqual(len(market_data.__all__), 54)
+        self.assertEqual(len(market_data.__all__), 58)
         self.assertEqual(
             tuple(issue.value for issue in MarketDataRelationshipIssueCode),
             (
@@ -7961,9 +8172,9 @@ class RelationshipQuoteCompatibilityTests(unittest.TestCase):
         return result.group_assessments[0].issue_codes
 
     def test_exact_public_surface_and_issue_order(self) -> None:
-        self.assertEqual(len(market_data.__all__), 54)
+        self.assertEqual(len(market_data.__all__), 58)
         self.assertEqual(
-            market_data.__all__[-4:],
+            market_data.__all__[50:54],
             (
                 "MarketDataRelationshipIssueCode",
                 "MarketDataRelationshipGroupAssessment",
@@ -9021,6 +9232,1586 @@ class RelationshipAssessmentOrderingAndScopeTests(unittest.TestCase):
         ):
             with self.subTest(token=token):
                 self.assertNotIn(token, source)
+
+
+class RelationshipSelectionSurfaceAndValidationTests(unittest.TestCase):
+    def test_exact_public_surface_enums_field_and_frozen_behavior(self) -> None:
+        self.assertEqual(
+            market_data.__all__[-4:],
+            (
+                "MarketDataSelectionStatus",
+                "MarketDataSelectionReasonCode",
+                "MarketDataRelationshipSelection",
+                "select_market_data_relationship_assessment",
+            ),
+        )
+        self.assertEqual(len(market_data.__all__), 58)
+        self.assertEqual(
+            tuple(status.value for status in MarketDataSelectionStatus),
+            (
+                "selected",
+                "no_eligible_candidate",
+                "eligible_candidates_tied",
+                "eligible_candidates_incomparable",
+            ),
+        )
+        self.assertEqual(
+            tuple(reason.value for reason in MarketDataSelectionReasonCode),
+            (
+                "relationship_incoherent",
+                "temporally_incoherent",
+                "no_eligible_candidate",
+                "equal_maximal_selection_vectors",
+                "incomparable_maximal_selection_vectors",
+            ),
+        )
+        self.assertEqual(
+            tuple(
+                field.name
+                for field in dataclasses.fields(MarketDataRelationshipSelection)
+            ),
+            ("candidates",),
+        )
+        signature = inspect.signature(
+            select_market_data_relationship_assessment
+        )
+        self.assertEqual(tuple(signature.parameters), ("candidates",))
+        self.assertIs(signature.parameters["candidates"].annotation, object)
+        self.assertIs(
+            signature.return_annotation, MarketDataRelationshipSelection
+        )
+        candidate = build_selection_candidate("surface")
+        direct = MarketDataRelationshipSelection([candidate])
+        public = select_market_data_relationship_assessment((candidate,))
+        self.assertEqual(direct, public)
+        self.assertIs(direct.candidates[0], candidate)
+        self.assertIs(direct.selected_candidate, candidate)
+        with self.assertRaises(FrozenInstanceError):
+            direct.candidates = ()  # type: ignore[misc]
+
+    def test_exact_collection_boundaries_precedence_and_empty_input(self) -> None:
+        candidate = build_selection_candidate("boundary")
+
+        class ListSubclass(list):
+            pass
+
+        class AssessmentSubclass(MarketDataRelationshipAssessment):
+            pass
+
+        subclass = AssessmentSubclass(
+            candidate.request, candidate.timing_assessment
+        )
+        for invalid in (iter((candidate,)), {candidate.request}, ListSubclass()):
+            with self.subTest(container=type(invalid).__name__):
+                with self.assertRaisesRegex(TypeError, "exact tuple or list"):
+                    select_market_data_relationship_assessment(invalid)
+        with self.assertRaisesRegex(TypeError, "every candidates item"):
+            select_market_data_relationship_assessment([object(), candidate])
+        with self.assertRaisesRegex(TypeError, "every candidates item"):
+            select_market_data_relationship_assessment([subclass])
+        with self.assertRaisesRegex(TypeError, "every candidates item"):
+            select_market_data_relationship_assessment([object()])
+        with self.assertRaisesRegex(ValueError, "at least one"):
+            select_market_data_relationship_assessment([])
+
+    def test_duplicate_audit_identity_and_canonical_exact_retention(self) -> None:
+        first = build_selection_candidate("z-candidate")
+        second = build_selection_candidate("a-candidate")
+        result = select_market_data_relationship_assessment([first, second])
+        expected = tuple(sorted(
+            (first, second),
+            key=market_data._relationship_candidate_audit_identity,
+        ))
+        self.assertEqual(result.candidates, expected)
+        self.assertTrue(all(
+            retained is supplied
+            for retained, supplied in zip(result.candidates, expected)
+        ))
+        self.assertEqual(
+            result,
+            select_market_data_relationship_assessment([second, first]),
+        )
+        for duplicate in ((first, first), (first, dataclasses.replace(first))):
+            with self.subTest(structural=duplicate[0] == duplicate[1]):
+                with self.assertRaisesRegex(ValueError, "duplicate audit"):
+                    select_market_data_relationship_assessment(duplicate)
+
+    def test_same_references_with_different_proof_sidecars_are_duplicates(self) -> None:
+        candidate = build_selection_candidate("same-references")
+        changed_policy = dataclasses.replace(
+            candidate.timing_assessment.bindings[0].freshness_policy,
+            maximum_quote_age_seconds=61,
+        )
+        changed_bindings = tuple(
+            build_timing_binding(
+                binding.selected_record,
+                changed_policy,
+                binding.freshness_context,
+            )
+            for binding in candidate.timing_assessment.bindings
+        )
+        changed = MarketDataRelationshipAssessment(
+            candidate.request,
+            assess_market_data_snapshot_timing(changed_bindings),
+        )
+        self.assertNotEqual(
+            candidate.timing_assessment, changed.timing_assessment
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate audit"):
+            select_market_data_relationship_assessment((candidate, changed))
+
+    def test_complete_universe_reuse_and_unreferenced_binding(self) -> None:
+        candidate = build_selection_candidate("complete")
+        references = tuple(
+            member.reference
+            for group in candidate.request.groups
+            for member in group.members
+        )
+        self.assertGreater(len(references), len(set(references)))
+        self.assertEqual(
+            select_market_data_relationship_assessment((candidate,)).status,
+            MarketDataSelectionStatus.SELECTED,
+        )
+
+        extra = build_timing_binding(build_timed_record(
+            build_underlying_daily_bar_observation,
+            "unreferenced-daily-bar",
+        ))
+        over_complete = MarketDataRelationshipAssessment(
+            candidate.request,
+            assess_market_data_snapshot_timing(
+                candidate.timing_assessment.bindings + (extra,)
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "equal.*timing binding set"):
+            select_market_data_relationship_assessment((over_complete,))
+
+
+class RelationshipSelectionComparabilityTests(unittest.TestCase):
+    def test_group_shape_and_exact_record_type_must_match(self) -> None:
+        baseline = build_selection_candidate("shape-baseline")
+        groups = {group.group_id: group for group in baseline.request.groups}
+
+        renamed_groups = tuple(
+            dataclasses.replace(group, group_id="renamed-snapshot")
+            if group.group_id == "snapshot"
+            else group
+            for group in baseline.request.groups
+        )
+        renamed = MarketDataRelationshipAssessment(
+            MarketDataRelationshipRequest(renamed_groups),
+            baseline.timing_assessment,
+        )
+
+        swapped_groups = tuple(
+            dataclasses.replace(group, group_id="analytics")
+            if group.group_id == "snapshot"
+            else dataclasses.replace(group, group_id="snapshot")
+            if group.group_id == "analytics"
+            else group
+            for group in baseline.request.groups
+        )
+        swapped = MarketDataRelationshipAssessment(
+            MarketDataRelationshipRequest(swapped_groups),
+            baseline.timing_assessment,
+        )
+
+        analytics = groups["analytics"]
+        reduced_analytics = dataclasses.replace(
+            analytics,
+            members=tuple(
+                member
+                for member in analytics.members
+                if member.role is not MarketDataRelationshipRole.OPTION_GREEKS
+            ),
+        )
+        reduced_roles = MarketDataRelationshipAssessment(
+            MarketDataRelationshipRequest(tuple(
+                reduced_analytics if group.group_id == "analytics" else group
+                for group in baseline.request.groups
+            )),
+            baseline.timing_assessment,
+        )
+
+        wrong_type = build_selection_candidate(
+            "shape-wrong-type",
+            record_builders={
+                MarketDataRelationshipRole.OPTION_QUOTE:
+                build_underlying_daily_bar_observation,
+            },
+        )
+        for variant in (renamed, swapped, reduced_roles, wrong_type):
+            with self.subTest(
+                identity=market_data._relationship_candidate_audit_identity(
+                    variant
+                )[0]
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "shape, target, and proof"
+                ):
+                    select_market_data_relationship_assessment(
+                        (baseline, variant)
+                    )
+
+    def test_every_record_target_dimension_is_fixed(self) -> None:
+        alternate_contract = build_option_contract_key(
+            strike=decimal.Decimal("501.1250")
+        )
+        cases = (
+            (
+                build_underlying_quote_observation(),
+                (
+                    {"underlying_key": build_underlying_key(symbol="QQQ")},
+                    {"session_date": SESSION_DATE - datetime.timedelta(days=1)},
+                    {"market_phase": MarketPhase.PRE_MARKET},
+                    {"quote_scope": QuoteScope.VENUE_SPECIFIC,
+                     "venue_mic": "XNAS"},
+                    {"last_price": None},
+                    {"bid_size": None},
+                    {"ask_size": None},
+                ),
+            ),
+            (
+                build_option_quote_observation(),
+                (
+                    {"contract_key": alternate_contract},
+                    {"session_date": SESSION_DATE - datetime.timedelta(days=1)},
+                    {"market_phase": MarketPhase.POST_MARKET},
+                    {"quote_scope": QuoteScope.VENUE_SPECIFIC,
+                     "venue_mic": "XNAS"},
+                    {"bid_size": None},
+                    {"ask_size": None},
+                ),
+            ),
+            (
+                build_option_implied_volatility_observation(),
+                (
+                    {"contract_key": alternate_contract},
+                    {"session_date": SESSION_DATE - datetime.timedelta(days=1)},
+                    {"model_name": "Alternate model"},
+                    {"model_version": None},
+                    {"rate_input_description": "Alternate rate"},
+                    {"dividend_input_description": "Alternate dividend"},
+                ),
+            ),
+            (
+                build_option_greeks_observation(),
+                (
+                    {"contract_key": alternate_contract},
+                    {"session_date": SESSION_DATE - datetime.timedelta(days=1)},
+                    {"model_name": "Alternate model"},
+                    {"model_version": None},
+                    {"rate_input_description": "Alternate rate"},
+                    {"dividend_input_description": "Alternate dividend"},
+                    {"delta": None},
+                    {"gamma": None},
+                    {"theta": None, "theta_day_basis": None},
+                    {"vega": None},
+                    {"theta_day_basis": "Alternate day basis"},
+                ),
+            ),
+            (
+                build_option_volume_observation(),
+                (
+                    {"contract_key": alternate_contract},
+                    {"session_date": SESSION_DATE - datetime.timedelta(days=1)},
+                    {"is_session_complete": True},
+                ),
+            ),
+            (
+                build_option_open_interest_observation(),
+                (
+                    {"contract_key": alternate_contract},
+                    {"open_interest_session_date": datetime.date(2029, 12, 31)},
+                ),
+            ),
+            (
+                build_option_contract_reference(),
+                (
+                    {"contract_key": alternate_contract},
+                    {"listing_date": datetime.date(2029, 9, 15)},
+                    {"last_trade_date": datetime.date(2030, 3, 13)},
+                    {"exercise_style": "European"},
+                    {"settlement_type": "Cash"},
+                ),
+            ),
+        )
+        for record, mutations in cases:
+            baseline = market_data._relationship_record_target_identity(record)
+            for mutation in mutations:
+                with self.subTest(record=type(record).__name__, mutation=mutation):
+                    changed = dataclasses.replace(record, **mutation)
+                    self.assertNotEqual(
+                        market_data._relationship_record_target_identity(changed),
+                        baseline,
+                    )
+
+    def test_numerical_payload_and_provenance_are_not_target_dimensions(self) -> None:
+        cases = (
+            (build_underlying_quote_observation(), {
+                "bid_price": decimal.Decimal("499.90"),
+                "ask_price": decimal.Decimal("500.10"),
+                "last_price": decimal.Decimal("500.01"),
+                "bid_size": 801,
+                "ask_size": 901,
+            }),
+            (build_option_quote_observation(), {
+                "bid_premium": decimal.Decimal("10.20"),
+                "ask_premium": decimal.Decimal("10.40"),
+                "bid_size": 121,
+                "ask_size": 141,
+            }),
+            (build_option_implied_volatility_observation(), {
+                "implied_volatility": decimal.Decimal("0.211250"),
+            }),
+            (build_option_greeks_observation(), {
+                "delta": decimal.Decimal("0.500000"),
+                "gamma": decimal.Decimal("0.020000"),
+                "theta": decimal.Decimal("-0.130000"),
+                "vega": decimal.Decimal("1.900000"),
+            }),
+            (build_option_volume_observation(), {"cumulative_volume": 1300}),
+            (build_option_open_interest_observation(), {"open_interest": 5100}),
+        )
+        for record, changes in cases:
+            with self.subTest(record=type(record).__name__):
+                changed_values = dataclasses.replace(record, **changes)
+                source = record.metadata.source_references[0]
+                changed_source = dataclasses.replace(
+                    source,
+                    source_id=f"alternate-{source.source_id}",
+                    provider_name="Alternate Provider",
+                    provider_record_id="alternate-provider-record",
+                    provider_request_id="alternate-provider-request",
+                    source_uri="synthetic://alternate-provider/record",
+                )
+                changed_provider = dataclasses.replace(
+                    record,
+                    metadata=dataclasses.replace(
+                        record.metadata,
+                        record_id=f"alternate-{record.metadata.record_id}",
+                        source_references=(changed_source,),
+                        normalization_methodology="Alternate normalization",
+                        normalization_version="alternate-v1",
+                    ),
+                )
+                baseline = market_data._relationship_record_target_identity(record)
+                self.assertEqual(
+                    market_data._relationship_record_target_identity(changed_values),
+                    baseline,
+                )
+                self.assertEqual(
+                    market_data._relationship_record_target_identity(changed_provider),
+                    baseline,
+                )
+
+    def test_shape_and_each_binding_proof_dimension_are_comparability_gates(self) -> None:
+        baseline = build_selection_candidate("proof-baseline")
+        proof_variants = (
+            build_selection_candidate(
+                "proof-rule-id",
+                correction_overrides={
+                    "correction_rule_id": "alternate-rule",
+                },
+            ),
+            build_selection_candidate(
+                "proof-rule-version",
+                correction_overrides={
+                    "correction_rule_version": "v0.2",
+                },
+            ),
+            build_selection_candidate(
+                "proof-evaluated-at",
+                correction_overrides={
+                    "correction_evaluated_at": (
+                        EVALUATION_AT - datetime.timedelta(microseconds=1)
+                    ),
+                },
+            ),
+            build_selection_candidate(
+                "proof-policy",
+                policy=build_freshness_policy(
+                    maximum_quote_age_seconds=61
+                ),
+            ),
+            build_selection_candidate(
+                "proof-context",
+                context=build_freshness_context(
+                    latest_completed_session_date=(
+                        SESSION_DATE + datetime.timedelta(days=1)
+                    ),
+                ),
+            ),
+        )
+        for variant in proof_variants:
+            with self.subTest(
+                identity=market_data._relationship_candidate_audit_identity(
+                    variant
+                )[0]
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "shape, target, and proof"
+                ):
+                    select_market_data_relationship_assessment(
+                        (baseline, variant)
+                    )
+
+        different_target = build_selection_candidate(
+            "proof-other",
+            record_overrides={
+                MarketDataRelationshipRole.OPTION_VOLUME: {
+                    "is_session_complete": True,
+                }
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "shape, target, and proof"):
+            select_market_data_relationship_assessment(
+                (baseline, different_target)
+            )
+
+
+class RelationshipSelectionOutcomeTests(unittest.TestCase):
+    @staticmethod
+    def _all_offsets(seconds: int) -> dict:
+        return {
+            role: datetime.timedelta(seconds=seconds)
+            for role in MarketDataRelationshipRole
+        }
+
+    def test_eligibility_reasons_zero_one_and_discarded_ineligible(self) -> None:
+        alternate_contract = build_option_contract_key(
+            strike=decimal.Decimal("501.1250")
+        )
+        relationship_bad = build_selection_candidate(
+            "relationship-bad",
+            record_overrides={
+                MarketDataRelationshipRole.OPTION_QUOTE: {
+                    "contract_key": alternate_contract,
+                }
+            },
+        )
+        temporal_bad = build_selection_candidate(
+            "temporal-bad",
+            offsets={
+                MarketDataRelationshipRole.UNDERLYING_QUOTE:
+                datetime.timedelta(seconds=20),
+            },
+        )
+        both_bad = build_selection_candidate(
+            "both-bad",
+            offsets={
+                MarketDataRelationshipRole.UNDERLYING_QUOTE:
+                datetime.timedelta(seconds=20),
+            },
+            record_overrides={
+                MarketDataRelationshipRole.OPTION_QUOTE: {
+                    "contract_key": alternate_contract,
+                }
+            },
+        )
+        for candidate, expected in (
+            (relationship_bad, (
+                MarketDataSelectionReasonCode.RELATIONSHIP_INCOHERENT,
+                MarketDataSelectionReasonCode.NO_ELIGIBLE_CANDIDATE,
+            )),
+            (temporal_bad, (
+                MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,
+                MarketDataSelectionReasonCode.NO_ELIGIBLE_CANDIDATE,
+            )),
+            (both_bad, (
+                MarketDataSelectionReasonCode.RELATIONSHIP_INCOHERENT,
+                MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,
+                MarketDataSelectionReasonCode.NO_ELIGIBLE_CANDIDATE,
+            )),
+        ):
+            with self.subTest(expected=expected):
+                result = select_market_data_relationship_assessment((candidate,))
+                self.assertEqual(
+                    result.status,
+                    MarketDataSelectionStatus.NO_ELIGIBLE_CANDIDATE,
+                )
+                self.assertIsNone(result.selected_candidate)
+                self.assertEqual(result.reason_codes, expected)
+
+        eligible = build_selection_candidate("eligible")
+        selected = select_market_data_relationship_assessment((
+            eligible,
+            build_selection_candidate(
+                "discarded-temporal",
+                offsets={
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE:
+                    datetime.timedelta(seconds=20),
+                },
+            ),
+        ))
+        self.assertEqual(selected.status, MarketDataSelectionStatus.SELECTED)
+        self.assertIs(selected.selected_candidate, eligible)
+        self.assertEqual(
+            selected.reason_codes,
+            (MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,),
+        )
+        self.assertEqual(
+            selected.candidate_reason_codes,
+            tuple(
+                () if candidate is eligible else (
+                    MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,
+                )
+                for candidate in selected.candidates
+            ),
+        )
+
+    def test_unique_dominance_and_identifier_order_never_select(self) -> None:
+        older = build_selection_candidate("z-older", self._all_offsets(0))
+        newer = build_selection_candidate("a-newer", self._all_offsets(1))
+        result = select_market_data_relationship_assessment((older, newer))
+        self.assertEqual(result.status, MarketDataSelectionStatus.SELECTED)
+        self.assertIs(result.selected_candidate, newer)
+        self.assertEqual(result.reason_codes, ())
+
+    def test_equal_maximal_vectors_tie_even_over_dominated_candidates(self) -> None:
+        first = build_selection_candidate("equal-a", self._all_offsets(1))
+        second = build_selection_candidate("equal-b", self._all_offsets(1))
+        dominated = build_selection_candidate("dominated", self._all_offsets(0))
+        result = select_market_data_relationship_assessment(
+            (dominated, second, first)
+        )
+        self.assertEqual(
+            result.status,
+            MarketDataSelectionStatus.ELIGIBLE_CANDIDATES_TIED,
+        )
+        self.assertIsNone(result.selected_candidate)
+        self.assertEqual(result.reason_codes, (
+            MarketDataSelectionReasonCode.EQUAL_MAXIMAL_SELECTION_VECTORS,
+        ))
+
+    def test_partial_and_equal_plus_distinct_frontiers_are_incomparable(self) -> None:
+        underlying_newer = {
+            MarketDataRelationshipRole.UNDERLYING_QUOTE:
+            datetime.timedelta(seconds=1),
+        }
+        option_newer = {
+            MarketDataRelationshipRole.OPTION_QUOTE:
+            datetime.timedelta(seconds=1),
+        }
+        first = build_selection_candidate("partial-a", underlying_newer)
+        equal_first = build_selection_candidate("partial-b", underlying_newer)
+        distinct = build_selection_candidate("partial-c", option_newer)
+        for candidates in ((first, distinct), (first, equal_first, distinct)):
+            with self.subTest(count=len(candidates)):
+                result = select_market_data_relationship_assessment(candidates)
+                self.assertEqual(
+                    result.status,
+                    MarketDataSelectionStatus
+                    .ELIGIBLE_CANDIDATES_INCOMPARABLE,
+                )
+                self.assertIsNone(result.selected_candidate)
+                self.assertEqual(result.reason_codes, (
+                    MarketDataSelectionReasonCode
+                    .INCOMPARABLE_MAXIMAL_SELECTION_VECTORS,
+                ))
+
+    def test_open_interest_and_contract_reference_timestamps_participate(self) -> None:
+        baseline = build_selection_candidate("date-base")
+        for role in (
+            MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+        ):
+            with self.subTest(role=role):
+                newer = build_selection_candidate(
+                    f"date-{role.value}",
+                    {role: datetime.timedelta(seconds=1)},
+                )
+                result = select_market_data_relationship_assessment(
+                    (baseline, newer)
+                )
+                self.assertIs(result.selected_candidate, newer)
+
+    def test_vector_excludes_dates_normalization_sources_and_identifiers(self) -> None:
+        source = inspect.getsource(
+            market_data._relationship_candidate_selection_vector
+        )
+        self.assertIn("metadata.effective_observed_at", source)
+        for token in (
+            "session_date",
+            "open_interest_session_date",
+            "listing_date",
+            "last_trade_date",
+            "normalized_at",
+            "source_references",
+            "observed_at for source",
+            "retrieved_at",
+            "record_id",
+            "semantic_observation_key",
+            "provider",
+        ):
+            with self.subTest(token=token):
+                self.assertNotIn(token, source)
+
+    def test_no_correction_or_freshness_recomputation_and_repeated_purity(self) -> None:
+        candidate = build_selection_candidate("no-recompute")
+        original_correction = market_data.select_correction_candidate
+        original_freshness = market_data.assess_market_data_freshness
+
+        def fail(*args, **kwargs):
+            raise AssertionError((args, kwargs))
+
+        try:
+            market_data.select_correction_candidate = fail
+            market_data.assess_market_data_freshness = fail
+            result = select_market_data_relationship_assessment((candidate,))
+            first = (
+                result.candidate_reason_codes,
+                result.eligible_candidates,
+                result.selected_candidate,
+                result.status,
+                result.reason_codes,
+            )
+            second = (
+                result.candidate_reason_codes,
+                result.eligible_candidates,
+                result.selected_candidate,
+                result.status,
+                result.reason_codes,
+            )
+            self.assertEqual(first, second)
+            self.assertIs(first[2], candidate)
+        finally:
+            market_data.select_correction_candidate = original_correction
+            market_data.assess_market_data_freshness = original_freshness
+
+
+class RelationshipSelectionCoordinateCoverageTests(unittest.TestCase):
+    def test_every_aligned_effective_time_coordinate_controls_dominance(self) -> None:
+        expected_coordinates = tuple(
+            (group_id, role)
+            for group_id, _kind, roles in _SELECTION_COORDINATE_SPECS
+            for role in roles
+        )
+        self.assertEqual(len(expected_coordinates), 14)
+        self.assertEqual(
+            set(role for _group_id, role in expected_coordinates),
+            set(MarketDataRelationshipRole),
+        )
+
+        for index, expected_coordinate in enumerate(expected_coordinates):
+            with self.subTest(index=index, coordinate=expected_coordinate):
+                baseline = build_coordinate_selection_candidate(
+                    f"coordinate-{index}-baseline"
+                )
+                advanced = build_coordinate_selection_candidate(
+                    f"coordinate-{index}-advanced", index
+                )
+                neutral = build_coordinate_selection_candidate(
+                    f"coordinate-{index}-neutral"
+                )
+                self.assertTrue(baseline.is_coherent)
+                self.assertTrue(advanced.is_coherent)
+                self.assertTrue(
+                    baseline.timing_assessment.is_temporally_coherent
+                )
+                self.assertTrue(
+                    advanced.timing_assessment.is_temporally_coherent
+                )
+
+                aligned = market_data._relationship_candidate_aligned_bindings(
+                    advanced
+                )
+                coordinates = tuple(
+                    (group_id, role)
+                    for group_id, _kind, role, _binding in aligned
+                )
+                self.assertEqual(coordinates, expected_coordinates)
+                advanced_vector = (
+                    market_data._relationship_candidate_selection_vector(
+                        advanced
+                    )
+                )
+                baseline_vector = (
+                    market_data._relationship_candidate_selection_vector(
+                        baseline
+                    )
+                )
+                self.assertEqual(len(advanced_vector), 14)
+                for coordinate, (_group_id, _kind, _role, binding) in enumerate(
+                    aligned
+                ):
+                    self.assertEqual(
+                        advanced_vector[coordinate],
+                        binding.selected_record.metadata.effective_observed_at,
+                    )
+                self.assertEqual(
+                    tuple(
+                        coordinate
+                        for coordinate, (left, right) in enumerate(zip(
+                            advanced_vector, baseline_vector
+                        ))
+                        if left != right
+                    ),
+                    (index,),
+                )
+                self.assertTrue(market_data._selection_vector_dominates(
+                    advanced_vector, baseline_vector
+                ))
+                self.assertFalse(market_data._selection_vector_dominates(
+                    baseline_vector, advanced_vector
+                ))
+                self.assertEqual(
+                    advanced_vector[:index] + advanced_vector[index + 1:],
+                    baseline_vector[:index] + baseline_vector[index + 1:],
+                )
+
+                for supplied in ((baseline, advanced), (advanced, baseline)):
+                    result = select_market_data_relationship_assessment(
+                        supplied
+                    )
+                    self.assertEqual(
+                        result.status, MarketDataSelectionStatus.SELECTED
+                    )
+                    self.assertIs(result.selected_candidate, advanced)
+                tied = select_market_data_relationship_assessment(
+                    (baseline, neutral)
+                )
+                self.assertEqual(
+                    tied.status,
+                    MarketDataSelectionStatus.ELIGIBLE_CANDIDATES_TIED,
+                )
+
+    def test_vector_source_is_only_effective_observed_at(self) -> None:
+        source = inspect.getsource(
+            market_data._relationship_candidate_selection_vector
+        )
+        self.assertEqual(source.count("metadata.effective_observed_at"), 1)
+        for token in (
+            "session_date",
+            "open_interest_session_date",
+            "listing_date",
+            "last_trade_date",
+            "normalized_at",
+            "source_references",
+            "retrieved_at",
+            "record_id",
+            "semantic_observation_key",
+            "audit",
+        ):
+            with self.subTest(token=token):
+                self.assertNotIn(token, source)
+
+
+class RelationshipSelectionEligibilityAuthorityTests(unittest.TestCase):
+    def test_relationship_and_timing_properties_are_authoritative(self) -> None:
+        coherent = build_selection_candidate("authority-coherent")
+        relationship_bad = build_selection_candidate(
+            "authority-relationship-bad",
+            record_overrides={
+                MarketDataRelationshipRole.OPTION_QUOTE: {
+                    "contract_key": build_option_contract_key(
+                        strike=decimal.Decimal("501.1250")
+                    ),
+                }
+            },
+        )
+        both_bad = build_selection_candidate(
+            "authority-both-bad",
+            offsets={
+                MarketDataRelationshipRole.UNDERLYING_QUOTE:
+                datetime.timedelta(seconds=20),
+            },
+            record_overrides={
+                MarketDataRelationshipRole.OPTION_QUOTE: {
+                    "contract_key": build_option_contract_key(
+                        strike=decimal.Decimal("501.1250")
+                    ),
+                }
+            },
+        )
+        self.assertTrue(coherent.is_coherent)
+        self.assertTrue(coherent.timing_assessment.is_temporally_coherent)
+        self.assertFalse(relationship_bad.is_coherent)
+        self.assertFalse(both_bad.is_coherent)
+        self.assertFalse(
+            both_bad.timing_assessment.is_temporally_coherent
+        )
+
+        relationship_property = MarketDataRelationshipAssessment.is_coherent
+        timing_property = (
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent
+        )
+        cases = (
+            (
+                coherent,
+                False,
+                True,
+                MarketDataSelectionStatus.NO_ELIGIBLE_CANDIDATE,
+                (MarketDataSelectionReasonCode.RELATIONSHIP_INCOHERENT,),
+            ),
+            (
+                coherent,
+                True,
+                False,
+                MarketDataSelectionStatus.NO_ELIGIBLE_CANDIDATE,
+                (MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,),
+            ),
+            (
+                both_bad,
+                True,
+                True,
+                MarketDataSelectionStatus.SELECTED,
+                (),
+            ),
+        )
+        try:
+            for (
+                candidate,
+                relationship_value,
+                timing_value,
+                expected_status,
+                expected_candidate_reasons,
+            ) in cases:
+                with self.subTest(
+                    relationship=relationship_value,
+                    timing=timing_value,
+                ):
+                    relationship_reads = []
+                    timing_reads = []
+                    MarketDataRelationshipAssessment.is_coherent = property(
+                        lambda assessment, value=relationship_value: (
+                            relationship_reads.append(assessment), value
+                        )[1]
+                    )
+                    MarketDataSnapshotTimingAssessment.is_temporally_coherent = (
+                        property(lambda assessment, value=timing_value: (
+                            timing_reads.append(assessment), value
+                        )[1])
+                    )
+                    result = select_market_data_relationship_assessment(
+                        (candidate,)
+                    )
+                    self.assertEqual(result.status, expected_status)
+                    self.assertEqual(
+                        result.candidate_reason_codes,
+                        (expected_candidate_reasons,),
+                    )
+                    self.assertTrue(relationship_reads)
+                    self.assertTrue(timing_reads)
+                    self.assertTrue(all(
+                        assessment is candidate
+                        for assessment in relationship_reads
+                    ))
+                    self.assertTrue(all(
+                        assessment is candidate.timing_assessment
+                        for assessment in timing_reads
+                    ))
+                    if expected_status is MarketDataSelectionStatus.SELECTED:
+                        self.assertIs(result.selected_candidate, candidate)
+        finally:
+            MarketDataRelationshipAssessment.is_coherent = relationship_property
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent = (
+                timing_property
+            )
+
+    def test_no_underlying_eligibility_rule_is_recomputed(self) -> None:
+        candidate = build_selection_candidate("authority-no-recompute")
+        relationship_property = MarketDataRelationshipAssessment.is_coherent
+        timing_property = (
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent
+        )
+        originals = {
+            "correction": market_data.select_correction_candidate,
+            "freshness": market_data.assess_market_data_freshness,
+            "relationship": market_data._derive_relationship_group_issue_codes,
+            "timing": market_data._derive_snapshot_timing_state,
+        }
+
+        def fail(*args, **kwargs):
+            raise AssertionError((args, kwargs))
+
+        try:
+            MarketDataRelationshipAssessment.is_coherent = property(
+                lambda _assessment: True
+            )
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent = property(
+                lambda _assessment: True
+            )
+            market_data.select_correction_candidate = fail
+            market_data.assess_market_data_freshness = fail
+            market_data._derive_relationship_group_issue_codes = fail
+            market_data._derive_snapshot_timing_state = fail
+            result = select_market_data_relationship_assessment((candidate,))
+            self.assertEqual(result.status, MarketDataSelectionStatus.SELECTED)
+            self.assertIs(result.selected_candidate, candidate)
+            self.assertEqual(result.reason_codes, ())
+        finally:
+            MarketDataRelationshipAssessment.is_coherent = relationship_property
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent = (
+                timing_property
+            )
+            market_data.select_correction_candidate = originals["correction"]
+            market_data.assess_market_data_freshness = originals["freshness"]
+            market_data._derive_relationship_group_issue_codes = (
+                originals["relationship"]
+            )
+            market_data._derive_snapshot_timing_state = originals["timing"]
+
+
+class RelationshipSelectionReasonDeduplicationTests(unittest.TestCase):
+    @staticmethod
+    def _relationship_bad(label: str, seconds: int = 0):
+        return build_selection_candidate(
+            label,
+            offsets={
+                role: datetime.timedelta(seconds=seconds)
+                for role in MarketDataRelationshipRole
+            },
+            record_overrides={
+                MarketDataRelationshipRole.OPTION_QUOTE: {
+                    "contract_key": build_option_contract_key(
+                        strike=decimal.Decimal("501.1250")
+                    ),
+                }
+            },
+        )
+
+    @staticmethod
+    def _temporal_bad(label: str, relationship_bad: bool = False):
+        overrides = (
+            {
+                MarketDataRelationshipRole.OPTION_QUOTE: {
+                    "contract_key": build_option_contract_key(
+                        strike=decimal.Decimal("501.1250")
+                    ),
+                }
+            }
+            if relationship_bad
+            else None
+        )
+        return build_selection_candidate(
+            label,
+            offsets={
+                MarketDataRelationshipRole.UNDERLYING_QUOTE:
+                datetime.timedelta(seconds=20),
+            },
+            record_overrides=overrides,
+        )
+
+    def test_repeated_and_combined_ineligibility_reasons_are_deduplicated(self) -> None:
+        cases = (
+            (
+                (
+                    self._relationship_bad("reason-relationship-a", 0),
+                    self._relationship_bad("reason-relationship-b", 1),
+                ),
+                (
+                    MarketDataSelectionReasonCode.RELATIONSHIP_INCOHERENT,
+                    MarketDataSelectionReasonCode.NO_ELIGIBLE_CANDIDATE,
+                ),
+            ),
+            (
+                (
+                    self._temporal_bad("reason-temporal-a"),
+                    self._temporal_bad("reason-temporal-b"),
+                ),
+                (
+                    MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,
+                    MarketDataSelectionReasonCode.NO_ELIGIBLE_CANDIDATE,
+                ),
+            ),
+            (
+                (
+                    self._temporal_bad("reason-both-a", True),
+                    self._temporal_bad("reason-both-b", True),
+                ),
+                (
+                    MarketDataSelectionReasonCode.RELATIONSHIP_INCOHERENT,
+                    MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,
+                    MarketDataSelectionReasonCode.NO_ELIGIBLE_CANDIDATE,
+                ),
+            ),
+        )
+        for candidates, expected in cases:
+            for supplied in (candidates, tuple(reversed(candidates))):
+                with self.subTest(expected=expected, supplied=supplied):
+                    result = select_market_data_relationship_assessment(
+                        supplied
+                    )
+                    self.assertEqual(result.reason_codes, expected)
+                    self.assertEqual(
+                        len(result.reason_codes), len(set(result.reason_codes))
+                    )
+                    self.assertEqual(
+                        result.reason_codes,
+                        tuple(
+                            reason
+                            for reason in MarketDataSelectionReasonCode
+                            if reason in result.reason_codes
+                        ),
+                    )
+
+    def test_disclosure_and_one_terminal_reason_are_ordered_and_invariant(self) -> None:
+        eligible_a = build_selection_candidate("reason-mixed-eligible-a")
+        eligible_b = build_selection_candidate("reason-mixed-eligible-b")
+        ineligible_a = self._temporal_bad("reason-mixed-ineligible-a")
+        ineligible_b = self._temporal_bad("reason-mixed-ineligible-b")
+        candidates = (
+            eligible_a, eligible_b, ineligible_a, ineligible_b
+        )
+        expected = (
+            MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,
+            MarketDataSelectionReasonCode.EQUAL_MAXIMAL_SELECTION_VECTORS,
+        )
+        canonical = tuple(sorted(
+            candidates,
+            key=market_data._relationship_candidate_audit_identity,
+        ))
+        for supplied in itertools.permutations(candidates):
+            result = select_market_data_relationship_assessment(supplied)
+            self.assertEqual(result.candidates, canonical)
+            self.assertEqual(
+                result.status,
+                MarketDataSelectionStatus.ELIGIBLE_CANDIDATES_TIED,
+            )
+            self.assertEqual(result.reason_codes, expected)
+            self.assertEqual(
+                sum(
+                    reason in (
+                        MarketDataSelectionReasonCode.NO_ELIGIBLE_CANDIDATE,
+                        MarketDataSelectionReasonCode
+                        .EQUAL_MAXIMAL_SELECTION_VECTORS,
+                        MarketDataSelectionReasonCode
+                        .INCOMPARABLE_MAXIMAL_SELECTION_VECTORS,
+                    )
+                    for reason in result.reason_codes
+                ),
+                1,
+            )
+
+
+class RelationshipSelectionInvalidEquivalenceTests(unittest.TestCase):
+    def _assert_invalid_equivalent(self, supplier) -> None:
+        errors = []
+        for call in (
+            lambda value: MarketDataRelationshipSelection(value),
+            select_market_data_relationship_assessment,
+        ):
+            try:
+                call(supplier())
+            except Exception as error:  # noqa: BLE001 - taxonomy is asserted
+                errors.append(error)
+            else:
+                self.fail("invalid selection input unexpectedly succeeded")
+        self.assertIs(type(errors[0]), type(errors[1]))
+        self.assertEqual(str(errors[0]), str(errors[1]))
+
+    def test_direct_and_public_invalid_inputs_are_equivalent(self) -> None:
+        baseline = build_selection_candidate("equivalence-baseline")
+
+        class ListSubclass(list):
+            pass
+
+        class TupleSubclass(tuple):
+            pass
+
+        renamed_groups = tuple(
+            dataclasses.replace(group, group_id="renamed-snapshot")
+            if group.group_id == "snapshot"
+            else group
+            for group in baseline.request.groups
+        )
+        shape_mismatch = MarketDataRelationshipAssessment(
+            MarketDataRelationshipRequest(renamed_groups),
+            baseline.timing_assessment,
+        )
+        cases = (
+            ("wrong root", lambda: iter((baseline,))),
+            ("list subclass", lambda: ListSubclass((baseline,))),
+            ("tuple subclass", lambda: TupleSubclass((baseline,))),
+            ("empty", lambda: ()),
+            ("wrong element", lambda: (object(),)),
+            ("duplicate", lambda: (baseline, baseline)),
+            (
+                "incomplete",
+                lambda: (build_over_complete_selection_candidate(
+                    "equivalence-over-complete"
+                ),),
+            ),
+            ("shape", lambda: (baseline, shape_mismatch)),
+            (
+                "economic target",
+                lambda: (
+                    baseline,
+                    build_selection_candidate(
+                        "equivalence-economic",
+                        record_overrides={
+                            MarketDataRelationshipRole.OPTION_VOLUME: {
+                                "is_session_complete": True,
+                            }
+                        },
+                    ),
+                ),
+            ),
+            (
+                "correction regime",
+                lambda: (
+                    baseline,
+                    build_selection_candidate(
+                        "equivalence-correction",
+                        correction_overrides={
+                            "correction_rule_id": "alternate-rule",
+                        },
+                    ),
+                ),
+            ),
+            (
+                "freshness policy",
+                lambda: (
+                    baseline,
+                    build_selection_candidate(
+                        "equivalence-policy",
+                        policy=build_freshness_policy(
+                            maximum_quote_age_seconds=61
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "freshness context",
+                lambda: (
+                    baseline,
+                    build_selection_candidate(
+                        "equivalence-context",
+                        context=build_freshness_context(
+                            latest_completed_session_date=(
+                                SESSION_DATE + datetime.timedelta(days=1)
+                            )
+                        ),
+                    ),
+                ),
+            ),
+        )
+        for label, supplier in cases:
+            with self.subTest(case=label):
+                self._assert_invalid_equivalent(supplier)
+
+
+class RelationshipSelectionValidationPrecedenceTests(unittest.TestCase):
+    def test_container_element_empty_duplicate_and_canonical_precedence(self) -> None:
+        candidate_a = build_selection_candidate("precedence-a")
+        candidate_z = build_selection_candidate("precedence-z")
+
+        class PoisonIterable:
+            def __iter__(self):
+                raise AssertionError("wrong root was iterated")
+
+        with self.assertRaisesRegex(TypeError, "exact tuple or list"):
+            select_market_data_relationship_assessment(PoisonIterable())
+
+        original_audit = market_data._relationship_candidate_audit_identity
+        try:
+            market_data._relationship_candidate_audit_identity = (
+                lambda _candidate: (_ for _ in ()).throw(
+                    AssertionError("audit identity accessed")
+                )
+            )
+            with self.assertRaisesRegex(TypeError, "every candidates item"):
+                select_market_data_relationship_assessment((object(),))
+            with self.assertRaisesRegex(ValueError, "at least one"):
+                select_market_data_relationship_assessment(())
+        finally:
+            market_data._relationship_candidate_audit_identity = original_audit
+
+        original_complete = (
+            market_data._validate_complete_relationship_candidate
+        )
+        try:
+            market_data._validate_complete_relationship_candidate = (
+                lambda _candidate: (_ for _ in ()).throw(
+                    AssertionError("completeness accessed")
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate audit"):
+                select_market_data_relationship_assessment(
+                    (candidate_a, candidate_a)
+                )
+        finally:
+            market_data._validate_complete_relationship_candidate = (
+                original_complete
+            )
+
+        observed = []
+
+        class CanonicalizationReached(RuntimeError):
+            pass
+
+        try:
+            market_data._validate_complete_relationship_candidate = (
+                lambda candidate: (
+                    observed.append(candidate),
+                    (_ for _ in ()).throw(CanonicalizationReached()),
+                )[1]
+            )
+            with self.assertRaises(CanonicalizationReached):
+                select_market_data_relationship_assessment(
+                    (candidate_z, candidate_a)
+                )
+        finally:
+            market_data._validate_complete_relationship_candidate = (
+                original_complete
+            )
+        expected_first = min(
+            (candidate_a, candidate_z),
+            key=market_data._relationship_candidate_audit_identity,
+        )
+        self.assertIs(observed[0], expected_first)
+
+    def test_completeness_and_combined_comparability_precede_eligibility(self) -> None:
+        baseline = build_selection_candidate("precedence-baseline")
+        over_complete = build_over_complete_selection_candidate(
+            "precedence-over-complete"
+        )
+        original_comparable = (
+            market_data._validate_comparable_relationship_candidates
+        )
+        try:
+            market_data._validate_comparable_relationship_candidates = (
+                lambda _candidates: (_ for _ in ()).throw(
+                    AssertionError("comparability accessed")
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "equal.*timing binding set"):
+                select_market_data_relationship_assessment((over_complete,))
+        finally:
+            market_data._validate_comparable_relationship_candidates = (
+                original_comparable
+            )
+
+        renamed_groups = tuple(
+            dataclasses.replace(group, group_id="renamed-snapshot")
+            if group.group_id == "snapshot"
+            else group
+            for group in baseline.request.groups
+        )
+        shape = MarketDataRelationshipAssessment(
+            MarketDataRelationshipRequest(renamed_groups),
+            baseline.timing_assessment,
+        )
+        economic = build_selection_candidate(
+            "precedence-economic",
+            record_overrides={
+                MarketDataRelationshipRole.OPTION_VOLUME: {
+                    "is_session_complete": True,
+                }
+            },
+        )
+        correction = build_selection_candidate(
+            "precedence-correction",
+            correction_overrides={
+                "correction_rule_id": "alternate-rule",
+            },
+        )
+        policy = build_selection_candidate(
+            "precedence-policy",
+            policy=build_freshness_policy(maximum_quote_age_seconds=61),
+        )
+        context = build_selection_candidate(
+            "precedence-context",
+            context=build_freshness_context(
+                latest_completed_session_date=(
+                    SESSION_DATE + datetime.timedelta(days=1)
+                )
+            ),
+        )
+        relationship_property = MarketDataRelationshipAssessment.is_coherent
+        timing_property = (
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent
+        )
+
+        def fail_property(_value):
+            raise AssertionError("eligibility accessed")
+
+        try:
+            MarketDataRelationshipAssessment.is_coherent = property(
+                fail_property
+            )
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent = property(
+                fail_property
+            )
+            for variant in (shape, economic, correction, policy, context):
+                with self.subTest(
+                    identity=market_data._relationship_candidate_audit_identity(
+                        variant
+                    )[0]
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError, "shape, target, and proof"
+                    ):
+                        select_market_data_relationship_assessment(
+                            (baseline, variant)
+                        )
+        finally:
+            MarketDataRelationshipAssessment.is_coherent = relationship_property
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent = (
+                timing_property
+            )
+
+    def test_eligibility_precedes_vector_and_vector_precedes_frontier(self) -> None:
+        candidate = build_selection_candidate("precedence-ineligible")
+        relationship_property = MarketDataRelationshipAssessment.is_coherent
+        timing_property = (
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent
+        )
+        original_vector = (
+            market_data._relationship_candidate_selection_vector
+        )
+        try:
+            MarketDataRelationshipAssessment.is_coherent = property(
+                lambda _candidate: False
+            )
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent = property(
+                lambda _timing: False
+            )
+            market_data._relationship_candidate_selection_vector = (
+                lambda _candidate: (_ for _ in ()).throw(
+                    AssertionError("vector accessed for ineligible candidate")
+                )
+            )
+            result = select_market_data_relationship_assessment((candidate,))
+            self.assertEqual(
+                result.status,
+                MarketDataSelectionStatus.NO_ELIGIBLE_CANDIDATE,
+            )
+        finally:
+            MarketDataRelationshipAssessment.is_coherent = relationship_property
+            MarketDataSnapshotTimingAssessment.is_temporally_coherent = (
+                timing_property
+            )
+            market_data._relationship_candidate_selection_vector = original_vector
+
+        first = build_selection_candidate("precedence-vector-a")
+        second = build_selection_candidate("precedence-vector-b")
+        vector_reads = []
+        try:
+            market_data._relationship_candidate_selection_vector = (
+                lambda selected: (
+                    vector_reads.append(selected), original_vector(selected)
+                )[1]
+            )
+            result = select_market_data_relationship_assessment((first, second))
+            self.assertEqual(
+                result.status,
+                MarketDataSelectionStatus.ELIGIBLE_CANDIDATES_TIED,
+            )
+            self.assertGreaterEqual(len(vector_reads), 2)
+            self.assertEqual(set(vector_reads), {first, second})
+        finally:
+            market_data._relationship_candidate_selection_vector = original_vector
+
+    def test_all_vectors_complete_before_frontier_access(self) -> None:
+        first = build_selection_candidate("precedence-sentinel-a")
+        second = build_selection_candidate("precedence-sentinel-b")
+        candidates = (first, second)
+        original_vector = (
+            market_data._relationship_candidate_selection_vector
+        )
+        original_dominates = market_data._selection_vector_dominates
+
+        class VectorDerivationFailed(RuntimeError):
+            pass
+
+        class FrontierAccessed(RuntimeError):
+            pass
+
+        for call in (
+            lambda: MarketDataRelationshipSelection(candidates),
+            lambda: select_market_data_relationship_assessment(candidates),
+        ):
+            vector_reads = []
+            dominance_reads = []
+
+            def derive_then_fail(candidate):
+                vector_reads.append(candidate)
+                if len(vector_reads) == 2:
+                    raise VectorDerivationFailed()
+                return original_vector(candidate)
+
+            def fail_frontier(first_vector, second_vector):
+                dominance_reads.append((first_vector, second_vector))
+                raise FrontierAccessed()
+
+            try:
+                market_data._relationship_candidate_selection_vector = (
+                    derive_then_fail
+                )
+                market_data._selection_vector_dominates = fail_frontier
+                with self.assertRaises(VectorDerivationFailed):
+                    call()
+                self.assertEqual(len(vector_reads), 2)
+                self.assertEqual(dominance_reads, [])
+            finally:
+                market_data._relationship_candidate_selection_vector = (
+                    original_vector
+                )
+                market_data._selection_vector_dominates = original_dominates
+
+
+class RelationshipSelectionPermutationTests(unittest.TestCase):
+    @staticmethod
+    def _all_offsets(seconds: int) -> dict:
+        return {
+            role: datetime.timedelta(seconds=seconds)
+            for role in MarketDataRelationshipRole
+        }
+
+    def _assert_all_permutations(
+        self,
+        candidates,
+        expected_status,
+        expected_selected,
+        expected_reasons,
+    ) -> None:
+        canonical = tuple(sorted(
+            candidates,
+            key=market_data._relationship_candidate_audit_identity,
+        ))
+        eligible = tuple(
+            candidate
+            for candidate in canonical
+            if candidate.is_coherent
+            and candidate.timing_assessment.is_temporally_coherent
+        )
+        for supplied in itertools.permutations(candidates):
+            result = select_market_data_relationship_assessment(supplied)
+            self.assertEqual(result.candidates, canonical)
+            self.assertTrue(all(
+                retained is expected
+                for retained, expected in zip(result.candidates, canonical)
+            ))
+            self.assertEqual(result.status, expected_status)
+            self.assertEqual(result.eligible_candidates, eligible)
+            self.assertTrue(all(
+                retained is expected
+                for retained, expected in zip(
+                    result.eligible_candidates, eligible
+                )
+            ))
+            if expected_selected is None:
+                self.assertIsNone(result.selected_candidate)
+            else:
+                self.assertIs(result.selected_candidate, expected_selected)
+            self.assertEqual(result.reason_codes, expected_reasons)
+
+    def test_every_terminal_outcome_is_permutation_invariant(self) -> None:
+        older = build_selection_candidate(
+            "permutation-selected-older", self._all_offsets(0)
+        )
+        newer = build_selection_candidate(
+            "permutation-selected-newer", self._all_offsets(1)
+        )
+        discarded = build_selection_candidate(
+            "permutation-selected-discarded",
+            offsets={
+                MarketDataRelationshipRole.UNDERLYING_QUOTE:
+                datetime.timedelta(seconds=20),
+            },
+        )
+        self._assert_all_permutations(
+            (older, newer, discarded),
+            MarketDataSelectionStatus.SELECTED,
+            newer,
+            (MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,),
+        )
+
+        no_eligible = tuple(
+            build_selection_candidate(
+                f"permutation-none-{index}",
+                offsets={
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE:
+                    datetime.timedelta(seconds=20),
+                },
+            )
+            for index in range(3)
+        )
+        self._assert_all_permutations(
+            no_eligible,
+            MarketDataSelectionStatus.NO_ELIGIBLE_CANDIDATE,
+            None,
+            (
+                MarketDataSelectionReasonCode.TEMPORALLY_INCOHERENT,
+                MarketDataSelectionReasonCode.NO_ELIGIBLE_CANDIDATE,
+            ),
+        )
+
+        tied_a = build_selection_candidate(
+            "permutation-tied-a", self._all_offsets(1)
+        )
+        tied_b = build_selection_candidate(
+            "permutation-tied-b", self._all_offsets(1)
+        )
+        dominated = build_selection_candidate(
+            "permutation-tied-dominated", self._all_offsets(0)
+        )
+        self._assert_all_permutations(
+            (tied_a, tied_b, dominated),
+            MarketDataSelectionStatus.ELIGIBLE_CANDIDATES_TIED,
+            None,
+            (
+                MarketDataSelectionReasonCode
+                .EQUAL_MAXIMAL_SELECTION_VECTORS,
+            ),
+        )
+
+        incomparable_a = build_selection_candidate(
+            "permutation-incomparable-a",
+            offsets={
+                MarketDataRelationshipRole.UNDERLYING_QUOTE:
+                datetime.timedelta(seconds=1),
+            },
+        )
+        incomparable_b = build_selection_candidate(
+            "permutation-incomparable-b",
+            offsets={
+                MarketDataRelationshipRole.OPTION_QUOTE:
+                datetime.timedelta(seconds=1),
+            },
+        )
+        incomparable_c = build_selection_candidate(
+            "permutation-incomparable-c", self._all_offsets(0)
+        )
+        self._assert_all_permutations(
+            (incomparable_a, incomparable_b, incomparable_c),
+            MarketDataSelectionStatus.ELIGIBLE_CANDIDATES_INCOMPARABLE,
+            None,
+            (
+                MarketDataSelectionReasonCode
+                .INCOMPARABLE_MAXIMAL_SELECTION_VECTORS,
+            ),
+        )
+
+    def test_equal_plus_distinct_maximal_frontier_is_permutation_invariant(self) -> None:
+        equal_offsets = {
+            MarketDataRelationshipRole.UNDERLYING_QUOTE:
+            datetime.timedelta(seconds=1),
+        }
+        equal_a = build_selection_candidate(
+            "permutation-mixed-equal-a", equal_offsets
+        )
+        equal_b = build_selection_candidate(
+            "permutation-mixed-equal-b", equal_offsets
+        )
+        distinct = build_selection_candidate(
+            "permutation-mixed-distinct",
+            offsets={
+                MarketDataRelationshipRole.OPTION_QUOTE:
+                datetime.timedelta(seconds=1),
+            },
+        )
+        self._assert_all_permutations(
+            (equal_a, equal_b, distinct),
+            MarketDataSelectionStatus.ELIGIBLE_CANDIDATES_INCOMPARABLE,
+            None,
+            (
+                MarketDataSelectionReasonCode
+                .INCOMPARABLE_MAXIMAL_SELECTION_VECTORS,
+            ),
+        )
 
 
 class ImportAndDeterminismTests(unittest.TestCase):

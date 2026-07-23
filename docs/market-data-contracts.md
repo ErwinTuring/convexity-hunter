@@ -3825,6 +3825,244 @@ applicable contract-reference role and inclusive or missing bound; issue
 coexistence, local suppression, duplicate collapse, wrong-type short-circuiting,
 excluded-field access, canonical ordering, resolution, and retained identity.
 
+### 13.14 Milestone 3C.5 deterministic cross-observation selection
+
+Milestone 3C.5 selects at most one complete
+`MarketDataRelationshipAssessment` from an explicit collection of alternatives.
+The complete assessment is the selection unit because it already retains one
+canonical relationship request, its exact timing universe, and the resolved
+selected/fresh bindings that were relationship-tested together. Individual
+group assessments cannot prove a complete input set, and no redundant public
+candidate-bundle type is introduced.
+
+Selection occurs only after the existing correction, freshness, timing, and
+relationship layers. 3C.5 trusts those immutable results and does not recompute
+their rules.
+
+#### Public API
+
+3C.5 appends exactly these four public names after the implemented 54-name
+prefix, in this order, for a total public count of 58:
+
+```text
+MarketDataSelectionStatus
+MarketDataSelectionReasonCode
+MarketDataRelationshipSelection
+select_market_data_relationship_assessment
+```
+
+The enums have these exact declaration orders and values:
+
+```python
+class MarketDataSelectionStatus(str, Enum):
+    SELECTED = "selected"
+    NO_ELIGIBLE_CANDIDATE = "no_eligible_candidate"
+    ELIGIBLE_CANDIDATES_TIED = "eligible_candidates_tied"
+    ELIGIBLE_CANDIDATES_INCOMPARABLE = (
+        "eligible_candidates_incomparable"
+    )
+
+
+class MarketDataSelectionReasonCode(str, Enum):
+    RELATIONSHIP_INCOHERENT = "relationship_incoherent"
+    TEMPORALLY_INCOHERENT = "temporally_incoherent"
+    NO_ELIGIBLE_CANDIDATE = "no_eligible_candidate"
+    EQUAL_MAXIMAL_SELECTION_VECTORS = (
+        "equal_maximal_selection_vectors"
+    )
+    INCOMPARABLE_MAXIMAL_SELECTION_VECTORS = (
+        "incomparable_maximal_selection_vectors"
+    )
+```
+
+The frozen result stores exactly one dataclass field:
+
+```python
+MarketDataRelationshipSelection
+    candidates: Tuple[MarketDataRelationshipAssessment, ...]
+```
+
+It derives `candidate_reason_codes`, `eligible_candidates`,
+`selected_candidate`, `status`, and `reason_codes`. The public function is:
+
+```python
+select_market_data_relationship_assessment(
+    candidates,
+) -> MarketDataRelationshipSelection
+```
+
+Direct construction and the public function have identical validation,
+canonicalization, object-retention, and result semantics.
+
+#### Candidate boundary, audit identity, and complete universe
+
+`candidates` must be an exact built-in tuple or list containing only exact
+`MarketDataRelationshipAssessment` objects. Collection and assessment
+subclasses are rejected. At least one candidate is required.
+
+For each candidate, the audit identity is the canonical request-group/member
+sequence of:
+
+```text
+(
+    group_id,
+    group_kind,
+    role,
+    semantic_observation_key,
+    selected_record_id,
+)
+```
+
+The complete sequence is used only for duplicate detection, canonical
+candidate ordering, and audit reproducibility. Duplicate audit identity raises
+`ValueError`, including repeated or structurally equal assessments and the
+same selected references under different proof sidecars. Semantic keys,
+record IDs, and their lexical order never influence eligibility, dominance,
+status, or selection.
+
+The stored canonical tuple contains the exact supplied assessment objects.
+Requests, timing assessments, groups, bindings, and records are never copied or
+reconstructed.
+
+Every candidate must be complete. The set of complete request-reference pairs
+must exactly equal the set of timing-binding pairs:
+
+```text
+(semantic_observation_key, selected_record_id)
+```
+
+Set equality permits one binding to be reused by several groups but rejects an
+unresolved request reference or an unreferenced timing binding.
+
+#### Exact cross-candidate comparability
+
+All candidates, including candidates later found ineligible, must belong to one
+selection universe. Correspondence uses canonical `(group_id, role declaration
+index)` alignment rather than caller order. Every candidate must have identical
+normalized group IDs, corresponding group kinds, corresponding role sets,
+exact corresponding selected-record types, and the applicable target/proof
+projection below.
+
+Every aligned binding fixes the complete proof regime:
+
+```text
+correction_selection.rule_id
+correction_selection.rule_version
+correction_selection.evaluated_at
+freshness_policy
+freshness_context
+```
+
+Freshness assessments may differ because selected records and effective times
+may differ. Provider identity, source lineage, record origin, record IDs, and
+semantic keys are not target dimensions.
+
+| Exact selected-record type | Fixed target fields |
+|---|---|
+| `UnderlyingQuoteObservation` | `underlying_key`, `session_date`, `market_phase`, `quote_scope`, `venue_mic`, and presence of `last_price`, `bid_size`, and `ask_size` |
+| `OptionQuoteObservation` | `contract_key`, `session_date`, `market_phase`, `quote_scope`, `venue_mic`, and presence of `bid_size` and `ask_size` |
+| `OptionImpliedVolatilityObservation` | `contract_key`, `session_date`, `model_name`, `model_version`, rate-input description, and dividend-input description |
+| `OptionGreeksObservation` | the IV fields above, presence mask for Delta/Gamma/Theta/Vega, and `theta_day_basis` |
+| `OptionVolumeObservation` | `contract_key`, `session_date`, and `is_session_complete` |
+| `OptionOpenInterestObservation` | `contract_key` and `open_interest_session_date` |
+| `OptionContractReference` | `contract_key`, listing date, last-trade date, exercise style, and settlement type |
+
+Normalized numerical payload values may vary but are never ranking dimensions.
+The complete `OptionContractKey` fixes underlying, expiration, option type,
+strike, multiplier, currency, and deliverable. A shape, target, or proof-regime
+mismatch raises `ValueError`; it is not an ambiguous selection result.
+
+#### Eligibility and canonical audit reasons
+
+A candidate is eligible exactly when:
+
+```python
+candidate.is_coherent
+and candidate.timing_assessment.is_temporally_coherent
+```
+
+The existing derived properties are authoritative. 3C.5 does not recalculate
+correction selection, freshness, relationship issues, timing spans, or timing
+policies. Each canonical candidate receives `RELATIONSHIP_INCOHERENT`,
+`TEMPORALLY_INCOHERENT`, both in enum order, or an empty reason tuple. An empty
+candidate reason tuple is the exact eligibility condition. Ineligible
+candidates remain retained and auditable.
+
+#### Selection vectors, dominance, and terminal results
+
+For each eligible candidate, the selection vector follows canonical
+`(group_id, role declaration index)` alignment. Every coordinate is:
+
+```python
+binding.selected_record.metadata.effective_observed_at
+```
+
+All aligned roles participate, including open interest and contract reference.
+A reused binding contributes at every declared coordinate; vector coordinates
+are not deduplicated. Session dates, open-interest dates, contract bounds,
+`normalized_at`, source observation/retrieval times, identifiers, and provider
+identity do not enter the vector.
+
+Vector A dominates vector B exactly when every A coordinate is greater than or
+equal to its aligned B coordinate and at least one is greater. The maximal
+frontier contains candidates not dominated by another eligible candidate.
+
+The terminal rules are exact:
+
+- zero eligible candidates: `NO_ELIGIBLE_CANDIDATE`, no selected candidate,
+  and terminal reason `NO_ELIGIBLE_CANDIDATE`;
+- one eligible candidate: `SELECTED` and that exact object;
+- one maximal candidate among several eligible candidates: `SELECTED` and that
+  exact maximal object, which dominates every other eligible candidate;
+- several maximal candidates with equal complete vectors:
+  `ELIGIBLE_CANDIDATES_TIED` and
+  `EQUAL_MAXIMAL_SELECTION_VECTORS`;
+- several maximal candidates with any distinct vectors:
+  `ELIGIBLE_CANDIDATES_INCOMPARABLE` and
+  `INCOMPARABLE_MAXIMAL_SELECTION_VECTORS`.
+
+Equal non-maximal vectors do not create a tie. A frontier containing equal
+vectors plus another distinct incomparable vector is incomparable.
+`selected_candidate` is `None` for every non-selected status.
+
+Top-level `reason_codes` is the enum-ordered union of all candidate
+ineligibility reasons and the applicable terminal reason. A selected result may
+therefore retain audit reasons from discarded candidates. There is no selected
+reason code.
+
+#### Exact validation precedence and exclusions
+
+The public function and direct constructor use this observable order:
+
+```text
+1. exact tuple/list container
+2. exact assessment elements in caller order
+3. nonempty input
+4. audit-identity derivation and duplicate rejection
+5. canonicalization with exact-object retention
+6. complete request/timing-universe validation
+7. cross-candidate shape, target, and proof comparability
+8. candidate eligibility and candidate reasons
+9. aligned eligible-candidate vectors
+10. dominance and maximal-frontier evaluation
+11. terminal state derivation
+12. canonical frozen-result construction
+```
+
+Wrong Python type boundaries raise `TypeError`. Empty, duplicate, incomplete,
+over-complete, or semantically mixed candidate universes raise `ValueError`.
+Ordinary ineligibility, ties, and incomparability are result states. No custom
+exception is introduced.
+
+3C.5 introduces no correction or freshness recomputation, relationship or
+timing rule, provider ranking, option-chain scanning, liquidity or economic
+ranking, strike/expiration/delta/moneyness selection, interpolation, historical
+assembly, rates/dividends, pricing, transformation, evidence,
+`CalculationLineage`, candidate state, screening decision, recommendation, or
+execution behavior. Historical-series work remains 3C.6; transformations and
+lineage remain 3C.7. The implementation is pure, deterministic, clock-free,
+network-free, registry-free, and caller-order independent.
+
 ## 14. Canonical calculation lineage
 
 A separate input-reference record is required because IDs alone cannot validate calculation chronology.
@@ -4252,9 +4490,12 @@ economic use remains 3C.7 work.
 
 ### Milestone 3C.5 — Deterministic cross-observation selection
 
-Choose among different eligible semantic observations only after temporal and
-explicit relationship coherence. Do not silently choose a latest or preferred
-observation before this contract is defined.
+The Section 13.14 contract is implemented and validated locally pending
+independent review. It selects at most one complete relationship assessment
+only after existing temporal and relationship coherence, using exact target
+comparability and Pareto dominance over aligned effective observation times.
+It adds four public names for a total of 58 and introduces no score, hidden
+tie-breaker, option-chain scan, historical completeness, or transformation.
 
 ### Milestone 3C.6 — Historical-series assembly and completeness
 
@@ -4298,7 +4539,7 @@ The full implementation sequence is:
     references.
 11. Define, review, then implement Milestones 3C.4b through 3C.4e explicit
     relationship/group coherence.
-12. Define, review, then implement Milestone 3C.5 deterministic cross-
+12. Independently review and finalize Milestone 3C.5 deterministic cross-
     observation selection.
 13. Define, review, then implement Milestone 3C.6 historical-series assembly
     and completeness.
