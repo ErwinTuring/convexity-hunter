@@ -38,6 +38,11 @@ from convexity_hunter.market_data import (
     MarketDataCategory,
     MarketDataBindingReference,
     MarketDataFreshnessPolicy,
+    MarketDataHistoricalSeriesAssessment,
+    MarketDataHistoricalSeriesFrequency,
+    MarketDataHistoricalSeriesReasonCode,
+    MarketDataHistoricalSeriesRequest,
+    MarketDataHistoricalSeriesStatus,
     MarketDataRelationshipGroup,
     MarketDataRelationshipGroupAssessment,
     MarketDataRelationshipGroupKind,
@@ -70,6 +75,7 @@ from convexity_hunter.market_data import (
     UnderlyingQuoteObservation,
     UnderlyingSecurityType,
     assess_market_data_freshness,
+    assess_market_data_historical_series,
     assess_market_data_relationships,
     assess_market_data_snapshot_timing,
     bind_selected_fresh_market_data,
@@ -296,6 +302,38 @@ def build_timing_binding(
 
     return bind_fresh_candidates(
         (record,),
+        freshness_policy=(
+            build_freshness_policy() if policy is None else policy
+        ),
+        freshness_context=(
+            build_freshness_context() if context is None else context
+        ),
+    )
+
+
+def build_historical_series_binding(
+    label: str,
+    session_date: datetime.date = SESSION_DATE,
+    policy: object = None,
+    context: object = None,
+    correction_evaluated_at: object = EVALUATION_AT,
+    correction_rule_id: object = "provider-correction-selection",
+    correction_rule_version: object = "v0.1",
+    **bar_overrides: object,
+) -> SelectedFreshMarketDataBinding:
+    """Build one controlled selected/fresh daily-bar binding."""
+
+    record = build_timed_record(
+        build_underlying_daily_bar_observation,
+        label,
+        session_date=session_date,
+        **bar_overrides,
+    )
+    return bind_fresh_candidates(
+        (record,),
+        correction_evaluated_at=correction_evaluated_at,
+        correction_rule_id=correction_rule_id,
+        correction_rule_version=correction_rule_version,
         freshness_policy=(
             build_freshness_policy() if policy is None else policy
         ),
@@ -698,9 +736,15 @@ class PublicSurfaceTests(unittest.TestCase):
             "MarketDataSelectionReasonCode",
             "MarketDataRelationshipSelection",
             "select_market_data_relationship_assessment",
+            "MarketDataHistoricalSeriesFrequency",
+            "MarketDataHistoricalSeriesStatus",
+            "MarketDataHistoricalSeriesReasonCode",
+            "MarketDataHistoricalSeriesRequest",
+            "MarketDataHistoricalSeriesAssessment",
+            "assess_market_data_historical_series",
         )
         self.assertEqual(market_data.__all__, expected)
-        self.assertEqual(len(market_data.__all__), 58)
+        self.assertEqual(len(market_data.__all__), 64)
         self.assertTrue(all(hasattr(market_data, name) for name in expected))
 
     def test_later_milestone_types_do_not_exist(self) -> None:
@@ -5888,7 +5932,7 @@ class BindingReferenceSurfaceAndConstructorTests(unittest.TestCase):
             market_data.__all__[:42], self.EXPECTED_3C3_PUBLIC_NAMES
         )
         self.assertEqual(market_data.__all__[42:45], additions)
-        self.assertEqual(len(market_data.__all__), 58)
+        self.assertEqual(len(market_data.__all__), 64)
         self.assertTrue(all(hasattr(market_data, name) for name in additions))
 
         factory_signature = inspect.signature(market_data_binding_reference)
@@ -6384,7 +6428,7 @@ class RelationshipSurfaceAndEnumTests(unittest.TestCase):
         self.assertEqual(market_data.__all__[:45], expected_prefix)
         self.assertEqual(market_data.__all__[45:50], expected_3c4b_suffix)
         self.assertEqual(market_data.__all__[50:54], expected_3c4c_suffix)
-        self.assertEqual(len(market_data.__all__), 58)
+        self.assertEqual(len(market_data.__all__), 64)
         self.assertTrue(all(
             hasattr(market_data, name)
             for name in expected_3c4b_suffix + expected_3c4c_suffix
@@ -6495,6 +6539,12 @@ class RelationshipSurfaceAndEnumTests(unittest.TestCase):
             "MarketDataSelectionReasonCode",
             "MarketDataRelationshipSelection",
             "select_market_data_relationship_assessment",
+            "MarketDataHistoricalSeriesFrequency",
+            "MarketDataHistoricalSeriesStatus",
+            "MarketDataHistoricalSeriesReasonCode",
+            "MarketDataHistoricalSeriesRequest",
+            "MarketDataHistoricalSeriesAssessment",
+            "assess_market_data_historical_series",
         }
         self.assertEqual(
             {
@@ -7521,7 +7571,7 @@ class RelationshipAssessmentSurfaceTests(unittest.TestCase):
                 "assess_market_data_relationships",
             ),
         )
-        self.assertEqual(len(market_data.__all__), 58)
+        self.assertEqual(len(market_data.__all__), 64)
         self.assertEqual(
             tuple(issue.value for issue in MarketDataRelationshipIssueCode),
             (
@@ -8172,7 +8222,7 @@ class RelationshipQuoteCompatibilityTests(unittest.TestCase):
         return result.group_assessments[0].issue_codes
 
     def test_exact_public_surface_and_issue_order(self) -> None:
-        self.assertEqual(len(market_data.__all__), 58)
+        self.assertEqual(len(market_data.__all__), 64)
         self.assertEqual(
             market_data.__all__[50:54],
             (
@@ -9237,7 +9287,7 @@ class RelationshipAssessmentOrderingAndScopeTests(unittest.TestCase):
 class RelationshipSelectionSurfaceAndValidationTests(unittest.TestCase):
     def test_exact_public_surface_enums_field_and_frozen_behavior(self) -> None:
         self.assertEqual(
-            market_data.__all__[-4:],
+            market_data.__all__[54:58],
             (
                 "MarketDataSelectionStatus",
                 "MarketDataSelectionReasonCode",
@@ -9245,7 +9295,7 @@ class RelationshipSelectionSurfaceAndValidationTests(unittest.TestCase):
                 "select_market_data_relationship_assessment",
             ),
         )
-        self.assertEqual(len(market_data.__all__), 58)
+        self.assertEqual(len(market_data.__all__), 64)
         self.assertEqual(
             tuple(status.value for status in MarketDataSelectionStatus),
             (
@@ -10812,6 +10862,1824 @@ class RelationshipSelectionPermutationTests(unittest.TestCase):
                 .INCOMPARABLE_MAXIMAL_SELECTION_VECTORS,
             ),
         )
+
+
+class HistoricalSeriesSurfaceAndRequestTests(unittest.TestCase):
+    ADDITIONS = (
+        "MarketDataHistoricalSeriesFrequency",
+        "MarketDataHistoricalSeriesStatus",
+        "MarketDataHistoricalSeriesReasonCode",
+        "MarketDataHistoricalSeriesRequest",
+        "MarketDataHistoricalSeriesAssessment",
+        "assess_market_data_historical_series",
+    )
+
+    def test_exact_public_surface_enums_fields_signature_and_frozen_behavior(
+        self,
+    ) -> None:
+        self.assertEqual(len(market_data.__all__[:-6]), 58)
+        self.assertEqual(market_data.__all__[-6:], self.ADDITIONS)
+        self.assertEqual(len(market_data.__all__), 64)
+        self.assertEqual(
+            tuple(item.value for item in MarketDataHistoricalSeriesFrequency),
+            ("daily",),
+        )
+        self.assertEqual(
+            tuple(item.value for item in MarketDataHistoricalSeriesStatus),
+            ("complete", "incomplete"),
+        )
+        self.assertEqual(
+            tuple(
+                item.value for item in MarketDataHistoricalSeriesReasonCode
+            ),
+            (
+                "missing_expected_session",
+                "unexpected_session",
+                "duplicate_session",
+                "incomplete_session",
+                "mixed_adjusted_close_availability",
+                "adjustment_methodology_mismatch",
+            ),
+        )
+        self.assertEqual(
+            tuple(
+                field.name
+                for field in dataclasses.fields(
+                    MarketDataHistoricalSeriesRequest
+                )
+            ),
+            ("underlying_key", "frequency", "expected_session_dates"),
+        )
+        self.assertEqual(
+            tuple(
+                field.name
+                for field in dataclasses.fields(
+                    MarketDataHistoricalSeriesAssessment
+                )
+            ),
+            ("request", "bindings"),
+        )
+        signature = inspect.signature(assess_market_data_historical_series)
+        self.assertEqual(tuple(signature.parameters), ("request", "bindings"))
+        self.assertTrue(all(
+            parameter.annotation is object
+            and parameter.default is inspect.Parameter.empty
+            for parameter in signature.parameters.values()
+        ))
+        self.assertIs(
+            signature.return_annotation,
+            MarketDataHistoricalSeriesAssessment,
+        )
+
+        request = MarketDataHistoricalSeriesRequest(
+            build_underlying_key(),
+            MarketDataHistoricalSeriesFrequency.DAILY,
+            [SESSION_DATE],
+        )
+        assessment = assess_market_data_historical_series(request, ())
+        self.assertIs(assessment.request, request)
+        with self.assertRaises(FrozenInstanceError):
+            request.frequency = (  # type: ignore[misc]
+                MarketDataHistoricalSeriesFrequency.DAILY
+            )
+        with self.assertRaises(FrozenInstanceError):
+            assessment.bindings = ()  # type: ignore[misc]
+
+    def test_request_exact_boundaries_precedence_and_calendar_authority(
+        self,
+    ) -> None:
+        class UnderlyingSubclass(UnderlyingKey):
+            pass
+
+        class TupleSubclass(tuple):
+            pass
+
+        class ListSubclass(list):
+            pass
+
+        class DateSubclass(datetime.date):
+            pass
+
+        underlying = build_underlying_key()
+        frequency = MarketDataHistoricalSeriesFrequency.DAILY
+        invalid_cases = (
+            ("SPY", frequency, (SESSION_DATE,), TypeError),
+            (
+                UnderlyingSubclass(
+                    underlying.symbol,
+                    underlying.listing_mic,
+                    underlying.security_type,
+                    underlying.currency,
+                ),
+                frequency,
+                (SESSION_DATE,),
+                TypeError,
+            ),
+            (underlying, "daily", (SESSION_DATE,), TypeError),
+            (underlying, frequency, TupleSubclass((SESSION_DATE,)), TypeError),
+            (underlying, frequency, ListSubclass((SESSION_DATE,)), TypeError),
+            (underlying, frequency, {SESSION_DATE}, TypeError),
+            (
+                underlying,
+                frequency,
+                (datetime.datetime(2030, 1, 2),),
+                TypeError,
+            ),
+            (
+                underlying,
+                frequency,
+                (DateSubclass(2030, 1, 2),),
+                TypeError,
+            ),
+            (underlying, frequency, (), ValueError),
+            (
+                underlying,
+                frequency,
+                (SESSION_DATE, SESSION_DATE),
+                ValueError,
+            ),
+        )
+        for key, supplied_frequency, dates, error in invalid_cases:
+            with self.subTest(
+                key_type=type(key).__name__,
+                date_container=type(dates).__name__,
+            ):
+                with self.assertRaises(error):
+                    MarketDataHistoricalSeriesRequest(
+                        key, supplied_frequency, dates
+                    )
+
+        saturday = datetime.date(2029, 12, 29)
+        holiday = datetime.date(2030, 1, 1)
+        request = MarketDataHistoricalSeriesRequest(
+            underlying,
+            frequency,
+            [SESSION_DATE, saturday, holiday],
+        )
+        self.assertEqual(
+            request.expected_session_dates,
+            (saturday, holiday, SESSION_DATE),
+        )
+        self.assertEqual(request.start_session_date, saturday)
+        self.assertEqual(request.end_session_date, SESSION_DATE)
+        self.assertEqual(request.expected_session_count, 3)
+
+
+class HistoricalSeriesSessionAndAdjustmentTests(unittest.TestCase):
+    def request(self, dates: object) -> MarketDataHistoricalSeriesRequest:
+        return MarketDataHistoricalSeriesRequest(
+            build_underlying_key(),
+            MarketDataHistoricalSeriesFrequency.DAILY,
+            dates,
+        )
+
+    def test_zero_bindings_make_every_expected_session_missing(self) -> None:
+        dates = (datetime.date(2030, 1, 1), SESSION_DATE)
+        request = self.request(dates)
+        assessment = assess_market_data_historical_series(request, [])
+        self.assertEqual(assessment.bindings, ())
+        self.assertEqual(assessment.ordered_bars, ())
+        self.assertEqual(assessment.observed_session_dates, ())
+        self.assertEqual(assessment.missing_session_dates, dates)
+        self.assertEqual(assessment.unexpected_session_dates, ())
+        self.assertEqual(assessment.duplicate_session_dates, ())
+        self.assertEqual(assessment.incomplete_session_dates, ())
+        self.assertEqual(assessment.observed_expected_session_count, 0)
+        self.assertFalse(assessment.has_uniform_adjusted_close)
+        self.assertIsNone(assessment.adjustment_methodology)
+        self.assertEqual(
+            assessment.reason_codes,
+            (
+                MarketDataHistoricalSeriesReasonCode
+                .MISSING_EXPECTED_SESSION,
+            ),
+        )
+        self.assertIs(
+            assessment.status,
+            MarketDataHistoricalSeriesStatus.INCOMPLETE,
+        )
+        self.assertFalse(assessment.is_complete)
+
+    def test_complete_series_is_canonical_and_retains_exact_objects(self) -> None:
+        dates = (
+            datetime.date(2029, 12, 31),
+            datetime.date(2030, 1, 1),
+            SESSION_DATE,
+        )
+        request = self.request(tuple(reversed(dates)))
+        bindings = tuple(
+            build_historical_series_binding(
+                f"complete-{index}", session_date=session_date
+            )
+            for index, session_date in enumerate(dates)
+        )
+        assessment = assess_market_data_historical_series(
+            request, (bindings[2], bindings[0], bindings[1])
+        )
+        self.assertIs(assessment.request, request)
+        self.assertEqual(
+            tuple(
+                binding.selected_record.session_date
+                for binding in assessment.bindings
+            ),
+            dates,
+        )
+        self.assertIs(assessment.bindings[0], bindings[0])
+        self.assertIs(assessment.bindings[1], bindings[1])
+        self.assertIs(assessment.bindings[2], bindings[2])
+        self.assertTrue(all(
+            bar is binding.selected_record
+            for bar, binding in zip(
+                assessment.ordered_bars, assessment.bindings
+            )
+        ))
+        self.assertEqual(assessment.observed_session_dates, dates)
+        self.assertEqual(assessment.missing_session_dates, ())
+        self.assertEqual(assessment.observed_expected_session_count, 3)
+        self.assertTrue(assessment.has_uniform_adjusted_close)
+        self.assertEqual(
+            assessment.adjustment_methodology,
+            "Synthetic split-and-dividend adjustment",
+        )
+        self.assertEqual(assessment.reason_codes, ())
+        self.assertIs(
+            assessment.status,
+            MarketDataHistoricalSeriesStatus.COMPLETE,
+        )
+        self.assertTrue(assessment.is_complete)
+
+    def test_duplicate_session_ordering_and_retention_are_permutation_stable(
+        self,
+    ) -> None:
+        january_1 = datetime.date(2030, 1, 1)
+        request = self.request((january_1, SESSION_DATE))
+        policy = build_freshness_policy()
+        context = build_freshness_context()
+        duplicate = build_historical_series_binding(
+            "literal-duplicate-a",
+            session_date=january_1,
+            policy=policy,
+            context=context,
+        )
+        first = build_historical_series_binding(
+            "literal-duplicate-b",
+            session_date=january_1,
+            policy=policy,
+            context=context,
+        )
+        second = build_historical_series_binding(
+            "literal-later-session",
+            session_date=SESSION_DATE,
+            policy=policy,
+            context=context,
+        )
+        expected_bindings = (duplicate, first, second)
+        expected_dates = (january_1, january_1, SESSION_DATE)
+        for supplied in itertools.permutations(expected_bindings):
+            with self.subTest(
+                supplied_ids=tuple(
+                    binding.selected_record.metadata.record_id
+                    for binding in supplied
+                )
+            ):
+                assessment = assess_market_data_historical_series(
+                    request, supplied
+                )
+                self.assertEqual(assessment.bindings, expected_bindings)
+                self.assertEqual(
+                    tuple(
+                        binding.selected_record.session_date
+                        for binding in assessment.bindings
+                    ),
+                    expected_dates,
+                )
+                self.assertEqual(len(assessment.bindings), 3)
+                self.assertEqual(
+                    assessment.duplicate_session_dates, (january_1,)
+                )
+                self.assertEqual(
+                    assessment.reason_codes,
+                    (
+                        MarketDataHistoricalSeriesReasonCode
+                        .DUPLICATE_SESSION,
+                    ),
+                )
+
+    def test_combined_session_completion_and_adjustment_reasons_are_canonical(
+        self,
+    ) -> None:
+        december_31 = datetime.date(2029, 12, 31)
+        january_1 = datetime.date(2030, 1, 1)
+        request = self.request((january_1, SESSION_DATE))
+        permissive = build_freshness_policy(
+            require_completed_historical_sessions=False
+        )
+        context = build_freshness_context()
+        unexpected_incomplete = build_historical_series_binding(
+            "combined-unexpected",
+            session_date=december_31,
+            policy=permissive,
+            context=context,
+            is_session_complete=False,
+            adjusted_close_price=None,
+            adjustment_methodology=None,
+        )
+        duplicate_adjusted = build_historical_series_binding(
+            "combined-duplicate-a",
+            session_date=january_1,
+            policy=permissive,
+            context=context,
+        )
+        duplicate_raw = build_historical_series_binding(
+            "combined-duplicate-b",
+            session_date=january_1,
+            policy=permissive,
+            context=context,
+            adjusted_close_price=None,
+            adjustment_methodology=None,
+        )
+        assessment = assess_market_data_historical_series(
+            request,
+            (duplicate_raw, unexpected_incomplete, duplicate_adjusted),
+        )
+        self.assertEqual(
+            assessment.observed_session_dates,
+            (december_31, january_1),
+        )
+        self.assertEqual(assessment.missing_session_dates, (SESSION_DATE,))
+        self.assertEqual(
+            assessment.unexpected_session_dates, (december_31,)
+        )
+        self.assertEqual(
+            assessment.duplicate_session_dates, (january_1,)
+        )
+        self.assertEqual(
+            assessment.incomplete_session_dates, (december_31,)
+        )
+        self.assertEqual(assessment.observed_expected_session_count, 1)
+        self.assertEqual(
+            assessment.reason_codes,
+            (
+                MarketDataHistoricalSeriesReasonCode
+                .MISSING_EXPECTED_SESSION,
+                MarketDataHistoricalSeriesReasonCode.UNEXPECTED_SESSION,
+                MarketDataHistoricalSeriesReasonCode.DUPLICATE_SESSION,
+                MarketDataHistoricalSeriesReasonCode.INCOMPLETE_SESSION,
+                MarketDataHistoricalSeriesReasonCode
+                .MIXED_ADJUSTED_CLOSE_AVAILABILITY,
+            ),
+        )
+
+    def test_expected_incomplete_bar_is_incomplete_despite_freshness_policy(
+        self,
+    ) -> None:
+        request = self.request((SESSION_DATE,))
+        permissive = build_freshness_policy(
+            require_completed_historical_sessions=False
+        )
+        binding = build_historical_series_binding(
+            "expected-incomplete",
+            policy=permissive,
+            is_session_complete=False,
+        )
+        assessment = assess_market_data_historical_series(
+            request, (binding,)
+        )
+        self.assertEqual(
+            assessment.incomplete_session_dates, (SESSION_DATE,)
+        )
+        self.assertEqual(
+            assessment.reason_codes,
+            (MarketDataHistoricalSeriesReasonCode.INCOMPLETE_SESSION,),
+        )
+        self.assertIs(
+            binding.freshness_assessment.status, FreshnessStatus.FRESH
+        )
+        self.assertFalse(assessment.is_complete)
+
+    def test_adjustment_matrix_and_unexpected_participation(self) -> None:
+        january_1 = datetime.date(2030, 1, 1)
+        request = self.request((january_1,))
+        cases = (
+            (
+                "raw-only",
+                (
+                    build_historical_series_binding(
+                        "adjustment-raw",
+                        session_date=january_1,
+                        adjusted_close_price=None,
+                        adjustment_methodology=None,
+                    ),
+                ),
+                False,
+                None,
+                (),
+            ),
+            (
+                "uniform",
+                (
+                    build_historical_series_binding(
+                        "adjustment-uniform",
+                        session_date=january_1,
+                    ),
+                ),
+                True,
+                "Synthetic split-and-dividend adjustment",
+                (),
+            ),
+            (
+                "mixed",
+                (
+                    build_historical_series_binding(
+                        "adjustment-mixed-a",
+                        session_date=january_1,
+                    ),
+                    build_historical_series_binding(
+                        "adjustment-mixed-b",
+                        session_date=january_1,
+                        adjusted_close_price=None,
+                        adjustment_methodology=None,
+                    ),
+                ),
+                False,
+                None,
+                (
+                    MarketDataHistoricalSeriesReasonCode.DUPLICATE_SESSION,
+                    MarketDataHistoricalSeriesReasonCode
+                    .MIXED_ADJUSTED_CLOSE_AVAILABILITY,
+                ),
+            ),
+            (
+                "methodology",
+                (
+                    build_historical_series_binding(
+                        "adjustment-method-a",
+                        session_date=january_1,
+                        adjustment_methodology="Method A",
+                    ),
+                    build_historical_series_binding(
+                        "adjustment-method-b",
+                        session_date=january_1,
+                        adjustment_methodology="Method B",
+                    ),
+                ),
+                False,
+                None,
+                (
+                    MarketDataHistoricalSeriesReasonCode.DUPLICATE_SESSION,
+                    MarketDataHistoricalSeriesReasonCode
+                    .ADJUSTMENT_METHODOLOGY_MISMATCH,
+                ),
+            ),
+        )
+        for label, bindings, uniform, methodology, reasons in cases:
+            with self.subTest(label=label):
+                assessment = assess_market_data_historical_series(
+                    request, bindings
+                )
+                self.assertIs(
+                    assessment.ordered_bars[0],
+                    bindings[0].selected_record,
+                )
+                self.assertEqual(
+                    assessment.has_uniform_adjusted_close, uniform
+                )
+                self.assertEqual(
+                    assessment.adjustment_methodology, methodology
+                )
+                self.assertEqual(assessment.reason_codes, reasons)
+
+        unexpected = build_historical_series_binding(
+            "adjustment-unexpected",
+            session_date=datetime.date(2029, 12, 31),
+            adjustment_methodology="Unexpected method",
+        )
+        expected = build_historical_series_binding(
+            "adjustment-expected",
+            session_date=january_1,
+            adjustment_methodology="Expected method",
+        )
+        result = assess_market_data_historical_series(
+            request, (expected, unexpected)
+        )
+        self.assertEqual(
+            result.reason_codes,
+            (
+                MarketDataHistoricalSeriesReasonCode.UNEXPECTED_SESSION,
+                MarketDataHistoricalSeriesReasonCode
+                .ADJUSTMENT_METHODOLOGY_MISMATCH,
+            ),
+        )
+
+
+class HistoricalSeriesBindingIntegrityTests(unittest.TestCase):
+    def request(
+        self, dates: object = (SESSION_DATE,)
+    ) -> MarketDataHistoricalSeriesRequest:
+        return MarketDataHistoricalSeriesRequest(
+            build_underlying_key(),
+            MarketDataHistoricalSeriesFrequency.DAILY,
+            dates,
+        )
+
+    def test_exact_binding_boundaries_and_mixed_underlying(self) -> None:
+        class TupleSubclass(tuple):
+            pass
+
+        class ListSubclass(list):
+            pass
+
+        valid = build_historical_series_binding("boundary-valid")
+        for invalid in (
+            TupleSubclass((valid,)),
+            ListSubclass((valid,)),
+            iter((valid,)),
+            {valid},
+        ):
+            with self.subTest(container=type(invalid).__name__):
+                with self.assertRaises(TypeError):
+                    assess_market_data_historical_series(
+                        self.request(), invalid
+                    )
+        with self.assertRaises(TypeError):
+            assess_market_data_historical_series(
+                self.request(), (object(),)
+            )
+        quote = build_timing_binding(
+            build_timed_record(
+                build_underlying_quote_observation, "boundary-quote"
+            )
+        )
+        with self.assertRaises(TypeError):
+            assess_market_data_historical_series(
+                self.request(), (quote,)
+            )
+        other = build_historical_series_binding(
+            "boundary-other",
+            underlying_key=build_underlying_key(symbol="QQQ"),
+        )
+        with self.assertRaisesRegex(ValueError, "underlying_key"):
+            assess_market_data_historical_series(
+                self.request(), (other,)
+            )
+
+    def test_forged_semantic_correction_and_freshness_sidecars(self) -> None:
+        def forged_binding(kind: str) -> SelectedFreshMarketDataBinding:
+            binding = build_historical_series_binding(f"forged-{kind}")
+            if kind == "semantic":
+                selection = dataclasses.replace(
+                    binding.correction_selection,
+                    semantic_observation_key="forged-semantic-key",
+                )
+                object.__setattr__(
+                    binding, "correction_selection", selection
+                )
+            elif kind == "correction-record":
+                object.__setattr__(
+                    binding.correction_selection,
+                    "selected_record_id",
+                    "forged-record-id",
+                )
+            elif kind == "candidate-records":
+                selection = dataclasses.replace(
+                    binding.correction_selection,
+                    candidate_record_ids=("forged-record-id",),
+                    selected_record_id="forged-record-id",
+                )
+                object.__setattr__(
+                    binding, "correction_selection", selection
+                )
+            elif kind == "correction-chronology":
+                selection = dataclasses.replace(
+                    binding.correction_selection,
+                    evaluated_at=(
+                        binding.freshness_context.evaluation_at
+                        + datetime.timedelta(microseconds=1)
+                    ),
+                )
+                object.__setattr__(
+                    binding, "correction_selection", selection
+                )
+            else:
+                freshness = dataclasses.replace(
+                    binding.freshness_assessment,
+                    record_id="forged-record-id",
+                )
+                object.__setattr__(
+                    binding, "freshness_assessment", freshness
+                )
+            return binding
+
+        for kind in (
+            "semantic",
+            "correction-record",
+            "candidate-records",
+            "correction-chronology",
+            "freshness-record",
+        ):
+            with self.subTest(kind=kind):
+                with self.assertRaises(ValueError):
+                    assess_market_data_historical_series(
+                        self.request(), (forged_binding(kind),)
+                    )
+
+    def test_duplicate_binding_and_cross_binding_candidate_ids(self) -> None:
+        first = build_historical_series_binding(
+            "duplicate-first",
+            session_date=datetime.date(2030, 1, 1),
+        )
+        with self.assertRaisesRegex(ValueError, "same binding object"):
+            assess_market_data_historical_series(
+                self.request((datetime.date(2030, 1, 1),)),
+                (first, first),
+            )
+
+        second = build_historical_series_binding(
+            "duplicate-second",
+            session_date=datetime.date(2030, 1, 1),
+        )
+        second_candidates = (
+            second.candidate_records[0],
+            first.candidate_records[0],
+        )
+        second_selection = dataclasses.replace(
+            second.correction_selection,
+            candidate_record_ids=tuple(sorted(
+                candidate.metadata.record_id
+                for candidate in second_candidates
+            )),
+        )
+        object.__setattr__(second, "candidate_records", second_candidates)
+        object.__setattr__(
+            second, "correction_selection", second_selection
+        )
+        with self.assertRaisesRegex(ValueError, "unique across bindings"):
+            assess_market_data_historical_series(
+                self.request((datetime.date(2030, 1, 1),)),
+                (first, second),
+            )
+
+    def test_common_proof_regime_rejects_each_exact_dimension(self) -> None:
+        january_1 = datetime.date(2030, 1, 1)
+        request = self.request((january_1, SESSION_DATE))
+        common_policy = build_freshness_policy()
+        common_context = build_freshness_context()
+        first = build_historical_series_binding(
+            "proof-first",
+            session_date=january_1,
+            policy=common_policy,
+            context=common_context,
+        )
+        variants = (
+            build_historical_series_binding(
+                "proof-rule-id",
+                correction_rule_id="other-rule",
+                policy=common_policy,
+                context=common_context,
+            ),
+            build_historical_series_binding(
+                "proof-rule-version",
+                correction_rule_version="v0.2",
+                policy=common_policy,
+                context=common_context,
+            ),
+            build_historical_series_binding(
+                "proof-evaluated-at",
+                correction_evaluated_at=(
+                    EVALUATION_AT - datetime.timedelta(seconds=1)
+                ),
+                policy=common_policy,
+                context=common_context,
+            ),
+            build_historical_series_binding(
+                "proof-policy",
+                policy=build_freshness_policy(
+                    maximum_quote_age_seconds=61
+                ),
+                context=common_context,
+            ),
+            build_historical_series_binding(
+                "proof-context",
+                policy=common_policy,
+                context=build_freshness_context(
+                    evaluation_at=(
+                        EVALUATION_AT + datetime.timedelta(seconds=1)
+                    )
+                ),
+            ),
+        )
+        for variant in variants:
+            with self.subTest(
+                selected_record_id=(
+                    variant.correction_selection.selected_record_id
+                )
+            ):
+                with self.assertRaisesRegex(ValueError, "proof regime"):
+                    assess_market_data_historical_series(
+                        request, (first, variant)
+                    )
+
+    def test_general_metadata_differences_do_not_define_comparability(
+        self,
+    ) -> None:
+        january_1 = datetime.date(2030, 1, 1)
+        first_record = build_timed_record(
+            build_underlying_daily_bar_observation,
+            "metadata-first",
+            session_date=january_1,
+            metadata=build_metadata_for_origin(
+                DataOrigin.EXCHANGE_OBSERVED
+            ),
+        )
+        second_record = build_timed_record(
+            build_underlying_daily_bar_observation,
+            "metadata-second",
+            session_date=SESSION_DATE,
+            metadata=build_metadata_for_origin(
+                DataOrigin.PROVIDER_CALCULATED
+            ),
+        )
+        second_metadata = dataclasses.replace(
+            second_record.metadata,
+            source_references=(
+                dataclasses.replace(
+                    second_record.metadata.source_references[0],
+                    provider_name="Different Provider",
+                    dataset_name="Different Dataset",
+                ),
+            ),
+            normalization_methodology="Different normalization",
+            normalization_version="different-v2",
+            unit_convention="Different declared convention",
+        )
+        second_record = dataclasses.replace(
+            second_record, metadata=second_metadata
+        )
+        policy = build_freshness_policy()
+        context = build_freshness_context()
+        first = build_timing_binding(first_record, policy, context)
+        second = build_timing_binding(second_record, policy, context)
+        result = assess_market_data_historical_series(
+            self.request((january_1, SESSION_DATE)), (second, first)
+        )
+        self.assertTrue(result.is_complete)
+        self.assertIs(
+            result.bindings[0].selected_record.metadata.record_origin,
+            DataOrigin.EXCHANGE_OBSERVED,
+        )
+        self.assertIs(
+            result.bindings[1].selected_record.metadata.record_origin,
+            DataOrigin.PROVIDER_CALCULATED,
+        )
+        self.assertEqual(
+            result.bindings[1]
+            .selected_record.metadata.source_references[0].provider_name,
+            "Different Provider",
+        )
+
+    def test_no_correction_or_freshness_recomputation(self) -> None:
+        request = self.request()
+        binding = build_historical_series_binding("no-recomputation")
+        originals = (
+            market_data.select_correction_candidate,
+            market_data.assess_market_data_freshness,
+            market_data.bind_selected_fresh_market_data,
+        )
+
+        def fail(*args: object, **kwargs: object) -> object:
+            raise AssertionError("forbidden historical-series recomputation")
+
+        try:
+            market_data.select_correction_candidate = fail
+            market_data.assess_market_data_freshness = fail
+            market_data.bind_selected_fresh_market_data = fail
+            empty = assess_market_data_historical_series(request, ())
+            populated = assess_market_data_historical_series(
+                request, (binding,)
+            )
+            self.assertEqual(
+                empty.missing_session_dates, (SESSION_DATE,)
+            )
+            self.assertTrue(populated.is_complete)
+            self.assertIs(
+                populated.ordered_bars[0], binding.selected_record
+            )
+        finally:
+            (
+                market_data.select_correction_candidate,
+                market_data.assess_market_data_freshness,
+                market_data.bind_selected_fresh_market_data,
+            ) = originals
+
+    def test_validation_precedence_does_not_access_later_inputs(self) -> None:
+        class Explosive:
+            def __iter__(self) -> object:
+                raise AssertionError("later input was accessed")
+
+            def __getattribute__(self, name: str) -> object:
+                if name.startswith("__"):
+                    return object.__getattribute__(self, name)
+                raise AssertionError(f"later field was accessed: {name}")
+
+        with self.assertRaisesRegex(TypeError, "request"):
+            assess_market_data_historical_series(object(), Explosive())
+        with self.assertRaisesRegex(TypeError, "bindings item"):
+            assess_market_data_historical_series(
+                self.request(), (object(), Explosive())
+            )
+
+    def test_request_and_container_precedence_poison_guards(self) -> None:
+        class Explosive:
+            def __iter__(self) -> object:
+                raise AssertionError("later bindings were accessed")
+
+            def __getattribute__(self, name: str) -> object:
+                if name.startswith("__"):
+                    return object.__getattribute__(self, name)
+                raise AssertionError(f"later field was accessed: {name}")
+
+        def forged_request(
+            field: str, value: object
+        ) -> MarketDataHistoricalSeriesRequest:
+            request = self.request()
+            object.__setattr__(request, field, value)
+            return request
+
+        invalid_requests = (
+            (
+                "underlying",
+                forged_request("underlying_key", object()),
+                TypeError,
+                "underlying_key",
+            ),
+            (
+                "frequency",
+                forged_request("frequency", object()),
+                TypeError,
+                "frequency",
+            ),
+            (
+                "date-container",
+                forged_request("expected_session_dates", {SESSION_DATE}),
+                TypeError,
+                "expected_session_dates",
+            ),
+            (
+                "date-element",
+                forged_request(
+                    "expected_session_dates",
+                    (datetime.datetime(2030, 1, 2),),
+                ),
+                TypeError,
+                "every expected_session_dates item",
+            ),
+            (
+                "date-empty",
+                forged_request("expected_session_dates", ()),
+                ValueError,
+                "at least one",
+            ),
+            (
+                "date-duplicate",
+                forged_request(
+                    "expected_session_dates",
+                    (SESSION_DATE, SESSION_DATE),
+                ),
+                ValueError,
+                "duplicates",
+            ),
+            (
+                "date-order",
+                forged_request(
+                    "expected_session_dates",
+                    (SESSION_DATE, datetime.date(2030, 1, 1)),
+                ),
+                ValueError,
+                "ascending tuple",
+            ),
+        )
+        for label, request, error, message in invalid_requests:
+            for constructor in (
+                MarketDataHistoricalSeriesAssessment,
+                assess_market_data_historical_series,
+            ):
+                with self.subTest(
+                    label=label, constructor=constructor.__name__
+                ):
+                    with self.assertRaisesRegex(error, message):
+                        constructor(request, Explosive())
+
+        valid = build_historical_series_binding(
+            "container-precedence-valid"
+        )
+        with self.assertRaisesRegex(TypeError, "exact tuple or list"):
+            assess_market_data_historical_series(
+                self.request(), iter((valid,))
+            )
+
+    def test_global_selected_type_precedes_same_binding_integrity(
+        self,
+    ) -> None:
+        request = self.request()
+        quote = build_timing_binding(
+            build_timed_record(
+                build_underlying_quote_observation,
+                "same-binding-wrong-type",
+            )
+        )
+        object.__setattr__(
+            quote,
+            "freshness_assessment",
+            dataclasses.replace(
+                quote.freshness_assessment,
+                record_id="forged-later-record-id",
+            ),
+        )
+        for constructor in (
+            MarketDataHistoricalSeriesAssessment,
+            assess_market_data_historical_series,
+        ):
+            with self.subTest(constructor=constructor.__name__):
+                with self.assertRaisesRegex(
+                    TypeError, "selected record.*exact type"
+                ):
+                    constructor(request, (quote,))
+
+    def test_global_selected_type_precedes_cross_binding_integrity_permutations(
+        self,
+    ) -> None:
+        request = self.request()
+        forged = build_historical_series_binding(
+            "cross-binding-forged-integrity"
+        )
+        object.__setattr__(
+            forged,
+            "freshness_assessment",
+            dataclasses.replace(
+                forged.freshness_assessment,
+                record_id="forged-later-record-id",
+            ),
+        )
+        quote = build_timing_binding(
+            build_timed_record(
+                build_underlying_quote_observation,
+                "cross-binding-wrong-type",
+            )
+        )
+        original = market_data._validate_historical_binding_integrity
+
+        def poisoned(*args: object, **kwargs: object) -> None:
+            raise AssertionError("step-9 integrity was accessed")
+
+        try:
+            market_data._validate_historical_binding_integrity = poisoned
+            for bindings in ((forged, quote), (quote, forged)):
+                for constructor in (
+                    MarketDataHistoricalSeriesAssessment,
+                    assess_market_data_historical_series,
+                ):
+                    with self.subTest(
+                        order=tuple(
+                            binding.correction_selection.selected_record_id
+                            for binding in bindings
+                        ),
+                        constructor=constructor.__name__,
+                    ):
+                        with self.assertRaisesRegex(
+                            TypeError, "selected record.*exact type"
+                        ):
+                            constructor(request, bindings)
+        finally:
+            market_data._validate_historical_binding_integrity = original
+
+    def test_selected_daily_bar_subclass_is_rejected_by_both_paths(
+        self,
+    ) -> None:
+        class DailyBarSubclass(UnderlyingDailyBarObservation):
+            pass
+
+        binding = build_historical_series_binding("daily-bar-subclass")
+        record = binding.selected_record
+        subclass_record = DailyBarSubclass(
+            *(
+                getattr(record, field.name)
+                for field in dataclasses.fields(record)
+            )
+        )
+        object.__setattr__(
+            binding, "candidate_records", (subclass_record,)
+        )
+        for constructor in (
+            MarketDataHistoricalSeriesAssessment,
+            assess_market_data_historical_series,
+        ):
+            with self.subTest(constructor=constructor.__name__):
+                with self.assertRaisesRegex(
+                    TypeError, "selected record.*exact type"
+                ):
+                    constructor(self.request(), (binding,))
+
+    def test_precedence_poison_guards_global_and_later_passes(self) -> None:
+        request = self.request()
+        valid = build_historical_series_binding("precedence-valid")
+        original_resolve = (
+            market_data._resolve_historical_binding_selected_record
+        )
+
+        def poison_resolve(*args: object, **kwargs: object) -> object:
+            raise AssertionError("selected-record resolution was accessed")
+
+        try:
+            market_data._resolve_historical_binding_selected_record = (
+                poison_resolve
+            )
+            for constructor in (
+                MarketDataHistoricalSeriesAssessment,
+                assess_market_data_historical_series,
+            ):
+                with self.subTest(
+                    phase="binding-elements",
+                    constructor=constructor.__name__,
+                ):
+                    with self.assertRaisesRegex(TypeError, "bindings item"):
+                        constructor(request, (valid, object()))
+        finally:
+            market_data._resolve_historical_binding_selected_record = (
+                original_resolve
+            )
+
+        forged = build_historical_series_binding("precedence-integrity")
+        object.__setattr__(
+            forged.correction_selection,
+            "semantic_observation_key",
+            "forged-semantic-key",
+        )
+        original_proof = market_data._historical_binding_proof_regime
+        original_reasons = market_data._historical_series_reason_codes
+
+        def poison_later(*args: object, **kwargs: object) -> object:
+            raise AssertionError("a post-integrity phase was accessed")
+
+        try:
+            market_data._historical_binding_proof_regime = poison_later
+            market_data._historical_series_reason_codes = poison_later
+            for constructor in (
+                MarketDataHistoricalSeriesAssessment,
+                assess_market_data_historical_series,
+            ):
+                with self.subTest(
+                    phase="integrity",
+                    constructor=constructor.__name__,
+                ):
+                    with self.assertRaisesRegex(ValueError, "semantic key"):
+                        constructor(request, (forged,))
+        finally:
+            market_data._historical_binding_proof_regime = original_proof
+            market_data._historical_series_reason_codes = original_reasons
+
+    def test_duplicate_and_proof_failures_prevent_later_derivation(
+        self,
+    ) -> None:
+        january_1 = datetime.date(2030, 1, 1)
+        request = self.request((january_1, SESSION_DATE))
+        policy = build_freshness_policy()
+        context = build_freshness_context()
+        first = build_historical_series_binding(
+            "precedence-duplicate-first",
+            session_date=january_1,
+            policy=policy,
+            context=context,
+        )
+        second = build_historical_series_binding(
+            "precedence-duplicate-second",
+            policy=policy,
+            context=context,
+        )
+        object.__setattr__(
+            second.selected_record.metadata,
+            "record_id",
+            first.selected_record.metadata.record_id,
+        )
+        object.__setattr__(
+            second.correction_selection,
+            "candidate_record_ids",
+            (first.selected_record.metadata.record_id,),
+        )
+        object.__setattr__(
+            second.correction_selection,
+            "selected_record_id",
+            first.selected_record.metadata.record_id,
+        )
+        object.__setattr__(
+            second.freshness_assessment,
+            "record_id",
+            first.selected_record.metadata.record_id,
+        )
+        object.__setattr__(
+            second.correction_selection,
+            "semantic_observation_key",
+            semantic_observation_key(second.selected_record),
+        )
+        original_proof = market_data._historical_binding_proof_regime
+
+        def poison_proof(*args: object, **kwargs: object) -> object:
+            raise AssertionError("proof regime was accessed")
+
+        try:
+            market_data._historical_binding_proof_regime = poison_proof
+            with self.assertRaisesRegex(
+                ValueError, "record IDs.*unique across bindings"
+            ):
+                assess_market_data_historical_series(
+                    request, (first, second)
+                )
+        finally:
+            market_data._historical_binding_proof_regime = original_proof
+
+        mismatch = build_historical_series_binding(
+            "precedence-proof-mismatch",
+            policy=policy,
+            context=context,
+            correction_rule_id="different-rule",
+        )
+        original_session = market_data._historical_series_session_facts
+        original_adjustment = market_data._historical_series_adjustment_facts
+        try:
+            market_data._historical_series_session_facts = poison_proof
+            market_data._historical_series_adjustment_facts = poison_proof
+            with self.assertRaisesRegex(ValueError, "proof regime"):
+                assess_market_data_historical_series(
+                    request, (first, mismatch)
+                )
+        finally:
+            market_data._historical_series_session_facts = original_session
+            market_data._historical_series_adjustment_facts = (
+                original_adjustment
+            )
+
+    def test_target_failure_precedes_duplicate_and_proof_phases(self) -> None:
+        other = build_historical_series_binding(
+            "precedence-other-target",
+            underlying_key=build_underlying_key(symbol="QQQ"),
+        )
+        original_proof = market_data._historical_binding_proof_regime
+
+        def poison_proof(*args: object, **kwargs: object) -> object:
+            raise AssertionError("proof regime was accessed")
+
+        try:
+            market_data._historical_binding_proof_regime = poison_proof
+            for constructor in (
+                MarketDataHistoricalSeriesAssessment,
+                assess_market_data_historical_series,
+            ):
+                with self.subTest(constructor=constructor.__name__):
+                    with self.assertRaisesRegex(
+                        ValueError, "underlying_key"
+                    ):
+                        constructor(self.request(), (other, other))
+        finally:
+            market_data._historical_binding_proof_regime = original_proof
+
+    def test_complete_late_phase_order_with_sentinels_and_empty_path(
+        self,
+    ) -> None:
+        class OrderingSentinel(Exception):
+            pass
+
+        class SessionSentinel(Exception):
+            pass
+
+        class AdjustmentSentinel(Exception):
+            pass
+
+        january_1 = datetime.date(2030, 1, 1)
+        request = self.request((january_1, SESSION_DATE))
+        policy = build_freshness_policy()
+        context = build_freshness_context()
+        first = build_historical_series_binding(
+            "late-phase-first",
+            session_date=january_1,
+            policy=policy,
+            context=context,
+        )
+        second = build_historical_series_binding(
+            "late-phase-second",
+            policy=policy,
+            context=context,
+        )
+        other_target = build_historical_series_binding(
+            "late-phase-other-target",
+            underlying_key=build_underlying_key(symbol="QQQ"),
+        )
+        proof_mismatch = build_historical_series_binding(
+            "late-phase-proof-mismatch",
+            correction_rule_id="different-rule",
+            policy=policy,
+            context=context,
+        )
+        duplicate_id = build_historical_series_binding(
+            "late-phase-duplicate-id",
+            policy=policy,
+            context=context,
+        )
+        repeated_id = first.selected_record.metadata.record_id
+        object.__setattr__(
+            duplicate_id.selected_record.metadata,
+            "record_id",
+            repeated_id,
+        )
+        object.__setattr__(
+            duplicate_id.correction_selection,
+            "candidate_record_ids",
+            (repeated_id,),
+        )
+        object.__setattr__(
+            duplicate_id.correction_selection,
+            "selected_record_id",
+            repeated_id,
+        )
+        object.__setattr__(
+            duplicate_id.freshness_assessment,
+            "record_id",
+            repeated_id,
+        )
+        object.__setattr__(
+            duplicate_id.correction_selection,
+            "semantic_observation_key",
+            semantic_observation_key(duplicate_id.selected_record),
+        )
+
+        constructors = (
+            MarketDataHistoricalSeriesAssessment,
+            assess_market_data_historical_series,
+        )
+        complete_order = (
+            "target",
+            "duplicates",
+            "proof_regime",
+            "ordering",
+            "session_completion",
+            "adjustment",
+            "reason_status",
+        )
+
+        def exercise(
+            constructor: object,
+            bindings: object,
+            failure_phase: object = None,
+            adjustment_pattern: object = None,
+        ) -> tuple:
+            phases = []
+
+            def record(phase: str) -> None:
+                if not phases or phases[-1] != phase:
+                    phases.append(phase)
+
+            original_underlying_eq = UnderlyingKey.__eq__
+            original_proof = market_data._historical_binding_proof_regime
+            original_session = market_data._historical_series_session_facts
+            original_adjustment = (
+                market_data._historical_series_adjustment_facts
+            )
+            original_integrity = (
+                market_data._validate_historical_binding_integrity
+            )
+            builtin_id = id
+            builtin_sorted = sorted
+
+            class ReasonTrackedTuple(tuple):
+                def __bool__(self) -> bool:
+                    record("reason_status")
+                    if adjustment_pattern == "noncontiguous_reentry":
+                        tracked_adjustment(bindings)
+                    return tuple.__len__(self) != 0
+
+            def tracked_underlying_eq(
+                left: UnderlyingKey, right: object
+            ) -> object:
+                record("target")
+                return original_underlying_eq(left, right)
+
+            def tracked_id(value: object) -> int:
+                if type(value) is SelectedFreshMarketDataBinding:
+                    record("duplicates")
+                return builtin_id(value)
+
+            def tracked_proof(binding: object) -> tuple:
+                record("proof_regime")
+                return original_proof(binding)
+
+            def tracked_sorted(
+                values: object,
+                *,
+                key: object = None,
+                reverse: bool = False,
+            ) -> object:
+                if key is not None:
+                    record("ordering")
+                    if failure_phase == "ordering":
+                        raise OrderingSentinel()
+                return builtin_sorted(values, key=key, reverse=reverse)
+
+            def tracked_session(
+                supplied_request: object, supplied_bindings: object
+            ) -> tuple:
+                record("session_completion")
+                if failure_phase == "session_completion":
+                    raise SessionSentinel()
+                facts = original_session(
+                    supplied_request, supplied_bindings
+                )
+                return (
+                    facts[0],
+                    ReasonTrackedTuple(facts[1]),
+                    facts[2],
+                    facts[3],
+                    facts[4],
+                )
+
+            def tracked_adjustment(supplied_bindings: object) -> tuple:
+                if adjustment_pattern == "contiguous_triple":
+                    facts = ()
+                    for _ in range(3):
+                        record("adjustment")
+                        facts = original_adjustment(supplied_bindings)
+                    return facts
+                record("adjustment")
+                if failure_phase == "adjustment":
+                    raise AdjustmentSentinel()
+                return original_adjustment(supplied_bindings)
+
+            def forbidden_integrity(
+                *args: object, **kwargs: object
+            ) -> None:
+                raise AssertionError(
+                    "empty bindings accessed binding integrity"
+                )
+
+            UnderlyingKey.__eq__ = tracked_underlying_eq
+            market_data.id = tracked_id
+            market_data.sorted = tracked_sorted
+            market_data._historical_binding_proof_regime = tracked_proof
+            market_data._historical_series_session_facts = tracked_session
+            market_data._historical_series_adjustment_facts = (
+                tracked_adjustment
+            )
+            if bindings == ():
+                market_data._validate_historical_binding_integrity = (
+                    forbidden_integrity
+                )
+            try:
+                try:
+                    result = constructor(request, bindings)
+                except Exception as error:
+                    error.phases = tuple(phases)
+                    raise
+                return tuple(phases), result
+            finally:
+                UnderlyingKey.__eq__ = original_underlying_eq
+                del market_data.id
+                del market_data.sorted
+                market_data._historical_binding_proof_regime = original_proof
+                market_data._historical_series_session_facts = (
+                    original_session
+                )
+                market_data._historical_series_adjustment_facts = (
+                    original_adjustment
+                )
+                market_data._validate_historical_binding_integrity = (
+                    original_integrity
+                )
+
+        failure_cases = (
+            (
+                "target",
+                (other_target,),
+                None,
+                ValueError,
+                ("target",),
+            ),
+            (
+                "duplicates",
+                (first, duplicate_id),
+                None,
+                ValueError,
+                ("target", "duplicates"),
+            ),
+            (
+                "proof_regime",
+                (first, proof_mismatch),
+                None,
+                ValueError,
+                ("target", "duplicates", "proof_regime"),
+            ),
+            (
+                "ordering",
+                (first, second),
+                "ordering",
+                OrderingSentinel,
+                (
+                    "target",
+                    "duplicates",
+                    "proof_regime",
+                    "ordering",
+                ),
+            ),
+            (
+                "session_completion",
+                (first, second),
+                "session_completion",
+                SessionSentinel,
+                complete_order[:5],
+            ),
+            (
+                "adjustment",
+                (first, second),
+                "adjustment",
+                AdjustmentSentinel,
+                complete_order[:6],
+            ),
+        )
+        for constructor in constructors:
+            for label, bindings, failure_phase, error, expected in (
+                failure_cases
+            ):
+                with self.subTest(
+                    constructor=constructor.__name__, phase=label
+                ):
+                    with self.assertRaises(error) as caught:
+                        exercise(constructor, bindings, failure_phase)
+                    self.assertEqual(caught.exception.phases, expected)
+
+            with self.subTest(
+                constructor=constructor.__name__, phase="complete"
+            ):
+                phases, result = exercise(
+                    constructor, (second, first)
+                )
+                self.assertEqual(phases, complete_order)
+                self.assertEqual(len(phases), 7)
+                self.assertEqual(
+                    tuple(
+                        binding.selected_record.session_date
+                        for binding in result.bindings
+                    ),
+                    (january_1, SESSION_DATE),
+                )
+
+            with self.subTest(
+                constructor=constructor.__name__, phase="empty"
+            ):
+                phases, result = exercise(constructor, ())
+                self.assertEqual(
+                    phases,
+                    (
+                        "session_completion",
+                        "adjustment",
+                        "reason_status",
+                    ),
+                )
+                self.assertEqual(result.bindings, ())
+                self.assertEqual(
+                    result.reason_codes,
+                    (
+                        MarketDataHistoricalSeriesReasonCode
+                        .MISSING_EXPECTED_SESSION,
+                    ),
+                )
+                self.assertIs(
+                    result.status,
+                    MarketDataHistoricalSeriesStatus.INCOMPLETE,
+                )
+
+            with self.subTest(
+                constructor=constructor.__name__,
+                phase="contiguous-adjustment-collapse",
+            ):
+                phases, _ = exercise(
+                    constructor,
+                    (second, first),
+                    adjustment_pattern="contiguous_triple",
+                )
+                self.assertEqual(phases, complete_order)
+                self.assertEqual(phases.count("adjustment"), 1)
+
+            with self.subTest(
+                constructor=constructor.__name__,
+                phase="noncontiguous-adjustment-reentry",
+            ):
+                phases, _ = exercise(
+                    constructor,
+                    (second, first),
+                    adjustment_pattern="noncontiguous_reentry",
+                )
+                expected_reentry = (
+                    "target",
+                    "duplicates",
+                    "proof_regime",
+                    "ordering",
+                    "session_completion",
+                    "adjustment",
+                    "reason_status",
+                    "adjustment",
+                )
+                self.assertEqual(phases, expected_reentry)
+                self.assertEqual(len(phases), 8)
+                self.assertNotEqual(phases, complete_order)
+
+
+class HistoricalSeriesConstructorEquivalenceTests(unittest.TestCase):
+    def request(
+        self, dates: object = (SESSION_DATE,)
+    ) -> MarketDataHistoricalSeriesRequest:
+        return MarketDataHistoricalSeriesRequest(
+            build_underlying_key(),
+            MarketDataHistoricalSeriesFrequency.DAILY,
+            dates,
+        )
+
+    def assert_valid_equivalent(
+        self,
+        request: MarketDataHistoricalSeriesRequest,
+        bindings: object,
+    ) -> None:
+        direct = MarketDataHistoricalSeriesAssessment(request, bindings)
+        public = assess_market_data_historical_series(request, bindings)
+        self.assertEqual(direct, public)
+        self.assertIs(direct.request, public.request)
+        self.assertEqual(direct.reason_codes, public.reason_codes)
+        self.assertIs(direct.status, public.status)
+        self.assertEqual(
+            tuple(id(binding) for binding in direct.bindings),
+            tuple(id(binding) for binding in public.bindings),
+        )
+        self.assertEqual(
+            tuple(id(record) for record in direct.ordered_bars),
+            tuple(id(record) for record in public.ordered_bars),
+        )
+
+    def assert_invalid_equivalent(
+        self, request: object, bindings: object
+    ) -> None:
+        outcomes = []
+        for constructor in (
+            MarketDataHistoricalSeriesAssessment,
+            assess_market_data_historical_series,
+        ):
+            try:
+                constructor(request, bindings)
+            except Exception as error:
+                outcomes.append((type(error), str(error)))
+            else:
+                self.fail(f"{constructor.__name__} unexpectedly succeeded")
+        self.assertEqual(outcomes[0], outcomes[1])
+
+    def test_valid_equivalence_matrix_and_literal_retention(self) -> None:
+        january_1 = datetime.date(2030, 1, 1)
+        policy = build_freshness_policy(
+            require_completed_historical_sessions=False
+        )
+        context = build_freshness_context()
+        first = build_historical_series_binding(
+            "equivalence-first",
+            session_date=january_1,
+            policy=policy,
+            context=context,
+        )
+        second = build_historical_series_binding(
+            "equivalence-second",
+            policy=policy,
+            context=context,
+        )
+        duplicate = build_historical_series_binding(
+            "equivalence-duplicate",
+            session_date=january_1,
+            policy=policy,
+            context=context,
+        )
+        incomplete = build_historical_series_binding(
+            "equivalence-incomplete",
+            policy=policy,
+            context=context,
+            is_session_complete=False,
+        )
+        request = self.request((january_1, SESSION_DATE))
+        cases = (
+            ("nonempty", request, (first, second)),
+            ("empty", request, ()),
+            ("permutation-a", request, (second, first)),
+            ("permutation-b", request, (first, second)),
+            ("duplicate-session", request, (duplicate, first, second)),
+            ("incomplete", request, (first, incomplete)),
+        )
+        for label, supplied_request, bindings in cases:
+            with self.subTest(label=label):
+                self.assert_valid_equivalent(
+                    supplied_request, bindings
+                )
+
+        duplicate_result = assess_market_data_historical_series(
+            request, (duplicate, first, second)
+        )
+        self.assertEqual(
+            duplicate_result.bindings, (duplicate, first, second)
+        )
+        self.assertIs(duplicate_result.bindings[0], duplicate)
+        self.assertIs(duplicate_result.bindings[1], first)
+        self.assertEqual(
+            duplicate_result.duplicate_session_dates, (january_1,)
+        )
+        self.assertIn(
+            MarketDataHistoricalSeriesReasonCode.DUPLICATE_SESSION,
+            duplicate_result.reason_codes,
+        )
+
+    def test_invalid_equivalence_matrix(self) -> None:
+        class TupleSubclass(tuple):
+            pass
+
+        class ListSubclass(list):
+            pass
+
+        class DailyBarSubclass(UnderlyingDailyBarObservation):
+            pass
+
+        request = self.request()
+        valid = build_historical_series_binding("matrix-valid")
+        quote = build_timing_binding(
+            build_timed_record(
+                build_underlying_quote_observation, "matrix-quote"
+            )
+        )
+        subclass_binding = build_historical_series_binding(
+            "matrix-subclass"
+        )
+        bar = subclass_binding.selected_record
+        object.__setattr__(
+            subclass_binding,
+            "candidate_records",
+            (
+                DailyBarSubclass(
+                    *(
+                        getattr(bar, field.name)
+                        for field in dataclasses.fields(bar)
+                    )
+                ),
+            ),
+        )
+
+        semantic = build_historical_series_binding("matrix-semantic")
+        object.__setattr__(
+            semantic.correction_selection,
+            "semantic_observation_key",
+            "forged-semantic-key",
+        )
+        freshness_id = build_historical_series_binding(
+            "matrix-freshness-id"
+        )
+        object.__setattr__(
+            freshness_id.freshness_assessment,
+            "record_id",
+            "forged-record-id",
+        )
+        freshness_category = build_historical_series_binding(
+            "matrix-freshness-category"
+        )
+        object.__setattr__(
+            freshness_category.freshness_assessment,
+            "category",
+            MarketDataCategory.QUOTE,
+        )
+        correction_id = build_historical_series_binding(
+            "matrix-correction-id"
+        )
+        object.__setattr__(
+            correction_id.correction_selection,
+            "selected_record_id",
+            "forged-record-id",
+        )
+        mixed = build_historical_series_binding(
+            "matrix-mixed",
+            underlying_key=build_underlying_key(symbol="QQQ"),
+        )
+
+        repeated = build_historical_series_binding("matrix-repeated")
+        duplicate_first = build_historical_series_binding(
+            "matrix-duplicate-first"
+        )
+        duplicate_second = build_historical_series_binding(
+            "matrix-duplicate-second"
+        )
+        duplicate_id = duplicate_first.selected_record.metadata.record_id
+        object.__setattr__(
+            duplicate_second.selected_record.metadata,
+            "record_id",
+            duplicate_id,
+        )
+        object.__setattr__(
+            duplicate_second.correction_selection,
+            "candidate_record_ids",
+            (duplicate_id,),
+        )
+        object.__setattr__(
+            duplicate_second.correction_selection,
+            "selected_record_id",
+            duplicate_id,
+        )
+        object.__setattr__(
+            duplicate_second.freshness_assessment,
+            "record_id",
+            duplicate_id,
+        )
+        object.__setattr__(
+            duplicate_second.correction_selection,
+            "semantic_observation_key",
+            semantic_observation_key(duplicate_second.selected_record),
+        )
+
+        policy = build_freshness_policy()
+        context = build_freshness_context()
+        proof_base = build_historical_series_binding(
+            "matrix-proof-base",
+            session_date=datetime.date(2030, 1, 1),
+            policy=policy,
+            context=context,
+        )
+        proof_variants = (
+            build_historical_series_binding(
+                "matrix-rule-id",
+                correction_rule_id="other-rule",
+                policy=policy,
+                context=context,
+            ),
+            build_historical_series_binding(
+                "matrix-rule-version",
+                correction_rule_version="v9",
+                policy=policy,
+                context=context,
+            ),
+            build_historical_series_binding(
+                "matrix-correction-time",
+                correction_evaluated_at=(
+                    EVALUATION_AT - datetime.timedelta(seconds=1)
+                ),
+                policy=policy,
+                context=context,
+            ),
+            build_historical_series_binding(
+                "matrix-policy",
+                policy=build_freshness_policy(
+                    maximum_quote_age_seconds=61
+                ),
+                context=context,
+            ),
+            build_historical_series_binding(
+                "matrix-context",
+                policy=policy,
+                context=build_freshness_context(
+                    evaluation_at=(
+                        EVALUATION_AT + datetime.timedelta(seconds=1)
+                    )
+                ),
+            ),
+        )
+        invalid_cases = [
+            ("request", object(), ()),
+            ("container", request, iter((valid,))),
+            ("tuple-subclass", request, TupleSubclass((valid,))),
+            ("list-subclass", request, ListSubclass((valid,))),
+            ("binding-item", request, (object(),)),
+            ("wrong-record", request, (quote,)),
+            ("record-subclass", request, (subclass_binding,)),
+            ("semantic", request, (semantic,)),
+            ("freshness-id", request, (freshness_id,)),
+            ("freshness-category", request, (freshness_category,)),
+            ("correction-id", request, (correction_id,)),
+            ("mixed-target", request, (mixed,)),
+            ("repeated-binding", request, (repeated, repeated)),
+            (
+                "duplicate-candidate-and-selected-id",
+                request,
+                (duplicate_first, duplicate_second),
+            ),
+        ]
+        proof_request = self.request(
+            (datetime.date(2030, 1, 1), SESSION_DATE)
+        )
+        invalid_cases.extend(
+            (
+                f"proof-{index}",
+                proof_request,
+                (proof_base, variant),
+            )
+            for index, variant in enumerate(proof_variants)
+        )
+        for label, supplied_request, bindings in invalid_cases:
+            with self.subTest(label=label):
+                self.assert_invalid_equivalent(
+                    supplied_request, bindings
+                )
 
 
 class ImportAndDeterminismTests(unittest.TestCase):

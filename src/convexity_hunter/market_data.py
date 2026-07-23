@@ -69,6 +69,12 @@ __all__ = (
     "MarketDataSelectionReasonCode",
     "MarketDataRelationshipSelection",
     "select_market_data_relationship_assessment",
+    "MarketDataHistoricalSeriesFrequency",
+    "MarketDataHistoricalSeriesStatus",
+    "MarketDataHistoricalSeriesReasonCode",
+    "MarketDataHistoricalSeriesRequest",
+    "MarketDataHistoricalSeriesAssessment",
+    "assess_market_data_historical_series",
 )
 
 
@@ -4157,3 +4163,573 @@ def select_market_data_relationship_assessment(
     """Select one complete coherent relationship assessment when unique."""
 
     return MarketDataRelationshipSelection(candidates=candidates)
+
+
+class MarketDataHistoricalSeriesFrequency(str, Enum):
+    """Supported historical market-data series sampling frequencies."""
+
+    DAILY = "daily"
+
+
+class MarketDataHistoricalSeriesStatus(str, Enum):
+    """Terminal completeness status for one historical series."""
+
+    COMPLETE = "complete"
+    INCOMPLETE = "incomplete"
+
+
+class MarketDataHistoricalSeriesReasonCode(str, Enum):
+    """Canonical audit reasons for historical-series incompleteness."""
+
+    MISSING_EXPECTED_SESSION = "missing_expected_session"
+    UNEXPECTED_SESSION = "unexpected_session"
+    DUPLICATE_SESSION = "duplicate_session"
+    INCOMPLETE_SESSION = "incomplete_session"
+    MIXED_ADJUSTED_CLOSE_AVAILABILITY = (
+        "mixed_adjusted_close_availability"
+    )
+    ADJUSTMENT_METHODOLOGY_MISMATCH = (
+        "adjustment_methodology_mismatch"
+    )
+
+
+def _canonicalize_historical_expected_session_dates(
+    expected_session_dates: object,
+) -> Tuple[datetime.date, ...]:
+    """Validate the exact caller-declared historical calendar authority."""
+
+    if (
+        type(expected_session_dates) is not tuple
+        and type(expected_session_dates) is not list
+    ):
+        raise TypeError(
+            "expected_session_dates must be an exact tuple or list"
+        )
+    dates = tuple(expected_session_dates)
+    for session_date in dates:
+        if type(session_date) is not datetime.date:
+            raise TypeError(
+                "every expected_session_dates item must have exact type date"
+            )
+    if not dates:
+        raise ValueError(
+            "expected_session_dates must contain at least one item"
+        )
+    if len(set(dates)) != len(dates):
+        raise ValueError("expected_session_dates must not contain duplicates")
+    return tuple(sorted(dates))
+
+
+@dataclass(frozen=True)
+class MarketDataHistoricalSeriesRequest:
+    """One explicit expected daily historical-series request."""
+
+    underlying_key: UnderlyingKey
+    frequency: MarketDataHistoricalSeriesFrequency
+    expected_session_dates: Tuple[datetime.date, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.underlying_key) is not UnderlyingKey:
+            raise TypeError("underlying_key must have exact type UnderlyingKey")
+        if type(self.frequency) is not MarketDataHistoricalSeriesFrequency:
+            raise TypeError(
+                "frequency must have exact type "
+                "MarketDataHistoricalSeriesFrequency"
+            )
+        if self.frequency is not MarketDataHistoricalSeriesFrequency.DAILY:
+            raise ValueError("frequency must be daily")
+        dates = _canonicalize_historical_expected_session_dates(
+            self.expected_session_dates
+        )
+        object.__setattr__(self, "expected_session_dates", dates)
+
+    @property
+    def start_session_date(self) -> datetime.date:
+        """Return the first caller-declared expected session."""
+
+        return self.expected_session_dates[0]
+
+    @property
+    def end_session_date(self) -> datetime.date:
+        """Return the last caller-declared expected session."""
+
+        return self.expected_session_dates[-1]
+
+    @property
+    def expected_session_count(self) -> int:
+        """Return the caller-declared lookback session count."""
+
+        return len(self.expected_session_dates)
+
+
+def _validate_historical_request_integrity(
+    request: MarketDataHistoricalSeriesRequest,
+) -> None:
+    """Revalidate a retained request without replacing the exact object."""
+
+    if type(request.underlying_key) is not UnderlyingKey:
+        raise TypeError("underlying_key must have exact type UnderlyingKey")
+    if type(request.frequency) is not MarketDataHistoricalSeriesFrequency:
+        raise TypeError(
+            "frequency must have exact type "
+            "MarketDataHistoricalSeriesFrequency"
+        )
+    if request.frequency is not MarketDataHistoricalSeriesFrequency.DAILY:
+        raise ValueError("frequency must be daily")
+    dates = _canonicalize_historical_expected_session_dates(
+        request.expected_session_dates
+    )
+    if type(request.expected_session_dates) is not tuple or (
+        request.expected_session_dates != dates
+    ):
+        raise ValueError(
+            "expected_session_dates must be stored as an ascending tuple"
+        )
+
+
+def _resolve_historical_binding_selected_record(
+    binding: SelectedFreshMarketDataBinding,
+) -> object:
+    """Resolve one stored selection using only candidate IDs."""
+
+    selection = binding.correction_selection
+    if (
+        type(binding.candidate_records) is not tuple
+        or not binding.candidate_records
+    ):
+        raise ValueError("binding has malformed candidate_records")
+    selected_record_id = getattr(selection, "selected_record_id", None)
+    matches = tuple(
+        candidate
+        for candidate in binding.candidate_records
+        if getattr(getattr(candidate, "metadata", None), "record_id", None)
+        == selected_record_id
+    )
+    if len(matches) != 1:
+        raise ValueError(
+            "binding correction selection must resolve exactly one record"
+        )
+    return matches[0]
+
+
+def _validate_historical_binding_integrity(
+    binding: SelectedFreshMarketDataBinding,
+    record: UnderlyingDailyBarObservation,
+) -> None:
+    """Validate one stored binding proof without recomputing its sidecars."""
+
+    selection = binding.correction_selection
+    freshness = binding.freshness_assessment
+    if type(selection) is not CorrectionSelection:
+        raise ValueError("binding has a forged correction_selection sidecar")
+    if type(freshness) is not FreshnessAssessment:
+        raise ValueError("binding has a forged freshness_assessment sidecar")
+    if type(binding.freshness_policy) is not MarketDataFreshnessPolicy:
+        raise ValueError("binding has a forged freshness_policy sidecar")
+    if type(binding.freshness_context) is not FreshnessContext:
+        raise ValueError("binding has a forged freshness_context sidecar")
+    candidate_record_ids = tuple(
+        getattr(getattr(candidate, "metadata", None), "record_id", None)
+        for candidate in binding.candidate_records
+    )
+    if (
+        any(type(record_id) is not str for record_id in candidate_record_ids)
+        or len(set(candidate_record_ids)) != len(candidate_record_ids)
+        or tuple(sorted(candidate_record_ids))
+        != selection.candidate_record_ids
+    ):
+        raise ValueError(
+            "binding candidate record IDs do not match correction selection"
+        )
+    if selection.status is not CorrectionSelectionStatus.SELECTED:
+        raise ValueError("binding correction selection must be selected")
+    selected_record_id = selection.selected_record_id
+    if record.metadata.record_id != selected_record_id:
+        raise ValueError(
+            "selected record ID does not match correction selection"
+        )
+    if freshness.record_id != record.metadata.record_id:
+        raise ValueError(
+            "selected record ID does not match freshness assessment"
+        )
+    if freshness.category is not MarketDataCategory.HISTORICAL_BAR:
+        raise ValueError(
+            "freshness assessment category must be historical_bar"
+        )
+    if not (
+        freshness.status is FreshnessStatus.FRESH
+        and freshness.reason_codes
+        == (FreshnessReasonCode.FRESH_WITHIN_POLICY,)
+    ):
+        raise ValueError("binding freshness assessment must be fresh")
+    if (
+        freshness.policy_id != binding.freshness_policy.policy_id
+        or freshness.policy_version != binding.freshness_policy.policy_version
+        or freshness.evaluated_at != binding.freshness_context.evaluation_at
+    ):
+        raise ValueError(
+            "freshness assessment does not match its policy and context"
+        )
+    if selection.evaluated_at > binding.freshness_context.evaluation_at:
+        raise ValueError(
+            "correction selection must not follow freshness evaluation"
+        )
+    if semantic_observation_key(record) != selection.semantic_observation_key:
+        raise ValueError(
+            "selected record semantic key does not match correction selection"
+        )
+
+
+def _historical_binding_selected_record(
+    binding: SelectedFreshMarketDataBinding,
+) -> UnderlyingDailyBarObservation:
+    """Resolve and validate one stored historical binding."""
+
+    record = _resolve_historical_binding_selected_record(binding)
+    if type(record) is not UnderlyingDailyBarObservation:
+        raise TypeError(
+            "every binding selected record must have exact type "
+            "UnderlyingDailyBarObservation"
+        )
+    _validate_historical_binding_integrity(binding, record)
+    return record
+
+
+def _historical_binding_proof_regime(
+    binding: SelectedFreshMarketDataBinding,
+) -> tuple:
+    """Return the exact correction and freshness comparison regime."""
+
+    return (
+        binding.correction_selection.rule_id,
+        binding.correction_selection.rule_version,
+        binding.correction_selection.evaluated_at,
+        binding.freshness_policy,
+        binding.freshness_context,
+    )
+
+
+def _canonicalize_historical_bindings(
+    request: MarketDataHistoricalSeriesRequest,
+    bindings: object,
+) -> Tuple[SelectedFreshMarketDataBinding, ...]:
+    """Validate and retain historical bindings in canonical audit order."""
+
+    if type(bindings) is not tuple and type(bindings) is not list:
+        raise TypeError("bindings must be an exact tuple or list")
+    supplied = tuple(bindings)
+    for binding in supplied:
+        if type(binding) is not SelectedFreshMarketDataBinding:
+            raise TypeError(
+                "every bindings item must have exact type "
+                "SelectedFreshMarketDataBinding"
+            )
+    if not supplied:
+        return ()
+
+    # Resolve every selected object before validating any later binding
+    # sidecar, then complete exact-type validation across the collection.
+    records = tuple(
+        _resolve_historical_binding_selected_record(binding)
+        for binding in supplied
+    )
+    for record in records:
+        if type(record) is not UnderlyingDailyBarObservation:
+            raise TypeError(
+                "every binding selected record must have exact type "
+                "UnderlyingDailyBarObservation"
+            )
+
+    for binding, record in zip(supplied, records):
+        _validate_historical_binding_integrity(binding, record)
+
+    if any(
+        record.underlying_key != request.underlying_key
+        for record in records
+    ):
+        raise ValueError(
+            "every historical bar must match the request underlying_key"
+        )
+
+    binding_identities = tuple(id(binding) for binding in supplied)
+    if len(set(binding_identities)) != len(binding_identities):
+        raise ValueError("the same binding object must not appear more than once")
+
+    all_candidate_record_ids = tuple(
+        candidate.metadata.record_id
+        for binding in supplied
+        for candidate in binding.candidate_records
+    )
+    if len(set(all_candidate_record_ids)) != len(all_candidate_record_ids):
+        raise ValueError(
+            "candidate record IDs must be unique across bindings"
+        )
+    selected_record_ids = tuple(
+        record.metadata.record_id for record in records
+    )
+    if len(set(selected_record_ids)) != len(selected_record_ids):
+        raise ValueError(
+            "selected record IDs must be unique across bindings"
+        )
+
+    expected_regime = _historical_binding_proof_regime(supplied[0])
+    if any(
+        _historical_binding_proof_regime(binding) != expected_regime
+        for binding in supplied[1:]
+    ):
+        raise ValueError(
+            "bindings must share one correction and freshness proof regime"
+        )
+
+    paired = tuple(zip(supplied, records))
+    return tuple(
+        binding
+        for binding, _ in sorted(
+            paired,
+            key=lambda pair: (
+                pair[1].session_date,
+                pair[0].correction_selection.semantic_observation_key,
+                pair[0].correction_selection.selected_record_id,
+            ),
+        )
+    )
+
+
+def _historical_series_session_facts(
+    request: MarketDataHistoricalSeriesRequest,
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...],
+) -> tuple:
+    """Return canonical observed, missing, unexpected, duplicate, and incomplete dates."""
+
+    dates = tuple(
+        _historical_binding_selected_record(binding).session_date
+        for binding in bindings
+    )
+    observed = tuple(sorted(set(dates)))
+    expected_set = set(request.expected_session_dates)
+    observed_set = set(observed)
+    counts = {}
+    for session_date in dates:
+        counts[session_date] = counts.get(session_date, 0) + 1
+    missing = tuple(sorted(expected_set - observed_set))
+    unexpected = tuple(sorted(observed_set - expected_set))
+    duplicates = tuple(sorted(
+        session_date
+        for session_date, count in counts.items()
+        if count > 1
+    ))
+    incomplete = tuple(sorted({
+        _historical_binding_selected_record(binding).session_date
+        for binding in bindings
+        if not _historical_binding_selected_record(
+            binding
+        ).is_session_complete
+    }))
+    return observed, missing, unexpected, duplicates, incomplete
+
+
+def _historical_series_adjustment_facts(
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...],
+) -> tuple:
+    """Return adjusted capability and its two possible issue flags."""
+
+    bars = tuple(
+        _historical_binding_selected_record(binding)
+        for binding in bindings
+    )
+    if not bars:
+        return False, None, False, False
+    availability = tuple(
+        bar.adjusted_close_price is not None for bar in bars
+    )
+    mixed_availability = any(availability) and not all(availability)
+    methodologies = {
+        bar.adjustment_methodology for bar in bars
+        if bar.adjusted_close_price is not None
+    }
+    methodology_mismatch = all(availability) and len(methodologies) > 1
+    uniform = all(availability) and len(methodologies) == 1
+    methodology = next(iter(methodologies)) if uniform else None
+    return uniform, methodology, mixed_availability, methodology_mismatch
+
+
+def _historical_series_reason_codes(
+    request: MarketDataHistoricalSeriesRequest,
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...],
+) -> Tuple[MarketDataHistoricalSeriesReasonCode, ...]:
+    """Derive all historical-series issues in enum declaration order."""
+
+    _, missing, unexpected, duplicates, incomplete = (
+        _historical_series_session_facts(request, bindings)
+    )
+    _, _, mixed_adjusted, methodology_mismatch = (
+        _historical_series_adjustment_facts(bindings)
+    )
+    reasons = set()
+    if missing:
+        reasons.add(
+            MarketDataHistoricalSeriesReasonCode.MISSING_EXPECTED_SESSION
+        )
+    if unexpected:
+        reasons.add(MarketDataHistoricalSeriesReasonCode.UNEXPECTED_SESSION)
+    if duplicates:
+        reasons.add(MarketDataHistoricalSeriesReasonCode.DUPLICATE_SESSION)
+    if incomplete:
+        reasons.add(MarketDataHistoricalSeriesReasonCode.INCOMPLETE_SESSION)
+    if mixed_adjusted:
+        reasons.add(
+            MarketDataHistoricalSeriesReasonCode
+            .MIXED_ADJUSTED_CLOSE_AVAILABILITY
+        )
+    if methodology_mismatch:
+        reasons.add(
+            MarketDataHistoricalSeriesReasonCode
+            .ADJUSTMENT_METHODOLOGY_MISMATCH
+        )
+    return tuple(
+        reason
+        for reason in MarketDataHistoricalSeriesReasonCode
+        if reason in reasons
+    )
+
+
+@dataclass(frozen=True)
+class MarketDataHistoricalSeriesAssessment:
+    """Immutable assessment of selected daily bars against expected sessions."""
+
+    request: MarketDataHistoricalSeriesRequest
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.request) is not MarketDataHistoricalSeriesRequest:
+            raise TypeError(
+                "request must have exact type "
+                "MarketDataHistoricalSeriesRequest"
+            )
+        _validate_historical_request_integrity(self.request)
+        bindings = _canonicalize_historical_bindings(
+            self.request, self.bindings
+        )
+        _historical_series_reason_codes(self.request, bindings)
+        object.__setattr__(self, "bindings", bindings)
+
+    @property
+    def ordered_bars(
+        self,
+    ) -> Tuple[UnderlyingDailyBarObservation, ...]:
+        """Return exact selected bars in canonical binding order."""
+
+        return tuple(
+            _historical_binding_selected_record(binding)
+            for binding in self.bindings
+        )
+
+    @property
+    def observed_session_dates(self) -> Tuple[datetime.date, ...]:
+        """Return ascending unique observed session dates."""
+
+        return _historical_series_session_facts(
+            self.request, self.bindings
+        )[0]
+
+    @property
+    def missing_session_dates(self) -> Tuple[datetime.date, ...]:
+        """Return expected dates absent from the observed date set."""
+
+        return _historical_series_session_facts(
+            self.request, self.bindings
+        )[1]
+
+    @property
+    def unexpected_session_dates(self) -> Tuple[datetime.date, ...]:
+        """Return observed dates outside the expected calendar authority."""
+
+        return _historical_series_session_facts(
+            self.request, self.bindings
+        )[2]
+
+    @property
+    def duplicate_session_dates(self) -> Tuple[datetime.date, ...]:
+        """Return dates represented by more than one retained binding."""
+
+        return _historical_series_session_facts(
+            self.request, self.bindings
+        )[3]
+
+    @property
+    def incomplete_session_dates(self) -> Tuple[datetime.date, ...]:
+        """Return dates represented by any incomplete retained bar."""
+
+        return _historical_series_session_facts(
+            self.request, self.bindings
+        )[4]
+
+    @property
+    def start_session_date(self) -> datetime.date:
+        """Return the request's first expected session."""
+
+        return self.request.start_session_date
+
+    @property
+    def end_session_date(self) -> datetime.date:
+        """Return the request's last expected session."""
+
+        return self.request.end_session_date
+
+    @property
+    def expected_session_count(self) -> int:
+        """Return the request's declared lookback count."""
+
+        return self.request.expected_session_count
+
+    @property
+    def observed_expected_session_count(self) -> int:
+        """Return the number of unique expected dates that were observed."""
+
+        return len(
+            set(self.request.expected_session_dates)
+            & set(self.observed_session_dates)
+        )
+
+    @property
+    def has_uniform_adjusted_close(self) -> bool:
+        """Return whether every retained bar has one adjustment methodology."""
+
+        return _historical_series_adjustment_facts(self.bindings)[0]
+
+    @property
+    def adjustment_methodology(self) -> Optional[str]:
+        """Return the exact uniform adjustment methodology when available."""
+
+        return _historical_series_adjustment_facts(self.bindings)[1]
+
+    @property
+    def status(self) -> MarketDataHistoricalSeriesStatus:
+        """Return complete only when no historical-series issue applies."""
+
+        if self.reason_codes == ():
+            return MarketDataHistoricalSeriesStatus.COMPLETE
+        return MarketDataHistoricalSeriesStatus.INCOMPLETE
+
+    @property
+    def reason_codes(
+        self,
+    ) -> Tuple[MarketDataHistoricalSeriesReasonCode, ...]:
+        """Return all applicable reasons in declaration order."""
+
+        return _historical_series_reason_codes(self.request, self.bindings)
+
+    @property
+    def is_complete(self) -> bool:
+        """Return whether the series assessment is complete."""
+
+        return self.status is MarketDataHistoricalSeriesStatus.COMPLETE
+
+
+def assess_market_data_historical_series(
+    request: object,
+    bindings: object,
+) -> MarketDataHistoricalSeriesAssessment:
+    """Assess selected daily bars against one explicit expected calendar."""
+
+    return MarketDataHistoricalSeriesAssessment(request, bindings)

@@ -4063,6 +4063,280 @@ execution behavior. Historical-series work remains 3C.6; transformations and
 lineage remain 3C.7. The implementation is pure, deterministic, clock-free,
 network-free, registry-free, and caller-order independent.
 
+### 13.15 Milestone 3C.6 historical-series assembly and completeness
+
+Milestone 3C.6 v0.1 assembles only exact
+`SelectedFreshMarketDataBinding` objects whose selected records have exact type
+`UnderlyingDailyBarObservation`. One series has one `UnderlyingKey`, uses only
+daily frequency, and is assessed against an explicit caller-supplied expected
+session calendar. Daily bars do not enter the 3C.4 relationship grammar.
+
+Correction selection and per-record freshness remain 3C.2 responsibilities.
+3C.6 validates and retains their proof artifacts but does not call
+`select_correction_candidate`, `assess_market_data_freshness`, or
+`bind_selected_fresh_market_data`. 3C.5 remains responsible for complete
+snapshot relationship-assessment selection. Returns, realized volatility,
+percentiles, raw-versus-adjusted use, corporate-action adjustment, pricing,
+evidence, and lineage remain 3C.7 work.
+
+#### Public API and stored artifacts
+
+3C.6 appends exactly these six public names after the implemented 58-name
+prefix, in this order, for a total public count of 64:
+
+```text
+MarketDataHistoricalSeriesFrequency
+MarketDataHistoricalSeriesStatus
+MarketDataHistoricalSeriesReasonCode
+MarketDataHistoricalSeriesRequest
+MarketDataHistoricalSeriesAssessment
+assess_market_data_historical_series
+```
+
+The exact enums and declaration orders are:
+
+```python
+class MarketDataHistoricalSeriesFrequency(str, Enum):
+    DAILY = "daily"
+
+
+class MarketDataHistoricalSeriesStatus(str, Enum):
+    COMPLETE = "complete"
+    INCOMPLETE = "incomplete"
+
+
+class MarketDataHistoricalSeriesReasonCode(str, Enum):
+    MISSING_EXPECTED_SESSION = "missing_expected_session"
+    UNEXPECTED_SESSION = "unexpected_session"
+    DUPLICATE_SESSION = "duplicate_session"
+    INCOMPLETE_SESSION = "incomplete_session"
+    MIXED_ADJUSTED_CLOSE_AVAILABILITY = (
+        "mixed_adjusted_close_availability"
+    )
+    ADJUSTMENT_METHODOLOGY_MISMATCH = (
+        "adjustment_methodology_mismatch"
+    )
+```
+
+There is no complete-terminal reason. The frozen request and assessment store
+exactly:
+
+```python
+MarketDataHistoricalSeriesRequest
+    underlying_key: UnderlyingKey
+    frequency: MarketDataHistoricalSeriesFrequency
+    expected_session_dates: Tuple[date, ...]
+
+MarketDataHistoricalSeriesAssessment
+    request: MarketDataHistoricalSeriesRequest
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...]
+```
+
+The public function is:
+
+```python
+assess_market_data_historical_series(
+    request,
+    bindings,
+) -> MarketDataHistoricalSeriesAssessment
+```
+
+The exact supplied request, binding objects, and selected-record objects are
+retained. Only the binding order and tuple/list storage representation are
+canonicalized.
+
+#### Expected-session authority
+
+The request requires exact `UnderlyingKey` and
+`MarketDataHistoricalSeriesFrequency` field types. The only supported frequency
+is `DAILY`. `expected_session_dates` accepts only exact built-in tuple or list
+containers; subclasses and other containers raise `TypeError`. Every item must
+have exact type `date`; `datetime` and date subclasses raise `TypeError`.
+
+At least one expected date is required. Duplicate dates raise `ValueError`.
+Dates are stored in ascending order. Explicit weekends and holidays are valid:
+the tuple is the complete calendar authority, and 3C.6 never infers exchange
+calendars, trading days, holidays, weekends, business-day continuity, or
+calendar consecutiveness.
+
+`start_session_date`, `end_session_date`, and `expected_session_count` are
+derived from the expected-date tuple. The count is the declared lookback count;
+none of these facts is stored independently.
+
+#### Binding integrity, empty input, and common proof regime
+
+Bindings accept only an exact built-in tuple or list. Every nonempty element
+must have exact type `SelectedFreshMarketDataBinding`, and its selected record
+must have exact type `UnderlyingDailyBarObservation`. For every binding, 3C.6
+requires:
+
+```text
+selected record resolves exactly once from candidate_records and selected_record_id
+candidate record IDs equal the correction selection candidate_record_ids
+selected record ID equals correction_selection.selected_record_id
+selected record ID equals freshness_assessment.record_id
+freshness category is historical_bar
+freshness result is exactly fresh_within_policy
+freshness policy ID/version and evaluation time agree with retained sidecars
+correction evaluation does not follow freshness evaluation
+semantic_observation_key(selected_record) equals the stored semantic key
+selected_record.underlying_key equals request.underlying_key
+```
+
+These are stored-proof integrity checks, not correction or freshness
+recomputation.
+
+Zero bindings are valid. They normalize to `()`, synthesize no proof regime,
+mark every expected session missing, and produce exactly
+`(MISSING_EXPECTED_SESSION,)`.
+
+Every nonempty series must share exact equality for:
+
+```text
+correction_selection.rule_id
+correction_selection.rule_version
+correction_selection.evaluated_at
+freshness_policy
+freshness_context
+```
+
+A mismatch raises `ValueError`. Provider identity, source lineage,
+`record_origin`, normalization methodology, normalization version, and unit
+convention remain auditable through retained bindings but do not define series
+comparability.
+
+The exact same binding object may not appear twice. Candidate record IDs must
+be unique across bindings, and selected record IDs must be unique. Violations
+raise `ValueError`. Different valid records with the same semantic key and
+session date are retained as an ordinary duplicate-session assessment
+condition.
+
+Bindings are stored in ascending order by:
+
+```python
+(
+    binding.selected_record.session_date,
+    binding.semantic_observation_key,
+    binding.correction_selection.selected_record_id,
+)
+```
+
+Caller order never selects, drops, or prefers a record.
+
+#### Session, completion, and adjustment facts
+
+Observed sessions come only from `selected_record.session_date`. The canonical
+set facts are:
+
+```text
+missing = expected - observed
+unexpected = observed - expected
+duplicates = dates represented by more than one binding
+```
+
+Each tuple is ascending and duplicate-free. Missing, unexpected, and duplicate
+conditions add their corresponding reason once. Unexpected and duplicate
+bindings remain retained. No interpolation, forward fill, backfill, synthetic
+bar creation, merging, deduplication, or record selection occurs.
+
+Every retained bar must have `is_session_complete=True` for a complete series.
+Every false value adds its date to `incomplete_session_dates` and adds
+`INCOMPLETE_SESSION`, including for unexpected dates. This stable series-level
+rule is independent of
+`freshness_policy.require_completed_historical_sessions`; the policy remains
+retained proof context and freshness is not rerun.
+
+Adjustment consistency considers every retained bar, including unexpected
+bars:
+
+| Retained-bar shape | Series result |
+| --- | --- |
+| zero bars | no adjustment reason; adjusted capability unavailable |
+| all adjusted closes absent | coherent raw-only series |
+| all adjusted closes present with one exact methodology | coherent adjusted-capable series |
+| adjusted close present on only some bars | `MIXED_ADJUSTED_CLOSE_AVAILABILITY` |
+| all adjusted closes present with different methodologies | `ADJUSTMENT_METHODOLOGY_MISMATCH` |
+
+Methodology comparison uses exact stored string equality. Mixed availability or
+methodology mismatch makes the overall assessment incomplete, while every raw
+value remains retained. 3C.6 adds no requested price basis and performs no
+corporate-action calculation.
+
+#### Derived audit facts, status, and validation precedence
+
+The assessment derives:
+
+```text
+ordered_bars
+observed_session_dates
+missing_session_dates
+unexpected_session_dates
+duplicate_session_dates
+incomplete_session_dates
+start_session_date
+end_session_date
+expected_session_count
+observed_expected_session_count
+has_uniform_adjusted_close
+adjustment_methodology
+status
+reason_codes
+is_complete
+```
+
+`ordered_bars` is one-to-one with stored canonical bindings and contains the
+exact selected objects. Observed dates are ascending and unique.
+`observed_expected_session_count` counts the expected/observed set
+intersection, so duplicate records never increase it.
+`has_uniform_adjusted_close` is true only for a nonempty series where every bar
+has adjusted close and all methodologies are equal; only then does
+`adjustment_methodology` return that exact common string.
+
+All applicable reasons are collected once and returned by enum declaration
+order. Every reason makes the assessment incomplete:
+
+```python
+status = (
+    MarketDataHistoricalSeriesStatus.COMPLETE
+    if reason_codes == ()
+    else MarketDataHistoricalSeriesStatus.INCOMPLETE
+)
+```
+
+`is_complete` is exact identity comparison with `COMPLETE`.
+
+Validation follows this observable order:
+
+```text
+1. exact request type
+2. request underlying and frequency exact types
+3. expected-date exact container
+4. expected-date exact element types
+5. expected-date nonempty, duplicate rejection, and canonicalization
+6. bindings exact container
+7. binding exact element types
+8. selected-record exact types
+9. binding semantic, record, and sidecar integrity
+10. request target underlying equality
+11. duplicate binding and cross-binding record-ID validation
+12. common proof-regime validation for nonempty sets
+13. canonical binding retention
+14. session-set, duplicate, and completion derivation
+15. adjustment-consistency derivation
+16. canonical status and reason construction
+```
+
+Wrong Python type boundaries raise `TypeError`. Malformed requests, forged
+bindings, mixed targets, duplicate record identities, and incompatible proof
+regimes raise `ValueError`. Missing, unexpected, duplicate-session,
+incomplete-session, and adjustment-consistency conditions are result reasons.
+
+3C.6 introduces no calendar inference, provider behavior, relationship
+evaluation or selection, option historical surface, interpolation, fill,
+synthetic bar, return, realized-volatility, percentile, adjustment
+calculation, rate/dividend linkage, pricing, evidence, lineage, screening,
+recommendation, or execution behavior.
+
 ## 14. Canonical calculation lineage
 
 A separate input-reference record is required because IDs alone cannot validate calculation chronology.
@@ -4499,9 +4773,12 @@ tie-breaker, option-chain scan, historical completeness, or transformation.
 
 ### Milestone 3C.6 — Historical-series assembly and completeness
 
-Define expected-session, lookback, frequency, adjustment-methodology, and
-duplicate/missing-session rules separately from current snapshot timing and
-selection.
+The Section 13.15 contract is implemented and validated locally pending
+independent review. It adds six public names for a total of 64 and assesses
+exact selected/fresh daily-bar bindings against a caller-declared expected
+session calendar, with deterministic proof-regime, duplicate, completion, and
+adjustment-consistency rules. It performs no calendar inference, freshness
+recomputation, or transformation.
 
 ### Milestone 3C.7 — Market-data-to-research transformations
 
