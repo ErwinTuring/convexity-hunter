@@ -3311,6 +3311,11 @@ class MarketDataRelationshipIssueCode(str, Enum):
     MARKET_PHASE_MISMATCH = "market_phase_mismatch"
     QUOTE_SCOPE_MISMATCH = "quote_scope_mismatch"
     VENUE_MISMATCH = "venue_mismatch"
+    ANALYTICS_METHODOLOGY_MISMATCH = "analytics_methodology_mismatch"
+    ACTIVITY_COHERENCE_MISMATCH = "activity_coherence_mismatch"
+    CONTRACT_REFERENCE_APPLICABILITY_MISMATCH = (
+        "contract_reference_applicability_mismatch"
+    )
 
 
 _RELATIONSHIP_ROLE_RECORD_TYPES = {
@@ -3398,11 +3403,97 @@ def _derive_quote_compatibility_issue_codes(
     )
 
 
+def _derive_analytics_methodology_issue_codes(
+    implied_volatility: OptionImpliedVolatilityObservation,
+    greeks: OptionGreeksObservation,
+) -> Tuple[MarketDataRelationshipIssueCode, ...]:
+    """Compare one same-contract IV and Greeks methodology declaration."""
+
+    if implied_volatility.contract_key != greeks.contract_key:
+        return ()
+    iv_methodology = (
+        implied_volatility.model_name,
+        implied_volatility.model_version,
+        implied_volatility.rate_input_description,
+        implied_volatility.dividend_input_description,
+    )
+    greeks_methodology = (
+        greeks.model_name,
+        greeks.model_version,
+        greeks.rate_input_description,
+        greeks.dividend_input_description,
+    )
+    if iv_methodology != greeks_methodology:
+        return (
+            MarketDataRelationshipIssueCode.ANALYTICS_METHODOLOGY_MISMATCH,
+        )
+    return ()
+
+
+def _derive_activity_coherence_issue_codes(
+    volume: OptionVolumeObservation,
+    open_interest: OptionOpenInterestObservation,
+) -> Tuple[MarketDataRelationshipIssueCode, ...]:
+    """Evaluate one same-contract volume/open-interest session pairing."""
+
+    if volume.contract_key != open_interest.contract_key:
+        return ()
+    open_interest_date = open_interest.open_interest_session_date
+    if (
+        open_interest_date > volume.session_date
+        or (
+            open_interest_date == volume.session_date
+            and not volume.is_session_complete
+        )
+    ):
+        return (MarketDataRelationshipIssueCode.ACTIVITY_COHERENCE_MISMATCH,)
+    return ()
+
+
+def _relationship_observation_session_date(
+    role: MarketDataRelationshipRole,
+    record: object,
+) -> datetime.date:
+    """Return the contracted applicability date for one observation role."""
+
+    if role is MarketDataRelationshipRole.OPTION_OPEN_INTEREST:
+        return record.open_interest_session_date
+    return record.session_date
+
+
+def _derive_contract_reference_applicability_issue_codes(
+    contract_reference: OptionContractReference,
+    records: dict,
+) -> Tuple[MarketDataRelationshipIssueCode, ...]:
+    """Check reference date bounds for identity-matching observations."""
+
+    for role, record in records.items():
+        if role is MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE:
+            continue
+        if record.contract_key != contract_reference.contract_key:
+            continue
+        observation_date = _relationship_observation_session_date(
+            role, record
+        )
+        if (
+            contract_reference.listing_date is not None
+            and observation_date < contract_reference.listing_date
+        ) or (
+            contract_reference.last_trade_date is not None
+            and observation_date > contract_reference.last_trade_date
+        ):
+            return (
+                MarketDataRelationshipIssueCode
+                .CONTRACT_REFERENCE_APPLICABILITY_MISMATCH,
+            )
+    return ()
+
+
 def _derive_relationship_group_issue_codes(
     group: MarketDataRelationshipGroup,
     bindings: Tuple[SelectedFreshMarketDataBinding, ...],
 ) -> Tuple[MarketDataRelationshipIssueCode, ...]:
-    """Derive all applicable 3C.4c and 3C.4d issues in declaration order."""
+    """Derive all applicable 3C.4c through 3C.4e issues in enum order."""
 
     for member, binding in zip(group.members, bindings):
         if type(binding.selected_record) is not _RELATIONSHIP_ROLE_RECORD_TYPES[
@@ -3459,6 +3550,14 @@ def _derive_relationship_group_issue_codes(
             for record in analytics_records
         ):
             issues.add(MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH)
+        implied_volatility = records.get(
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY
+        )
+        greeks = records.get(MarketDataRelationshipRole.OPTION_GREEKS)
+        if implied_volatility is not None and greeks is not None:
+            issues.update(_derive_analytics_methodology_issue_codes(
+                implied_volatility, greeks
+            ))
 
     elif kind is MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1:
         volume = records[MarketDataRelationshipRole.OPTION_VOLUME]
@@ -3482,6 +3581,9 @@ def _derive_relationship_group_issue_codes(
             and option_quote.session_date != volume.session_date
         ):
             issues.add(MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH)
+        issues.update(_derive_activity_coherence_issue_codes(
+            volume, open_interest
+        ))
 
     else:
         contract_reference = records[
@@ -3500,6 +3602,11 @@ def _derive_relationship_group_issue_codes(
                 MarketDataRelationshipIssueCode
                 .OPTION_CONTRACT_IDENTITY_MISMATCH
             )
+        issues.update(
+            _derive_contract_reference_applicability_issue_codes(
+                contract_reference, records
+            )
+        )
 
     return tuple(
         issue for issue in MarketDataRelationshipIssueCode if issue in issues

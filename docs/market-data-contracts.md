@@ -3693,6 +3693,138 @@ belongs to 3C.4e; selection to 3C.5; historical completeness to 3C.6; and
 rate/dividend linkage, transformations, pricing, evidence, and lineage to
 3C.7.
 
+### 13.13 Milestone 3C.4e analytics, activity, and contract-reference coherence
+
+Milestone 3C.4e extends the existing relationship assessment without adding a
+public name or changing stored fields, signatures, request grammar, resolution,
+canonical ordering, or retained objects. The public `market_data` API remains
+54 names. It appends these issue members after `VENUE_MISMATCH`:
+
+```python
+ANALYTICS_METHODOLOGY_MISMATCH = "analytics_methodology_mismatch"
+ACTIVITY_COHERENCE_MISMATCH = "activity_coherence_mismatch"
+CONTRACT_REFERENCE_APPLICABILITY_MISMATCH = (
+    "contract_reference_applicability_mismatch"
+)
+```
+
+The complete issue enum contains exactly ten members. Applicable issues
+coexist without duplicates and are returned in enum declaration order.
+
+#### Analytics methodology coherence
+
+Only `OPTION_QUOTE_ANALYTICS_V0_1` participates. When both IV and Greeks are
+present and have equal `contract_key`, their exact methodology tuples must be
+equal:
+
+```python
+(
+    model_name,
+    model_version,
+    rate_input_description,
+    dividend_input_description,
+)
+```
+
+| Members or condition | Exact result |
+|---|---|
+| IV only or Greeks only | no methodology comparison |
+| IV and Greeks with different contract keys | no methodology comparison; existing identity issue applies |
+| Equal same-contract methodology tuples | compatible |
+| Any unequal same-contract methodology field | add `ANALYTICS_METHODOLOGY_MISMATCH` |
+
+Exact structural equality applies. `model_version=None` equals only `None`.
+A session mismatch does not suppress a same-contract methodology comparison.
+The required quote remains the existing contract/session anchor but exposes no
+methodology field and does not enter this comparison.
+
+#### Activity coherence
+
+Only `OPTION_ACTIVITY_V0_1` participates. The volume/open-interest comparison
+is made only when their `contract_key` values are equal. The pair is coherent
+exactly when:
+
+```python
+open_interest.open_interest_session_date < volume.session_date
+or (
+    open_interest.open_interest_session_date == volume.session_date
+    and volume.is_session_complete
+)
+```
+
+| Open-interest date relative to volume date | Incomplete volume | Complete volume |
+|---|---|---|
+| earlier | compatible | compatible |
+| equal | add `ACTIVITY_COHERENCE_MISMATCH` | compatible |
+| later | add `ACTIVITY_COHERENCE_MISMATCH` | add `ACTIVITY_COHERENCE_MISMATCH` |
+
+`is_session_complete` matters only for the equal-date case. There is no maximum
+lag, business-day inference, exchange-calendar inference, publication-time
+assumption, or freshness recomputation. A different volume/open-interest
+contract suppresses only this locally misleading comparison. Optional-quote
+identity or session issues do not suppress a valid volume/open-interest check.
+
+#### Contract-reference applicability
+
+Only `OPTION_CONTRACT_REFERENCE_V0_1` participates. Every identity-matching
+non-reference member is checked independently against the required reference:
+
+| Role | Applicable observation date |
+|---|---|
+| `OPTION_QUOTE` | `session_date` |
+| `OPTION_IMPLIED_VOLATILITY` | `session_date` |
+| `OPTION_GREEKS` | `session_date` |
+| `OPTION_VOLUME` | `session_date` |
+| `OPTION_OPEN_INTEREST` | `open_interest_session_date` |
+| `OPTION_CONTRACT_REFERENCE` | no date comparison |
+
+For each applicable observation, a present `listing_date` is an inclusive
+lower bound and a present `last_trade_date` is an inclusive upper bound. A
+missing bound means unbounded. A date below listing or above last trade adds
+`CONTRACT_REFERENCE_APPLICABILITY_MISMATCH`; multiple failures collapse to that
+one issue. A member whose contract key differs from the reference is not
+date-checked, while other identity-matching members remain eligible for their
+independent checks.
+
+#### Interaction, precedence, and exclusions
+
+A wrong resolved role type still produces only
+`RESOLVED_RECORD_TYPE_MISMATCH` and short-circuits all later field access for
+that group. Other identity failures do not suppress unrelated type-safe checks.
+Only the three local comparisons explicitly excluded above are suppressed.
+Ordinary incompatibility remains an issue result, not an exception.
+
+The complete evaluation precedence is:
+
+```text
+1. argument and constructor validation
+2. complete reference resolution
+3. exact resolved role types
+4. exact identity
+5. comparable session
+6. snapshot phase, scope, and eligible venue
+7. analytics methodology
+8. activity coherence
+9. contract-reference applicability
+10. canonical issue construction
+```
+
+3C.4e does not inspect quote values, analytics numerical values, exercise
+style, settlement type, multiplier, deliverable, currency, reference metadata,
+provider identity, source lineage, record origin, normalization methodology,
+timestamps, freshness or timing properties, selection, historical
+completeness, rates, dividends, pricing, transformations, evidence, or
+`CalculationLineage`. Selection belongs to 3C.5, historical-series assembly to
+3C.6, and rate/dividend linkage, economic use, transformations, pricing,
+evidence, and lineage to 3C.7.
+
+Fixed synthetic tests cover the exact ten-member issue order; every analytics
+methodology field and optional model-version cases; IV-only and Greeks-only
+groups; the complete activity date/completeness/optional-quote matrix; every
+applicable contract-reference role and inclusive or missing bound; issue
+coexistence, local suppression, duplicate collapse, wrong-type short-circuiting,
+excluded-field access, canonical ordering, resolution, and retained identity.
+
 ## 14. Canonical calculation lineage
 
 A separate input-reference record is required because IDs alone cannot validate calculation chronology.

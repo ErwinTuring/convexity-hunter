@@ -56,17 +56,19 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3C.4b explicit relationship/group request representation is complete. The implementation adds exactly `MarketDataRelationshipGroupKind`, `MarketDataRelationshipRole`, `MarketDataRelationshipGroupMember`, `MarketDataRelationshipGroup`, and `MarketDataRelationshipRequest`, bringing the public `market_data` API to 50 names. It provides four versioned relationship-group kinds, seven roles, and three frozen structural artifacts, with exact structural grammar, cardinality validation, duplicate-reference control, deterministic canonicalization, and immutable request storage. The first independent review returned `REVIEW RESULT: FAIL` because it found five test-protection gaps and no implementation-behavior defect. All five test findings were corrected without changing the source implementation. The targeted independent re-review passed with `TARGETED RE-REVIEW RESULT: PASS`. Final validation passed with 30 focused Milestone 3C.4b tests, 280 market-data tests, 589 full-suite tests, compileall, `git diff --check`, and a 50-name public `market_data` API. Milestone 3C.4b is implemented, independently reviewed, committed, and pushed. It remains structural declaration, validation, duplication control, and canonicalization only.
 - Milestone 3C.4c exact identity and comparable-session coherence is implemented, independently reviewed with `REVIEW RESULT: PASS`, validated with 15 focused Milestone 3C.4c tests, 295 market-data tests, 604 full-suite tests, compileall, `git diff --check`, and a 54-name public `market_data` API, and committed and pushed. It adds exactly `MarketDataRelationshipIssueCode`, `MarketDataRelationshipGroupAssessment`, `MarketDataRelationshipAssessment`, and `assess_market_data_relationships`. It resolves the complete request before constructing results; retains exact request, timing-assessment, group, and binding objects; assesses exact resolved role types; and applies the four locked identity rules and the narrow comparable-session matrix. It contains no phase, scope, venue, methodology, activity-applicability, selection, transformation, pricing, or lineage behavior.
 - Milestone 3C.4d quote phase, scope, and venue compatibility is implemented, independently reviewed with `REVIEW RESULT: PASS`, validated with 9 focused Milestone 3C.4d tests, 304 market-data tests, 613 full-suite tests, compileall, `git diff --check`, and an unchanged 54-name public `market_data` API, and committed and pushed in this operation. It adds no public name and appends exactly `MARKET_PHASE_MISMATCH`, `QUOTE_SCOPE_MISMATCH`, and `VENUE_MISMATCH` to the existing relationship issue enum. Compatibility applies only to the underlying/option quote snapshot: phase and scope use exact equality; normalized venue MIC is compared only when both quotes are venue-specific; and a scope mismatch suppresses venue comparison. Wrong resolved types still short-circuit all field access. Freshness eligibility, freshness artifacts, source-quality and provider concerns, analytics/activity/contract-reference coherence, selection, historical completeness, rates, dividends, transformations, pricing, evidence, and lineage remain excluded.
-- Milestone 3C.4e and Milestones 3C.5 through 3C.7 remain undefined and unimplemented. All rate/dividend relationship, identity, linkage, applicability, economic-use, transformation, pricing, evidence, and `CalculationLineage` work belongs to Milestone 3C.7. Broad Milestone 3 remains incomplete.
+- Milestone 3C.4e analytics, activity, and contract-reference coherence is implemented, independently reviewed with `REVIEW RESULT: PASS`, validated with 7 focused Milestone 3C.4e tests, 311 market-data tests, 620 full-suite tests, compileall, `git diff --check`, and an unchanged 54-name public `market_data` API, and committed and pushed in this operation. It adds no public name and appends exactly `ANALYTICS_METHODOLOGY_MISMATCH`, `ACTIVITY_COHERENCE_MISMATCH`, and `CONTRACT_REFERENCE_APPLICABILITY_MISMATCH` to the relationship issue enum. It compares only same-contract IV/Greeks methodology tuples, enforces the locked volume/open-interest date/completeness matrix, and applies inclusive optional listing-date and last-trade-date bounds to each identity-matching observation. Wrong resolved types remain the sole issue and short-circuit every later check; identity mismatches suppress only locally misleading comparisons. Provider and source-lineage compatibility, freshness or timing recomputation, publication-time assumptions, calendar inference, selection, historical completeness, rates and dividends, pricing, transformations, evidence, and lineage remain excluded.
+- Milestone 3C.4 relationship/group coherence is fully implemented across Milestones 3C.4a through 3C.4e. Broad Milestone 3 remains incomplete.
+- Milestones 3C.5 through 3C.7 remain undefined and unimplemented. All rate/dividend relationship, identity, linkage, applicability, economic-use, transformation, pricing, evidence, and `CalculationLineage` work belongs to Milestone 3C.7. Broad Milestone 3 remains incomplete.
 
 ## Current task
 
-Perform a short specification preflight for Milestone 3C.4e analytics,
-activity, and contract-reference coherence.
+Perform a short specification preflight for Milestone 3C.5 deterministic
+cross-observation selection.
 
 ## Last completed checkpoint
 
-- Checkpoint: Milestone 3C.4d complete
-- Tests: 613 passed
+- Checkpoint: Milestone 3C.4e complete
+- Tests: 620 passed
 - Public `market_data` API: 54 names
 - Milestone 3C.1 semantic observation identity complete
 - Milestone 3C.2 per-record selected/fresh binding complete
@@ -78,19 +80,22 @@ activity, and contract-reference coherence.
 - Milestone 3C.4c independently reviewed
 - Milestone 3C.4d quote phase, scope, and venue compatibility complete
 - Milestone 3C.4d independently reviewed
+- Milestone 3C.4e analytics, activity, and contract-reference coherence complete
+- Milestone 3C.4e independently reviewed
 - `REVIEW RESULT: PASS`
 - Milestone 3C.4d validation: 9 focused, 304 market-data, 613 full-suite
 - Milestone 3C.4d public `market_data` API: 54 names
-- Milestone 3C.4e unimplemented
+- Milestone 3C.4e validation: 7 focused, 311 market-data, 620 full-suite
+- Milestone 3C.4e public `market_data` API: 54 names
+- Milestone 3C.4 fully implemented across 3C.4a through 3C.4e
 - Milestones 3C.5 through 3C.7 unimplemented
 - Broad Milestone 3 incomplete
 
 ## Next task
 
-Define the Milestone 3C.4e documentation contract only if its specification
-preflight closes the exact analytics, activity, and contract-reference
-coherence rules, issue interactions, validation precedence, test expectations,
-and authorized file scope.
+Define how one coherent relationship-valid input set is selected when multiple
+eligible observations or groups are available, without implementing historical
+completeness or transformations.
 
 ## Deferred
 

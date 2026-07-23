@@ -7321,6 +7321,9 @@ class RelationshipAssessmentSurfaceTests(unittest.TestCase):
                 "market_phase_mismatch",
                 "quote_scope_mismatch",
                 "venue_mismatch",
+                "analytics_methodology_mismatch",
+                "activity_coherence_mismatch",
+                "contract_reference_applicability_mismatch",
             ),
         )
         self.assertEqual(
@@ -7770,10 +7773,17 @@ class RelationshipSessionTests(unittest.TestCase):
                     (MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH,),
                 )
 
-    def test_activity_open_interest_exclusion_and_optional_quote_session(self) -> None:
-        for label, open_interest_date in (
-            ("older", SESSION_DATE - datetime.timedelta(days=2)),
-            ("newer", SESSION_DATE),
+    def test_activity_open_interest_is_not_a_comparable_session_date(self) -> None:
+        for label, open_interest_date, expected in (
+            ("older", SESSION_DATE - datetime.timedelta(days=2), ()),
+            (
+                "same-incomplete",
+                SESSION_DATE,
+                (
+                    MarketDataRelationshipIssueCode
+                    .ACTIVITY_COHERENCE_MISMATCH,
+                ),
+            ),
         ):
             bindings = {
                 MarketDataRelationshipRole.OPTION_VOLUME: (
@@ -7795,8 +7805,11 @@ class RelationshipSessionTests(unittest.TestCase):
                 MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1,
                 bindings,
             )
-            self.assertTrue(
-                assess_resolved_relationship_group(group, aligned).is_coherent
+            self.assertEqual(
+                assess_resolved_relationship_group(
+                    group, aligned
+                ).group_assessments[0].issue_codes,
+                expected,
             )
 
         mismatched = {
@@ -7969,6 +7982,11 @@ class RelationshipQuoteCompatibilityTests(unittest.TestCase):
                 MarketDataRelationshipIssueCode.MARKET_PHASE_MISMATCH,
                 MarketDataRelationshipIssueCode.QUOTE_SCOPE_MISMATCH,
                 MarketDataRelationshipIssueCode.VENUE_MISMATCH,
+                MarketDataRelationshipIssueCode
+                .ANALYTICS_METHODOLOGY_MISMATCH,
+                MarketDataRelationshipIssueCode.ACTIVITY_COHERENCE_MISMATCH,
+                MarketDataRelationshipIssueCode
+                .CONTRACT_REFERENCE_APPLICABILITY_MISMATCH,
             ),
         )
 
@@ -8317,6 +8335,513 @@ class RelationshipQuoteCompatibilityTests(unittest.TestCase):
                 setattr(MarketDataSnapshotTimingAssessment, name, descriptor)
 
 
+class RelationshipExtendedCoherenceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.context = build_freshness_context(
+            latest_completed_session_date=(
+                SESSION_DATE + datetime.timedelta(days=3)
+            )
+        )
+        self.policy = build_freshness_policy(
+            maximum_open_interest_session_date_gap_days=10
+        )
+
+    def build_binding(
+        self,
+        role: MarketDataRelationshipRole,
+        label: str,
+        **overrides: object,
+    ) -> SelectedFreshMarketDataBinding:
+        record = build_timed_record(
+            _RELATIONSHIP_ROLE_BUILDERS[role], label, **overrides
+        )
+        return build_timing_binding(
+            record, policy=self.policy, context=self.context
+        )
+
+    def assess(
+        self,
+        label: str,
+        kind: MarketDataRelationshipGroupKind,
+        bindings: dict,
+    ) -> tuple:
+        group, aligned = build_resolved_relationship_group(
+            label, kind, bindings
+        )
+        return assess_resolved_relationship_group(
+            group, aligned
+        ).group_assessments[0].issue_codes
+
+    def test_analytics_exact_methodology_fields_and_model_version_none(self) -> None:
+        kind = MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1
+        mutations = (
+            ("model_name", "Different model"),
+            ("model_version", "fixture-v2"),
+            ("rate_input_description", "Different rate input"),
+            ("dividend_input_description", "Different dividend input"),
+        )
+        for field_name, different_value in mutations:
+            with self.subTest(field=field_name):
+                bindings = {
+                    MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                        MarketDataRelationshipRole.OPTION_QUOTE,
+                        f"analytics-{field_name}-quote",
+                    ),
+                    MarketDataRelationshipRole
+                    .OPTION_IMPLIED_VOLATILITY: self.build_binding(
+                        MarketDataRelationshipRole
+                        .OPTION_IMPLIED_VOLATILITY,
+                        f"analytics-{field_name}-iv",
+                    ),
+                    MarketDataRelationshipRole.OPTION_GREEKS: self.build_binding(
+                        MarketDataRelationshipRole.OPTION_GREEKS,
+                        f"analytics-{field_name}-greeks",
+                        **{field_name: different_value},
+                    ),
+                }
+                self.assertEqual(
+                    self.assess(f"analytics-{field_name}", kind, bindings),
+                    (
+                        MarketDataRelationshipIssueCode
+                        .ANALYTICS_METHODOLOGY_MISMATCH,
+                    ),
+                )
+
+        for iv_version, greeks_version, expected in (
+            (None, None, ()),
+            (
+                None,
+                "fixture-v1",
+                (
+                    MarketDataRelationshipIssueCode
+                    .ANALYTICS_METHODOLOGY_MISMATCH,
+                ),
+            ),
+        ):
+            with self.subTest(
+                iv_version=iv_version, greeks_version=greeks_version
+            ):
+                bindings = {
+                    MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                        MarketDataRelationshipRole.OPTION_QUOTE,
+                        f"analytics-none-{iv_version}-{greeks_version}-quote",
+                    ),
+                    MarketDataRelationshipRole
+                    .OPTION_IMPLIED_VOLATILITY: self.build_binding(
+                        MarketDataRelationshipRole
+                        .OPTION_IMPLIED_VOLATILITY,
+                        f"analytics-none-{iv_version}-{greeks_version}-iv",
+                        model_version=iv_version,
+                    ),
+                    MarketDataRelationshipRole.OPTION_GREEKS: self.build_binding(
+                        MarketDataRelationshipRole.OPTION_GREEKS,
+                        f"analytics-none-{iv_version}-{greeks_version}-greeks",
+                        model_version=greeks_version,
+                    ),
+                }
+                self.assertEqual(
+                    self.assess(
+                        f"analytics-none-{iv_version}-{greeks_version}",
+                        kind,
+                        bindings,
+                    ),
+                    expected,
+                )
+
+    def test_analytics_singletons_coexistence_and_local_suppression(self) -> None:
+        kind = MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1
+        for role in (
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+            MarketDataRelationshipRole.OPTION_GREEKS,
+        ):
+            with self.subTest(single_role=role):
+                bindings = {
+                    MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                        MarketDataRelationshipRole.OPTION_QUOTE,
+                        f"analytics-single-{role.value}-quote",
+                    ),
+                    role: self.build_binding(
+                        role, f"analytics-single-{role.value}"
+                    ),
+                }
+                self.assertEqual(
+                    self.assess(
+                        f"analytics-single-{role.value}", kind, bindings
+                    ),
+                    (),
+                )
+
+        coexist = {
+            MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                "analytics-coexist-quote",
+            ),
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+                self.build_binding(
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                    "analytics-coexist-iv",
+                )
+            ),
+            MarketDataRelationshipRole.OPTION_GREEKS: self.build_binding(
+                MarketDataRelationshipRole.OPTION_GREEKS,
+                "analytics-coexist-greeks",
+                session_date=SESSION_DATE + datetime.timedelta(days=1),
+                model_name="Different model",
+            ),
+        }
+        self.assertEqual(
+            self.assess("analytics-coexist", kind, coexist),
+            (
+                MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH,
+                MarketDataRelationshipIssueCode
+                .ANALYTICS_METHODOLOGY_MISMATCH,
+            ),
+        )
+
+        alternate_contract = build_option_contract_key(
+            underlying_key=build_underlying_key(symbol="QQQ")
+        )
+        suppressed = {
+            MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                "analytics-suppressed-quote",
+            ),
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+                self.build_binding(
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                    "analytics-suppressed-iv",
+                )
+            ),
+            MarketDataRelationshipRole.OPTION_GREEKS: self.build_binding(
+                MarketDataRelationshipRole.OPTION_GREEKS,
+                "analytics-suppressed-greeks",
+                contract_key=alternate_contract,
+                model_name="Different model",
+            ),
+        }
+        self.assertEqual(
+            self.assess("analytics-suppressed", kind, suppressed),
+            (
+                MarketDataRelationshipIssueCode
+                .OPTION_CONTRACT_IDENTITY_MISMATCH,
+            ),
+        )
+
+    def test_complete_activity_matrix_with_optional_quote(self) -> None:
+        kind = MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1
+        date_cases = (("older", -1), ("equal", 0), ("future", 1))
+        for (date_name, day_offset), complete, quote_present in itertools.product(
+            date_cases, (False, True), (False, True)
+        ):
+            label = f"activity-{date_name}-{complete}-{quote_present}"
+            bindings = {
+                MarketDataRelationshipRole.OPTION_VOLUME: self.build_binding(
+                    MarketDataRelationshipRole.OPTION_VOLUME,
+                    f"{label}-volume",
+                    is_session_complete=complete,
+                ),
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST: (
+                    self.build_binding(
+                        MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                        f"{label}-open-interest",
+                        open_interest_session_date=(
+                            SESSION_DATE
+                            + datetime.timedelta(days=day_offset)
+                        ),
+                    )
+                ),
+            }
+            if quote_present:
+                bindings[MarketDataRelationshipRole.OPTION_QUOTE] = (
+                    self.build_binding(
+                        MarketDataRelationshipRole.OPTION_QUOTE,
+                        f"{label}-quote",
+                    )
+                )
+            expected = (
+                (
+                    MarketDataRelationshipIssueCode
+                    .ACTIVITY_COHERENCE_MISMATCH,
+                )
+                if day_offset > 0 or (day_offset == 0 and not complete)
+                else ()
+            )
+            with self.subTest(
+                date=date_name, complete=complete, quote=quote_present
+            ):
+                self.assertEqual(self.assess(label, kind, bindings), expected)
+
+    def test_activity_local_suppression_and_quote_issue_coexistence(self) -> None:
+        kind = MarketDataRelationshipGroupKind.OPTION_ACTIVITY_V0_1
+        alternate_contract = build_option_contract_key(
+            underlying_key=build_underlying_key(symbol="QQQ")
+        )
+        suppressed = {
+            MarketDataRelationshipRole.OPTION_VOLUME: self.build_binding(
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                "activity-suppressed-volume",
+            ),
+            MarketDataRelationshipRole.OPTION_OPEN_INTEREST: self.build_binding(
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                "activity-suppressed-open-interest",
+                contract_key=alternate_contract,
+                open_interest_session_date=SESSION_DATE + datetime.timedelta(days=1),
+            ),
+        }
+        self.assertEqual(
+            self.assess("activity-suppressed", kind, suppressed),
+            (
+                MarketDataRelationshipIssueCode
+                .OPTION_CONTRACT_IDENTITY_MISMATCH,
+            ),
+        )
+
+        coexist = {
+            MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                "activity-coexist-quote",
+                contract_key=alternate_contract,
+                session_date=SESSION_DATE + datetime.timedelta(days=1),
+            ),
+            MarketDataRelationshipRole.OPTION_VOLUME: self.build_binding(
+                MarketDataRelationshipRole.OPTION_VOLUME,
+                "activity-coexist-volume",
+            ),
+            MarketDataRelationshipRole.OPTION_OPEN_INTEREST: self.build_binding(
+                MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+                "activity-coexist-open-interest",
+                open_interest_session_date=SESSION_DATE,
+            ),
+        }
+        self.assertEqual(
+            self.assess("activity-coexist", kind, coexist),
+            (
+                MarketDataRelationshipIssueCode
+                .OPTION_CONTRACT_IDENTITY_MISMATCH,
+                MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH,
+                MarketDataRelationshipIssueCode.ACTIVITY_COHERENCE_MISMATCH,
+            ),
+        )
+
+    def test_reference_every_role_and_inclusive_bounds(self) -> None:
+        kind = (
+            MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1
+        )
+        listing_date = SESSION_DATE - datetime.timedelta(days=1)
+        last_trade_date = SESSION_DATE + datetime.timedelta(days=1)
+        roles = (
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+            MarketDataRelationshipRole.OPTION_GREEKS,
+            MarketDataRelationshipRole.OPTION_VOLUME,
+            MarketDataRelationshipRole.OPTION_OPEN_INTEREST,
+        )
+        date_cases = (
+            ("below", SESSION_DATE - datetime.timedelta(days=2), True),
+            ("listing", listing_date, False),
+            ("inside", SESSION_DATE, False),
+            ("last", last_trade_date, False),
+            ("above", SESSION_DATE + datetime.timedelta(days=2), True),
+        )
+        for role, (date_name, observation_date, incompatible) in (
+            itertools.product(roles, date_cases)
+        ):
+            label = f"reference-{role.value}-{date_name}"
+            date_field = (
+                "open_interest_session_date"
+                if role is MarketDataRelationshipRole.OPTION_OPEN_INTEREST
+                else "session_date"
+            )
+            bindings = {
+                role: self.build_binding(
+                    role, f"{label}-observation", **{date_field: observation_date}
+                ),
+                MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: (
+                    self.build_binding(
+                        MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                        f"{label}-contract",
+                        listing_date=listing_date,
+                        last_trade_date=last_trade_date,
+                    )
+                ),
+            }
+            expected = (
+                (
+                    MarketDataRelationshipIssueCode
+                    .CONTRACT_REFERENCE_APPLICABILITY_MISMATCH,
+                )
+                if incompatible
+                else ()
+            )
+            with self.subTest(role=role, date=date_name):
+                self.assertEqual(self.assess(label, kind, bindings), expected)
+
+    def test_reference_missing_bounds_collapsing_and_local_suppression(self) -> None:
+        kind = (
+            MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1
+        )
+        for listing_date, last_trade_date, observation_date in (
+            (
+                None,
+                SESSION_DATE + datetime.timedelta(days=1),
+                SESSION_DATE - datetime.timedelta(days=2),
+            ),
+            (
+                SESSION_DATE - datetime.timedelta(days=1),
+                None,
+                SESSION_DATE + datetime.timedelta(days=2),
+            ),
+            (None, None, SESSION_DATE + datetime.timedelta(days=2)),
+        ):
+            label = f"reference-unbounded-{listing_date}-{last_trade_date}"
+            bindings = {
+                MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                    MarketDataRelationshipRole.OPTION_QUOTE,
+                    f"{label}-quote",
+                    session_date=observation_date,
+                ),
+                MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: (
+                    self.build_binding(
+                        MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                        f"{label}-contract",
+                        listing_date=listing_date,
+                        last_trade_date=last_trade_date,
+                    )
+                ),
+            }
+            with self.subTest(
+                listing=listing_date, last_trade=last_trade_date
+            ):
+                self.assertEqual(self.assess(label, kind, bindings), ())
+
+        reference = self.build_binding(
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+            "reference-collapse-contract",
+            listing_date=SESSION_DATE - datetime.timedelta(days=1),
+            last_trade_date=SESSION_DATE + datetime.timedelta(days=1),
+        )
+        collapse = {
+            MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                "reference-collapse-quote",
+                session_date=SESSION_DATE - datetime.timedelta(days=2),
+            ),
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+                self.build_binding(
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                    "reference-collapse-iv",
+                    session_date=SESSION_DATE + datetime.timedelta(days=2),
+                )
+            ),
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: reference,
+        }
+        self.assertEqual(
+            self.assess("reference-collapse", kind, collapse),
+            (
+                MarketDataRelationshipIssueCode
+                .CONTRACT_REFERENCE_APPLICABILITY_MISMATCH,
+            ),
+        )
+
+        alternate_contract = build_option_contract_key(
+            underlying_key=build_underlying_key(symbol="QQQ")
+        )
+        local = {
+            MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                "reference-local-quote",
+                contract_key=alternate_contract,
+                session_date=SESSION_DATE - datetime.timedelta(days=2),
+            ),
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+                self.build_binding(
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                    "reference-local-iv",
+                    session_date=SESSION_DATE + datetime.timedelta(days=2),
+                )
+            ),
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: reference,
+        }
+        self.assertEqual(
+            self.assess("reference-local", kind, local),
+            (
+                MarketDataRelationshipIssueCode
+                .OPTION_CONTRACT_IDENTITY_MISMATCH,
+                MarketDataRelationshipIssueCode
+                .CONTRACT_REFERENCE_APPLICABILITY_MISMATCH,
+            ),
+        )
+
+    def test_combined_issue_order_and_wrong_type_short_circuit(self) -> None:
+        kind = MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1
+        alternate_contract = build_option_contract_key(
+            underlying_key=build_underlying_key(symbol="QQQ")
+        )
+        combined = {
+            MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                "combined-analytics-quote",
+                contract_key=alternate_contract,
+                session_date=SESSION_DATE + datetime.timedelta(days=1),
+            ),
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+                self.build_binding(
+                    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+                    "combined-analytics-iv",
+                )
+            ),
+            MarketDataRelationshipRole.OPTION_GREEKS: self.build_binding(
+                MarketDataRelationshipRole.OPTION_GREEKS,
+                "combined-analytics-greeks",
+                model_name="Different model",
+            ),
+        }
+        self.assertEqual(
+            self.assess("combined-analytics", kind, combined),
+            (
+                MarketDataRelationshipIssueCode
+                .OPTION_CONTRACT_IDENTITY_MISMATCH,
+                MarketDataRelationshipIssueCode.SESSION_DATE_MISMATCH,
+                MarketDataRelationshipIssueCode
+                .ANALYTICS_METHODOLOGY_MISMATCH,
+            ),
+        )
+
+        wrong_record = build_timed_record(
+            build_underlying_daily_bar_observation, "extended-wrong-type"
+        )
+        wrong_binding = build_timing_binding(
+            wrong_record, policy=self.policy, context=self.context
+        )
+        wrong = {
+            MarketDataRelationshipRole.OPTION_QUOTE: self.build_binding(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                "extended-wrong-quote",
+            ),
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: wrong_binding,
+            MarketDataRelationshipRole.OPTION_GREEKS: self.build_binding(
+                MarketDataRelationshipRole.OPTION_GREEKS,
+                "extended-wrong-greeks",
+            ),
+        }
+        original = market_data._derive_analytics_methodology_issue_codes
+        try:
+            market_data._derive_analytics_methodology_issue_codes = (
+                lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("later helper reached")
+                )
+            )
+            self.assertEqual(
+                self.assess("extended-wrong", kind, wrong),
+                (
+                    MarketDataRelationshipIssueCode
+                    .RESOLVED_RECORD_TYPE_MISMATCH,
+                ),
+            )
+        finally:
+            market_data._derive_analytics_methodology_issue_codes = original
+
+
 class RelationshipAssessmentOrderingAndScopeTests(unittest.TestCase):
     def test_canonical_group_binding_order_and_cross_group_reference_reuse(self) -> None:
         underlying = build_relationship_binding(
@@ -8423,7 +8948,7 @@ class RelationshipAssessmentOrderingAndScopeTests(unittest.TestCase):
             for name, descriptor in originals.items():
                 setattr(MarketDataSnapshotTimingAssessment, name, descriptor)
 
-    def test_later_fields_are_not_evaluated(self) -> None:
+    def test_excluded_downstream_concerns_are_not_evaluated(self) -> None:
         underlying = build_relationship_binding(
             MarketDataRelationshipRole.UNDERLYING_QUOTE,
             "excluded-underlying",
@@ -8460,12 +8985,38 @@ class RelationshipAssessmentOrderingAndScopeTests(unittest.TestCase):
             inspect.getsource(
                 market_data._derive_relationship_group_issue_codes
             ),
+            inspect.getsource(
+                market_data._derive_analytics_methodology_issue_codes
+            ),
+            inspect.getsource(
+                market_data._derive_activity_coherence_issue_codes
+            ),
+            inspect.getsource(
+                market_data
+                ._derive_contract_reference_applicability_issue_codes
+            ),
             inspect.getsource(MarketDataRelationshipAssessment),
         ))
         for token in (
-            "model_name",
-            "is_session_complete", "open_interest_session_date",
-            "CalculationLineage", "RateCurvePointObservation",
+            "provider_name",
+            "source_references",
+            "freshness_assessment",
+            "freshness_context",
+            "maximum_open_interest_session_date_gap_days",
+            "calendar",
+            "business_day",
+            ".implied_volatility",
+            ".delta",
+            ".gamma",
+            ".theta",
+            ".vega",
+            "exercise_style",
+            "settlement_type",
+            "multiplier",
+            "deliverable",
+            "currency",
+            "CalculationLineage",
+            "RateCurvePointObservation",
             "DividendObservation",
         ):
             with self.subTest(token=token):
