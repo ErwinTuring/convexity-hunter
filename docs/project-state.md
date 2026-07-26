@@ -62,11 +62,13 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3C.6 historical market-data series assembly and completeness is implemented, independently reviewed with all findings corrected, validated, committed, and pushed in this operation. The initial independent review found one MAJOR implementation validation-precedence defect and one MINOR focused-test adequacy defect; the implementation was refactored into global binding-element, selected-record-type, and integrity passes. The first targeted re-review confirmed the MAJOR defect was resolved but found incomplete late-phase mutation protection and a stale project-state transition; both were corrected. The next targeted re-review found that global phase-name deduplication could hide noncontiguous re-entry; the recorder was changed to collapse only contiguous repeats. The last targeted re-review returned `LAST TARGETED RE-REVIEW RESULT: PASS`. Final validation passed with 25 focused Milestone 3C.6 tests, 365 market-data tests, 674 full-suite tests, compileall, `git diff --check`, and exactly 64 public `market_data` names. The implementation supports only `UnderlyingDailyBarObservation` and `DAILY` frequency; accepts an explicit caller-supplied expected-session set and exact `SelectedFreshMarketDataBinding` objects; retains the exact request, bindings, and selected records; does not recompute correction selection or freshness; permits an empty observed binding set; derives missing, unexpected, duplicate, and incomplete sessions; requires one common correction/freshness proof regime for nonempty series; preserves duplicate-session records; assesses adjusted-close availability and adjustment-methodology consistency; uses deterministic canonical ordering; and exposes only complete or incomplete terminal status. It performs no calendar inference, interpolation, transformation, pricing, evidence construction, or lineage construction. It adds exactly `MarketDataHistoricalSeriesFrequency`, `MarketDataHistoricalSeriesStatus`, `MarketDataHistoricalSeriesReasonCode`, `MarketDataHistoricalSeriesRequest`, `MarketDataHistoricalSeriesAssessment`, and `assess_market_data_historical_series`.
 - Broad Milestone 3C.7 was preflighted and found nonviable as one implementation unit, so it is decomposed into Milestones 3C.7a through 3C.7f.
 - Milestone 3C.7a exact-structure liquidity transformation is implemented, independently reviewed, validated, and committed and pushed in this operation. The initial independent review returned `REVIEW RESULT: FAIL` with four MAJOR findings: incomplete retained-proof integrity, selected-record type-versus-integrity precedence, ambient Decimal-context dependence, and insufficient mutation-resistant focused coverage. The first targeted re-review returned `TARGETED RE-REVIEW RESULT: FAIL`: exact global selected-record type precedence was accepted, while exact proof enum/ID/sidecar validation, extreme Decimal behavior, and focused coverage still required correction. The second targeted re-review returned `SECOND TARGETED RE-REVIEW RESULT: FAIL`: proof exactness, Decimal exception normalization, and the requested malformed-proof tests were accepted, but one false-positive `MAX_EMAX` possible-carry rejection remained. After correction, the final targeted re-review returned `FINAL TARGETED RE-REVIEW RESULT: PASS`; all findings are resolved. The transformation consumes authoritative selected relationship proofs without recomputing correction, freshness, timing, relationship, selection, or historical completeness, and constructs an existing `StructureLiquidity` record with exact `CalculationLineage`. Its context-independent exact Decimal aggregation distinguishes exponent overflow at `decimal_aggregation` from finite-float rejection at `float_boundary`. The new module exports exactly `StructureLiquidityTransformationResult` and `transform_structure_liquidity`; `market_data.__all__` remains exactly 64 names and the package root remains unchanged. Final validation passed with 44 focused transformation tests, 365 market-data tests, 718 full-suite tests, compileall, and `git diff --check`.
-- Milestones 3C.7b through 3C.7f remain unimplemented. Return calculation, realized volatility, adjusted/raw price selection, rate/dividend relationship and economic use, other research transformations, and pricing remain later 3C.7 slices. Exchange-calendar inference and historical option surfaces remain future contracts. Broad Milestone 3 remains incomplete.
+- Milestone 3C.7a is committed and pushed at `bda1d2dbbbf68af5f4b6e3c937ac6de9bbbbbc05` (`Implement exact-structure liquidity transformation`).
+- Milestone 3C.7b exact-structure cost transformation completed specification preflight with `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7B`, completed implementation with `IMPLEMENTATION RESULT: READY FOR MVP-FOCUSED INDEPENDENT REVIEW`, and completed independent review with `MVP-FOCUSED REVIEW RESULT: PASS`. The independent review found no findings and no remaining blocker. It consumes authoritative selected proofs without recomputing correction, freshness, timing, relationships, selection, or historical completeness. Its exact reviewed proof shape is three groups per leg. It constructs the existing `StructureCosts` record and exact `CalculationLineage`; contract-reference records are authoritative lineage inputs, giving four lineage inputs for a one-leg structure and seven for a two-leg structure. Its economic contract includes option midpoint premium, one-way midpoint-to-ask entry spread cost, explicit caller-supplied commissions and fees, position-scaled Theta and Gamma, underlying bid/ask midpoint, and an explicit repeated-bet count. Final validation passed with 61 focused transformation tests, including all original 44 Milestone 3C.7a liquidity tests; 365 market-data tests; 735 full-suite tests; compileall; both import orders; exact API, result-field, and signature checks; and `git diff --check`. `market_data_transformations.__all__` contains exactly `StructureLiquidityTransformationResult`, `transform_structure_liquidity`, `StructureCostsTransformationResult`, and `transform_structure_costs`; `market_data.__all__` remains exactly 64 names; and the package root remains unchanged. Milestone 3C.7b is implemented, independently reviewed, validated, and ready to commit and push. This operation commits and pushes Milestone 3C.7b.
+- Milestones 3C.7c through 3C.7f remain unimplemented. Return calculation, realized volatility, adjusted/raw price selection, rate/dividend relationship and economic use, other research transformations, and pricing remain later 3C.7 slices. Exchange-calendar inference and historical option surfaces remain future contracts. Broad Milestone 3 remains incomplete.
 
 ## Current task
 
-Finalize, commit, and push Milestone 3C.7a.
+Finalize, commit, and push Milestone 3C.7b.
 
 ## Last completed checkpoint
 
@@ -152,13 +154,29 @@ Finalize, commit, and push Milestone 3C.7a.
   compileall, and `git diff --check`
 - Milestone 3C.7a public module API: exactly two names
 - Milestone 3C.7a committed and pushed in this operation
-- Milestones 3C.7b through 3C.7f unimplemented
+- Milestone 3C.7b specification preflight:
+  `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7B`
+- Milestone 3C.7b implementation:
+  `IMPLEMENTATION RESULT: READY FOR MVP-FOCUSED INDEPENDENT REVIEW`
+- Milestone 3C.7b independent review:
+  `MVP-FOCUSED REVIEW RESULT: PASS`
+- Independent review found no findings and no remaining blocker
+- Milestone 3C.7b implemented, independently reviewed, validated, and ready to
+  commit and push
+- Milestone 3C.7b validation: 61 focused transformation tests, 365 market-data
+  tests, 735 full-suite tests, compileall, API/import checks, and
+  `git diff --check`
+- All original 44 Milestone 3C.7a focused tests remain passing
+- Transformation-module public API: exactly four names
+- Public `market_data` API: unchanged at exactly 64 names
+- Milestones 3C.7c through 3C.7f unimplemented
 - Broad Milestone 3 incomplete
 
 ## Next task
 
-Perform a short specification preflight for Milestone 3C.7b exact-structure
-cost transformation, using MVP-appropriate review scope.
+Perform a short specification preflight for Milestone 3C.7c historical
+underlying-return and realized-volatility transformation, using the
+MVP-appropriate review standard.
 
 ## Deferred
 

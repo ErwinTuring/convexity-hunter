@@ -41,19 +41,25 @@ from convexity_hunter.market_data import (
     MarketDataRelationshipSelection,
     MarketDataSelectionStatus,
     NormalizationQualityFlag,
+    OptionContractReference,
+    OptionGreeksObservation,
     OptionQuoteObservation,
     OptionOpenInterestObservation,
     OptionVolumeObservation,
     SelectedFreshMarketDataBinding,
     SourceQualityFlag,
+    UnderlyingQuoteObservation,
     assess_market_data_relationships,
     assess_market_data_snapshot_timing,
     select_market_data_relationship_assessment,
 )
 from convexity_hunter.market_data_transformations import (
+    StructureCostsTransformationResult,
     StructureLiquidityTransformationResult,
+    transform_structure_costs,
     transform_structure_liquidity,
 )
+from convexity_hunter.evidence import StructureCosts
 from convexity_hunter.report import StructureLiquidity
 from tests.market_data_fixtures import (
     CALCULATED_AT,
@@ -62,6 +68,7 @@ from tests.market_data_fixtures import (
     build_normalization_metadata,
     build_option_contract_key,
     build_source_reference,
+    build_underlying_key,
 )
 from tests.test_market_data import (
     build_relationship_binding,
@@ -170,6 +177,143 @@ def transform(structure, selection):
     )
 
 
+def make_cost_selection(
+    structure,
+    *,
+    bid=("1.00", "2.00"),
+    ask=("1.40", "2.60"),
+    gamma=("0.020", "0.030"),
+    theta=("-0.100", "-0.150"),
+    underlying_bid="99.00",
+    underlying_ask="101.00",
+    model_version="fixture-v1",
+    contracts=None,
+):
+    exact_contracts = (
+        tuple(
+            build_option_contract_key(
+                option_type=leg.option_type,
+                strike=decimal.Decimal(str(leg.strike)),
+                contract_multiplier=leg.contract_multiplier,
+                expiration=leg.expiration,
+            )
+            for leg in structure.legs
+        )
+        if contracts is None
+        else tuple(contracts)
+    )
+    underlying = build_relationship_binding(
+        MarketDataRelationshipRole.UNDERLYING_QUOTE,
+        "cost-underlying-quote",
+        underlying_key=exact_contracts[0].underlying_key,
+        bid_price=decimal.Decimal(underlying_bid),
+        ask_price=decimal.Decimal(underlying_ask),
+        session_date=SESSION_DATE,
+    )
+    groups = []
+    unique_bindings = [underlying]
+    bindings_by_leg = []
+    for index, (leg, contract) in enumerate(zip(structure.legs, exact_contracts)):
+        label = leg.option_type
+        quote = build_relationship_binding(
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            f"cost-{label}-quote",
+            contract_key=contract,
+            bid_premium=decimal.Decimal(bid[index]),
+            ask_premium=decimal.Decimal(ask[index]),
+            session_date=SESSION_DATE,
+        )
+        greeks = build_relationship_binding(
+            MarketDataRelationshipRole.OPTION_GREEKS,
+            f"cost-{label}-greeks",
+            contract_key=contract,
+            gamma=decimal.Decimal(gamma[index]),
+            theta=decimal.Decimal(theta[index]),
+            theta_day_basis="Provider calendar-day convention",
+            model_name="Synthetic Black-Scholes",
+            model_version=model_version,
+            rate_input_description="Synthetic USD curve input",
+            dividend_input_description="Synthetic dividend input",
+            session_date=SESSION_DATE,
+        )
+        contract_reference = build_relationship_binding(
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+            f"cost-{label}-contract-reference",
+            contract_key=contract,
+        )
+        group_specs = (
+            (
+                f"cost-{label}-snapshot",
+                MarketDataRelationshipGroupKind
+                .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+                {
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE: underlying,
+                    MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                },
+            ),
+            (
+                f"cost-{label}-analytics",
+                MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+                {
+                    MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                    MarketDataRelationshipRole.OPTION_GREEKS: greeks,
+                },
+            ),
+            (
+                f"cost-{label}-reference",
+                MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1,
+                {
+                    MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                    MarketDataRelationshipRole.OPTION_GREEKS: greeks,
+                    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: (
+                        contract_reference
+                    ),
+                },
+            ),
+        )
+        for group_id, group_kind, group_bindings in group_specs:
+            group, _aligned = build_resolved_relationship_group(
+                group_id, group_kind, group_bindings
+            )
+            groups.append(group)
+        unique_bindings.extend((quote, greeks, contract_reference))
+        bindings_by_leg.append({
+            MarketDataRelationshipRole.OPTION_QUOTE: quote,
+            MarketDataRelationshipRole.OPTION_GREEKS: greeks,
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: (
+                contract_reference
+            ),
+        })
+    assessment = assess_market_data_relationships(
+        MarketDataRelationshipRequest(tuple(groups)),
+        assess_market_data_snapshot_timing(tuple(unique_bindings)),
+    )
+    return (
+        select_market_data_relationship_assessment((assessment,)),
+        assessment,
+        underlying,
+        tuple(bindings_by_leg),
+    )
+
+
+def transform_costs(
+    structure,
+    selection,
+    commissions_and_fees=decimal.Decimal("0"),
+    repeated_bet_count=1,
+    calculation_id=" calculation-3c7b ",
+    calculated_at=CALCULATED_AT,
+):
+    return transform_structure_costs(
+        calculation_id,
+        structure,
+        selection,
+        commissions_and_fees,
+        repeated_bet_count,
+        calculated_at,
+    )
+
+
 @contextmanager
 def force_selected(assessment):
     with mock.patch.object(
@@ -194,6 +338,45 @@ def changed(target, name, value):
         object.__setattr__(target, name, original)
 
 
+@contextmanager
+def changed_with_semantic_proof(
+    assessment,
+    binding,
+    target,
+    name,
+    value,
+):
+    original_value = getattr(target, name)
+    original_key = binding.correction_selection.semantic_observation_key
+    matching_references = tuple(
+        member.reference
+        for group in assessment.request.groups
+        for member in group.members
+        if member.reference.selected_record_id
+        == binding.selected_record.metadata.record_id
+    )
+    object.__setattr__(target, name, value)
+    updated_key = market_data.semantic_observation_key(binding.selected_record)
+    object.__setattr__(
+        binding.correction_selection,
+        "semantic_observation_key",
+        updated_key,
+    )
+    for reference in matching_references:
+        object.__setattr__(reference, "semantic_observation_key", updated_key)
+    try:
+        yield
+    finally:
+        object.__setattr__(target, name, original_value)
+        object.__setattr__(
+            binding.correction_selection,
+            "semantic_observation_key",
+            original_key,
+        )
+        for reference in matching_references:
+            object.__setattr__(reference, "semantic_observation_key", original_key)
+
+
 class PublicSurfaceTests(unittest.TestCase):
     def test_exact_surface_signature_fields_and_frozen_result(self):
         self.assertEqual(
@@ -201,6 +384,8 @@ class PublicSurfaceTests(unittest.TestCase):
             (
                 "StructureLiquidityTransformationResult",
                 "transform_structure_liquidity",
+                "StructureCostsTransformationResult",
+                "transform_structure_costs",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -2246,6 +2431,622 @@ class CorrectedPhaseSequenceTests(unittest.TestCase):
                 ):
                     with self.assertRaises(type(error)):
                         transform(structure, selection)
+
+
+class StructureCostsPublicSurfaceTests(unittest.TestCase):
+    def test_exact_cost_surface_signature_fields_and_structural_result(self):
+        self.assertEqual(
+            transformations.__all__,
+            (
+                "StructureLiquidityTransformationResult",
+                "transform_structure_liquidity",
+                "StructureCostsTransformationResult",
+                "transform_structure_costs",
+            ),
+        )
+        self.assertEqual(len(market_data.__all__), 64)
+        self.assertFalse(
+            hasattr(convexity_hunter, "StructureCostsTransformationResult")
+        )
+        self.assertFalse(hasattr(convexity_hunter, "transform_structure_costs"))
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(
+                StructureCostsTransformationResult
+            )),
+            ("record", "lineage"),
+        )
+        signature = inspect.signature(transform_structure_costs)
+        self.assertEqual(
+            tuple(signature.parameters),
+            (
+                "calculation_id",
+                "structure",
+                "relationship_selection",
+                "commissions_and_fees",
+                "repeated_bet_count",
+                "calculated_at",
+            ),
+        )
+        self.assertTrue(all(
+            parameter.annotation is object
+            for parameter in signature.parameters.values()
+        ))
+        self.assertIs(
+            signature.return_annotation,
+            StructureCostsTransformationResult,
+        )
+        structure = make_structure()
+        selection, _, _, _ = make_cost_selection(structure)
+        result = transform_costs(structure, selection)
+        self.assertIs(
+            StructureCostsTransformationResult(
+                result.record, result.lineage
+            ).record,
+            result.record,
+        )
+        with self.assertRaises(TypeError):
+            StructureCostsTransformationResult(object(), result.lineage)
+        with self.assertRaises(TypeError):
+            StructureCostsTransformationResult(result.record, object())
+
+
+class StructureCostsSuccessfulCalculationTests(unittest.TestCase):
+    METHODOLOGY = (
+        "model=Synthetic Black-Scholes;model_version=fixture-v1;"
+        "rate_input=Synthetic USD curve input;"
+        "dividend_input=Synthetic dividend input;"
+        "theta_day_basis=Provider calendar-day convention;"
+        "unit_convention=Contract-defined canonical units"
+    )
+
+    def test_one_leg_call_and_put_literal_economics_and_assumptions(self):
+        for option_type in ("call", "put"):
+            with self.subTest(option_type=option_type):
+                structure = make_structure(
+                    (option_type,), quantity=2, multiplier=25
+                )
+                selection, _, _, _ = make_cost_selection(structure)
+                result = transform_costs(
+                    structure,
+                    selection,
+                    decimal.Decimal("1.25"),
+                    3,
+                )
+                self.assertIs(result.record.structure, structure)
+                self.assertEqual(result.record.as_of_date, SESSION_DATE)
+                self.assertEqual(result.record.quoted_mid_premium, 60.0)
+                self.assertEqual(result.record.estimated_spread_cost, 10.0)
+                self.assertEqual(result.record.commissions_and_fees, 1.25)
+                self.assertEqual(result.record.theta_per_day, -5.0)
+                self.assertEqual(result.record.gamma, 1.0)
+                self.assertEqual(result.record.underlying_price, 100.0)
+                self.assertEqual(
+                    result.record.greeks_methodology, self.METHODOLOGY
+                )
+                self.assertEqual(result.record.repeated_bet_count, 3)
+
+    def test_two_leg_straddle_scaling_zero_values_and_order_invariance(self):
+        first = make_structure(("call", "put"), quantity=3, multiplier=10)
+        second = make_structure(("put", "call"), quantity=3, multiplier=10)
+        first_selection, _, _, _ = make_cost_selection(
+            first, gamma=("0", "0"), theta=("0", "0")
+        )
+        second_selection, _, _, _ = make_cost_selection(
+            second,
+            bid=("2.00", "1.00"),
+            ask=("2.60", "1.40"),
+            gamma=("0", "0"),
+            theta=("0", "0"),
+        )
+        first_result = transform_costs(first, first_selection)
+        second_result = transform_costs(second, second_selection)
+        for result in (first_result, second_result):
+            self.assertEqual(result.record.quoted_mid_premium, 105.0)
+            self.assertEqual(result.record.estimated_spread_cost, 15.0)
+            self.assertEqual(result.record.commissions_and_fees, 0.0)
+            self.assertEqual(result.record.theta_per_day, 0.0)
+            self.assertEqual(result.record.gamma, 0.0)
+            self.assertEqual(result.record.repeated_bet_count, 1)
+            self.assertEqual(
+                result.lineage.quality_flags,
+                (
+                    CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                    CalculationQualityFlag.ASSUMPTION_APPLIED,
+                ),
+            )
+        self.assertEqual(
+            first_result.lineage.parameters_json,
+            second_result.lineage.parameters_json,
+        )
+
+    def test_lineage_has_all_four_inputs_and_literal_canonical_parameters(self):
+        structure = make_structure(("call",), quantity=2, multiplier=25)
+        selection, _, underlying, bindings = make_cost_selection(structure)
+        result = transform_costs(
+            structure, selection, decimal.Decimal("1.25"), 3
+        )
+        expected_records = (
+            underlying.selected_record,
+            bindings[0][MarketDataRelationshipRole.OPTION_QUOTE].selected_record,
+            bindings[0][MarketDataRelationshipRole.OPTION_GREEKS].selected_record,
+            bindings[0][
+                MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+            ].selected_record,
+        )
+        self.assertEqual(len(result.lineage.inputs), 4)
+        self.assertEqual(
+            tuple(item.record_id for item in result.lineage.inputs),
+            tuple(sorted(record.metadata.record_id for record in expected_records)),
+        )
+        for item in result.lineage.inputs:
+            record = next(
+                record for record in expected_records
+                if record.metadata.record_id == item.record_id
+            )
+            self.assertEqual(item.normalized_at, record.metadata.normalized_at)
+            self.assertEqual(
+                item.source_ids,
+                tuple(source.source_id
+                      for source in record.metadata.source_references),
+            )
+        self.assertEqual(
+            result.lineage.parameters_json,
+            '{"$map":[["commission_and_fee_scope",'
+            '"entry_only_total_position"],["commissions_and_fees_usd",'
+            '{"$decimal":"1.25"}],["gamma_input_unit",'
+            '"option_value_change_per_usd_squared_per_underlying_unit"],'
+            '["gamma_position_rule","sum(gamma_per_underlying_unit_per_usd_'
+            'squared*quantity*contract_multiplier)"],["greeks_methodology",'
+            '{"$map":[["dividend_input_description","Synthetic dividend input"],'
+            '["model_name","Synthetic Black-Scholes"],'
+            '["model_version","fixture-v1"],'
+            '["rate_input_description","Synthetic USD curve input"],'
+            '["theta_day_basis","Provider calendar-day convention"],'
+            '["unit_convention","Contract-defined canonical units"]]}],'
+            '["leg_correspondence",{"$list":[{"$map":['
+            '["contract_multiplier",25],["currency","USD"],'
+            '["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],'
+            '["option_contract_reference_record_id",'
+            '"cost-call-contract-reference"],'
+            '["option_greeks_record_id","cost-call-greeks"],'
+            '["option_quote_record_id","cost-call-quote"],'
+            '["option_type","call"],["quantity",2],'
+            '["strike",{"$decimal":"100.0"}],'
+            '["underlying",{"$map":[["currency","USD"],'
+            '["listing_mic","ARCX"],["security_type","etf"],'
+            '["symbol","SPY"]]}],["underlying_quote_record_id",'
+            '"cost-underlying-quote"]]}]}],["position_value_unit","usd"],'
+            '["premium_input_unit","usd_per_underlying_unit"],'
+            '["premium_midpoint_rule","sum(((bid_premium+ask_premium)/2)*'
+            'quantity*contract_multiplier)"],["repeated_bet_count",3],'
+            '["spread_cost_rule","sum(((ask_premium-bid_premium)/2)*quantity*'
+            'contract_multiplier)"],["spread_cost_scope",'
+            '"entry_only_midpoint_to_ask"],["theta_day_basis",'
+            '"Provider calendar-day convention"],["theta_input_unit",'
+            '"usd_per_underlying_unit_per_declared_day_basis"],'
+            '["theta_position_rule","sum(theta_per_underlying_unit_per_'
+            'declared_day_basis*quantity*contract_multiplier)"],'
+            '["underlying_price_rule","(bid_price+ask_price)/2"],'
+            '["underlying_price_unit","usd_per_underlying_share"]]}',
+        )
+        self.assertEqual(result.lineage.calculation_id, "calculation-3c7b")
+        self.assertEqual(result.lineage.calculation_type, "structure_costs")
+        self.assertEqual(
+            result.lineage.methodology_id, "exact-structure-costs"
+        )
+        self.assertEqual(result.lineage.methodology_version, "v0.1")
+
+    def test_two_leg_lineage_contains_seven_unique_authoritative_inputs(self):
+        structure = make_structure(("call", "put"))
+        selection, _, _, _ = make_cost_selection(structure)
+        result = transform_costs(structure, selection)
+        self.assertEqual(len(result.lineage.inputs), 7)
+        self.assertEqual(
+            len({item.record_id for item in result.lineage.inputs}), 7
+        )
+        self.assertEqual(
+            sum("contract-reference" in item.record_id
+                for item in result.lineage.inputs),
+            2,
+        )
+
+
+class StructureCostsBoundaryAndProofTests(unittest.TestCase):
+    def test_top_level_types_and_assumption_boundaries(self):
+        structure = make_structure()
+        selection, _, _, _ = make_cost_selection(structure)
+        invalid = (
+            ((object(), structure, selection, decimal.Decimal("0"), 1,
+              CALCULATED_AT), TypeError),
+            ((" ", structure, selection, decimal.Decimal("0"), 1,
+              CALCULATED_AT), ValueError),
+            (("x", object(), selection, decimal.Decimal("0"), 1,
+              CALCULATED_AT), TypeError),
+            (("x", structure, object(), decimal.Decimal("0"), 1,
+              CALCULATED_AT), TypeError),
+            (("x", structure, selection, 0.0, 1, CALCULATED_AT), TypeError),
+            (("x", structure, selection, decimal.Decimal("-0.01"), 1,
+              CALCULATED_AT), ValueError),
+            (("x", structure, selection, decimal.Decimal("NaN"), 1,
+              CALCULATED_AT), ValueError),
+            (("x", structure, selection, decimal.Decimal("0"), True,
+              CALCULATED_AT), TypeError),
+            (("x", structure, selection, decimal.Decimal("0"), 0,
+              CALCULATED_AT), ValueError),
+            (("x", structure, selection, decimal.Decimal("0"), 1,
+              datetime.datetime(2030, 1, 2)), ValueError),
+        )
+        for arguments, error_type in invalid:
+            with self.subTest(arguments=arguments, error_type=error_type):
+                with self.assertRaises(error_type):
+                    transform_structure_costs(*arguments)
+
+    def test_exact_shape_binding_universe_and_reuse_multiplicities(self):
+        structure = make_structure(("call", "put"))
+        selection, assessment, underlying, bindings = make_cost_selection(
+            structure
+        )
+        result = transform_costs(structure, selection)
+        self.assertEqual(len(assessment.request.groups), 6)
+        self.assertEqual(len(assessment.timing_assessment.bindings), 7)
+        references = tuple(
+            member.reference.selected_record_id
+            for group in assessment.request.groups
+            for member in group.members
+        )
+        self.assertEqual(
+            references.count(underlying.selected_record.metadata.record_id), 2
+        )
+        for leg_bindings in bindings:
+            expected_counts = (
+                (MarketDataRelationshipRole.OPTION_QUOTE, 3),
+                (MarketDataRelationshipRole.OPTION_GREEKS, 2),
+                (MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE, 1),
+            )
+            for role, count in expected_counts:
+                self.assertEqual(
+                    references.count(
+                        leg_bindings[role].selected_record.metadata.record_id
+                    ),
+                    count,
+                )
+        self.assertIs(result.record.structure, structure)
+        with changed(
+            assessment.timing_assessment,
+            "bindings",
+            assessment.timing_assessment.bindings[:-1],
+        ), force_selected(assessment):
+            with self.assertRaises(ValueError):
+                transform_costs(structure, selection)
+
+    def test_wrong_record_type_is_type_error_before_economic_access(self):
+        structure = make_structure()
+        selection, assessment, _, bindings = make_cost_selection(structure)
+        quote_binding = bindings[0][MarketDataRelationshipRole.OPTION_QUOTE]
+        greeks_binding = bindings[0][MarketDataRelationshipRole.OPTION_GREEKS]
+        wrong_record = dataclasses.replace(
+            greeks_binding.selected_record,
+            metadata=dataclasses.replace(
+                greeks_binding.selected_record.metadata,
+                record_id=quote_binding.correction_selection.selected_record_id,
+            ),
+        )
+        with changed(
+            quote_binding,
+            "candidate_records",
+            (wrong_record,),
+        ), force_selected(assessment):
+            with self.assertRaises(TypeError):
+                transform_costs(structure, selection)
+
+    def test_contract_correspondence_and_methodology_failures(self):
+        structure = make_structure(("call", "put"))
+        selection, assessment, _, bindings = make_cost_selection(structure)
+        put_greeks = bindings[1][MarketDataRelationshipRole.OPTION_GREEKS]
+        scenarios = (
+            (put_greeks.selected_record, "model_name", "Different model"),
+            (put_greeks.selected_record, "model_version", "different-version"),
+            (put_greeks.selected_record, "rate_input_description", "Different rate"),
+            (
+                put_greeks.selected_record,
+                "dividend_input_description",
+                "Different dividend",
+            ),
+            (put_greeks.selected_record, "theta_day_basis", "Trading day"),
+            (
+                put_greeks.selected_record.metadata,
+                "unit_convention",
+                "Different units",
+            ),
+        )
+        for target, name, value in scenarios:
+            with self.subTest(name=name), changed_with_semantic_proof(
+                assessment,
+                put_greeks,
+                target,
+                name,
+                value,
+            ), force_selected(assessment):
+                with self.assertRaises(ValueError):
+                    transform_costs(structure, selection)
+
+    def test_mixed_session_and_contract_reference_mismatch_are_rejected(self):
+        structure = make_structure()
+        selection, assessment, _, bindings = make_cost_selection(structure)
+        greeks_binding = bindings[0][MarketDataRelationshipRole.OPTION_GREEKS]
+        with changed_with_semantic_proof(
+            assessment,
+            greeks_binding,
+            greeks_binding.selected_record,
+            "session_date",
+            SESSION_DATE + datetime.timedelta(days=1),
+        ), force_selected(assessment):
+            with self.assertRaises(ValueError):
+                transform_costs(structure, selection)
+
+        reference_binding = bindings[0][
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+        ]
+        mismatched_contract = build_option_contract_key(
+            option_type="put",
+            expiration=structure.legs[0].expiration,
+            strike=decimal.Decimal(str(structure.legs[0].strike)),
+            contract_multiplier=structure.legs[0].contract_multiplier,
+        )
+        with changed_with_semantic_proof(
+            assessment,
+            reference_binding,
+            reference_binding.selected_record,
+            "contract_key",
+            mismatched_contract,
+        ), force_selected(assessment):
+            with self.assertRaises(ValueError):
+                transform_costs(structure, selection)
+
+    def test_missing_or_wrong_sign_greeks_and_float_overflow_are_rejected(self):
+        structure = make_structure()
+        selection, assessment, _, bindings = make_cost_selection(structure)
+        greeks = bindings[0][
+            MarketDataRelationshipRole.OPTION_GREEKS
+        ].selected_record
+        scenarios = (
+            ("gamma", None),
+            ("theta", None),
+            ("gamma", decimal.Decimal("-0.01")),
+            ("theta", decimal.Decimal("0.01")),
+        )
+        for name, value in scenarios:
+            with self.subTest(name=name), changed(greeks, name, value), force_selected(
+                assessment
+            ):
+                with self.assertRaises(ValueError):
+                    transform_costs(structure, selection)
+        with self.assertRaises(ValueError):
+            transform_costs(
+                structure, selection, decimal.Decimal("1E+10000")
+            )
+
+    def test_underlying_midpoint_ignores_last_and_proof_layers_are_not_called(self):
+        structure = make_structure()
+        selection, _, underlying, _ = make_cost_selection(
+            structure, underlying_bid="98", underlying_ask="102"
+        )
+        forbidden = (
+            "select_correction_candidate",
+            "assess_market_data_freshness",
+            "bind_selected_fresh_market_data",
+            "assess_market_data_snapshot_timing",
+            "assess_market_data_relationships",
+            "select_market_data_relationship_assessment",
+            "assess_market_data_historical_series",
+        )
+        with ExitStack() as stack:
+            for name in forbidden:
+                stack.enter_context(mock.patch.object(
+                    market_data,
+                    name,
+                    side_effect=AssertionError(f"{name} must not be called"),
+                ))
+            with changed(
+                underlying.selected_record,
+                "last_price",
+                decimal.Decimal("999"),
+            ):
+                result = transform_costs(structure, selection)
+        self.assertEqual(result.record.underlying_price, 100.0)
+
+    def test_lineage_chronology_and_calculation_id_collision(self):
+        structure = make_structure()
+        selection, _, _, _ = make_cost_selection(structure)
+        with self.assertRaises(ValueError):
+            transform_costs(
+                structure,
+                selection,
+                calculated_at=datetime.datetime(
+                    2029, 1, 1, tzinfo=datetime.timezone.utc
+                ),
+            )
+        input_id = selection.selected_candidate.timing_assessment.bindings[
+            0
+        ].selected_record.metadata.record_id
+        with self.assertRaises(ValueError):
+            transform_costs(
+                structure,
+                selection,
+                calculation_id=input_id,
+            )
+
+    def test_discarded_correction_candidate_is_excluded_and_flagged(self):
+        structure = make_structure()
+        selection, assessment, _, bindings = make_cost_selection(structure)
+        quote_binding = bindings[0][MarketDataRelationshipRole.OPTION_QUOTE]
+        selected = quote_binding.selected_record
+        discarded = dataclasses.replace(
+            selected,
+            metadata=dataclasses.replace(
+                selected.metadata, record_id="cost-discarded-not-consumed"
+            ),
+        )
+        object.__setattr__(
+            quote_binding, "candidate_records", (discarded, selected)
+        )
+        object.__setattr__(
+            quote_binding.correction_selection,
+            "candidate_record_ids",
+            tuple(sorted((
+                discarded.metadata.record_id,
+                selected.metadata.record_id,
+            ))),
+        )
+        object.__setattr__(
+            quote_binding.correction_selection,
+            "reason_codes",
+            (
+                CorrectionSelectionReasonCode
+                .DOMINATING_REVISION_VECTOR_SELECTED,
+            ),
+        )
+        with force_selected(assessment):
+            result = transform_costs(structure, selection)
+        self.assertNotIn(
+            discarded.metadata.record_id,
+            tuple(item.record_id for item in result.lineage.inputs),
+        )
+        self.assertIn(
+            CalculationQualityFlag.CORRECTION_SELECTED,
+            result.lineage.quality_flags,
+        )
+
+    def test_shape_and_unique_binding_universe_failures(self):
+        structure = make_structure()
+        selection, assessment, _, _ = make_cost_selection(structure)
+        original_groups = assessment.request.groups
+        original_bindings = assessment.timing_assessment.bindings
+        analytics = next(
+            group for group in original_groups
+            if group.group_kind
+            is MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1
+        )
+        snapshot = next(
+            group for group in original_groups
+            if group.group_kind
+            is MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+        )
+        underlying_member = next(
+            member for member in snapshot.members
+            if member.role is MarketDataRelationshipRole.UNDERLYING_QUOTE
+        )
+        scenarios = (
+            (assessment.request, "groups", original_groups[:-1]),
+            (analytics, "members", analytics.members[:-1]),
+            (
+                analytics,
+                "members",
+                analytics.members + (underlying_member,),
+            ),
+            (
+                assessment.timing_assessment,
+                "bindings",
+                original_bindings + (original_bindings[0],),
+            ),
+        )
+        for target, name, value in scenarios:
+            with self.subTest(name=name), changed(target, name, value), force_selected(
+                assessment
+            ):
+                with self.assertRaises(ValueError):
+                    transform_costs(structure, selection)
+
+    def test_each_structure_identity_component_is_required(self):
+        structure = make_structure()
+        alternatives = (
+            build_option_contract_key(option_type="put"),
+            build_option_contract_key(
+                expiration=EXPIRATION + datetime.timedelta(days=1)
+            ),
+            build_option_contract_key(strike=decimal.Decimal("101")),
+            build_option_contract_key(contract_multiplier=50),
+            build_option_contract_key(
+                underlying_key=build_underlying_key(symbol="QQQ")
+            ),
+        )
+        for contract in alternatives:
+            with self.subTest(contract=contract):
+                selection, _, _, _ = make_cost_selection(
+                    structure, contracts=(contract,)
+                )
+                with self.assertRaises(ValueError):
+                    transform_costs(structure, selection)
+
+    def test_all_cost_quality_flags_and_prohibited_flags(self):
+        structure = make_structure()
+        selection, assessment, underlying, bindings = make_cost_selection(
+            structure
+        )
+        records = (
+            underlying.selected_record,
+            bindings[0][MarketDataRelationshipRole.OPTION_QUOTE].selected_record,
+            bindings[0][MarketDataRelationshipRole.OPTION_GREEKS].selected_record,
+            bindings[0][
+                MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+            ].selected_record,
+        )
+        originals = tuple(record.metadata for record in records)
+        partial_source = dataclasses.replace(
+            originals[3].source_references[0],
+            quality_flags=(SourceQualityFlag.PARTIAL,),
+        )
+        composite_sources = (
+            dataclasses.replace(
+                originals[1].source_references[0], source_id="cost-composite-a"
+            ),
+            dataclasses.replace(
+                originals[1].source_references[0],
+                source_id="cost-composite-b",
+                provider_record_id="cost-composite-record-b",
+                provider_request_id="cost-composite-request-b",
+                source_uri="synthetic://cost-composite/b",
+            ),
+        )
+        replacements = (
+            dataclasses.replace(
+                originals[0],
+                quality_flags=(NormalizationQualityFlag.INTERPOLATED,),
+            ),
+            build_normalization_metadata(
+                composite_sources,
+                record_id=originals[1].record_id,
+                effective_observed_at=originals[1].effective_observed_at,
+                normalized_at=originals[1].normalized_at,
+                record_origin=DataOrigin.SYSTEM_COMPOSITE,
+                quality_flags=(NormalizationQualityFlag.COMPOSITE_SOURCE,),
+            ),
+            originals[2],
+            dataclasses.replace(
+                originals[3], source_references=(partial_source,)
+            ),
+        )
+        for record, metadata in zip(records, replacements):
+            object.__setattr__(record, "metadata", metadata)
+        try:
+            with force_selected(assessment):
+                flags = transform_costs(structure, selection).lineage.quality_flags
+            self.assertEqual(
+                flags,
+                (
+                    CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                    CalculationQualityFlag.INTERPOLATED,
+                    CalculationQualityFlag.COMPOSITE_INPUT_USED,
+                    CalculationQualityFlag.ASSUMPTION_APPLIED,
+                    CalculationQualityFlag.INCOMPLETE_INPUT_USED,
+                ),
+            )
+            self.assertNotIn(CalculationQualityFlag.ANNUALIZED, flags)
+            self.assertNotIn(CalculationQualityFlag.ADJUSTED_INPUT_USED, flags)
+        finally:
+            for record, metadata in zip(records, originals):
+                object.__setattr__(record, "metadata", metadata)
 
 
 if __name__ == "__main__":

@@ -4340,8 +4340,8 @@ recommendation, or execution behavior.
 ### 13.16 Milestone 3C.7a exact-structure liquidity transformation
 
 Broad Milestone 3C.7 was preflighted and decomposed into independently
-reviewable slices 3C.7a through 3C.7f. Only 3C.7a is implemented locally. It
-constructs an existing `StructureLiquidity` record and a
+reviewable slices 3C.7a through 3C.7f. Milestone 3C.7a constructs an existing
+`StructureLiquidity` record and a
 `CalculationLineage` sidecar from one exact caller-supplied `OptionStructure`
 and one authoritative `MarketDataRelationshipSelection`. The new module
 exports exactly `StructureLiquidityTransformationResult` and
@@ -4559,8 +4559,164 @@ surface, fill, synthetic observation, realized volatility, tail or structure
 cost calculation, scenario pricing, pricing engine, portfolio construction,
 candidate aggregate, screening, recommendation, execution, registry, generic
 transformation base class, plugin framework, public helper factory, or custom
-exception. Milestones 3C.7b through 3C.7f and broad Milestone 3 remain
-unimplemented.
+exception. At the 3C.7a checkpoint, Milestones 3C.7b through 3C.7f and broad
+Milestone 3 remained unimplemented.
+
+### 13.17 Milestone 3C.7b exact-structure cost transformation
+
+Milestone 3C.7b adds `StructureCostsTransformationResult` and
+`transform_structure_costs` to the existing transformation module, bringing
+that module's public API to exactly four names while leaving
+`market_data.__all__` at 64 and the package root unchanged. The frozen result
+stores exactly one exact `StructureCosts` record and one exact
+`CalculationLineage`; direct result construction validates only that structural
+pair.
+
+The function accepts an explicit calculation ID, exact supplied
+`OptionStructure`, authoritative `MarketDataRelationshipSelection`, exact
+nonnegative `Decimal` total-position entry commissions and fees, exact positive
+integer repeated-bet count, and explicit aware calculation time. It does not
+read a clock, estimate fees, or claim portfolio affordability.
+
+For `N` structure legs, the selected assessment contains exactly `3N` groups:
+one `UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1`, one
+`OPTION_QUOTE_ANALYTICS_V0_1`, and one
+`OPTION_CONTRACT_REFERENCE_V0_1` per leg. Their exact role sets are,
+respectively:
+
+```text
+UNDERLYING_QUOTE, OPTION_QUOTE
+OPTION_QUOTE, OPTION_GREEKS
+OPTION_QUOTE, OPTION_GREEKS, OPTION_CONTRACT_REFERENCE
+```
+
+No optional role or extra group is accepted. The unique selected-binding
+universe is exactly one underlying quote plus one option quote, one Greeks
+record, and one contract reference per leg: four unique bindings for a
+one-leg structure and seven for a straddle. The same exact underlying binding
+is referenced by every snapshot group; each option quote is referenced three
+times, each Greeks binding twice, and each contract reference once. Missing,
+external, wrong-role, unexpected, or unreferenced reuse is rejected. This
+closed repeated-reference rule does not weaken 3C.7a's no-reuse rule.
+
+The transformation resolves and globally exact-type-checks the complete
+collection before economic access. It validates the retained correction,
+freshness, semantic-key, ID, policy/context, and chronology proof sidecars
+without calling or reconstructing correction selection, freshness, binding,
+timing, relationship, cross-observation selection, or historical completeness.
+The selected timing and relationship conclusions remain authoritative.
+
+Each leg's quote, Greeks, and contract reference share one exact
+`OptionContractKey` and match exactly one supplied leg by symbol, option type,
+expiration, exact `Decimal(str(leg.strike))`, and multiplier. The exact
+selected key retains currency, full `UnderlyingKey`, and deliverable ID. All
+contracts and the single underlying quote share one complete
+`UnderlyingKey`. Quantity comes only from the matched `OptionLeg`; group or
+caller order never selects a contract. One common underlying/quote/Greeks
+session date becomes `StructureCosts.as_of_date` and precedes every
+expiration. Existing relationship proof supplies quote phase, scope, venue,
+contract/session, and reference-applicability conclusions.
+
+Every Greeks record supplies finite Gamma and Theta. Gamma is nonnegative and
+Theta is nonpositive; zero is valid. Across legs the exact tuple
+`model_name`, `model_version`, `rate_input_description`,
+`dividend_input_description`, `theta_day_basis`, and
+`metadata.unit_convention` is equal. This cross-leg aggregation prerequisite
+does not fetch or economically validate rate or dividend records. The record's
+methodology disclosure is exactly:
+
+```text
+model=<model_name>;model_version=<model_version-or-none>;rate_input=<rate_input_description>;dividend_input=<dividend_input_description>;theta_day_basis=<theta_day_basis>;unit_convention=<metadata.unit_convention>
+```
+
+The literal `none` represents a missing model version.
+
+All calculations remain exact `Decimal` through the research-record boundary:
+
+```text
+total_bid_value = sum(bid_premium * quantity * contract_multiplier)
+total_ask_value = sum(ask_premium * quantity * contract_multiplier)
+quoted_mid_premium = (total_bid_value + total_ask_value) / 2
+estimated_spread_cost = (total_ask_value - total_bid_value) / 2
+underlying_price = (underlying_bid_price + underlying_ask_price) / 2
+theta_per_day = sum(theta * quantity * contract_multiplier)
+gamma = sum(gamma * quantity * contract_multiplier)
+```
+
+The spread cost is the one-way estimated entry cost from midpoint to ask, not
+the full spread, round trip, or exit cost. Quote premiums and canonical Greeks
+are per underlying unit; quantity and multiplier scale them exactly once.
+Theta remains per its declared day basis. Gamma becomes total-position
+option-value change per USD squared of underlying movement. Underlying last
+price is never a fallback. The six final Decimal values—midpoint premium,
+spread cost, commissions and fees, Theta, Gamma, and underlying midpoint—must
+convert to finite floats before the public `StructureCosts` constructor
+validates the complete record.
+
+Lineage uses calculation type `structure_costs`, methodology ID
+`exact-structure-costs`, and methodology version `v0.1`. Its inputs include
+every unique authoritative record used numerically or to authorize the result:
+the underlying quote and each leg's quote, Greeks, and contract reference.
+Discarded correction candidates, unselected relationship candidates,
+structure/assumption objects, and display strings are excluded. Duplicate
+unique input IDs are errors.
+
+`parameters_json` is produced only by `canonicalize_lineage_parameters` and
+has exactly these top-level keys:
+
+```text
+commission_and_fee_scope
+commissions_and_fees_usd
+gamma_input_unit
+gamma_position_rule
+greeks_methodology
+leg_correspondence
+position_value_unit
+premium_input_unit
+premium_midpoint_rule
+repeated_bet_count
+spread_cost_rule
+spread_cost_scope
+theta_day_basis
+theta_input_unit
+theta_position_rule
+underlying_price_rule
+underlying_price_unit
+```
+
+The fixed units and formulas are the literal formulas above.
+`commission_and_fee_scope` is `entry_only_total_position`,
+`position_value_unit` is `usd`, `premium_input_unit` is
+`usd_per_underlying_unit`, `spread_cost_scope` is
+`entry_only_midpoint_to_ask`, and `underlying_price_unit` is
+`usd_per_underlying_share`. The exact fee Decimal and repeated-bet integer are
+stored directly. `greeks_methodology` contains exactly the six common source
+methodology fields. Each canonically contract-ordered leg correspondence
+contains the complete underlying map, option type, expiration, strike,
+currency, deliverable ID, multiplier, quantity, and the underlying-quote,
+option-quote, Greeks, and contract-reference record IDs. No float enters the
+canonicalizer.
+
+`DECIMAL_TO_FLOAT_CONVERTED` and `ASSUMPTION_APPLIED` are always present,
+including zero fees and a repeated-bet count of one. `CORRECTION_SELECTED`,
+`COMPOSITE_INPUT_USED`, `INTERPOLATED`, and `INCOMPLETE_INPUT_USED` appear only
+when a unique lineage input establishes the corresponding condition.
+`ANNUALIZED` and `ADJUSTED_INPUT_USED` never appear. Missing required records
+or values are errors, never zero substitutions.
+
+Wrong exact Python types raise `TypeError`. Invalid selection, shape, reuse,
+proof, correspondence, session, methodology, required value, assumption,
+Decimal arithmetic, float conversion, record construction, canonicalization,
+or lineage state raises `ValueError`. No status enum or custom exception is
+added.
+
+3C.7b introduces no pricing, scenario valuation, rates or dividends, volatility
+surface, implicit contract selection, chain scan, historical volatility, tail
+pricing, portfolio policy, broker lookup, automatic fee estimate, exit-cost
+model, candidate aggregate, screening, recommendation, execution, provider
+adapter, network access, registry, generic transformation base class, or
+plugin framework. Milestones 3C.7c through 3C.7f and broad Milestone 3 remain
+incomplete.
 
 ## 14. Canonical calculation lineage
 
@@ -4769,7 +4925,7 @@ A sidecar is necessary because existing research records mostly use date-only `a
 | `VolatilityEnvironment` | Current ATM `OptionImpliedVolatilityObservation` or deterministically interpolated surface points; historical ATM IV observations; completed `UnderlyingDailyBarObservation` series | ATM-selection method, interpolation, tenor matching, realized-volatility formula, annualization, historical observation count, and source lineage |
 | `TailPricingSlice` | `OptionImpliedVolatilityObservation` records; `OptionGreeksObservation` Delta values or declared Delta calculation; exact expiration | Delta convention, 10-delta/25-delta/ATM selection or interpolation, surface exclusions, historical skew count, and source lineage |
 | `StructureLiquidity` | Exact-leg `OptionQuoteObservation`, `OptionVolumeObservation`, and `OptionOpenInterestObservation` | Leg-to-position quote aggregation, quote-time alignment, minimum-leg selection, activity session dates, and delayed or indicative status |
-| `StructureCosts` | Exact-leg `OptionQuoteObservation`, `OptionGreeksObservation`, `OptionContractReference`, and declared commission/fee assumptions | Premium, multiplier, and quantity scaling; spread-cost method; Gamma scaling; Theta day convention; fee assumptions; source lineage |
+| `StructureCosts` | One exact `UnderlyingQuoteObservation`; exact-leg `OptionQuoteObservation`, `OptionGreeksObservation`, and `OptionContractReference`; and declared commission/fee and repeated-bet assumptions | Underlying and premium midpoint rules; multiplier and quantity scaling; one-way entry spread-cost method; Gamma scaling; Theta day convention; assumptions; source lineage |
 | `ScenarioResult` | Underlying quote, exact-leg IV, contract terms, rate points, dividends, pricing-engine output, and declared scenario | Model/version, rate interpolation, dividends, surface construction, shock methodology, exit-cost methodology, and source lineage |
 
 Normalized observations never directly produce `CandidateState`. Calculated records feed `CandidateResearchRecord`, which is then evaluated into a separate `ScreeningDecision`. Provider choice does not change screening thresholds.
