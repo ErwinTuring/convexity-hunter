@@ -5360,6 +5360,105 @@ Resolved for local implementation by the Milestone 3C.4d preflight:
 - Three issue members append to the existing issue enum without adding a
   public name, so the public count remains 54.
 
+## 13.18 Milestone 3C.7c historical returns and realized volatility
+
+Milestone 3C.7c transforms one authoritative 3C.6
+`MarketDataHistoricalSeriesAssessment` into a bounded
+`HistoricalRealizedVolatility` calculation artifact plus
+`CalculationLineage`. It deliberately does not construct or modify
+`VolatilityEnvironment`: current ATM IV, historical IV rank and median IV are
+owned by later Milestone 3C.7d, which will consume this intermediate artifact.
+
+The transformation module appends, in order,
+`HistoricalReturnPriceBasis`, `HistoricalRealizedVolatility`,
+`HistoricalRealizedVolatilityTransformationResult`, and
+`transform_historical_realized_volatility`. The basis enum contains only
+`RAW_CLOSE` (`raw_close`) and `ADJUSTED_CLOSE` (`adjusted_close`). Raw mode
+consumes only `close_price`, ignores adjusted values, and records no adjustment
+methodology. Adjusted mode consumes only `adjusted_close_price`; every selected
+bar must supply it and all bars must retain one exact common nonempty canonical
+adjustment methodology. Neither basis falls back to, prefers, mixes, or
+substitutes the other basis, and OHLC fields other than the selected close are
+never used.
+
+The retained 3C.6 assessment remains authoritative. The transformation does not
+re-run correction selection, freshness, binding, historical assessment,
+calendar inference, or expected-session generation. It validates only the
+retained proof integrity needed to consume the selected bars safely. Missing,
+unexpected, duplicate, or incomplete-session reasons block both bases. A
+complete raw-only series is accepted for raw and rejected for adjusted. Mixed
+adjusted availability or adjustment-methodology mismatch alone is accepted for
+raw and rejected for adjusted. An issue-free uniformly adjusted-capable series
+is accepted for both. Independently of those assessment reasons, an incomplete
+selected bar, `INCOMPLETE` normalization flag, or `PARTIAL` consumed source is
+always rejected; `INCOMPLETE_INPUT_USED` is never emitted.
+
+The complete request window is consumed without a trailing slice. Selected bars
+must occur in canonical ascending order and their dates must equal the request's
+entire expected-session tuple. The artifact retains the exact underlying key,
+first and last expected sessions, selected basis and methodology, complete
+session-date and positive finite Decimal price vectors, Decimal log-return
+vector, final annualized volatility float, caller-supplied annualization count,
+and the fixed formula and estimator identifiers. It derives price and return
+counts rather than storing duplicates. At least three prices and two returns
+are required.
+
+For each ending session, the return is `ln(P_t / P_(t-1))`. Returns, their mean,
+sample variance with denominator `n - 1`, square root, and multiplication by
+the square root of the caller-supplied sessions per year use a private local
+Decimal context with precision 34, round-half-even, the platform Decimal
+minimum and maximum exponent bounds, no clamp, and untrapped `Inexact` and
+`Rounded` signals. This is deterministic precision-34 Decimal transcendental
+arithmetic, not mathematically exact logarithmic arithmetic. Source prices and
+return vectors are never converted to binary float; only the final annualized
+volatility is converted and must remain finite. Equal prices, Decimal negative
+zero returns, and float negative zero volatility canonicalize to ordinary zero.
+The caller's Decimal context, traps, flags, limits, capitals, and clamp remain
+unchanged.
+
+Direct artifact construction enforces exact field types, dates rather than
+datetimes, tuple storage, positive finite prices, fixed formula
+`natural_log_price_ratio`, fixed estimator `sample_variance`, basis/methodology
+consistency, ascending complete-window structure, and observation minima. It
+independently recalculates the return vector and annualized volatility through
+the same locked calculation boundary and rejects inconsistent supplied derived
+values. The frozen result wrapper has exactly `record` and `lineage` and
+performs exact structural pair validation.
+
+Lineage contains exactly one input reference per consumed selected daily bar,
+including every source ID, and excludes discarded correction candidates and
+all non-record calculation choices. Its 16 canonical parameter keys are
+`adjustment_methodology`, `annualization_rule`,
+`annualization_sessions_per_year`, `expected_session_dates`, `price_basis`,
+`price_observation_count`, `price_unit`, `return_association_rule`,
+`return_formula`, `return_observation_count`, `return_unit`, `underlying`,
+`variance_estimator`, `volatility_unit`, `window_end_session_date`, and
+`window_start_session_date`. Prices and returns stay in the artifact, not the
+parameters. The lineage identity is calculation type
+`historical_realized_volatility`, methodology
+`historical-log-return-sample-realized-volatility`, version `v0.1`.
+
+Every result discloses `DECIMAL_TO_FLOAT_CONVERTED`, `ANNUALIZED`, and
+`ASSUMPTION_APPLIED`. Adjusted mode additionally discloses
+`ADJUSTED_INPUT_USED`; consumed dominating corrections, system-composite bars,
+and interpolated normalized bars conditionally disclose
+`CORRECTION_SELECTED`, `COMPOSITE_INPUT_USED`, and `INTERPOLATED`. Wrong exact
+Python boundary types raise `TypeError`. Malformed retained assessments,
+unavailable or invalid selected prices, incomplete inputs, insufficient
+observations, inconsistent derived values, unusable Decimal arithmetic,
+nonfinite final float conversion, and lineage chronology, collision, or
+canonicalization failures raise `ValueError`.
+
+The slice explicitly excludes IV selection or ranking, term structure,
+`VolatilityEnvironment`, tenor matching, pricing, rates, dividends, scenarios,
+option-chain scanning, calendar inference, interpolation, corporate-action
+adjustment calculation, providers, screening, recommendations, execution,
+portfolio behavior, and generic statistical infrastructure. Its MVP gate is
+one focused independent review for ordinary supported behavior, basis
+separation, retained-assessment integrity, deterministic arithmetic, complete
+lineage, and common-input failures; exhaustive theoretical Decimal extremes,
+subclass/permutation matrices, and generic framework concerns are not required.
+
 The following questions remain open:
 
 - Which MIC or listing registry should supply `listing_mic`?

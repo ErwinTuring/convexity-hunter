@@ -64,11 +64,13 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3C.7a exact-structure liquidity transformation is implemented, independently reviewed, validated, and committed and pushed in this operation. The initial independent review returned `REVIEW RESULT: FAIL` with four MAJOR findings: incomplete retained-proof integrity, selected-record type-versus-integrity precedence, ambient Decimal-context dependence, and insufficient mutation-resistant focused coverage. The first targeted re-review returned `TARGETED RE-REVIEW RESULT: FAIL`: exact global selected-record type precedence was accepted, while exact proof enum/ID/sidecar validation, extreme Decimal behavior, and focused coverage still required correction. The second targeted re-review returned `SECOND TARGETED RE-REVIEW RESULT: FAIL`: proof exactness, Decimal exception normalization, and the requested malformed-proof tests were accepted, but one false-positive `MAX_EMAX` possible-carry rejection remained. After correction, the final targeted re-review returned `FINAL TARGETED RE-REVIEW RESULT: PASS`; all findings are resolved. The transformation consumes authoritative selected relationship proofs without recomputing correction, freshness, timing, relationship, selection, or historical completeness, and constructs an existing `StructureLiquidity` record with exact `CalculationLineage`. Its context-independent exact Decimal aggregation distinguishes exponent overflow at `decimal_aggregation` from finite-float rejection at `float_boundary`. The new module exports exactly `StructureLiquidityTransformationResult` and `transform_structure_liquidity`; `market_data.__all__` remains exactly 64 names and the package root remains unchanged. Final validation passed with 44 focused transformation tests, 365 market-data tests, 718 full-suite tests, compileall, and `git diff --check`.
 - Milestone 3C.7a is committed and pushed at `bda1d2dbbbf68af5f4b6e3c937ac6de9bbbbbc05` (`Implement exact-structure liquidity transformation`).
 - Milestone 3C.7b exact-structure cost transformation completed specification preflight with `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7B`, completed implementation with `IMPLEMENTATION RESULT: READY FOR MVP-FOCUSED INDEPENDENT REVIEW`, and completed independent review with `MVP-FOCUSED REVIEW RESULT: PASS`. The independent review found no findings and no remaining blocker. It consumes authoritative selected proofs without recomputing correction, freshness, timing, relationships, selection, or historical completeness. Its exact reviewed proof shape is three groups per leg. It constructs the existing `StructureCosts` record and exact `CalculationLineage`; contract-reference records are authoritative lineage inputs, giving four lineage inputs for a one-leg structure and seven for a two-leg structure. Its economic contract includes option midpoint premium, one-way midpoint-to-ask entry spread cost, explicit caller-supplied commissions and fees, position-scaled Theta and Gamma, underlying bid/ask midpoint, and an explicit repeated-bet count. Final validation passed with 61 focused transformation tests, including all original 44 Milestone 3C.7a liquidity tests; 365 market-data tests; 735 full-suite tests; compileall; both import orders; exact API, result-field, and signature checks; and `git diff --check`. `market_data_transformations.__all__` contains exactly `StructureLiquidityTransformationResult`, `transform_structure_liquidity`, `StructureCostsTransformationResult`, and `transform_structure_costs`; `market_data.__all__` remains exactly 64 names; and the package root remains unchanged. Milestone 3C.7b is implemented, independently reviewed, validated, and ready to commit and push. This operation commits and pushes Milestone 3C.7b.
-- Milestones 3C.7c through 3C.7f remain unimplemented. Return calculation, realized volatility, adjusted/raw price selection, rate/dividend relationship and economic use, other research transformations, and pricing remain later 3C.7 slices. Exchange-calendar inference and historical option surfaces remain future contracts. Broad Milestone 3 remains incomplete.
+- Milestone 3C.7b is committed and pushed at `ae0cf3bf32a41532cf67988c9fc6c2fd5c78b0bf` (`Implement exact-structure cost transformation`).
+- Milestone 3C.7c historical underlying-return and realized-volatility transformation completed specification preflight with `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7C` and initially returned `IMPLEMENTATION RESULT: READY FOR MVP-FOCUSED INDEPENDENT REVIEW`. The initial independent review returned `MVP-FOCUSED REVIEW RESULT: FAIL`: the original calculation implementation, historical-assessment boundary, lineage, API, documentation, and economic/statistical formulas passed, but the review found exactly two MAJOR focused-test adequacy findings—`RAW_CLOSE` lacked symmetric protection when materially different adjusted prices were populated, and direct `HistoricalRealizedVolatility` construction guards lacked a compact rejection matrix. The first attempted test-only correction stopped before editing when the required matrix exposed one narrow source exception-taxonomy defect: `ADJUSTED_CLOSE` with `adjustment_methodology=None` raised `TypeError`, while the approved contract requires `ValueError`. The narrow source correction changed only basis/methodology validation order; the symmetric raw-basis adversarial test and direct-artifact rejection matrix were added. The final targeted independent re-review returned `TARGETED RE-REVIEW RESULT: PASS`, with no findings and no remaining blocker. Final validation passed with 75 focused transformation tests, all original 73 pre-correction focused tests, all 61 pre-3C.7c transformation regressions, 365 market-data tests, 749 full-suite tests, compileall, `git diff --check`, exact API, enum, artifact-field, wrapper-field, and signature checks, both import orders, and unchanged package-root exports. `market_data_transformations.__all__` contains exactly `StructureLiquidityTransformationResult`, `transform_structure_liquidity`, `StructureCostsTransformationResult`, `transform_structure_costs`, `HistoricalReturnPriceBasis`, `HistoricalRealizedVolatility`, `HistoricalRealizedVolatilityTransformationResult`, and `transform_historical_realized_volatility`; `market_data.__all__` remains exactly 64 names. `VolatilityEnvironment` remains unmodified and is not constructed by 3C.7c. The bounded `HistoricalRealizedVolatility` artifact and exact `CalculationLineage` retain an explicit raw or adjusted close basis without fallback or mixing, the complete accepted historical window, precision-34 Decimal natural-log returns, sample variance, explicit caller-supplied annualization sessions, and one lineage input per consumed selected daily bar; incomplete sessions, incomplete normalization, and partial sources are rejected. Milestone 3C.7c is implemented, independently reviewed, corrected, targeted re-reviewed, validated, and ready to commit and push; this operation commits and pushes it.
+- Milestones 3C.7d through 3C.7f remain unimplemented. Current ATM-IV selection, historical IV comparison, rate/dividend relationship and economic use, other research transformations, `VolatilityEnvironment` construction, and pricing remain later 3C.7 slices. Exchange-calendar inference and historical option surfaces remain future contracts. Broad Milestone 3 remains incomplete.
 
 ## Current task
 
-Finalize, commit, and push Milestone 3C.7b.
+Finalize, commit, and push Milestone 3C.7c.
 
 ## Last completed checkpoint
 
@@ -169,14 +171,43 @@ Finalize, commit, and push Milestone 3C.7b.
 - All original 44 Milestone 3C.7a focused tests remain passing
 - Transformation-module public API: exactly four names
 - Public `market_data` API: unchanged at exactly 64 names
-- Milestones 3C.7c through 3C.7f unimplemented
+- Milestone 3C.7b committed and pushed at
+  `ae0cf3bf32a41532cf67988c9fc6c2fd5c78b0bf`
+- Milestone 3C.7c preflight completed with no genuine blocker
+- `VolatilityEnvironment` rejected as the direct 3C.7c output
+- `HistoricalRealizedVolatility` selected as the bounded intermediate artifact
+- Milestone 3C.7c initially returned
+  `IMPLEMENTATION RESULT: READY FOR MVP-FOCUSED INDEPENDENT REVIEW`
+- First 3C.7c independent review:
+  `MVP-FOCUSED REVIEW RESULT: FAIL`
+- First review found exactly two MAJOR test-adequacy gaps: missing symmetric
+  raw-basis protection and incomplete direct-artifact rejection coverage
+- First attempted test-only correction stopped before editing after exposing
+  adjusted basis plus `adjustment_methodology=None` as `TypeError` instead of
+  the contract-required `ValueError`
+- Narrow source exception taxonomy and both test gaps corrected locally;
+  contract documentation unchanged
+- Final 3C.7c targeted independent re-review:
+  `TARGETED RE-REVIEW RESULT: PASS`
+- Targeted re-review found no findings and no remaining blocker
+- Milestone 3C.7c implemented, independently reviewed, corrected, targeted
+  re-reviewed, validated, and ready to commit and push
+- Milestone 3C.7c validation: 75 focused transformation tests, 365 market-data
+  tests, 749 full-suite tests, compileall, API/import checks, and
+  `git diff --check`
+- All original 73 pre-correction focused tests and all 61 pre-3C.7c
+  transformation regressions remain passing
+- Transformation-module public API: exactly eight names
+- Public `market_data` API: unchanged at exactly 64 names
+- Milestones 3C.7d through 3C.7f unimplemented
 - Broad Milestone 3 incomplete
 
 ## Next task
 
-Perform a short specification preflight for Milestone 3C.7c historical
-underlying-return and realized-volatility transformation, using the
-MVP-appropriate review standard.
+Perform a short specification preflight for Milestone 3C.7d volatility-
+environment construction using the reviewed 3C.7c realized-volatility artifact
+and authoritative implied-volatility inputs, under the MVP-focused review
+standard.
 
 ## Deferred
 

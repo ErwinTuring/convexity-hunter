@@ -5,6 +5,7 @@ import datetime
 import decimal
 import enum
 import inspect
+import math
 import pathlib
 import sys
 import unittest
@@ -30,6 +31,10 @@ from convexity_hunter.market_data import (
     FreshnessContext,
     FreshnessReasonCode,
     FreshnessStatus,
+    MarketDataHistoricalSeriesAssessment,
+    MarketDataHistoricalSeriesFrequency,
+    MarketDataHistoricalSeriesReasonCode,
+    MarketDataHistoricalSeriesRequest,
     MarketDataBindingReference,
     MarketDataCategory,
     MarketDataFreshnessPolicy,
@@ -48,14 +53,20 @@ from convexity_hunter.market_data import (
     OptionVolumeObservation,
     SelectedFreshMarketDataBinding,
     SourceQualityFlag,
+    UnderlyingDailyBarObservation,
     UnderlyingQuoteObservation,
+    assess_market_data_historical_series,
     assess_market_data_relationships,
     assess_market_data_snapshot_timing,
     select_market_data_relationship_assessment,
 )
 from convexity_hunter.market_data_transformations import (
+    HistoricalRealizedVolatility,
+    HistoricalRealizedVolatilityTransformationResult,
+    HistoricalReturnPriceBasis,
     StructureCostsTransformationResult,
     StructureLiquidityTransformationResult,
+    transform_historical_realized_volatility,
     transform_structure_costs,
     transform_structure_liquidity,
 )
@@ -71,6 +82,7 @@ from tests.market_data_fixtures import (
     build_underlying_key,
 )
 from tests.test_market_data import (
+    build_historical_series_binding,
     build_relationship_binding,
     build_resolved_relationship_group,
 )
@@ -173,6 +185,70 @@ def transform(structure, selection):
         " calculation-3c7a ",
         structure,
         selection,
+        CALCULATED_AT,
+    )
+
+
+def make_historical_assessment(
+    prices=("100", "110", "99"),
+    *,
+    adjusted_prices=None,
+    methodologies=None,
+    dates=None,
+):
+    selected_dates = (
+        tuple(
+            SESSION_DATE - datetime.timedelta(days=offset)
+            for offset in range(len(prices) - 1, -1, -1)
+        )
+        if dates is None
+        else dates
+    )
+    if adjusted_prices is None:
+        adjusted_prices = (None,) * len(prices)
+    if methodologies is None:
+        methodologies = tuple(
+            None if value is None else "total-return-v1"
+            for value in adjusted_prices
+        )
+    bindings = []
+    for index, (session_date, price, adjusted, methodology) in enumerate(
+        zip(selected_dates, prices, adjusted_prices, methodologies)
+    ):
+        close = decimal.Decimal(price)
+        bindings.append(build_historical_series_binding(
+            f"hrv-{index}",
+            session_date=session_date,
+            open_price=close,
+            high_price=close,
+            low_price=close,
+            close_price=close,
+            adjusted_close_price=(
+                None if adjusted is None else decimal.Decimal(adjusted)
+            ),
+            adjustment_methodology=methodology,
+        ))
+    request = MarketDataHistoricalSeriesRequest(
+        build_underlying_key(),
+        MarketDataHistoricalSeriesFrequency.DAILY,
+        selected_dates,
+    )
+    return (
+        assess_market_data_historical_series(request, tuple(bindings)),
+        tuple(bindings),
+    )
+
+
+def transform_historical(
+    assessment,
+    basis=HistoricalReturnPriceBasis.RAW_CLOSE,
+    annualization=252,
+):
+    return transform_historical_realized_volatility(
+        " calculation-3c7c ",
+        assessment,
+        basis,
+        annualization,
         CALCULATED_AT,
     )
 
@@ -386,6 +462,10 @@ class PublicSurfaceTests(unittest.TestCase):
                 "transform_structure_liquidity",
                 "StructureCostsTransformationResult",
                 "transform_structure_costs",
+                "HistoricalReturnPriceBasis",
+                "HistoricalRealizedVolatility",
+                "HistoricalRealizedVolatilityTransformationResult",
+                "transform_historical_realized_volatility",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -2442,6 +2522,10 @@ class StructureCostsPublicSurfaceTests(unittest.TestCase):
                 "transform_structure_liquidity",
                 "StructureCostsTransformationResult",
                 "transform_structure_costs",
+                "HistoricalReturnPriceBasis",
+                "HistoricalRealizedVolatility",
+                "HistoricalRealizedVolatilityTransformationResult",
+                "transform_historical_realized_volatility",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -3047,6 +3131,719 @@ class StructureCostsBoundaryAndProofTests(unittest.TestCase):
         finally:
             for record, metadata in zip(records, originals):
                 object.__setattr__(record, "metadata", metadata)
+
+
+class HistoricalRealizedVolatilityPublicContractTests(unittest.TestCase):
+    def test_exact_api_enum_fields_signature_and_package_boundary(self):
+        self.assertEqual(
+            transformations.__all__,
+            (
+                "StructureLiquidityTransformationResult",
+                "transform_structure_liquidity",
+                "StructureCostsTransformationResult",
+                "transform_structure_costs",
+                "HistoricalReturnPriceBasis",
+                "HistoricalRealizedVolatility",
+                "HistoricalRealizedVolatilityTransformationResult",
+                "transform_historical_realized_volatility",
+            ),
+        )
+        self.assertEqual(
+            tuple(item.value for item in HistoricalReturnPriceBasis),
+            ("raw_close", "adjusted_close"),
+        )
+        self.assertEqual(
+            tuple(
+                field.name
+                for field in dataclasses.fields(HistoricalRealizedVolatility)
+            ),
+            (
+                "underlying_key",
+                "start_session_date",
+                "end_session_date",
+                "price_basis",
+                "adjustment_methodology",
+                "session_dates",
+                "prices",
+                "log_returns",
+                "annualized_realized_volatility",
+                "annualization_sessions_per_year",
+                "return_formula",
+                "variance_estimator",
+            ),
+        )
+        self.assertEqual(
+            tuple(
+                field.name
+                for field in dataclasses.fields(
+                    HistoricalRealizedVolatilityTransformationResult
+                )
+            ),
+            ("record", "lineage"),
+        )
+        self.assertEqual(
+            str(inspect.signature(transform_historical_realized_volatility)),
+            (
+                "(calculation_id: object, historical_series_assessment: object, "
+                "price_basis: object, annualization_sessions_per_year: object, "
+                "calculated_at: object) -> "
+                "convexity_hunter.market_data_transformations."
+                "HistoricalRealizedVolatilityTransformationResult"
+            ),
+        )
+        self.assertEqual(len(market_data.__all__), 64)
+        for name in transformations.__all__[4:]:
+            self.assertFalse(hasattr(convexity_hunter, name))
+
+    def test_artifact_and_wrapper_are_frozen_and_exact_typed(self):
+        assessment, _ = make_historical_assessment()
+        result = transform_historical(assessment)
+        with self.assertRaises(FrozenInstanceError):
+            result.record.prices = ()  # type: ignore[misc]
+        with self.assertRaises(FrozenInstanceError):
+            result.record = object()  # type: ignore[misc]
+        self.assertIs(
+            HistoricalRealizedVolatilityTransformationResult(
+                result.record, result.lineage
+            ).record,
+            result.record,
+        )
+        with self.assertRaises(TypeError):
+            HistoricalRealizedVolatilityTransformationResult(
+                object(), result.lineage
+            )
+        with self.assertRaises(TypeError):
+            HistoricalRealizedVolatilityTransformationResult(
+                result.record, object()
+            )
+
+
+class HistoricalRealizedVolatilityCalculationTests(unittest.TestCase):
+    def test_raw_literal_precision_34_returns_sample_volatility_and_lineage(self):
+        assessment, bindings = make_historical_assessment()
+        result = transform_historical(assessment)
+        record = result.record
+        self.assertIs(record.underlying_key, assessment.request.underlying_key)
+        self.assertEqual(
+            record.session_dates,
+            (
+                datetime.date(2029, 12, 31),
+                datetime.date(2030, 1, 1),
+                datetime.date(2030, 1, 2),
+            ),
+        )
+        self.assertEqual(
+            record.prices,
+            tuple(map(decimal.Decimal, ("100", "110", "99"))),
+        )
+        self.assertEqual(
+            record.log_returns,
+            (
+                decimal.Decimal(
+                    "0.09531017980432486004395212328076509"
+                ),
+                decimal.Decimal(
+                    "-0.1053605156578263012275009808393128"
+                ),
+            ),
+        )
+        self.assertEqual(record.annualized_realized_volatility, 2.252522969955066)
+        oracle_returns = (
+            math.log(110.0 / 100.0),
+            math.log(99.0 / 110.0),
+        )
+        oracle_mean = sum(oracle_returns) / 2
+        oracle_variance = sum(
+            (value - oracle_mean) ** 2 for value in oracle_returns
+        )
+        self.assertAlmostEqual(
+            record.annualized_realized_volatility,
+            math.sqrt(oracle_variance) * math.sqrt(252),
+            places=14,
+        )
+        self.assertEqual(record.price_observation_count, 3)
+        self.assertEqual(record.return_observation_count, 2)
+        self.assertEqual(
+            tuple(item.record_id for item in result.lineage.inputs),
+            ("hrv-0", "hrv-1", "hrv-2"),
+        )
+        self.assertEqual(
+            tuple(item.source_ids for item in result.lineage.inputs),
+            tuple(
+                tuple(
+                    source.source_id
+                    for source in binding.selected_record.metadata.source_references
+                )
+                for binding in bindings
+            ),
+        )
+        self.assertEqual(
+            result.lineage.parameters_json,
+            '{"$map":[["adjustment_methodology",null],'
+            '["annualization_rule","daily_sample_standard_deviation_times_'
+            'square_root_sessions_per_year"],'
+            '["annualization_sessions_per_year",252],'
+            '["expected_session_dates",{"$list":[{"$date":"2029-12-31"},'
+            '{"$date":"2030-01-01"},{"$date":"2030-01-02"}]}],'
+            '["price_basis","raw_close"],["price_observation_count",3],'
+            '["price_unit","usd_per_underlying_share"],'
+            '["return_association_rule","ending_session"],'
+            '["return_formula","natural_log_price_ratio"],'
+            '["return_observation_count",2],["return_unit","decimal_ratio"],'
+            '["underlying",{"$map":[["currency","USD"],'
+            '["listing_mic","ARCX"],["security_type","etf"],'
+            '["symbol","SPY"]]}],["variance_estimator","sample_variance"],'
+            '["volatility_unit","annualized_decimal_ratio"],'
+            '["window_end_session_date",{"$date":"2030-01-02"}],'
+            '["window_start_session_date",{"$date":"2029-12-31"}]]}'
+        )
+        self.assertEqual(
+            (
+                result.lineage.calculation_type,
+                result.lineage.methodology_id,
+                result.lineage.methodology_version,
+            ),
+            (
+                "historical_realized_volatility",
+                "historical-log-return-sample-realized-volatility",
+                "v0.1",
+            ),
+        )
+        self.assertEqual(
+            result.lineage.quality_flags,
+            (
+                CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                CalculationQualityFlag.ANNUALIZED,
+                CalculationQualityFlag.ASSUMPTION_APPLIED,
+            ),
+        )
+
+    def test_adjusted_consumes_only_adjusted_and_retains_methodology(self):
+        assessment, _ = make_historical_assessment(
+            prices=("900", "800", "700"),
+            adjusted_prices=("100", "110", "99"),
+        )
+        result = transform_historical(
+            assessment, HistoricalReturnPriceBasis.ADJUSTED_CLOSE
+        )
+        self.assertEqual(
+            result.record.prices,
+            tuple(map(decimal.Decimal, ("100", "110", "99"))),
+        )
+        self.assertEqual(result.record.adjustment_methodology, "total-return-v1")
+        self.assertIn(
+            CalculationQualityFlag.ADJUSTED_INPUT_USED,
+            result.lineage.quality_flags,
+        )
+
+    def test_raw_ignores_materially_different_populated_adjusted_prices(self):
+        assessment, _ = make_historical_assessment(
+            prices=("100", "110", "99"),
+            adjusted_prices=("900", "800", "700"),
+        )
+        result = transform_historical(
+            assessment,
+            HistoricalReturnPriceBasis.RAW_CLOSE,
+            annualization=252,
+        )
+        self.assertIs(
+            result.record.price_basis,
+            HistoricalReturnPriceBasis.RAW_CLOSE,
+        )
+        self.assertEqual(
+            result.record.prices,
+            (
+                decimal.Decimal("100"),
+                decimal.Decimal("110"),
+                decimal.Decimal("99"),
+            ),
+        )
+        self.assertIsNone(result.record.adjustment_methodology)
+        self.assertEqual(
+            result.record.log_returns,
+            (
+                decimal.Decimal(
+                    "0.09531017980432486004395212328076509"
+                ),
+                decimal.Decimal(
+                    "-0.1053605156578263012275009808393128"
+                ),
+            ),
+        )
+        self.assertEqual(
+            result.record.annualized_realized_volatility,
+            2.252522969955066,
+        )
+        self.assertNotIn(
+            CalculationQualityFlag.ADJUSTED_INPUT_USED,
+            result.lineage.quality_flags,
+        )
+
+    def test_constant_prices_and_complete_longer_window(self):
+        assessment, _ = make_historical_assessment(("100", "100", "100"))
+        result = transform_historical(assessment, annualization=365)
+        self.assertEqual(
+            result.record.log_returns,
+            (decimal.Decimal("0"), decimal.Decimal("0")),
+        )
+        self.assertEqual(result.record.annualized_realized_volatility, 0.0)
+        self.assertEqual(
+            math.copysign(1.0, result.record.annualized_realized_volatility),
+            1.0,
+        )
+        longer, _ = make_historical_assessment(
+            ("100", "102", "101", "105", "103")
+        )
+        longer_result = transform_historical(longer)
+        self.assertEqual(
+            longer_result.record.session_dates,
+            longer.request.expected_session_dates,
+        )
+        self.assertEqual(longer_result.record.price_observation_count, 5)
+        self.assertEqual(longer_result.record.return_observation_count, 4)
+
+
+class HistoricalRealizedVolatilityAcceptanceTests(unittest.TestCase):
+    def test_adjustment_only_acceptance_matrix(self):
+        mixed, _ = make_historical_assessment(
+            adjusted_prices=("99", None, "98")
+        )
+        mismatch, _ = make_historical_assessment(
+            adjusted_prices=("99", "109", "98"),
+            methodologies=("method-a", "method-b", "method-a"),
+        )
+        self.assertEqual(
+            mixed.reason_codes,
+            (
+                MarketDataHistoricalSeriesReasonCode
+                .MIXED_ADJUSTED_CLOSE_AVAILABILITY,
+            ),
+        )
+        self.assertEqual(
+            mismatch.reason_codes,
+            (
+                MarketDataHistoricalSeriesReasonCode
+                .ADJUSTMENT_METHODOLOGY_MISMATCH,
+            ),
+        )
+        transform_historical(mixed)
+        transform_historical(mismatch)
+        for assessment in (mixed, mismatch):
+            with self.assertRaises(ValueError):
+                transform_historical(
+                    assessment, HistoricalReturnPriceBasis.ADJUSTED_CLOSE
+                )
+
+    def test_each_session_integrity_reason_blocks_both_bases(self):
+        complete, bindings = make_historical_assessment(
+            adjusted_prices=("99", "109", "98")
+        )
+        dates = complete.request.expected_session_dates
+        scenarios = [
+            assess_market_data_historical_series(
+                complete.request, bindings[:2]
+            )
+        ]
+        unexpected = build_historical_series_binding(
+            "hrv-unexpected",
+            session_date=SESSION_DATE - datetime.timedelta(days=3),
+        )
+        scenarios.append(assess_market_data_historical_series(
+            complete.request, bindings + (unexpected,)
+        ))
+        duplicate = build_historical_series_binding(
+            "hrv-duplicate", session_date=dates[0]
+        )
+        scenarios.append(assess_market_data_historical_series(
+            complete.request, bindings + (duplicate,)
+        ))
+        object.__setattr__(
+            bindings[0].selected_record, "is_session_complete", False
+        )
+        try:
+            scenarios.append(complete)
+            expected_reasons = (
+                MarketDataHistoricalSeriesReasonCode.MISSING_EXPECTED_SESSION,
+                MarketDataHistoricalSeriesReasonCode.UNEXPECTED_SESSION,
+                MarketDataHistoricalSeriesReasonCode.DUPLICATE_SESSION,
+                MarketDataHistoricalSeriesReasonCode.INCOMPLETE_SESSION,
+            )
+            for assessment, expected_reason in zip(
+                scenarios, expected_reasons
+            ):
+                self.assertIn(expected_reason, assessment.reason_codes)
+                for basis in HistoricalReturnPriceBasis:
+                    with self.subTest(reason=expected_reason, basis=basis):
+                        with self.assertRaises(ValueError):
+                            transform_historical(assessment, basis)
+        finally:
+            object.__setattr__(
+                bindings[0].selected_record, "is_session_complete", True
+            )
+
+    def test_exact_boundaries_no_fallback_and_incomplete_sources(self):
+        assessment, bindings = make_historical_assessment()
+        with self.assertRaises(TypeError):
+            transform_historical_realized_volatility(
+                "id", assessment, "raw_close", 252, CALCULATED_AT
+            )
+        for annualization in (True, 0, -1):
+            with self.subTest(annualization=annualization):
+                with self.assertRaises((TypeError, ValueError)):
+                    transform_historical(
+                        assessment, annualization=annualization
+                    )
+        with self.assertRaises(TypeError):
+            transform_historical_realized_volatility(
+                "id",
+                object(),
+                HistoricalReturnPriceBasis.RAW_CLOSE,
+                252,
+                CALCULATED_AT,
+            )
+        with self.assertRaises(ValueError):
+            transform_historical(
+                assessment, HistoricalReturnPriceBasis.ADJUSTED_CLOSE
+            )
+        raw_result = transform_historical(assessment)
+        self.assertEqual(
+            raw_result.record.prices,
+            tuple(binding.selected_record.close_price for binding in bindings),
+        )
+        for kind in ("normalization", "source"):
+            changed, changed_bindings = make_historical_assessment()
+            bar = changed_bindings[0].selected_record
+            original = bar.metadata
+            if kind == "normalization":
+                replacement = dataclasses.replace(
+                    original,
+                    quality_flags=(NormalizationQualityFlag.INCOMPLETE,),
+                )
+            else:
+                partial = dataclasses.replace(
+                    original.source_references[0],
+                    quality_flags=(SourceQualityFlag.PARTIAL,),
+                )
+                replacement = dataclasses.replace(
+                    original, source_references=(partial,)
+                )
+            object.__setattr__(bar, "metadata", replacement)
+            try:
+                with self.subTest(kind=kind), self.assertRaises(ValueError):
+                    transform_historical(changed)
+            finally:
+                object.__setattr__(bar, "metadata", original)
+
+    def test_conditional_quality_flags_and_discarded_candidate_exclusion(self):
+        assessment, bindings = make_historical_assessment(
+            adjusted_prices=("99", "109", "98")
+        )
+        binding = bindings[0]
+        bar = binding.selected_record
+        original_metadata = bar.metadata
+        original_candidates = binding.candidate_records
+        original_selection = binding.correction_selection
+        source_a = dataclasses.replace(
+            original_metadata.source_references[0],
+            source_id="hrv-composite-a",
+        )
+        source_b = dataclasses.replace(
+            original_metadata.source_references[0],
+            source_id="hrv-composite-b",
+            provider_record_id="hrv-composite-record-b",
+            provider_request_id="hrv-composite-request-b",
+            source_uri="synthetic://hrv/composite/b",
+        )
+        composite_metadata = build_normalization_metadata(
+            (source_a, source_b),
+            record_id=original_metadata.record_id,
+            effective_observed_at=original_metadata.effective_observed_at,
+            normalized_at=original_metadata.normalized_at,
+            record_origin=DataOrigin.SYSTEM_COMPOSITE,
+            quality_flags=(
+                NormalizationQualityFlag.INTERPOLATED,
+                NormalizationQualityFlag.COMPOSITE_SOURCE,
+            ),
+        )
+        discarded_metadata = dataclasses.replace(
+            original_metadata, record_id="hrv-discarded"
+        )
+        discarded = dataclasses.replace(bar, metadata=discarded_metadata)
+        correction = dataclasses.replace(
+            original_selection,
+            candidate_record_ids=(
+                original_metadata.record_id,
+                discarded_metadata.record_id,
+            ),
+            reason_codes=(
+                CorrectionSelectionReasonCode
+                .DOMINATING_REVISION_VECTOR_SELECTED,
+            ),
+        )
+        object.__setattr__(bar, "metadata", composite_metadata)
+        object.__setattr__(
+            binding, "candidate_records", (bar, discarded)
+        )
+        object.__setattr__(binding, "correction_selection", correction)
+        try:
+            result = transform_historical(
+                assessment, HistoricalReturnPriceBasis.ADJUSTED_CLOSE
+            )
+            self.assertEqual(
+                result.lineage.quality_flags,
+                (
+                    CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                    CalculationQualityFlag.INTERPOLATED,
+                    CalculationQualityFlag.ANNUALIZED,
+                    CalculationQualityFlag.ADJUSTED_INPUT_USED,
+                    CalculationQualityFlag.CORRECTION_SELECTED,
+                    CalculationQualityFlag.COMPOSITE_INPUT_USED,
+                    CalculationQualityFlag.ASSUMPTION_APPLIED,
+                ),
+            )
+            self.assertNotIn(
+                CalculationQualityFlag.INCOMPLETE_INPUT_USED,
+                result.lineage.quality_flags,
+            )
+            self.assertNotIn(
+                "hrv-discarded",
+                tuple(item.record_id for item in result.lineage.inputs),
+            )
+        finally:
+            object.__setattr__(bar, "metadata", original_metadata)
+            object.__setattr__(
+                binding, "candidate_records", original_candidates
+            )
+            object.__setattr__(
+                binding, "correction_selection", original_selection
+            )
+
+
+class HistoricalRealizedVolatilityBoundaryTests(unittest.TestCase):
+    def test_direct_construction_rejection_and_methodology_taxonomy_matrix(self):
+        valid = transform_historical(make_historical_assessment()[0]).record
+        dates = valid.session_dates
+        value_error_cases = (
+            (
+                "reordered returns",
+                {"log_returns": tuple(reversed(valid.log_returns))},
+                "log_returns are inconsistent with prices",
+            ),
+            (
+                "wrong return count",
+                {
+                    "log_returns": (
+                        valid.log_returns
+                        + (valid.log_returns[-1],)
+                    )
+                },
+                "log_returns length must be one less than prices",
+            ),
+            (
+                "session and price count mismatch",
+                {"session_dates": dates[:2]},
+                "session_dates and prices lengths must match",
+            ),
+            (
+                "nonascending sessions",
+                {"session_dates": (dates[1], dates[0], dates[2])},
+                "session_dates must be strictly ascending",
+            ),
+            (
+                "incorrect start",
+                {
+                    "start_session_date": (
+                        valid.start_session_date
+                        - datetime.timedelta(days=1)
+                    )
+                },
+                "window endpoints must match session_dates",
+            ),
+            (
+                "incorrect end",
+                {
+                    "end_session_date": (
+                        valid.end_session_date
+                        + datetime.timedelta(days=1)
+                    )
+                },
+                "window endpoints must match session_dates",
+            ),
+            (
+                "raw with methodology",
+                {"adjustment_methodology": "total-return-v1"},
+                "raw close requires no adjustment methodology",
+            ),
+            (
+                "adjusted with None methodology",
+                {
+                    "price_basis": HistoricalReturnPriceBasis.ADJUSTED_CLOSE,
+                    "adjustment_methodology": None,
+                },
+                "adjusted close requires an adjustment methodology",
+            ),
+            (
+                "adjusted with empty methodology",
+                {
+                    "price_basis": HistoricalReturnPriceBasis.ADJUSTED_CLOSE,
+                    "adjustment_methodology": "",
+                },
+                (
+                    "adjustment_methodology must be a nonempty canonical "
+                    "string"
+                ),
+            ),
+            (
+                "adjusted with whitespace methodology",
+                {
+                    "price_basis": HistoricalReturnPriceBasis.ADJUSTED_CLOSE,
+                    "adjustment_methodology": " ",
+                },
+                (
+                    "adjustment_methodology must be a nonempty canonical "
+                    "string"
+                ),
+            ),
+            (
+                "wrong return formula",
+                {"return_formula": "simple_return"},
+                "return_formula is inconsistent",
+            ),
+            (
+                "wrong variance estimator",
+                {"variance_estimator": "population_variance"},
+                "variance_estimator is inconsistent",
+            ),
+        )
+        for label, changes, message in value_error_cases:
+            with self.subTest(label=label), self.assertRaisesRegex(
+                ValueError, f"^{message}$"
+            ):
+                dataclasses.replace(valid, **changes)
+
+        type_error_cases = (
+            (
+                "adjusted non-string methodology",
+                {
+                    "price_basis": HistoricalReturnPriceBasis.ADJUSTED_CLOSE,
+                    "adjustment_methodology": object(),
+                },
+            ),
+            (
+                "raw non-string methodology",
+                {"adjustment_methodology": object()},
+            ),
+        )
+        for label, changes in type_error_cases:
+            with self.subTest(label=label), self.assertRaisesRegex(
+                TypeError,
+                "^adjustment_methodology must have exact type str$",
+            ):
+                dataclasses.replace(valid, **changes)
+
+    def test_minimum_and_direct_derived_consistency_and_negative_zero(self):
+        assessment, _ = make_historical_assessment(("100", "101"))
+        with self.assertRaises(ValueError):
+            transform_historical(assessment)
+        valid, _ = make_historical_assessment()
+        record = transform_historical(valid).record
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                record,
+                log_returns=(
+                    decimal.Decimal("0"),
+                    record.log_returns[1],
+                ),
+            )
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                record, annualized_realized_volatility=0.0
+            )
+        zeros = transform_historical(
+            make_historical_assessment(("100", "100", "100"))[0]
+        ).record
+        normalized = dataclasses.replace(
+            zeros,
+            log_returns=(
+                decimal.Decimal("-0"),
+                decimal.Decimal("-0.00"),
+            ),
+            annualized_realized_volatility=-0.0,
+        )
+        self.assertEqual(
+            normalized.log_returns,
+            (decimal.Decimal("0"), decimal.Decimal("0")),
+        )
+        self.assertEqual(
+            math.copysign(1.0, normalized.annualized_realized_volatility),
+            1.0,
+        )
+
+    def test_context_is_unchanged_and_upstream_functions_not_called(self):
+        assessment, _ = make_historical_assessment()
+        original = decimal.getcontext().copy()
+        context = decimal.getcontext()
+        context.prec = 7
+        context.rounding = decimal.ROUND_DOWN
+        context.traps[decimal.Inexact] = True
+        context.flags[decimal.Rounded] = True
+        before = context.copy()
+        try:
+            with mock.patch.object(
+                market_data,
+                "select_correction_candidate",
+                side_effect=AssertionError("selection recomputed"),
+            ), mock.patch.object(
+                market_data,
+                "assess_market_data_freshness",
+                side_effect=AssertionError("freshness recomputed"),
+            ), mock.patch.object(
+                market_data,
+                "bind_selected_fresh_market_data",
+                side_effect=AssertionError("binding recomputed"),
+            ), mock.patch.object(
+                market_data,
+                "assess_market_data_historical_series",
+                side_effect=AssertionError("historical assessment recomputed"),
+            ):
+                transform_historical(assessment)
+            self.assertEqual(context.prec, before.prec)
+            self.assertEqual(context.rounding, before.rounding)
+            self.assertEqual(context.traps, before.traps)
+            self.assertEqual(context.flags, before.flags)
+            self.assertEqual(context.Emin, before.Emin)
+            self.assertEqual(context.Emax, before.Emax)
+            self.assertEqual(context.capitals, before.capitals)
+            self.assertEqual(context.clamp, before.clamp)
+        finally:
+            decimal.setcontext(original)
+
+    def test_lineage_boundaries_and_nonpositive_price(self):
+        assessment, bindings = make_historical_assessment()
+        with self.assertRaises(ValueError):
+            transform_historical_realized_volatility(
+                bindings[0].selected_record.metadata.record_id,
+                assessment,
+                HistoricalReturnPriceBasis.RAW_CLOSE,
+                252,
+                CALCULATED_AT,
+            )
+        with self.assertRaises(ValueError):
+            transform_historical_realized_volatility(
+                "early",
+                assessment,
+                HistoricalReturnPriceBasis.RAW_CLOSE,
+                252,
+                datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc),
+            )
+        bar = bindings[0].selected_record
+        original = bar.close_price
+        object.__setattr__(bar, "close_price", decimal.Decimal("0"))
+        try:
+            with self.assertRaises(ValueError):
+                transform_historical(assessment)
+        finally:
+            object.__setattr__(bar, "close_price", original)
 
 
 if __name__ == "__main__":

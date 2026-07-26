@@ -4,7 +4,8 @@ import datetime
 import decimal
 import math
 from dataclasses import dataclass
-from typing import Tuple
+from enum import Enum
+from typing import Optional, Tuple
 
 from .evidence import OptionLeg, OptionStructure, StructureCosts
 from .market_data import (
@@ -22,6 +23,10 @@ from .market_data import (
     MarketDataBindingReference,
     MarketDataCategory,
     MarketDataFreshnessPolicy,
+    MarketDataHistoricalSeriesAssessment,
+    MarketDataHistoricalSeriesFrequency,
+    MarketDataHistoricalSeriesReasonCode,
+    MarketDataHistoricalSeriesRequest,
     MarketDataRelationshipAssessment,
     MarketDataRelationshipGroup,
     MarketDataRelationshipGroupKind,
@@ -31,6 +36,7 @@ from .market_data import (
     MarketDataRelationshipSelection,
     MarketDataSelectionStatus,
     MarketDataSnapshotTimingAssessment,
+    NormalizationMetadata,
     NormalizationQualityFlag,
     OptionContractKey,
     OptionContractReference,
@@ -39,7 +45,10 @@ from .market_data import (
     OptionQuoteObservation,
     OptionVolumeObservation,
     SelectedFreshMarketDataBinding,
+    SourceReference,
     SourceQualityFlag,
+    UnderlyingDailyBarObservation,
+    UnderlyingKey,
     UnderlyingQuoteObservation,
     canonicalize_lineage_parameters,
     semantic_observation_key,
@@ -52,6 +61,10 @@ __all__ = (
     "transform_structure_liquidity",
     "StructureCostsTransformationResult",
     "transform_structure_costs",
+    "HistoricalReturnPriceBasis",
+    "HistoricalRealizedVolatility",
+    "HistoricalRealizedVolatilityTransformationResult",
+    "transform_historical_realized_volatility",
 )
 
 
@@ -91,6 +104,269 @@ _SELECTED_CORRECTION_REASONS = (
 _QUOTE_METHODOLOGY = (
     "exact selected option quotes scaled by quantity and contract multiplier"
 )
+_HISTORICAL_RETURN_FORMULA = "natural_log_price_ratio"
+_HISTORICAL_VARIANCE_ESTIMATOR = "sample_variance"
+_HISTORICAL_SESSION_INTEGRITY_REASONS = frozenset({
+    MarketDataHistoricalSeriesReasonCode.MISSING_EXPECTED_SESSION,
+    MarketDataHistoricalSeriesReasonCode.UNEXPECTED_SESSION,
+    MarketDataHistoricalSeriesReasonCode.DUPLICATE_SESSION,
+    MarketDataHistoricalSeriesReasonCode.INCOMPLETE_SESSION,
+})
+_HISTORICAL_ADJUSTMENT_ONLY_REASONS = frozenset({
+    MarketDataHistoricalSeriesReasonCode.MIXED_ADJUSTED_CLOSE_AVAILABILITY,
+    MarketDataHistoricalSeriesReasonCode.ADJUSTMENT_METHODOLOGY_MISMATCH,
+})
+
+
+class HistoricalReturnPriceBasis(str, Enum):
+    RAW_CLOSE = "raw_close"
+    ADJUSTED_CLOSE = "adjusted_close"
+
+
+def _canonical_decimal_zero(value: decimal.Decimal) -> decimal.Decimal:
+    return decimal.Decimal("0") if value.is_zero() else value
+
+
+def _calculate_historical_statistics(
+    prices: Tuple[decimal.Decimal, ...],
+    annualization_sessions_per_year: int,
+) -> Tuple[Tuple[decimal.Decimal, ...], float]:
+    """Calculate precision-34 log returns and annualized sample volatility."""
+
+    context = decimal.Context(
+        prec=34,
+        rounding=decimal.ROUND_HALF_EVEN,
+        Emin=decimal.MIN_EMIN,
+        Emax=decimal.MAX_EMAX,
+        capitals=1,
+        clamp=0,
+    )
+    context.traps[decimal.Inexact] = False
+    context.traps[decimal.Rounded] = False
+    context.clear_flags()
+    try:
+        returns = []
+        for previous_price, current_price in zip(prices, prices[1:]):
+            if previous_price == current_price:
+                log_return = decimal.Decimal("0")
+            else:
+                ratio = context.divide(current_price, previous_price)
+                if not ratio.is_finite() or ratio <= 0:
+                    raise ValueError("price ratio must be finite and positive")
+                log_return = context.ln(ratio)
+            if not log_return.is_finite():
+                raise ValueError("log return must be finite")
+            returns.append(_canonical_decimal_zero(log_return))
+
+        log_returns = tuple(returns)
+        count = len(log_returns)
+        total = decimal.Decimal("0")
+        for log_return in log_returns:
+            total = context.add(total, log_return)
+        mean_return = context.divide(total, decimal.Decimal(count))
+        if not mean_return.is_finite():
+            raise ValueError("mean return must be finite")
+
+        squared_deviation_sum = decimal.Decimal("0")
+        for log_return in log_returns:
+            deviation = context.subtract(log_return, mean_return)
+            squared = context.multiply(deviation, deviation)
+            squared_deviation_sum = context.add(
+                squared_deviation_sum, squared
+            )
+        sample_variance = context.divide(
+            squared_deviation_sum, decimal.Decimal(count - 1)
+        )
+        sample_variance = _canonical_decimal_zero(sample_variance)
+        if not sample_variance.is_finite() or sample_variance < 0:
+            raise ValueError("sample variance must be finite and nonnegative")
+        daily_volatility = context.sqrt(sample_variance)
+        annualization_root = context.sqrt(
+            decimal.Decimal(annualization_sessions_per_year)
+        )
+        annualized = context.multiply(
+            daily_volatility, annualization_root
+        )
+        annualized = _canonical_decimal_zero(annualized)
+        if not annualized.is_finite() or annualized < 0:
+            raise ValueError(
+                "annualized realized volatility must be finite and nonnegative"
+            )
+        annualized_float = float(annualized)
+    except (decimal.DecimalException, OverflowError, ValueError) as error:
+        if isinstance(error, ValueError) and not isinstance(
+            error, decimal.DecimalException
+        ):
+            raise
+        raise ValueError(
+            "historical realized-volatility calculation failed"
+        ) from error
+    if not math.isfinite(annualized_float):
+        raise ValueError(
+            "annualized realized volatility must convert to a finite float"
+        )
+    if annualized_float == 0.0:
+        annualized_float = 0.0
+    return log_returns, annualized_float
+
+
+@dataclass(frozen=True)
+class HistoricalRealizedVolatility:
+    underlying_key: UnderlyingKey
+    start_session_date: datetime.date
+    end_session_date: datetime.date
+    price_basis: HistoricalReturnPriceBasis
+    adjustment_methodology: Optional[str]
+    session_dates: Tuple[datetime.date, ...]
+    prices: Tuple[decimal.Decimal, ...]
+    log_returns: Tuple[decimal.Decimal, ...]
+    annualized_realized_volatility: float
+    annualization_sessions_per_year: int
+    return_formula: str
+    variance_estimator: str
+
+    def __post_init__(self) -> None:
+        if type(self.underlying_key) is not UnderlyingKey:
+            raise TypeError("underlying_key must have exact type UnderlyingKey")
+        for name in ("start_session_date", "end_session_date"):
+            if type(getattr(self, name)) is not datetime.date:
+                raise TypeError(f"{name} must have exact type date")
+        if type(self.price_basis) is not HistoricalReturnPriceBasis:
+            raise TypeError(
+                "price_basis must have exact type HistoricalReturnPriceBasis"
+            )
+        for name in ("session_dates", "prices", "log_returns"):
+            if type(getattr(self, name)) is not tuple:
+                raise TypeError(f"{name} must have exact type tuple")
+        if any(type(value) is not datetime.date for value in self.session_dates):
+            raise TypeError(
+                "every session_dates item must have exact type date"
+            )
+        if any(type(value) is not decimal.Decimal for value in self.prices):
+            raise TypeError("every price must have exact type Decimal")
+        if any(
+            type(value) is not decimal.Decimal for value in self.log_returns
+        ):
+            raise TypeError("every log return must have exact type Decimal")
+        if type(self.annualized_realized_volatility) is not float:
+            raise TypeError(
+                "annualized_realized_volatility must have exact type float"
+            )
+        if (
+            not math.isfinite(self.annualized_realized_volatility)
+            or self.annualized_realized_volatility < 0
+        ):
+            raise ValueError(
+                "annualized_realized_volatility must be finite and nonnegative"
+            )
+        if type(self.annualization_sessions_per_year) is not int:
+            raise TypeError(
+                "annualization_sessions_per_year must have exact type int"
+            )
+        if self.annualization_sessions_per_year <= 0:
+            raise ValueError(
+                "annualization_sessions_per_year must be positive"
+            )
+        if type(self.return_formula) is not str:
+            raise TypeError("return_formula must have exact type str")
+        if type(self.variance_estimator) is not str:
+            raise TypeError("variance_estimator must have exact type str")
+        if self.return_formula != _HISTORICAL_RETURN_FORMULA:
+            raise ValueError("return_formula is inconsistent")
+        if self.variance_estimator != _HISTORICAL_VARIANCE_ESTIMATOR:
+            raise ValueError("variance_estimator is inconsistent")
+        if len(self.prices) < 3 or len(self.log_returns) < 2:
+            raise ValueError("at least three prices and two returns are required")
+        if len(self.session_dates) != len(self.prices):
+            raise ValueError("session_dates and prices lengths must match")
+        if len(self.log_returns) != len(self.prices) - 1:
+            raise ValueError("log_returns length must be one less than prices")
+        if any(
+            current <= previous
+            for previous, current in zip(
+                self.session_dates, self.session_dates[1:]
+            )
+        ):
+            raise ValueError("session_dates must be strictly ascending")
+        if (
+            self.start_session_date != self.session_dates[0]
+            or self.end_session_date != self.session_dates[-1]
+        ):
+            raise ValueError("window endpoints must match session_dates")
+        if any(not price.is_finite() or price <= 0 for price in self.prices):
+            raise ValueError("every price must be finite and positive")
+        if self.price_basis is HistoricalReturnPriceBasis.RAW_CLOSE:
+            if self.adjustment_methodology is not None:
+                if type(self.adjustment_methodology) is not str:
+                    raise TypeError(
+                        "adjustment_methodology must have exact type str"
+                    )
+                raise ValueError(
+                    "raw close requires no adjustment methodology"
+                )
+        else:
+            if self.adjustment_methodology is None:
+                raise ValueError(
+                    "adjusted close requires an adjustment methodology"
+                )
+            if type(self.adjustment_methodology) is not str:
+                raise TypeError(
+                    "adjustment_methodology must have exact type str"
+                )
+            if (
+                not self.adjustment_methodology
+                or self.adjustment_methodology.strip()
+                != self.adjustment_methodology
+            ):
+                raise ValueError(
+                    "adjustment_methodology must be a nonempty canonical string"
+                )
+
+        normalized_returns = tuple(
+            _canonical_decimal_zero(value) for value in self.log_returns
+        )
+        expected_returns, expected_volatility = (
+            _calculate_historical_statistics(
+                self.prices, self.annualization_sessions_per_year
+            )
+        )
+        normalized_volatility = (
+            0.0
+            if self.annualized_realized_volatility == 0.0
+            else self.annualized_realized_volatility
+        )
+        if normalized_returns != expected_returns:
+            raise ValueError("log_returns are inconsistent with prices")
+        if normalized_volatility != expected_volatility:
+            raise ValueError(
+                "annualized_realized_volatility is inconsistent with returns"
+            )
+        object.__setattr__(self, "log_returns", normalized_returns)
+        object.__setattr__(
+            self, "annualized_realized_volatility", normalized_volatility
+        )
+
+    @property
+    def price_observation_count(self) -> int:
+        return len(self.prices)
+
+    @property
+    def return_observation_count(self) -> int:
+        return len(self.log_returns)
+
+
+@dataclass(frozen=True)
+class HistoricalRealizedVolatilityTransformationResult:
+    record: HistoricalRealizedVolatility
+    lineage: CalculationLineage
+
+    def __post_init__(self) -> None:
+        if type(self.record) is not HistoricalRealizedVolatility:
+            raise TypeError(
+                "record must have exact type HistoricalRealizedVolatility"
+            )
+        if type(self.lineage) is not CalculationLineage:
+            raise TypeError("lineage must have exact type CalculationLineage")
 
 
 @dataclass(frozen=True)
@@ -1743,3 +2019,369 @@ def transform_structure_costs(
         quality_flags,
     )
     return StructureCostsTransformationResult(record=record, lineage=lineage)
+
+
+def _validate_historical_transformation_assessment(
+    value: object,
+    price_basis: HistoricalReturnPriceBasis,
+) -> Tuple[
+    MarketDataHistoricalSeriesRequest,
+    Tuple[SelectedFreshMarketDataBinding, ...],
+    Tuple[UnderlyingDailyBarObservation, ...],
+]:
+    """Validate only retained 3C.6 facts needed for safe transformation."""
+
+    if type(value) is not MarketDataHistoricalSeriesAssessment:
+        raise TypeError(
+            "historical_series_assessment must have exact type "
+            "MarketDataHistoricalSeriesAssessment"
+        )
+    request = value.request
+    if type(request) is not MarketDataHistoricalSeriesRequest:
+        raise TypeError(
+            "historical assessment request must have exact type "
+            "MarketDataHistoricalSeriesRequest"
+        )
+    if type(request.underlying_key) is not UnderlyingKey:
+        raise TypeError(
+            "historical request underlying_key must have exact type "
+            "UnderlyingKey"
+        )
+    if type(request.frequency) is not MarketDataHistoricalSeriesFrequency:
+        raise TypeError(
+            "historical request frequency must have exact type "
+            "MarketDataHistoricalSeriesFrequency"
+        )
+    if request.frequency is not MarketDataHistoricalSeriesFrequency.DAILY:
+        raise ValueError("historical request frequency must be daily")
+    expected_dates = request.expected_session_dates
+    if type(expected_dates) is not tuple:
+        raise TypeError("expected_session_dates must have exact type tuple")
+    if any(type(item) is not datetime.date for item in expected_dates):
+        raise TypeError(
+            "every expected_session_dates item must have exact type date"
+        )
+    if not expected_dates or any(
+        current <= previous
+        for previous, current in zip(expected_dates, expected_dates[1:])
+    ):
+        raise ValueError(
+            "expected_session_dates must be nonempty and strictly ascending"
+        )
+
+    bindings = value.bindings
+    if type(bindings) is not tuple:
+        raise TypeError("historical assessment bindings must have exact type tuple")
+    for binding in bindings:
+        if type(binding) is not SelectedFreshMarketDataBinding:
+            raise TypeError(
+                "every historical binding must have exact type "
+                "SelectedFreshMarketDataBinding"
+            )
+    bars = []
+    all_candidate_record_ids = []
+    regimes = []
+    for binding in bindings:
+        if type(binding.candidate_records) is not tuple:
+            raise TypeError("candidate_records must have exact type tuple")
+        if not binding.candidate_records:
+            raise ValueError("candidate_records must not be empty")
+        if type(binding.correction_selection) is not CorrectionSelection:
+            raise TypeError(
+                "correction_selection must have exact type CorrectionSelection"
+            )
+        if type(binding.freshness_policy) is not MarketDataFreshnessPolicy:
+            raise TypeError(
+                "freshness_policy must have exact type "
+                "MarketDataFreshnessPolicy"
+            )
+        if type(binding.freshness_context) is not FreshnessContext:
+            raise TypeError(
+                "freshness_context must have exact type FreshnessContext"
+            )
+        if type(binding.freshness_assessment) is not FreshnessAssessment:
+            raise TypeError(
+                "freshness_assessment must have exact type FreshnessAssessment"
+            )
+        selection = binding.correction_selection
+        candidate_ids = tuple(
+            getattr(getattr(candidate, "metadata", None), "record_id", None)
+            for candidate in binding.candidate_records
+        )
+        if (
+            any(type(item) is not str for item in candidate_ids)
+            or len(set(candidate_ids)) != len(candidate_ids)
+            or tuple(sorted(candidate_ids)) != selection.candidate_record_ids
+        ):
+            raise ValueError(
+                "candidate records do not match the retained correction proof"
+            )
+        all_candidate_record_ids.extend(candidate_ids)
+        matches = tuple(
+            candidate
+            for candidate in binding.candidate_records
+            if candidate.metadata.record_id == selection.selected_record_id
+        )
+        if len(matches) != 1:
+            raise ValueError(
+                "each binding must retain exactly one selected record"
+            )
+        bar = matches[0]
+        if type(bar) is not UnderlyingDailyBarObservation:
+            raise TypeError(
+                "every selected record must have exact type "
+                "UnderlyingDailyBarObservation"
+            )
+        if type(bar.session_date) is not datetime.date:
+            raise TypeError("selected bar session_date must have exact type date")
+        if type(bar.metadata) is not NormalizationMetadata:
+            raise TypeError(
+                "selected bar metadata must have exact type "
+                "NormalizationMetadata"
+            )
+        if type(bar.metadata.source_references) is not tuple:
+            raise TypeError("source_references must have exact type tuple")
+        if any(
+            type(source) is not SourceReference
+            for source in bar.metadata.source_references
+        ):
+            raise TypeError(
+                "every consumed source must have exact type SourceReference"
+            )
+        if selection.status is not CorrectionSelectionStatus.SELECTED:
+            raise ValueError("every retained correction proof must be selected")
+        if selection.reason_codes not in tuple(
+            (reason,) for reason in _SELECTED_CORRECTION_REASONS
+        ):
+            raise ValueError("retained correction selection reason is malformed")
+        freshness = binding.freshness_assessment
+        if (
+            semantic_observation_key(bar)
+            != selection.semantic_observation_key
+            or freshness.record_id != bar.metadata.record_id
+            or freshness.category is not MarketDataCategory.HISTORICAL_BAR
+            or freshness.status is not FreshnessStatus.FRESH
+            or freshness.reason_codes
+            != (FreshnessReasonCode.FRESH_WITHIN_POLICY,)
+            or freshness.policy_id != binding.freshness_policy.policy_id
+            or freshness.policy_version
+            != binding.freshness_policy.policy_version
+            or freshness.evaluated_at
+            != binding.freshness_context.evaluation_at
+            or selection.evaluated_at
+            > binding.freshness_context.evaluation_at
+        ):
+            raise ValueError("retained correction/freshness proof is malformed")
+        if bar.underlying_key != request.underlying_key:
+            raise ValueError("every consumed bar must match the request underlying")
+        bars.append(bar)
+        regimes.append((
+            selection.rule_id,
+            selection.rule_version,
+            selection.evaluated_at,
+            binding.freshness_policy,
+            binding.freshness_context,
+        ))
+
+    if len(set(all_candidate_record_ids)) != len(all_candidate_record_ids):
+        raise ValueError("candidate record IDs must be unique across bindings")
+    selected_ids = tuple(bar.metadata.record_id for bar in bars)
+    if len(set(selected_ids)) != len(selected_ids):
+        raise ValueError("selected record IDs must be unique")
+    if regimes and any(regime != regimes[0] for regime in regimes[1:]):
+        raise ValueError(
+            "bindings must retain one correction and freshness proof regime"
+        )
+
+    reasons = value.reason_codes
+    if type(reasons) is not tuple:
+        raise TypeError("historical reason_codes must have exact type tuple")
+    if any(
+        type(reason) is not MarketDataHistoricalSeriesReasonCode
+        for reason in reasons
+    ):
+        raise TypeError(
+            "every historical reason code must have exact enum type"
+        )
+    reason_set = set(reasons)
+    if reason_set & _HISTORICAL_SESSION_INTEGRITY_REASONS:
+        raise ValueError("session-integrity assessment prevents transformation")
+    if not reason_set.issubset(_HISTORICAL_ADJUSTMENT_ONLY_REASONS):
+        raise ValueError("historical assessment contains an unsupported reason")
+    if (
+        price_basis is HistoricalReturnPriceBasis.ADJUSTED_CLOSE
+        and reasons
+    ):
+        raise ValueError(
+            "adjusted close requires an issue-free historical assessment"
+        )
+
+    ordered_bars = tuple(bars)
+    actual_dates = tuple(bar.session_date for bar in ordered_bars)
+    if actual_dates != expected_dates:
+        raise ValueError(
+            "selected bars must exactly cover the complete expected window"
+        )
+    if len(ordered_bars) < 3:
+        raise ValueError("at least three historical bars are required")
+    for bar in ordered_bars:
+        if not bar.is_session_complete:
+            raise ValueError("incomplete historical bar cannot be consumed")
+        if NormalizationQualityFlag.INCOMPLETE in bar.metadata.quality_flags:
+            raise ValueError("incomplete normalized input cannot be consumed")
+        if any(
+            SourceQualityFlag.PARTIAL in source.quality_flags
+            for source in bar.metadata.source_references
+        ):
+            raise ValueError("partial source input cannot be consumed")
+    return request, bindings, ordered_bars
+
+
+def _extract_historical_prices(
+    bars: Tuple[UnderlyingDailyBarObservation, ...],
+    price_basis: HistoricalReturnPriceBasis,
+) -> Tuple[Tuple[decimal.Decimal, ...], Optional[str]]:
+    if price_basis is HistoricalReturnPriceBasis.RAW_CLOSE:
+        prices = tuple(bar.close_price for bar in bars)
+        methodology = None
+    else:
+        adjusted = tuple(bar.adjusted_close_price for bar in bars)
+        if any(value is None for value in adjusted):
+            raise ValueError("adjusted close is unavailable for a consumed bar")
+        methodologies = tuple(bar.adjustment_methodology for bar in bars)
+        if (
+            any(
+                type(value) is not str
+                or not value
+                or value.strip() != value
+                for value in methodologies
+            )
+            or any(value != methodologies[0] for value in methodologies[1:])
+        ):
+            raise ValueError(
+                "adjusted closes require one exact common methodology"
+            )
+        prices = adjusted
+        methodology = methodologies[0]
+    if any(type(price) is not decimal.Decimal for price in prices):
+        raise TypeError("every selected-basis price must have exact type Decimal")
+    if any(not price.is_finite() or price <= 0 for price in prices):
+        raise ValueError(
+            "every selected-basis price must be finite and positive"
+        )
+    return prices, methodology
+
+
+def _construct_historical_parameters(
+    record: HistoricalRealizedVolatility,
+) -> str:
+    underlying = record.underlying_key
+    return canonicalize_lineage_parameters({
+        "adjustment_methodology": record.adjustment_methodology,
+        "annualization_rule": (
+            "daily_sample_standard_deviation_times_square_root_sessions_per_year"
+        ),
+        "annualization_sessions_per_year": (
+            record.annualization_sessions_per_year
+        ),
+        "expected_session_dates": record.session_dates,
+        "price_basis": record.price_basis.value,
+        "price_observation_count": record.price_observation_count,
+        "price_unit": "usd_per_underlying_share",
+        "return_association_rule": "ending_session",
+        "return_formula": record.return_formula,
+        "return_observation_count": record.return_observation_count,
+        "return_unit": "decimal_ratio",
+        "underlying": {
+            "symbol": underlying.symbol,
+            "listing_mic": underlying.listing_mic,
+            "security_type": underlying.security_type.value,
+            "currency": underlying.currency,
+        },
+        "variance_estimator": record.variance_estimator,
+        "volatility_unit": "annualized_decimal_ratio",
+        "window_end_session_date": record.end_session_date,
+        "window_start_session_date": record.start_session_date,
+    })
+
+
+def _derive_historical_quality_flags(
+    bindings: Tuple[SelectedFreshMarketDataBinding, ...],
+    bars: Tuple[UnderlyingDailyBarObservation, ...],
+    price_basis: HistoricalReturnPriceBasis,
+) -> Tuple[CalculationQualityFlag, ...]:
+    selected = set(_derive_quality_flags(bindings, bars))
+    selected.update({
+        CalculationQualityFlag.ANNUALIZED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    })
+    if price_basis is HistoricalReturnPriceBasis.ADJUSTED_CLOSE:
+        selected.add(CalculationQualityFlag.ADJUSTED_INPUT_USED)
+    selected.discard(CalculationQualityFlag.INCOMPLETE_INPUT_USED)
+    return tuple(flag for flag in CalculationQualityFlag if flag in selected)
+
+
+def transform_historical_realized_volatility(
+    calculation_id: object,
+    historical_series_assessment: object,
+    price_basis: object,
+    annualization_sessions_per_year: object,
+    calculated_at: object,
+) -> HistoricalRealizedVolatilityTransformationResult:
+    """Transform one retained 3C.6 daily series into log-return volatility."""
+
+    normalized_id = _validate_calculation_id(calculation_id)
+    if type(price_basis) is not HistoricalReturnPriceBasis:
+        raise TypeError(
+            "price_basis must have exact type HistoricalReturnPriceBasis"
+        )
+    if type(annualization_sessions_per_year) is not int:
+        raise TypeError(
+            "annualization_sessions_per_year must have exact type int"
+        )
+    if annualization_sessions_per_year <= 0:
+        raise ValueError(
+            "annualization_sessions_per_year must be greater than zero"
+        )
+    normalized_at = _normalize_calculated_at(calculated_at)
+    request, bindings, bars = _validate_historical_transformation_assessment(
+        historical_series_assessment, price_basis
+    )
+    prices, methodology = _extract_historical_prices(bars, price_basis)
+    log_returns, annualized_volatility = _calculate_historical_statistics(
+        prices, annualization_sessions_per_year
+    )
+    record = HistoricalRealizedVolatility(
+        underlying_key=request.underlying_key,
+        start_session_date=request.expected_session_dates[0],
+        end_session_date=request.expected_session_dates[-1],
+        price_basis=price_basis,
+        adjustment_methodology=methodology,
+        session_dates=request.expected_session_dates,
+        prices=prices,
+        log_returns=log_returns,
+        annualized_realized_volatility=annualized_volatility,
+        annualization_sessions_per_year=annualization_sessions_per_year,
+        return_formula=_HISTORICAL_RETURN_FORMULA,
+        variance_estimator=_HISTORICAL_VARIANCE_ESTIMATOR,
+    )
+    inputs = _construct_input_references(bars)
+    parameters_json = _construct_historical_parameters(record)
+    quality_flags = _derive_historical_quality_flags(
+        bindings, bars, price_basis
+    )
+    lineage = CalculationLineage(
+        calculation_id=normalized_id,
+        calculation_type="historical_realized_volatility",
+        methodology_id=(
+            "historical-log-return-sample-realized-volatility"
+        ),
+        methodology_version="v0.1",
+        calculated_at=normalized_at,
+        inputs=inputs,
+        parameters_json=parameters_json,
+        quality_flags=quality_flags,
+    )
+    return HistoricalRealizedVolatilityTransformationResult(
+        record=record, lineage=lineage
+    )
