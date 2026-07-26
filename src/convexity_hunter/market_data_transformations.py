@@ -41,6 +41,7 @@ from .market_data import (
     OptionContractKey,
     OptionContractReference,
     OptionGreeksObservation,
+    OptionImpliedVolatilityObservation,
     OptionOpenInterestObservation,
     OptionQuoteObservation,
     OptionVolumeObservation,
@@ -53,6 +54,7 @@ from .market_data import (
     canonicalize_lineage_parameters,
     semantic_observation_key,
 )
+from .evidence import TermVolatilityPoint, VolatilityEnvironment
 from .report import StructureLiquidity
 
 
@@ -65,6 +67,8 @@ __all__ = (
     "HistoricalRealizedVolatility",
     "HistoricalRealizedVolatilityTransformationResult",
     "transform_historical_realized_volatility",
+    "VolatilityEnvironmentTransformationResult",
+    "transform_volatility_environment",
 )
 
 
@@ -76,6 +80,9 @@ _REQUIRED_ROLES = (
 _RECORD_TYPE_BY_ROLE = {
     MarketDataRelationshipRole.UNDERLYING_QUOTE: UnderlyingQuoteObservation,
     MarketDataRelationshipRole.OPTION_QUOTE: OptionQuoteObservation,
+    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+        OptionImpliedVolatilityObservation
+    ),
     MarketDataRelationshipRole.OPTION_GREEKS: OptionGreeksObservation,
     MarketDataRelationshipRole.OPTION_VOLUME: OptionVolumeObservation,
     MarketDataRelationshipRole.OPTION_OPEN_INTEREST: (
@@ -88,6 +95,9 @@ _RECORD_TYPE_BY_ROLE = {
 _FRESHNESS_CATEGORY_BY_ROLE = {
     MarketDataRelationshipRole.UNDERLYING_QUOTE: MarketDataCategory.QUOTE,
     MarketDataRelationshipRole.OPTION_QUOTE: MarketDataCategory.QUOTE,
+    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+        MarketDataCategory.ANALYTICS
+    ),
     MarketDataRelationshipRole.OPTION_GREEKS: MarketDataCategory.ANALYTICS,
     MarketDataRelationshipRole.OPTION_VOLUME: MarketDataCategory.ACTIVITY,
     MarketDataRelationshipRole.OPTION_OPEN_INTEREST: (
@@ -364,6 +374,20 @@ class HistoricalRealizedVolatilityTransformationResult:
         if type(self.record) is not HistoricalRealizedVolatility:
             raise TypeError(
                 "record must have exact type HistoricalRealizedVolatility"
+            )
+        if type(self.lineage) is not CalculationLineage:
+            raise TypeError("lineage must have exact type CalculationLineage")
+
+
+@dataclass(frozen=True)
+class VolatilityEnvironmentTransformationResult:
+    record: VolatilityEnvironment
+    lineage: CalculationLineage
+
+    def __post_init__(self) -> None:
+        if type(self.record) is not VolatilityEnvironment:
+            raise TypeError(
+                "record must have exact type VolatilityEnvironment"
             )
         if type(self.lineage) is not CalculationLineage:
             raise TypeError("lineage must have exact type CalculationLineage")
@@ -2383,5 +2407,827 @@ def transform_historical_realized_volatility(
         quality_flags=quality_flags,
     )
     return HistoricalRealizedVolatilityTransformationResult(
+        record=record, lineage=lineage
+    )
+
+
+_VOLATILITY_GROUP_ROLES = {
+    MarketDataRelationshipGroupKind
+    .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1: (
+        MarketDataRelationshipRole.UNDERLYING_QUOTE,
+        MarketDataRelationshipRole.OPTION_QUOTE,
+    ),
+    MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1: (
+        MarketDataRelationshipRole.OPTION_QUOTE,
+        MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+    ),
+    MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1: (
+        MarketDataRelationshipRole.OPTION_QUOTE,
+        MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+        MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+    ),
+}
+_VOLATILITY_RECORD_TYPE_BY_ROLE = {
+    MarketDataRelationshipRole.UNDERLYING_QUOTE: UnderlyingQuoteObservation,
+    MarketDataRelationshipRole.OPTION_QUOTE: OptionQuoteObservation,
+    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+        OptionImpliedVolatilityObservation
+    ),
+    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: (
+        OptionContractReference
+    ),
+}
+
+
+def _validate_volatility_metadata(record: object) -> None:
+    metadata = record.metadata
+    if type(metadata) is not NormalizationMetadata:
+        raise TypeError("selected record metadata must have exact type NormalizationMetadata")
+    if type(metadata.source_references) is not tuple:
+        raise TypeError("source_references must have exact type tuple")
+    if any(type(source) is not SourceReference for source in metadata.source_references):
+        raise TypeError("every consumed source must have exact type SourceReference")
+    if NormalizationQualityFlag.INCOMPLETE in metadata.quality_flags:
+        raise ValueError("incomplete normalized input cannot be consumed")
+    if any(
+        SourceQualityFlag.PARTIAL in source.quality_flags
+        for source in metadata.source_references
+    ):
+        raise ValueError("partial source input cannot be consumed")
+
+
+def _volatility_pair_key(contract: OptionContractKey) -> tuple:
+    return (
+        contract.underlying_key,
+        contract.expiration,
+        contract.strike,
+        contract.contract_multiplier,
+        contract.currency,
+        contract.deliverable_id,
+    )
+
+
+def _volatility_pair_order_key(pair: tuple) -> tuple:
+    contract = pair[0].contract_key
+    return (
+        contract.expiration,
+        contract.strike,
+        contract.contract_multiplier,
+        contract.currency,
+        (0, "") if contract.deliverable_id is None
+        else (1, contract.deliverable_id),
+        pair[0].metadata.record_id,
+        pair[1].metadata.record_id,
+    )
+
+
+def _validate_volatility_selection(
+    value: object,
+) -> tuple:
+    selection = _validate_relationship_selection(value)
+    _validate_selection_status(selection)
+    selected = _resolve_selected_candidate(selection)
+    if type(selected.request) is not MarketDataRelationshipRequest:
+        raise TypeError("selected request must have exact type MarketDataRelationshipRequest")
+    if type(selected.timing_assessment) is not MarketDataSnapshotTimingAssessment:
+        raise TypeError(
+            "selected timing assessment must have exact type "
+            "MarketDataSnapshotTimingAssessment"
+        )
+    if not selected.is_coherent:
+        raise ValueError("selected relationship assessment must remain coherent")
+    if not selected.timing_assessment.is_temporally_coherent:
+        raise ValueError("selected timing assessment must remain coherent")
+
+    groups = selected.request.groups
+    bindings = selected.timing_assessment.bindings
+    if type(groups) is not tuple:
+        raise TypeError("selected request groups must have exact type tuple")
+    if type(bindings) is not tuple:
+        raise TypeError("selected timing bindings must have exact type tuple")
+    for group in groups:
+        if type(group) is not MarketDataRelationshipGroup:
+            raise TypeError("every selected group must have exact type MarketDataRelationshipGroup")
+        if type(group.group_kind) is not MarketDataRelationshipGroupKind:
+            raise TypeError("group_kind must have exact type MarketDataRelationshipGroupKind")
+        if group.group_kind not in _VOLATILITY_GROUP_ROLES:
+            raise ValueError("volatility selection contains an unsupported group kind")
+        if type(group.members) is not tuple:
+            raise TypeError("selected group members must have exact type tuple")
+        for member in group.members:
+            if type(member) is not MarketDataRelationshipGroupMember:
+                raise TypeError(
+                    "every selected member must have exact type "
+                    "MarketDataRelationshipGroupMember"
+                )
+            if type(member.role) is not MarketDataRelationshipRole:
+                raise TypeError("member role must have exact type MarketDataRelationshipRole")
+            if type(member.reference) is not MarketDataBindingReference:
+                raise TypeError(
+                    "member reference must have exact type MarketDataBindingReference"
+                )
+        roles = tuple(member.role for member in group.members)
+        expected_roles = _VOLATILITY_GROUP_ROLES[group.group_kind]
+        if len(roles) != len(expected_roles) or set(roles) != set(expected_roles):
+            raise ValueError("volatility relationship group has the wrong exact role shape")
+
+    for binding in bindings:
+        if type(binding) is not SelectedFreshMarketDataBinding:
+            raise TypeError(
+                "every selected binding must have exact type "
+                "SelectedFreshMarketDataBinding"
+            )
+        if type(binding.correction_selection) is not CorrectionSelection:
+            raise TypeError("correction_selection must have exact type CorrectionSelection")
+        if type(binding.freshness_assessment) is not FreshnessAssessment:
+            raise TypeError("freshness_assessment must have exact type FreshnessAssessment")
+        if type(binding.freshness_policy) is not MarketDataFreshnessPolicy:
+            raise TypeError("freshness_policy must have exact type MarketDataFreshnessPolicy")
+        if type(binding.freshness_context) is not FreshnessContext:
+            raise TypeError("freshness_context must have exact type FreshnessContext")
+
+    entries = _resolve_selected_objects(groups, bindings)
+    for _group, member, _binding, record in entries:
+        expected_type = _VOLATILITY_RECORD_TYPE_BY_ROLE.get(member.role)
+        if expected_type is None:
+            raise ValueError("volatility selection contains an unsupported role")
+        if type(record) is not expected_type:
+            raise TypeError(
+                f"{member.role.value} selected record must have exact type "
+                f"{expected_type.__name__}"
+            )
+
+    entry_by_binding = {}
+    for entry in entries:
+        entry_by_binding.setdefault(id(entry[2]), entry)
+    if set(entry_by_binding) != {id(binding) for binding in bindings}:
+        raise ValueError("every selected binding must be referenced")
+    for _group, member, binding, record in entry_by_binding.values():
+        _validate_candidate_universe(
+            binding, binding.correction_selection, record
+        )
+        _validate_correction_proof(binding, binding.correction_selection)
+        _validate_freshness_proof(member.role, binding, record)
+        _validate_semantic_proof(member, binding, record)
+        _validate_volatility_metadata(record)
+    selected_ids = tuple(
+        entry[3].metadata.record_id for entry in entry_by_binding.values()
+    )
+    if len(set(selected_ids)) != len(selected_ids):
+        raise ValueError("selected normalized record IDs must be unique")
+
+    group_counts = {
+        kind: sum(group.group_kind is kind for group in groups)
+        for kind in _VOLATILITY_GROUP_ROLES
+    }
+    candidate_count = group_counts[
+        MarketDataRelationshipGroupKind
+        .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+    ]
+    if candidate_count < 1 or any(
+        count != candidate_count for count in group_counts.values()
+    ):
+        raise ValueError("selection must contain exactly three groups per candidate")
+    if len(groups) != 3 * candidate_count or len(bindings) != 1 + 3 * candidate_count:
+        raise ValueError("selection has the wrong exact group or binding count")
+
+    def group_records(group: MarketDataRelationshipGroup) -> dict:
+        matched = tuple(entry for entry in entries if entry[0] is group)
+        if len(matched) != len(group.members):
+            raise ValueError("group members must resolve exactly once")
+        return {entry[1].role: entry[3] for entry in matched}
+
+    by_kind_and_contract = {}
+    underlying_objects = []
+    reference_counts = {}
+    for group in groups:
+        records = group_records(group)
+        quote = records[MarketDataRelationshipRole.OPTION_QUOTE]
+        if type(quote.contract_key) is not OptionContractKey:
+            raise TypeError("option quote must retain an exact OptionContractKey")
+        contract = quote.contract_key
+        if group.group_kind is (
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+        ):
+            underlying_objects.append(
+                records[MarketDataRelationshipRole.UNDERLYING_QUOTE]
+            )
+        if group.group_kind is not (
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+        ):
+            iv = records[MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY]
+            if type(iv.contract_key) is not OptionContractKey:
+                raise TypeError("IV record must retain an exact OptionContractKey")
+            if iv.contract_key != contract:
+                raise ValueError("quote and IV records must share one contract key")
+        if group.group_kind is (
+            MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1
+        ):
+            reference = records[
+                MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+            ]
+            if type(reference.contract_key) is not OptionContractKey:
+                raise TypeError(
+                    "contract reference must retain an exact OptionContractKey"
+                )
+            if reference.contract_key != contract:
+                raise ValueError(
+                    "quote, IV, and contract reference must share one contract key"
+                )
+        key = (group.group_kind, contract)
+        if key in by_kind_and_contract:
+            raise ValueError("relationship groups must cover each contract exactly once")
+        by_kind_and_contract[key] = records
+        for record in records.values():
+            reference_counts[id(record)] = reference_counts.get(id(record), 0) + 1
+
+    contracts = {
+        contract for kind, contract in by_kind_and_contract
+        if kind is MarketDataRelationshipGroupKind
+        .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+    }
+    if len(contracts) != candidate_count or any(
+        (kind, contract) not in by_kind_and_contract
+        for contract in contracts for kind in _VOLATILITY_GROUP_ROLES
+    ):
+        raise ValueError("each candidate contract must have the exact three-group proof")
+    if len({id(record) for record in underlying_objects}) != 1:
+        raise ValueError("selection must contain one shared underlying quote")
+    underlying = underlying_objects[0]
+    if reference_counts.get(id(underlying)) != candidate_count:
+        raise ValueError("shared underlying quote has the wrong reference count")
+
+    candidates = []
+    for contract in contracts:
+        snapshot = by_kind_and_contract[(
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+            contract,
+        )]
+        analytics = by_kind_and_contract[(
+            MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+            contract,
+        )]
+        reference_group = by_kind_and_contract[(
+            MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1,
+            contract,
+        )]
+        quote = snapshot[MarketDataRelationshipRole.OPTION_QUOTE]
+        iv = analytics[MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY]
+        reference = reference_group[
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+        ]
+        if (
+            analytics[MarketDataRelationshipRole.OPTION_QUOTE] is not quote
+            or reference_group[MarketDataRelationshipRole.OPTION_QUOTE] is not quote
+            or reference_group[
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY
+            ] is not iv
+        ):
+            raise ValueError("required repeated references must retain exact identities")
+        if (
+            reference_counts.get(id(quote)) != 3
+            or reference_counts.get(id(iv)) != 2
+            or reference_counts.get(id(reference)) != 1
+        ):
+            raise ValueError("candidate records have the wrong repeated-reference counts")
+        candidates.append((quote, iv, reference))
+
+    if len({item[0].contract_key.underlying_key for item in candidates}) != 1:
+        raise ValueError("selection must contain one common underlying identity")
+    underlying_key = candidates[0][0].contract_key.underlying_key
+    if underlying.underlying_key != underlying_key:
+        raise ValueError("underlying quote and option candidates must agree")
+    session_dates = {underlying.session_date}
+    for quote, iv, _reference in candidates:
+        if quote.contract_key != iv.contract_key:
+            raise ValueError("quote and IV contract identities must agree")
+        if quote.session_date != iv.session_date:
+            raise ValueError("quote and IV must share one session date")
+        session_dates.add(quote.session_date)
+        if quote.contract_key.expiration <= quote.session_date:
+            raise ValueError("option expiration must follow the session date")
+    if len(session_dates) != 1:
+        raise ValueError("selection must contain one common session date")
+    session_date = next(iter(session_dates))
+
+    paired = {}
+    for candidate in candidates:
+        paired.setdefault(_volatility_pair_key(candidate[0].contract_key), []).append(candidate)
+    exact_pairs = []
+    for values in paired.values():
+        calls = tuple(
+            item for item in values if item[0].contract_key.option_type == "call"
+        )
+        puts = tuple(
+            item for item in values if item[0].contract_key.option_type == "put"
+        )
+        if len(calls) != 1 or len(puts) != 1 or len(values) != 2:
+            raise ValueError("every candidate pair must contain exactly one call and one put")
+        exact_pairs.append((calls[0], puts[0]))
+    exact_pairs = tuple(sorted(exact_pairs, key=lambda pair: _volatility_pair_order_key((
+        pair[0][0], pair[1][0]
+    ))))
+    return (
+        selection,
+        underlying,
+        underlying_key,
+        session_date,
+        exact_pairs,
+        tuple(entry[2] for entry in entry_by_binding.values()),
+        tuple(entry[3] for entry in entry_by_binding.values()),
+    )
+
+
+def _exact_midpoint(first: decimal.Decimal, second: decimal.Decimal) -> decimal.Decimal:
+    return _exact_half(_exact_scaled_sum(((first, 1), (second, 1))))
+
+
+def _exact_distance(first: decimal.Decimal, second: decimal.Decimal) -> decimal.Decimal:
+    difference = _exact_scaled_sum(((first, 1), (second.copy_negate(), 1)))
+    return difference.copy_abs()
+
+
+def _exact_two_value_mean(
+    first: decimal.Decimal, second: decimal.Decimal
+) -> decimal.Decimal:
+    return _exact_half(_exact_scaled_sum(((first, 1), (second, 1))))
+
+
+def _finite_float(value: decimal.Decimal) -> float:
+    try:
+        converted = float(value)
+    except (OverflowError, ValueError) as error:
+        raise ValueError("Decimal value must convert to a finite float") from error
+    if not math.isfinite(converted):
+        raise ValueError("Decimal value must convert to a finite float")
+    return converted
+
+
+def _volatility_observations(
+    underlying: UnderlyingQuoteObservation,
+    session_date: datetime.date,
+    pairs: tuple,
+) -> tuple:
+    if (
+        type(underlying.bid_price) is not decimal.Decimal
+        or type(underlying.ask_price) is not decimal.Decimal
+        or not underlying.bid_price.is_finite()
+        or not underlying.ask_price.is_finite()
+        or underlying.bid_price <= 0
+        or underlying.ask_price <= 0
+    ):
+        raise ValueError("underlying bid and ask must be finite and positive")
+    midpoint = _exact_midpoint(underlying.bid_price, underlying.ask_price)
+    by_expiration = {}
+    methodologies = []
+    for call_item, put_item in pairs:
+        call_quote, call_iv, call_reference = call_item
+        put_quote, put_iv, put_reference = put_item
+        for iv in (call_iv, put_iv):
+            if (
+                type(iv.implied_volatility) is not decimal.Decimal
+                or not iv.implied_volatility.is_finite()
+                or iv.implied_volatility <= 0
+            ):
+                raise ValueError("every implied volatility must be finite and positive")
+            methodologies.append((
+                iv.model_name,
+                iv.model_version,
+                iv.rate_input_description,
+                iv.dividend_input_description,
+                iv.metadata.unit_convention,
+            ))
+        paired_iv = _exact_two_value_mean(
+            call_iv.implied_volatility, put_iv.implied_volatility
+        )
+        distance = _exact_distance(call_quote.contract_key.strike, midpoint)
+        candidate = {
+            "strike": call_quote.contract_key.strike,
+            "contract_multiplier": call_quote.contract_key.contract_multiplier,
+            "currency": call_quote.contract_key.currency,
+            "deliverable_id": call_quote.contract_key.deliverable_id,
+            "call_quote_record_id": call_quote.metadata.record_id,
+            "call_iv_record_id": call_iv.metadata.record_id,
+            "call_contract_reference_record_id": call_reference.metadata.record_id,
+            "put_quote_record_id": put_quote.metadata.record_id,
+            "put_iv_record_id": put_iv.metadata.record_id,
+            "put_contract_reference_record_id": put_reference.metadata.record_id,
+            "call_implied_volatility": call_iv.implied_volatility,
+            "put_implied_volatility": put_iv.implied_volatility,
+            "paired_implied_volatility": paired_iv,
+            "distance_to_underlying_midpoint": distance,
+        }
+        by_expiration.setdefault(call_quote.contract_key.expiration, []).append(candidate)
+    if not methodologies or any(item != methodologies[0] for item in methodologies[1:]):
+        raise ValueError("all IV inputs must share one exact methodology")
+    if methodologies[0][4] != "annualized_decimal_ratio":
+        raise ValueError("IV inputs must use annualized_decimal_ratio")
+
+    observations = []
+    for expiration in sorted(by_expiration):
+        candidates = tuple(sorted(
+            by_expiration[expiration],
+            key=lambda item: (
+                item["strike"],
+                item["contract_multiplier"],
+                item["currency"],
+                (0, "") if item["deliverable_id"] is None
+                else (1, item["deliverable_id"]),
+                item["call_iv_record_id"],
+                item["put_iv_record_id"],
+            ),
+        ))
+        minimum_distance = min(
+            item["distance_to_underlying_midpoint"]
+            for item in candidates
+        )
+        distance_candidates = tuple(
+            item for item in candidates
+            if item["distance_to_underlying_midpoint"] == minimum_distance
+        )
+        selected_strike = min(
+            item["strike"] for item in distance_candidates
+        )
+        final_candidates = tuple(
+            item for item in distance_candidates
+            if item["strike"] == selected_strike
+        )
+        if len(final_candidates) != 1:
+            raise ValueError(
+                "ATM candidate selection remains ambiguous at the "
+                "selected strike"
+            )
+        selected = final_candidates[0]
+        tenor_days = (expiration - session_date).days
+        if tenor_days <= 0:
+            raise ValueError("every expiration tenor must be positive")
+        observations.append({
+            "session_date": session_date,
+            "expiration": expiration,
+            "tenor_days": tenor_days,
+            "underlying_quote_record_id": underlying.metadata.record_id,
+            "underlying_midpoint": midpoint,
+            "candidate_pairs": candidates,
+            "selected_strike": selected["strike"],
+            "selected_call_iv_record_id": selected["call_iv_record_id"],
+            "selected_put_iv_record_id": selected["put_iv_record_id"],
+            "selected_atm_iv": selected["paired_implied_volatility"],
+        })
+    return tuple(observations), methodologies[0]
+
+
+def _validate_realized_dependency(
+    value: object,
+    calculation_id: str,
+    calculated_at: datetime.datetime,
+) -> tuple:
+    if type(value) is not HistoricalRealizedVolatilityTransformationResult:
+        raise TypeError(
+            "historical_realized_volatility_result must have exact type "
+            "HistoricalRealizedVolatilityTransformationResult"
+        )
+    record = value.record
+    lineage = value.lineage
+    if type(record) is not HistoricalRealizedVolatility:
+        raise TypeError("realized record must have exact type HistoricalRealizedVolatility")
+    if type(lineage) is not CalculationLineage:
+        raise TypeError("realized lineage must have exact type CalculationLineage")
+    if (
+        lineage.calculation_type != "historical_realized_volatility"
+        or lineage.methodology_id
+        != "historical-log-return-sample-realized-volatility"
+        or lineage.methodology_version != "v0.1"
+    ):
+        raise ValueError("realized lineage calculation identity is invalid")
+    if lineage.parameters_json != _construct_historical_parameters(record):
+        raise ValueError("realized lineage parameters do not match its record")
+    if len(lineage.inputs) != record.price_observation_count:
+        raise ValueError("realized lineage input count does not match its record")
+    flags = lineage.quality_flags
+    required = {
+        CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+        CalculationQualityFlag.ANNUALIZED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    if not required.issubset(flags):
+        raise ValueError("realized lineage is missing mandatory quality flags")
+    adjusted = record.price_basis is HistoricalReturnPriceBasis.ADJUSTED_CLOSE
+    if (
+        (CalculationQualityFlag.ADJUSTED_INPUT_USED in flags) != adjusted
+        or CalculationQualityFlag.INCOMPLETE_INPUT_USED in flags
+    ):
+        raise ValueError("realized lineage quality flags are inconsistent")
+    if calculation_id == lineage.calculation_id:
+        raise ValueError("new and prior calculation IDs must differ")
+    if calculated_at < lineage.calculated_at:
+        raise ValueError("new calculation must not precede the prior calculation")
+    return record, lineage
+
+
+def _percentile(count: int, total: int) -> decimal.Decimal:
+    try:
+        with decimal.localcontext() as context:
+            context.prec = 34
+            context.rounding = decimal.ROUND_HALF_EVEN
+            context.Emax = decimal.MAX_EMAX
+            context.Emin = decimal.MIN_EMIN
+            context.clamp = 0
+            context.traps[decimal.InvalidOperation] = True
+            context.traps[decimal.DivisionByZero] = True
+            context.traps[decimal.Overflow] = True
+            return context.divide(decimal.Decimal(count), decimal.Decimal(total))
+    except decimal.DecimalException as error:
+        raise ValueError("IV percentile calculation failed") from error
+
+
+def _median(values: tuple) -> decimal.Decimal:
+    ordered = tuple(sorted(values))
+    if not ordered:
+        raise ValueError("historical IV sample must not be empty")
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return _exact_two_value_mean(ordered[middle - 1], ordered[middle])
+
+
+def _realized_dependency_parameters(
+    record: HistoricalRealizedVolatility,
+    lineage: CalculationLineage,
+) -> dict:
+    return {
+        "calculation_id": lineage.calculation_id,
+        "calculation_type": lineage.calculation_type,
+        "methodology_id": lineage.methodology_id,
+        "methodology_version": lineage.methodology_version,
+        "calculated_at": lineage.calculated_at,
+        "parameters_json": lineage.parameters_json,
+        "quality_flags": tuple(flag.value for flag in lineage.quality_flags),
+        "input_record_ids": tuple(item.record_id for item in lineage.inputs),
+        "underlying": {
+            "symbol": record.underlying_key.symbol,
+            "listing_mic": record.underlying_key.listing_mic,
+            "security_type": record.underlying_key.security_type.value,
+            "currency": record.underlying_key.currency,
+        },
+        "start_session_date": record.start_session_date,
+        "end_session_date": record.end_session_date,
+        "price_basis": record.price_basis.value,
+        "adjustment_methodology": record.adjustment_methodology,
+        "annualization_sessions_per_year": record.annualization_sessions_per_year,
+        "return_formula": record.return_formula,
+        "variance_estimator": record.variance_estimator,
+        "annualized_realized_volatility_float_repr": repr(
+            record.annualized_realized_volatility
+        ),
+    }
+
+
+def transform_volatility_environment(
+    calculation_id: object,
+    current_relationship_selection: object,
+    historical_relationship_selections: object,
+    historical_expected_session_dates: object,
+    historical_realized_volatility_result: object,
+    reference_tenor_days: object,
+    atm_candidate_universes_complete: object,
+    calculated_at: object,
+) -> VolatilityEnvironmentTransformationResult:
+    """Construct one paired-ATM volatility environment from reviewed inputs."""
+
+    normalized_id = _validate_calculation_id(calculation_id)
+    if type(historical_relationship_selections) is not tuple:
+        raise TypeError("historical_relationship_selections must have exact type tuple")
+    if not historical_relationship_selections:
+        raise ValueError("historical_relationship_selections must not be empty")
+    if any(
+        type(item) is not MarketDataRelationshipSelection
+        for item in historical_relationship_selections
+    ):
+        raise TypeError(
+            "every historical selection must have exact type "
+            "MarketDataRelationshipSelection"
+        )
+    if type(historical_expected_session_dates) is not tuple:
+        raise TypeError("historical_expected_session_dates must have exact type tuple")
+    if not historical_expected_session_dates:
+        raise ValueError("historical_expected_session_dates must not be empty")
+    if any(
+        type(item) is not datetime.date
+        for item in historical_expected_session_dates
+    ):
+        raise TypeError("every historical date must have exact type date")
+    if any(
+        current <= previous for previous, current in zip(
+            historical_expected_session_dates,
+            historical_expected_session_dates[1:],
+        )
+    ):
+        raise ValueError("historical dates must be strictly ascending")
+    if type(reference_tenor_days) is not int:
+        raise TypeError("reference_tenor_days must have exact built-in type int")
+    if reference_tenor_days <= 0:
+        raise ValueError("reference_tenor_days must be positive")
+    if type(atm_candidate_universes_complete) is not bool:
+        raise TypeError("atm_candidate_universes_complete must have exact type bool")
+    if not atm_candidate_universes_complete:
+        raise ValueError("ATM candidate universes must be declared complete")
+    normalized_at = _normalize_calculated_at(calculated_at)
+
+    current = _validate_volatility_selection(current_relationship_selection)
+    current_observations, iv_methodology = _volatility_observations(
+        current[1], current[3], current[4]
+    )
+    if len(current_observations) < 2:
+        raise ValueError("current selection must contain at least two expirations")
+    current_tenors = tuple(item["tenor_days"] for item in current_observations)
+    if len(set(current_tenors)) != len(current_tenors):
+        raise ValueError("current term tenors must be unique")
+    reference_matches = tuple(
+        item for item in current_observations
+        if item["tenor_days"] == reference_tenor_days
+    )
+    if len(reference_matches) != 1:
+        raise ValueError("reference tenor must match exactly one current term point")
+    current_reference_iv = reference_matches[0]["selected_atm_iv"]
+
+    historical = tuple(
+        _validate_volatility_selection(selection)
+        for selection in historical_relationship_selections
+    )
+    derived_dates = tuple(sorted(item[3] for item in historical))
+    if len(set(derived_dates)) != len(derived_dates):
+        raise ValueError("historical selections must have unique session dates")
+    if derived_dates != historical_expected_session_dates:
+        raise ValueError("historical selections must exactly match expected dates")
+    if any(date >= current[3] for date in derived_dates):
+        raise ValueError("every historical date must precede the current date")
+    historical_by_date = {item[3]: item for item in historical}
+    historical_observations = []
+    historical_values = []
+    for session_date in derived_dates:
+        item = historical_by_date[session_date]
+        observations, methodology = _volatility_observations(
+            item[1], item[3], item[4]
+        )
+        if len(observations) != 1:
+            raise ValueError("each historical selection must have one expiration")
+        observation = observations[0]
+        if observation["tenor_days"] != reference_tenor_days:
+            raise ValueError("historical expiration must exactly match reference tenor")
+        if methodology != iv_methodology:
+            raise ValueError("historical and current IV methodologies must match")
+        historical_observations.append(observation)
+        historical_values.append(observation["selected_atm_iv"])
+    historical_values_tuple = tuple(historical_values)
+
+    all_underlyings = (current[2],) + tuple(item[2] for item in historical)
+    if any(item != current[2] for item in all_underlyings[1:]):
+        raise ValueError("all IV selections must share one underlying identity")
+    realized_record, realized_lineage = _validate_realized_dependency(
+        historical_realized_volatility_result, normalized_id, normalized_at
+    )
+    if realized_record.underlying_key != current[2]:
+        raise ValueError("realized and implied volatility underlyings must match")
+    if realized_record.end_session_date != current[3]:
+        raise ValueError("realized window must end on the current as-of date")
+    realized_span = (
+        realized_record.end_session_date - realized_record.start_session_date
+    ).days
+    if realized_span != reference_tenor_days:
+        raise ValueError("realized calendar span must equal reference tenor")
+
+    percentile_decimal = _percentile(
+        sum(value <= current_reference_iv for value in historical_values_tuple),
+        len(historical_values_tuple),
+    )
+    median_decimal = _median(historical_values_tuple)
+    term_structure = tuple(
+        TermVolatilityPoint(
+            tenor_days=item["tenor_days"],
+            atm_iv=_finite_float(item["selected_atm_iv"]),
+        )
+        for item in current_observations
+    )
+    record = VolatilityEnvironment(
+        underlying=current[2].symbol,
+        as_of_date=current[3],
+        reference_tenor_days=reference_tenor_days,
+        iv_percentile=_finite_float(percentile_decimal),
+        iv_history_lookback_observations=len(historical_values_tuple),
+        historical_median_atm_iv=_finite_float(median_decimal),
+        matched_realized_volatility=realized_record.annualized_realized_volatility,
+        matched_realized_window_days=realized_span,
+        term_structure=term_structure,
+    )
+
+    parameters_json = canonicalize_lineage_parameters({
+        "atm_candidate_universe": {
+            "declared_complete": True,
+            "scope": "all_exact_selected_session_expiration_universes",
+            "completeness_semantics": (
+                "no_eligible_paired_call_put_strike_omitted"
+            ),
+        },
+        "atm_selection_rule": (
+            "nearest_paired_call_put_strike_to_underlying_bid_ask_midpoint"
+        ),
+        "call_put_combination_rule": (
+            "arithmetic_mean_of_same_strike_call_and_put_implied_volatility"
+        ),
+        "current_observations": current_observations,
+        "float_conversion_rule": (
+            "convert_only_final_decimal_research_values_to_finite_float"
+        ),
+        "historical_expected_session_dates": historical_expected_session_dates,
+        "historical_matched_tenor_rule": (
+            "expiration_minus_session_date_calendar_days_equals_reference_tenor"
+        ),
+        "historical_observation_count": len(historical_values_tuple),
+        "historical_observations": tuple(historical_observations),
+        "historical_sample_semantics": "caller_declared_observation_sample",
+        "iv_methodology": {
+            "model_name": iv_methodology[0],
+            "model_version": iv_methodology[1],
+            "rate_input_description": iv_methodology[2],
+            "dividend_input_description": iv_methodology[3],
+            "unit_convention": iv_methodology[4],
+        },
+        "median_formula": (
+            "odd_middle_even_arithmetic_mean_of_two_middle_values"
+        ),
+        "percentile_formula": (
+            "inclusive_count_historical_atm_iv_lte_current_reference_atm_iv_"
+            "divided_by_count"
+        ),
+        "realized_volatility_dependency": _realized_dependency_parameters(
+            realized_record, realized_lineage
+        ),
+        "realized_window_matching_rule": (
+            "realized_end_equals_current_as_of_and_calendar_span_equals_"
+            "reference_tenor"
+        ),
+        "reference_tenor_days": reference_tenor_days,
+        "strike_tie_rule": "lower_strike",
+        "term_tenor_rule": "expiration_minus_session_date_calendar_days",
+        "underlying_midpoint_rule": "bid_ask_midpoint_no_last_fallback",
+        "volatility_unit": "annualized_decimal_ratio",
+    })
+
+    iv_records = current[6] + tuple(
+        record for item in historical for record in item[6]
+    )
+    inputs = realized_lineage.inputs + _construct_input_references(iv_records)
+    input_ids = tuple(item.record_id for item in inputs)
+    if len(set(input_ids)) != len(input_ids):
+        raise ValueError("normalized input record IDs must be globally unique")
+    flags = {
+        CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+        CalculationQualityFlag.ANNUALIZED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    propagated = {
+        CalculationQualityFlag.ADJUSTED_INPUT_USED,
+        CalculationQualityFlag.CORRECTION_SELECTED,
+        CalculationQualityFlag.COMPOSITE_INPUT_USED,
+        CalculationQualityFlag.INTERPOLATED,
+    }
+    flags.update(flag for flag in realized_lineage.quality_flags if flag in propagated)
+    all_bindings = current[5] + tuple(
+        binding for item in historical for binding in item[5]
+    )
+    if any(
+        binding.correction_selection.reason_codes == (
+            CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,
+        )
+        for binding in all_bindings
+    ):
+        flags.add(CalculationQualityFlag.CORRECTION_SELECTED)
+    if any(
+        record.metadata.record_origin is DataOrigin.SYSTEM_COMPOSITE
+        for record in iv_records
+    ):
+        flags.add(CalculationQualityFlag.COMPOSITE_INPUT_USED)
+    if any(
+        NormalizationQualityFlag.INTERPOLATED in record.metadata.quality_flags
+        for record in iv_records
+    ):
+        flags.add(CalculationQualityFlag.INTERPOLATED)
+    flags.discard(CalculationQualityFlag.INCOMPLETE_INPUT_USED)
+    lineage = CalculationLineage(
+        calculation_id=normalized_id,
+        calculation_type="volatility_environment",
+        methodology_id="paired-atm-volatility-environment",
+        methodology_version="v0.1",
+        calculated_at=normalized_at,
+        inputs=inputs,
+        parameters_json=parameters_json,
+        quality_flags=tuple(
+            flag for flag in CalculationQualityFlag if flag in flags
+        ),
+    )
+    return VolatilityEnvironmentTransformationResult(
         record=record, lineage=lineage
     )

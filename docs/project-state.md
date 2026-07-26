@@ -66,11 +66,13 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - Milestone 3C.7b exact-structure cost transformation completed specification preflight with `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7B`, completed implementation with `IMPLEMENTATION RESULT: READY FOR MVP-FOCUSED INDEPENDENT REVIEW`, and completed independent review with `MVP-FOCUSED REVIEW RESULT: PASS`. The independent review found no findings and no remaining blocker. It consumes authoritative selected proofs without recomputing correction, freshness, timing, relationships, selection, or historical completeness. Its exact reviewed proof shape is three groups per leg. It constructs the existing `StructureCosts` record and exact `CalculationLineage`; contract-reference records are authoritative lineage inputs, giving four lineage inputs for a one-leg structure and seven for a two-leg structure. Its economic contract includes option midpoint premium, one-way midpoint-to-ask entry spread cost, explicit caller-supplied commissions and fees, position-scaled Theta and Gamma, underlying bid/ask midpoint, and an explicit repeated-bet count. Final validation passed with 61 focused transformation tests, including all original 44 Milestone 3C.7a liquidity tests; 365 market-data tests; 735 full-suite tests; compileall; both import orders; exact API, result-field, and signature checks; and `git diff --check`. `market_data_transformations.__all__` contains exactly `StructureLiquidityTransformationResult`, `transform_structure_liquidity`, `StructureCostsTransformationResult`, and `transform_structure_costs`; `market_data.__all__` remains exactly 64 names; and the package root remains unchanged. Milestone 3C.7b is implemented, independently reviewed, validated, and ready to commit and push. This operation commits and pushes Milestone 3C.7b.
 - Milestone 3C.7b is committed and pushed at `ae0cf3bf32a41532cf67988c9fc6c2fd5c78b0bf` (`Implement exact-structure cost transformation`).
 - Milestone 3C.7c historical underlying-return and realized-volatility transformation completed specification preflight with `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7C` and initially returned `IMPLEMENTATION RESULT: READY FOR MVP-FOCUSED INDEPENDENT REVIEW`. The initial independent review returned `MVP-FOCUSED REVIEW RESULT: FAIL`: the original calculation implementation, historical-assessment boundary, lineage, API, documentation, and economic/statistical formulas passed, but the review found exactly two MAJOR focused-test adequacy findings—`RAW_CLOSE` lacked symmetric protection when materially different adjusted prices were populated, and direct `HistoricalRealizedVolatility` construction guards lacked a compact rejection matrix. The first attempted test-only correction stopped before editing when the required matrix exposed one narrow source exception-taxonomy defect: `ADJUSTED_CLOSE` with `adjustment_methodology=None` raised `TypeError`, while the approved contract requires `ValueError`. The narrow source correction changed only basis/methodology validation order; the symmetric raw-basis adversarial test and direct-artifact rejection matrix were added. The final targeted independent re-review returned `TARGETED RE-REVIEW RESULT: PASS`, with no findings and no remaining blocker. Final validation passed with 75 focused transformation tests, all original 73 pre-correction focused tests, all 61 pre-3C.7c transformation regressions, 365 market-data tests, 749 full-suite tests, compileall, `git diff --check`, exact API, enum, artifact-field, wrapper-field, and signature checks, both import orders, and unchanged package-root exports. `market_data_transformations.__all__` contains exactly `StructureLiquidityTransformationResult`, `transform_structure_liquidity`, `StructureCostsTransformationResult`, `transform_structure_costs`, `HistoricalReturnPriceBasis`, `HistoricalRealizedVolatility`, `HistoricalRealizedVolatilityTransformationResult`, and `transform_historical_realized_volatility`; `market_data.__all__` remains exactly 64 names. `VolatilityEnvironment` remains unmodified and is not constructed by 3C.7c. The bounded `HistoricalRealizedVolatility` artifact and exact `CalculationLineage` retain an explicit raw or adjusted close basis without fallback or mixing, the complete accepted historical window, precision-34 Decimal natural-log returns, sample variance, explicit caller-supplied annualization sessions, and one lineage input per consumed selected daily bar; incomplete sessions, incomplete normalization, and partial sources are rejected. Milestone 3C.7c is implemented, independently reviewed, corrected, targeted re-reviewed, validated, and ready to commit and push; this operation commits and pushes it.
-- Milestones 3C.7d through 3C.7f remain unimplemented. Current ATM-IV selection, historical IV comparison, rate/dividend relationship and economic use, other research transformations, `VolatilityEnvironment` construction, and pricing remain later 3C.7 slices. Exchange-calendar inference and historical option surfaces remain future contracts. Broad Milestone 3 remains incomplete.
+- Milestone 3C.7c is committed and pushed at `6be4e849c27efe75dce23cb163a97bd9932a975b` (`Implement historical realized volatility transformation`).
+- Milestone 3C.7d volatility-environment construction completed specification preflight with `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7D`; one-unit 3C.7d was accepted and initially returned `IMPLEMENTATION RESULT: READY FOR MVP-FOCUSED INDEPENDENT REVIEW`. The initial MVP-focused review returned `MVP-FOCUSED REVIEW RESULT: FAIL` with exactly two MAJOR findings. First, multiple compatible call/put pairs could remain at the same selected strike, differentiated by multiplier, currency, deliverable, or another economic identity field; canonical ordering silently selected one instead of rejecting unresolved ambiguity. Second, focused tests did not protect Decimal percentile comparison from premature binary-float conversion. The ordinary ambiguity reproduction used strike 100, a multiplier-50 pair with ATM IV `0.10`, and a multiplier-100 pair with ATM IV `0.90`. ATM selection now identifies minimum distance, applies lower-strike equal-distance resolution, filters every remaining pair at the selected strike, requires exactly one final compatible pair, and raises `ValueError` when ambiguity remains. Canonical order, multiplier, currency, deliverable, record IDs, IV, premiums, liquidity, and caller order are never ATM economic tiebreakers. The Decimal precision-collapse reproduction uses current ATM IV `0.30000000000000002` and historical ATM IV `0.30000000000000003`; both convert to the same binary float, while the correct Decimal-first percentile is `0.0`. Percentile ranking continues to compare original Decimal ATM IV values before the final precision-34 division and float conversion. Focused regressions protect both unresolved same-strike ambiguity and Decimal values collapsing to one binary float. The final targeted independent re-review returned `TARGETED RE-REVIEW RESULT: PASS`, with no findings and no remaining blocker; both original MAJOR findings are closed. It confirmed that the source correction changes only the final ATM-pair cardinality rule, while ordinary nearest-pair selection, lower-strike tie behavior, caller-order invariance, current term structure, historical ATM calculation, percentile, median, realized matching, proof validation, lineage, and canonical parameters remain unchanged. Final validation passed with 89 focused transformation tests, all original 87 pre-correction focused tests, all 75 pre-3C.7d transformation regressions, 365 market-data tests, 763 full-suite tests, compileall, `git diff --check`, exact public API, wrapper-field, and signature checks, both import orders, unchanged package-root exports, and unchanged `VolatilityEnvironment` and `TermVolatilityPoint`. The exact transformation API is `StructureLiquidityTransformationResult`, `transform_structure_liquidity`, `StructureCostsTransformationResult`, `transform_structure_costs`, `HistoricalReturnPriceBasis`, `HistoricalRealizedVolatility`, `HistoricalRealizedVolatilityTransformationResult`, `transform_historical_realized_volatility`, `VolatilityEnvironmentTransformationResult`, and `transform_volatility_environment`; `market_data_transformations.__all__` has exactly 10 names, `market_data.__all__` has exactly 64 names, and the package root is unchanged. The frozen methodology requires caller-declared complete candidate universes, paired same-strike call/put ATM IV, nearest strike to the underlying bid/ask midpoint, lower-strike resolution for equal-distance strikes, rejection of unresolved same-strike compatible-pair ambiguity, a current calendar-day term structure, an explicit exact reference tenor, caller-declared historical observation dates, historical exact-tenor paired ATM IVs, inclusive empirical percentile, odd/even historical median, strict realized endpoint and calendar-span matching, flattened 3C.7c normalized lineage inputs, complete 3C.7c calculated-dependency disclosure, and Decimal-first calculations with final float boundaries. Milestone 3C.7d is implemented, independently reviewed, corrected, targeted re-reviewed, validated, and ready to commit and push; this operation commits and pushes it.
+- Milestones 3C.7e and 3C.7f remain unimplemented. Tail-relative pricing, rate/dividend economic use, other research transformations, and pricing remain later 3C.7 slices. Exchange-calendar inference and historical option surfaces remain future contracts. Broad Milestone 3 remains incomplete.
 
 ## Current task
 
-Finalize, commit, and push Milestone 3C.7c.
+Finalize, commit, and push Milestone 3C.7d.
 
 ## Last completed checkpoint
 
@@ -199,15 +201,43 @@ Finalize, commit, and push Milestone 3C.7c.
   transformation regressions remain passing
 - Transformation-module public API: exactly eight names
 - Public `market_data` API: unchanged at exactly 64 names
-- Milestones 3C.7d through 3C.7f unimplemented
+- Milestone 3C.7c committed and pushed at
+  `6be4e849c27efe75dce23cb163a97bd9932a975b`
+- Milestone 3C.7d specification preflight:
+  `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7D`
+- One-unit Milestone 3C.7d accepted and implemented locally
+- Caller-declared complete paired-ATM candidate universes required
+- Historical relationship selections and explicit sample dates selected
+- Strict realized endpoint and calendar-span matching selected
+- Reviewed 3C.7c lineage flattened and dependency disclosed
+- Transformation-module public API: exactly ten names
+- Initial 3C.7d independent review:
+  `MVP-FOCUSED REVIEW RESULT: FAIL`
+- Review findings: unresolved same-strike compatible-pair ambiguity and
+  missing Decimal-before-float percentile regression protection
+- Same-strike multiplier-50 versus multiplier-100 ambiguity now raises
+  `ValueError` after distance and lower-strike resolution
+- Decimal precision-collapse case `0.30000000000000002` versus
+  `0.30000000000000003` now protects the exact `0.0` percentile
+- Milestone 3C.7d post-correction validation: 89 focused transformation tests,
+  365 market-data tests, 763 full-suite tests, compileall, API/import checks,
+  and `git diff --check`
+- Final targeted independent re-review:
+  `TARGETED RE-REVIEW RESULT: PASS`
+- Targeted re-review found no findings and no remaining blocker; both original
+  MAJOR findings are closed
+- Targeted re-review confirmed only the final ATM-pair cardinality rule changed
+- Milestone 3C.7d is implemented, independently reviewed, corrected, targeted
+  re-reviewed, validated, and ready to commit and push
+- This operation commits and pushes Milestone 3C.7d
+- Milestones 3C.7e and 3C.7f unimplemented
 - Broad Milestone 3 incomplete
 
 ## Next task
 
-Perform a short specification preflight for Milestone 3C.7d volatility-
-environment construction using the reviewed 3C.7c realized-volatility artifact
-and authoritative implied-volatility inputs, under the MVP-focused review
-standard.
+Perform a short specification preflight for Milestone 3C.7e tail-pricing
+transformation using the reviewed `VolatilityEnvironment` and authoritative
+option-market inputs, under the MVP-focused review standard.
 
 ## Deferred
 

@@ -5,6 +5,7 @@ import datetime
 import decimal
 import enum
 import inspect
+import json
 import math
 import pathlib
 import sys
@@ -47,6 +48,7 @@ from convexity_hunter.market_data import (
     MarketDataSelectionStatus,
     NormalizationQualityFlag,
     OptionContractReference,
+    OptionImpliedVolatilityObservation,
     OptionGreeksObservation,
     OptionQuoteObservation,
     OptionOpenInterestObservation,
@@ -66,9 +68,11 @@ from convexity_hunter.market_data_transformations import (
     HistoricalReturnPriceBasis,
     StructureCostsTransformationResult,
     StructureLiquidityTransformationResult,
+    VolatilityEnvironmentTransformationResult,
     transform_historical_realized_volatility,
     transform_structure_costs,
     transform_structure_liquidity,
+    transform_volatility_environment,
 )
 from convexity_hunter.evidence import StructureCosts
 from convexity_hunter.report import StructureLiquidity
@@ -76,12 +80,16 @@ from tests.market_data_fixtures import (
     CALCULATED_AT,
     EXPIRATION,
     SESSION_DATE,
+    build_freshness_policy,
     build_normalization_metadata,
+    build_option_implied_volatility_observation,
     build_option_contract_key,
     build_source_reference,
     build_underlying_key,
 )
 from tests.test_market_data import (
+    build_timed_record,
+    build_timing_binding,
     build_historical_series_binding,
     build_relationship_binding,
     build_resolved_relationship_group,
@@ -195,6 +203,7 @@ def make_historical_assessment(
     adjusted_prices=None,
     methodologies=None,
     dates=None,
+    policy=None,
 ):
     selected_dates = (
         tuple(
@@ -219,6 +228,7 @@ def make_historical_assessment(
         bindings.append(build_historical_series_binding(
             f"hrv-{index}",
             session_date=session_date,
+            policy=policy,
             open_price=close,
             high_price=close,
             low_price=close,
@@ -251,6 +261,218 @@ def transform_historical(
         annualization,
         CALCULATED_AT,
     )
+
+
+def make_volatility_selection(
+    session_date, candidates, label, iv_overrides=None
+):
+    underlying_key = build_underlying_key()
+    underlying = build_relationship_binding(
+        MarketDataRelationshipRole.UNDERLYING_QUOTE,
+        f"{label}-underlying",
+        underlying_key=underlying_key,
+        session_date=session_date,
+        bid_price=decimal.Decimal("99"),
+        ask_price=decimal.Decimal("101"),
+        last_price=decimal.Decimal("777"),
+    )
+    groups = []
+    unique_bindings = [underlying]
+    for index, candidate in enumerate(candidates):
+        if len(candidate) == 4:
+            expiration, strike, call_iv, put_iv = candidate
+            contract_multiplier = 100
+        else:
+            (
+                expiration,
+                strike,
+                call_iv,
+                put_iv,
+                contract_multiplier,
+            ) = candidate
+        for option_type, implied_volatility in (
+            ("call", call_iv),
+            ("put", put_iv),
+        ):
+            item_label = f"{label}-{index}-{option_type}"
+            contract = build_option_contract_key(
+                underlying_key=underlying_key,
+                expiration=expiration,
+                option_type=option_type,
+                strike=decimal.Decimal(str(strike)),
+                contract_multiplier=contract_multiplier,
+            )
+            quote = build_relationship_binding(
+                MarketDataRelationshipRole.OPTION_QUOTE,
+                f"{item_label}-quote",
+                contract_key=contract,
+                session_date=session_date,
+            )
+            iv_fields = (
+                {}
+                if iv_overrides is None
+                else {
+                    key: value for key, value in iv_overrides.items()
+                    if key != "unit_convention"
+                }
+            )
+            iv_record = build_timed_record(
+                build_option_implied_volatility_observation,
+                f"{item_label}-iv",
+                contract_key=contract,
+                session_date=session_date,
+                implied_volatility=decimal.Decimal(str(implied_volatility)),
+                **iv_fields,
+            )
+            iv_record = dataclasses.replace(
+                iv_record,
+                metadata=dataclasses.replace(
+                    iv_record.metadata,
+                    unit_convention=(
+                        "annualized_decimal_ratio"
+                        if iv_overrides is None
+                        else iv_overrides.get(
+                            "unit_convention",
+                            "annualized_decimal_ratio",
+                        )
+                    ),
+                ),
+            )
+            iv = build_timing_binding(iv_record)
+            reference = build_relationship_binding(
+                MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+                f"{item_label}-reference",
+                contract_key=contract,
+                listing_date=None,
+                last_trade_date=None,
+            )
+            specs = (
+                (
+                    "snapshot",
+                    MarketDataRelationshipGroupKind
+                    .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+                    {
+                        MarketDataRelationshipRole.UNDERLYING_QUOTE: underlying,
+                        MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                    },
+                ),
+                (
+                    "analytics",
+                    MarketDataRelationshipGroupKind
+                    .OPTION_QUOTE_ANALYTICS_V0_1,
+                    {
+                        MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                        MarketDataRelationshipRole
+                        .OPTION_IMPLIED_VOLATILITY: iv,
+                    },
+                ),
+                (
+                    "reference",
+                    MarketDataRelationshipGroupKind
+                    .OPTION_CONTRACT_REFERENCE_V0_1,
+                    {
+                        MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                        MarketDataRelationshipRole
+                        .OPTION_IMPLIED_VOLATILITY: iv,
+                        MarketDataRelationshipRole
+                        .OPTION_CONTRACT_REFERENCE: reference,
+                    },
+                ),
+            )
+            for suffix, kind, bindings in specs:
+                group, _aligned = build_resolved_relationship_group(
+                    f"{item_label}-{suffix}", kind, bindings
+                )
+                groups.append(group)
+            unique_bindings.extend((quote, iv, reference))
+    assessment = assess_market_data_relationships(
+        MarketDataRelationshipRequest(tuple(groups)),
+        assess_market_data_snapshot_timing(tuple(unique_bindings)),
+    )
+    return select_market_data_relationship_assessment((assessment,))
+
+
+def make_volatility_result(
+    *,
+    current_candidates=None,
+    historical_values=("0.20", "0.30", "0.40"),
+    reference_tenor=30,
+    return_arguments=False,
+):
+    current_candidates = (
+        (
+            (
+                SESSION_DATE + datetime.timedelta(days=30),
+                "95",
+                "0.31",
+                "0.29",
+            ),
+            (
+                SESSION_DATE + datetime.timedelta(days=30),
+                "105",
+                "0.35",
+                "0.33",
+            ),
+            (
+                SESSION_DATE + datetime.timedelta(days=60),
+                "100",
+                "0.41",
+                "0.39",
+            ),
+        )
+        if current_candidates is None
+        else current_candidates
+    )
+    current = make_volatility_selection(
+        SESSION_DATE, current_candidates, "ve-current"
+    )
+    historical_dates = tuple(
+        SESSION_DATE - datetime.timedelta(
+            days=(len(historical_values) - index) * 3
+        )
+        for index in range(len(historical_values))
+    )
+    historical = tuple(
+        make_volatility_selection(
+            session_date,
+            ((
+                session_date + datetime.timedelta(days=reference_tenor),
+                "100",
+                decimal.Decimal(value) - decimal.Decimal("0.01"),
+                decimal.Decimal(value) + decimal.Decimal("0.01"),
+            ),),
+            f"ve-history-{index}",
+        )
+        for index, (session_date, value) in enumerate(
+            zip(historical_dates, historical_values)
+        )
+    )
+    realized_dates = (
+        SESSION_DATE - datetime.timedelta(days=reference_tenor),
+        SESSION_DATE - datetime.timedelta(days=reference_tenor // 2),
+        SESSION_DATE,
+    )
+    assessment, _bindings = make_historical_assessment(
+        prices=("100", "102", "101"),
+        dates=realized_dates,
+        policy=build_freshness_policy(
+            maximum_historical_bar_session_date_gap_days=reference_tenor
+        ),
+    )
+    realized = transform_historical(assessment)
+    arguments = (
+        " calculation-3c7d ",
+        current,
+        historical,
+        historical_dates,
+        realized,
+        reference_tenor,
+        True,
+        CALCULATED_AT,
+    )
+    if return_arguments:
+        return arguments
+    return transform_volatility_environment(*arguments)
 
 
 def make_cost_selection(
@@ -466,6 +688,8 @@ class PublicSurfaceTests(unittest.TestCase):
                 "HistoricalRealizedVolatility",
                 "HistoricalRealizedVolatilityTransformationResult",
                 "transform_historical_realized_volatility",
+                "VolatilityEnvironmentTransformationResult",
+                "transform_volatility_environment",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -2526,6 +2750,8 @@ class StructureCostsPublicSurfaceTests(unittest.TestCase):
                 "HistoricalRealizedVolatility",
                 "HistoricalRealizedVolatilityTransformationResult",
                 "transform_historical_realized_volatility",
+                "VolatilityEnvironmentTransformationResult",
+                "transform_volatility_environment",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -3146,6 +3372,8 @@ class HistoricalRealizedVolatilityPublicContractTests(unittest.TestCase):
                 "HistoricalRealizedVolatility",
                 "HistoricalRealizedVolatilityTransformationResult",
                 "transform_historical_realized_volatility",
+                "VolatilityEnvironmentTransformationResult",
+                "transform_volatility_environment",
             ),
         )
         self.assertEqual(
@@ -3844,6 +4072,459 @@ class HistoricalRealizedVolatilityBoundaryTests(unittest.TestCase):
                 transform_historical(assessment)
         finally:
             object.__setattr__(bar, "close_price", original)
+
+class VolatilityEnvironmentTransformationTests(unittest.TestCase):
+    def test_exact_public_contract_wrapper_and_signature(self):
+        self.assertEqual(
+            transformations.__all__,
+            (
+                "StructureLiquidityTransformationResult",
+                "transform_structure_liquidity",
+                "StructureCostsTransformationResult",
+                "transform_structure_costs",
+                "HistoricalReturnPriceBasis",
+                "HistoricalRealizedVolatility",
+                "HistoricalRealizedVolatilityTransformationResult",
+                "transform_historical_realized_volatility",
+                "VolatilityEnvironmentTransformationResult",
+                "transform_volatility_environment",
+            ),
+        )
+        self.assertEqual(len(market_data.__all__), 64)
+        self.assertFalse(
+            hasattr(convexity_hunter, "VolatilityEnvironmentTransformationResult")
+        )
+        self.assertFalse(
+            hasattr(convexity_hunter, "transform_volatility_environment")
+        )
+        self.assertEqual(
+            tuple(
+                field.name for field in dataclasses.fields(
+                    VolatilityEnvironmentTransformationResult
+                )
+            ),
+            ("record", "lineage"),
+        )
+        self.assertEqual(
+            str(inspect.signature(transform_volatility_environment)),
+            (
+                "(calculation_id: object, current_relationship_selection: "
+                "object, historical_relationship_selections: object, "
+                "historical_expected_session_dates: object, "
+                "historical_realized_volatility_result: object, "
+                "reference_tenor_days: object, "
+                "atm_candidate_universes_complete: object, calculated_at: "
+                "object) -> convexity_hunter.market_data_transformations."
+                "VolatilityEnvironmentTransformationResult"
+            ),
+        )
+        result = make_volatility_result()
+        with self.assertRaises(FrozenInstanceError):
+            result.record = result.record
+        with self.assertRaises(TypeError):
+            VolatilityEnvironmentTransformationResult(
+                object(), result.lineage
+            )
+        with self.assertRaises(TypeError):
+            VolatilityEnvironmentTransformationResult(
+                result.record, object()
+            )
+
+    def test_literal_term_percentile_median_realized_and_lineage(self):
+        result = make_volatility_result()
+        self.assertEqual(result.record.underlying, "SPY")
+        self.assertEqual(result.record.as_of_date, SESSION_DATE)
+        self.assertEqual(result.record.reference_tenor_days, 30)
+        self.assertEqual(result.record.iv_percentile, 2 / 3)
+        self.assertEqual(result.record.historical_median_atm_iv, 0.30)
+        self.assertEqual(
+            result.record.term_structure,
+            (
+                transformations.TermVolatilityPoint(30, 0.30),
+                transformations.TermVolatilityPoint(60, 0.40),
+            ),
+        )
+        self.assertEqual(result.record.atm_iv, 0.30)
+        self.assertEqual(result.record.matched_realized_window_days, 30)
+        self.assertEqual(result.record.iv_history_lookback_observations, 3)
+        self.assertEqual(len(result.lineage.inputs), 43)
+        self.assertEqual(
+            result.lineage.calculation_id, "calculation-3c7d"
+        )
+        self.assertEqual(
+            (
+                result.lineage.calculation_type,
+                result.lineage.methodology_id,
+                result.lineage.methodology_version,
+            ),
+            (
+                "volatility_environment",
+                "paired-atm-volatility-environment",
+                "v0.1",
+            ),
+        )
+        self.assertEqual(
+            result.lineage.quality_flags,
+            (
+                CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                CalculationQualityFlag.ANNUALIZED,
+                CalculationQualityFlag.ASSUMPTION_APPLIED,
+            ),
+        )
+
+    def test_lower_strike_tie_last_ignored_and_order_independent(self):
+        expiration_30 = SESSION_DATE + datetime.timedelta(days=30)
+        expiration_60 = SESSION_DATE + datetime.timedelta(days=60)
+        candidates = (
+            (expiration_60, "100", "0.41", "0.39"),
+            (expiration_30, "105", "0.81", "0.79"),
+            (expiration_30, "95", "0.21", "0.19"),
+        )
+        first = make_volatility_result(current_candidates=candidates)
+        second = make_volatility_result(
+            current_candidates=tuple(reversed(candidates))
+        )
+        self.assertEqual(first.record, second.record)
+        self.assertEqual(first.record.atm_iv, 0.20)
+        tagged = json.loads(first.lineage.parameters_json)
+        serialized = first.lineage.parameters_json
+        self.assertIn('"underlying_midpoint"', serialized)
+        self.assertIn('"100"', serialized)
+        self.assertIn('"selected_strike"', serialized)
+        self.assertIsInstance(tagged, dict)
+
+    def test_same_strike_multiplier_pairs_are_ambiguous(self):
+        expiration_30 = SESSION_DATE + datetime.timedelta(days=30)
+        expiration_60 = SESSION_DATE + datetime.timedelta(days=60)
+        candidates = (
+            (expiration_30, "100", "0.10", "0.10", 50),
+            (expiration_30, "100", "0.90", "0.90", 100),
+            (expiration_60, "100", "0.40", "0.40", 100),
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "ATM candidate selection remains ambiguous",
+        ):
+            make_volatility_result(current_candidates=candidates)
+
+    def test_percentile_boundaries_ties_and_odd_even_medians(self):
+        cases = (
+            (("0.30",), 1.0, 0.30),
+            (("0.40",), 0.0, 0.40),
+            (("0.20", "0.20", "0.40"), 2 / 3, 0.20),
+            (("0.10", "0.20", "0.40", "0.50"), 0.5, 0.30),
+        )
+        for sample, percentile, median in cases:
+            with self.subTest(sample=sample):
+                result = make_volatility_result(historical_values=sample)
+                self.assertEqual(result.record.iv_percentile, percentile)
+                self.assertEqual(result.record.historical_median_atm_iv, median)
+
+    def test_percentile_compares_decimal_before_float_conversion(self):
+        current_iv = decimal.Decimal("0.30000000000000002")
+        historical_iv = decimal.Decimal("0.30000000000000003")
+        self.assertLess(current_iv, historical_iv)
+        self.assertEqual(float(current_iv), float(historical_iv))
+        result = make_volatility_result(
+            current_candidates=(
+                (
+                    SESSION_DATE + datetime.timedelta(days=30),
+                    "100",
+                    current_iv,
+                    current_iv,
+                ),
+                (
+                    SESSION_DATE + datetime.timedelta(days=60),
+                    "100",
+                    "0.40",
+                    "0.40",
+                ),
+            ),
+            historical_values=(historical_iv,),
+        )
+        self.assertEqual(result.record.iv_percentile, 0.0)
+
+    def test_exact_parameter_keys_and_decimal_tagging(self):
+        result = make_volatility_result()
+        tree = json.loads(result.lineage.parameters_json)
+        self.assertEqual(tuple(tree), ("$map",))
+        keys = tuple(item[0] for item in tree["$map"])
+        self.assertEqual(
+            keys,
+            (
+                "atm_candidate_universe",
+                "atm_selection_rule",
+                "call_put_combination_rule",
+                "current_observations",
+                "float_conversion_rule",
+                "historical_expected_session_dates",
+                "historical_matched_tenor_rule",
+                "historical_observation_count",
+                "historical_observations",
+                "historical_sample_semantics",
+                "iv_methodology",
+                "median_formula",
+                "percentile_formula",
+                "realized_volatility_dependency",
+                "realized_window_matching_rule",
+                "reference_tenor_days",
+                "strike_tie_rule",
+                "term_tenor_rule",
+                "underlying_midpoint_rule",
+                "volatility_unit",
+            ),
+        )
+        self.assertIn('{"$decimal":"0.300"}', result.lineage.parameters_json)
+        self.assertNotIn('0.3,', result.lineage.parameters_json)
+        self.assertIn(
+            '"historical_sample_semantics"',
+            result.lineage.parameters_json,
+        )
+        self.assertIn(
+            '"caller_declared_observation_sample"',
+            result.lineage.parameters_json,
+        )
+
+    def test_complete_canonical_parameters_golden(self):
+        current = (
+            (
+                SESSION_DATE + datetime.timedelta(days=30),
+                "100",
+                "0.3",
+                "0.3",
+            ),
+            (
+                SESSION_DATE + datetime.timedelta(days=60),
+                "100",
+                "0.4",
+                "0.4",
+            ),
+        )
+        result = make_volatility_result(
+            current_candidates=current,
+            historical_values=("0.20",),
+        )
+        self.assertEqual(
+            result.lineage.parameters_json,
+            '{"$map":[["atm_candidate_universe",{"$map":[["completeness_semantics","no_eligible_paired_call_put_strike_omitted"],["declared_complete",true],["scope","all_exact_selected_session_expiration_universes"]]}],["atm_selection_rule","nearest_paired_call_put_strike_to_underlying_bid_ask_midpoint"],["call_put_combination_rule","arithmetic_mean_of_same_strike_call_and_put_implied_volatility"],["current_observations",{"$list":[{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-current-0-call-reference"],["call_implied_volatility",{"$decimal":"0.3"}],["call_iv_record_id","ve-current-0-call-iv"],["call_quote_record_id","ve-current-0-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.30"}],["put_contract_reference_record_id","ve-current-0-put-reference"],["put_implied_volatility",{"$decimal":"0.3"}],["put_iv_record_id","ve-current-0-put-iv"],["put_quote_record_id","ve-current-0-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-02-01"}],["selected_atm_iv",{"$decimal":"0.30"}],["selected_call_iv_record_id","ve-current-0-call-iv"],["selected_put_iv_record_id","ve-current-0-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2030-01-02"}],["tenor_days",30],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-current-underlying"]]},{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-current-1-call-reference"],["call_implied_volatility",{"$decimal":"0.4"}],["call_iv_record_id","ve-current-1-call-iv"],["call_quote_record_id","ve-current-1-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.40"}],["put_contract_reference_record_id","ve-current-1-put-reference"],["put_implied_volatility",{"$decimal":"0.4"}],["put_iv_record_id","ve-current-1-put-iv"],["put_quote_record_id","ve-current-1-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-03-03"}],["selected_atm_iv",{"$decimal":"0.40"}],["selected_call_iv_record_id","ve-current-1-call-iv"],["selected_put_iv_record_id","ve-current-1-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2030-01-02"}],["tenor_days",60],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-current-underlying"]]}]}],["float_conversion_rule","convert_only_final_decimal_research_values_to_finite_float"],["historical_expected_session_dates",{"$list":[{"$date":"2029-12-30"}]}],["historical_matched_tenor_rule","expiration_minus_session_date_calendar_days_equals_reference_tenor"],["historical_observation_count",1],["historical_observations",{"$list":[{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-history-0-0-call-reference"],["call_implied_volatility",{"$decimal":"0.19"}],["call_iv_record_id","ve-history-0-0-call-iv"],["call_quote_record_id","ve-history-0-0-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.200"}],["put_contract_reference_record_id","ve-history-0-0-put-reference"],["put_implied_volatility",{"$decimal":"0.21"}],["put_iv_record_id","ve-history-0-0-put-iv"],["put_quote_record_id","ve-history-0-0-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-01-29"}],["selected_atm_iv",{"$decimal":"0.200"}],["selected_call_iv_record_id","ve-history-0-0-call-iv"],["selected_put_iv_record_id","ve-history-0-0-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2029-12-30"}],["tenor_days",30],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-history-0-underlying"]]}]}],["historical_sample_semantics","caller_declared_observation_sample"],["iv_methodology",{"$map":[["dividend_input_description","Synthetic dividend input"],["model_name","Synthetic Black-Scholes"],["model_version","fixture-v1"],["rate_input_description","Synthetic USD curve input"],["unit_convention","annualized_decimal_ratio"]]}],["median_formula","odd_middle_even_arithmetic_mean_of_two_middle_values"],["percentile_formula","inclusive_count_historical_atm_iv_lte_current_reference_atm_iv_divided_by_count"],["realized_volatility_dependency",{"$map":[["adjustment_methodology",null],["annualization_sessions_per_year",252],["annualized_realized_volatility_float_repr","0.3328756933888896"],["calculated_at",{"$datetime":"2030-01-02T15:30:04.000000Z"}],["calculation_id","calculation-3c7c"],["calculation_type","historical_realized_volatility"],["end_session_date",{"$date":"2030-01-02"}],["input_record_ids",{"$list":["hrv-0","hrv-1","hrv-2"]}],["methodology_id","historical-log-return-sample-realized-volatility"],["methodology_version","v0.1"],["parameters_json","{\\"$map\\":[[\\"adjustment_methodology\\",null],[\\"annualization_rule\\",\\"daily_sample_standard_deviation_times_square_root_sessions_per_year\\"],[\\"annualization_sessions_per_year\\",252],[\\"expected_session_dates\\",{\\"$list\\":[{\\"$date\\":\\"2029-12-03\\"},{\\"$date\\":\\"2029-12-18\\"},{\\"$date\\":\\"2030-01-02\\"}]}],[\\"price_basis\\",\\"raw_close\\"],[\\"price_observation_count\\",3],[\\"price_unit\\",\\"usd_per_underlying_share\\"],[\\"return_association_rule\\",\\"ending_session\\"],[\\"return_formula\\",\\"natural_log_price_ratio\\"],[\\"return_observation_count\\",2],[\\"return_unit\\",\\"decimal_ratio\\"],[\\"underlying\\",{\\"$map\\":[[\\"currency\\",\\"USD\\"],[\\"listing_mic\\",\\"ARCX\\"],[\\"security_type\\",\\"etf\\"],[\\"symbol\\",\\"SPY\\"]]}],[\\"variance_estimator\\",\\"sample_variance\\"],[\\"volatility_unit\\",\\"annualized_decimal_ratio\\"],[\\"window_end_session_date\\",{\\"$date\\":\\"2030-01-02\\"}],[\\"window_start_session_date\\",{\\"$date\\":\\"2029-12-03\\"}]]}"],["price_basis","raw_close"],["quality_flags",{"$list":["decimal_to_float_converted","annualized","assumption_applied"]}],["return_formula","natural_log_price_ratio"],["start_session_date",{"$date":"2029-12-03"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}],["variance_estimator","sample_variance"]]}],["realized_window_matching_rule","realized_end_equals_current_as_of_and_calendar_span_equals_reference_tenor"],["reference_tenor_days",30],["strike_tie_rule","lower_strike"],["term_tenor_rule","expiration_minus_session_date_calendar_days"],["underlying_midpoint_rule","bid_ask_midpoint_no_last_fallback"],["volatility_unit","annualized_decimal_ratio"]]}',
+        )
+
+    def test_top_level_type_and_completeness_failures(self):
+        current = make_volatility_selection(
+            SESSION_DATE,
+            (
+                (SESSION_DATE + datetime.timedelta(days=30), "100", "0.3", "0.3"),
+                (SESSION_DATE + datetime.timedelta(days=60), "100", "0.4", "0.4"),
+            ),
+            "ve-types-current",
+        )
+        historical_date = SESSION_DATE - datetime.timedelta(days=3)
+        historical = make_volatility_selection(
+            historical_date,
+            ((
+                historical_date + datetime.timedelta(days=30),
+                "100",
+                "0.2",
+                "0.2",
+            ),),
+            "ve-types-history",
+        )
+        assessment, _ = make_historical_assessment(
+            prices=("100", "102", "101"),
+            dates=(
+                SESSION_DATE - datetime.timedelta(days=30),
+                SESSION_DATE - datetime.timedelta(days=15),
+                SESSION_DATE,
+            ),
+            policy=build_freshness_policy(
+                maximum_historical_bar_session_date_gap_days=30
+            ),
+        )
+        dependency = transform_historical(assessment)
+        base = (
+            "id",
+            current,
+            (historical,),
+            (historical_date,),
+            dependency,
+            30,
+            True,
+            CALCULATED_AT,
+        )
+        scenarios = (
+            (2, [historical], TypeError),
+            (3, [historical_date], TypeError),
+            (5, True, TypeError),
+            (6, 1, TypeError),
+            (6, False, ValueError),
+        )
+        for index, value, error in scenarios:
+            arguments = list(base)
+            arguments[index] = value
+            with self.subTest(index=index, value=value):
+                with self.assertRaises(error):
+                    transform_volatility_environment(*arguments)
+
+    def test_historical_dates_tenor_and_realized_dependency_failures(self):
+        arguments = list(make_volatility_result(return_arguments=True))
+        expected = transform_volatility_environment(*arguments)
+        reversed_arguments = list(arguments)
+        reversed_arguments[2] = tuple(reversed(arguments[2]))
+        reversed_result = transform_volatility_environment(
+            *reversed_arguments
+        )
+        self.assertEqual(reversed_result.record, expected.record)
+        self.assertEqual(
+            reversed_result.lineage.parameters_json,
+            expected.lineage.parameters_json,
+        )
+        bad_dates = list(arguments)
+        bad_dates[3] = tuple(reversed(arguments[3]))
+        with self.assertRaises(ValueError):
+            transform_volatility_environment(*bad_dates)
+        duplicate_dates = list(arguments)
+        duplicate_dates[3] = (
+            arguments[3][0],
+            arguments[3][0],
+            arguments[3][2],
+        )
+        with self.assertRaises(ValueError):
+            transform_volatility_environment(*duplicate_dates)
+        tenor_date = arguments[3][0]
+        wrong_tenor = make_volatility_selection(
+            tenor_date,
+            ((
+                tenor_date + datetime.timedelta(days=31),
+                "100",
+                "0.19",
+                "0.21",
+            ),),
+            "ve-wrong-tenor",
+        )
+        wrong_tenor_arguments = list(arguments)
+        wrong_tenor_arguments[2] = (
+            wrong_tenor,
+        ) + arguments[2][1:]
+        with self.assertRaises(ValueError):
+            transform_volatility_environment(*wrong_tenor_arguments)
+
+    def test_iv_methodology_compatibility_matrix(self):
+        arguments = list(make_volatility_result(return_arguments=True))
+        session_date = arguments[3][0]
+        cases = (
+            {"model_name": "Other model"},
+            {"model_version": "other-v2"},
+            {"rate_input_description": "Other curve"},
+            {"dividend_input_description": "Other dividends"},
+            {"unit_convention": "percent_points"},
+        )
+        for index, overrides in enumerate(cases):
+            selection = make_volatility_selection(
+                session_date,
+                ((
+                    session_date + datetime.timedelta(days=30),
+                    "100",
+                    "0.19",
+                    "0.21",
+                ),),
+                f"ve-method-{index}",
+                iv_overrides=overrides,
+            )
+            changed_arguments = list(arguments)
+            changed_arguments[2] = (
+                selection,
+            ) + arguments[2][1:]
+            with self.subTest(overrides=overrides):
+                with self.assertRaises(ValueError):
+                    transform_volatility_environment(*changed_arguments)
+
+    def test_realized_dependency_integrity_matrix(self):
+        arguments = list(make_volatility_result(return_arguments=True))
+        dependency = arguments[4]
+        lineage = dependency.lineage
+        record = dependency.record
+        scenarios = (
+            (lineage, "calculation_type", "other"),
+            (lineage, "methodology_id", "other"),
+            (lineage, "methodology_version", "v9"),
+            (lineage, "parameters_json", '{"$map":[]}'),
+            (lineage, "inputs", lineage.inputs[:-1]),
+            (
+                lineage,
+                "quality_flags",
+                tuple(
+                    flag for flag in lineage.quality_flags
+                    if flag is not CalculationQualityFlag.ANNUALIZED
+                ),
+            ),
+            (lineage, "calculation_id", "calculation-3c7d"),
+            (
+                record,
+                "end_session_date",
+                record.end_session_date - datetime.timedelta(days=1),
+            ),
+            (
+                record,
+                "start_session_date",
+                record.start_session_date + datetime.timedelta(days=1),
+            ),
+        )
+        for target, name, value in scenarios:
+            with self.subTest(name=name), changed(target, name, value):
+                with self.assertRaises(ValueError):
+                    transform_volatility_environment(*arguments)
+
+    def test_decimal_context_is_unchanged_after_success_and_failure(self):
+        context = decimal.getcontext()
+        original = context.copy()
+        context.prec = 7
+        context.rounding = decimal.ROUND_DOWN
+        context.clear_flags()
+        def state():
+            return (
+                context.prec,
+                context.rounding,
+                context.Emin,
+                context.Emax,
+                context.capitals,
+                context.clamp,
+                tuple(context.traps.items()),
+                tuple(context.flags.items()),
+            )
+        configured = state()
+        try:
+            make_volatility_result()
+            self.assertEqual(state(), configured)
+            with self.assertRaises(ValueError):
+                make_volatility_result(reference_tenor=31)
+            self.assertEqual(state(), configured)
+        finally:
+            decimal.setcontext(original)
+
+    def test_no_proof_or_dependency_recomputation(self):
+        blocked = (
+            "select_correction_candidate",
+            "assess_market_data_freshness",
+            "bind_selected_fresh_market_data",
+            "assess_market_data_snapshot_timing",
+            "assess_market_data_relationships",
+            "select_market_data_relationship_assessment",
+            "assess_market_data_historical_series",
+        )
+        with ExitStack() as stack:
+            for name in blocked:
+                stack.enter_context(mock.patch.object(
+                    transformations,
+                    name,
+                    side_effect=AssertionError(f"{name} called"),
+                    create=True,
+                ))
+            stack.enter_context(mock.patch.object(
+                transformations,
+                "transform_historical_realized_volatility",
+                side_effect=AssertionError("dependency recalculated"),
+            ))
+            make_volatility_result()
 
 
 if __name__ == "__main__":

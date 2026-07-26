@@ -5459,6 +5459,134 @@ separation, retained-assessment integrity, deterministic arithmetic, complete
 lineage, and common-input failures; exhaustive theoretical Decimal extremes,
 subclass/permutation matrices, and generic framework concerns are not required.
 
+## 13.19 Milestone 3C.7d volatility-environment construction
+
+Milestone 3C.7d is one viable implementation unit that constructs the existing
+`VolatilityEnvironment` from one authoritative current option-IV relationship
+selection, one authoritative historical relationship selection for every
+caller-declared sample date, and one reviewed
+`HistoricalRealizedVolatilityTransformationResult`. The transformation module
+appends exactly `VolatilityEnvironmentTransformationResult` and
+`transform_volatility_environment`, bringing its public API to ten names while
+leaving the 64-name `market_data` API and package root unchanged. The frozen
+wrapper contains exactly `record` and `lineage` and validates their exact
+`VolatilityEnvironment` and `CalculationLineage` types.
+
+Each supplied relationship selection is consumed authoritatively without
+rerunning correction selection, freshness, binding, snapshot timing,
+relationship assessment, relationship selection, or historical-series
+assessment. For `C` candidate option contracts, the exact proof shape is `C`
+underlying/option snapshot groups, `C` quote/IV analytics groups, and `C`
+quote/IV/contract-reference groups. The unique binding universe contains one
+shared underlying quote plus one quote, IV record, and contract reference per
+contract (`1 + 3C` bindings). The underlying quote is referenced `C` times,
+each option quote three times, each IV twice, and each contract reference once.
+Extra or missing groups, roles, bindings, references, or optional analytics,
+activity, rate, or dividend roles are rejected. Selected record types,
+complete contract identities, retained correction and freshness sidecars,
+coherent selected assessment and timing conclusions, exact reference
+multiplicities, and source and normalization completeness are validated without
+recomputing their authoritative conclusions.
+
+The caller must declare that every supplied session/expiration candidate
+universe is complete: no eligible paired call/put strike has been omitted. This
+is not a claim of provider-global option-chain completeness. Candidate
+contracts group by underlying, expiration, strike, multiplier, currency, and
+deliverable, and every group must contain exactly one call and one put. ATM
+means nearest paired call/put strike within the caller-declared complete
+candidate universe. The underlying level is the exact bid/ask midpoint with no
+last-price fallback. Distance is the absolute strike-to-midpoint distance;
+equal-distance ties select the lower strike independently of caller order.
+Selected ATM IV is the arithmetic mean of the same-strike call and put IVs.
+This paired averaging is not interpolation. After minimum-distance and
+lower-strike resolution, exactly one compatible call/put pair must remain.
+Multiple pairs at the same selected strike that differ by multiplier,
+currency, deliverable, or another economic identity field are unresolved
+ambiguity and raise `ValueError`; canonical ordering and record IDs are audit
+ordering only and never economic tiebreakers.
+
+The current selection has one common underlying and session date and at least
+two distinct expirations. Each expiration produces one
+`TermVolatilityPoint`; tenor is expiration minus session date in calendar days,
+points are in ascending unique-tenor order, and no strike or expiration
+interpolation occurs. The explicit positive reference tenor must equal exactly
+one current point. Historical selections are matched to the explicit strictly
+ascending expected-date tuple by their intrinsic session dates rather than
+caller order. Every historical selection has exactly one expiration universe,
+its expiration-minus-session calendar tenor must exactly equal the reference
+tenor, and every date must precede the current as-of date. Gaps are permitted
+because the history is a `caller_declared_observation_sample`; it is not
+calendar-complete or exchange-calendar-complete.
+
+All current and historical IV inputs must share exact model name, model
+version, rate-input description, dividend-input description, and
+`annualized_decimal_ratio` unit convention. Provider and venue equality across
+dates is not required, and no rate or dividend record is fetched or
+economically applied. The empirical percentile is the inclusive count of
+historical matched-tenor ATM IVs less than or equal to the current reference
+ATM IV divided by the historical observation count; ties count, the current
+observation is excluded, and no library percentile convention is used. The
+median uses the same date-ordered sample, with the middle value for odd counts
+and the exact arithmetic mean of the two middle values for even counts.
+Empirical percentile comparisons use the original Decimal ATM IV values before
+any final float conversion.
+
+The reviewed 3C.7c dependency is not recalculated. Its exact record and lineage
+types, calculation and methodology identity, record-reconstructed canonical
+parameters, input count, mandatory and prohibited flags, adjusted-basis flag
+consistency, calculation-ID separation, and chronology are validated. The
+realized underlying must equal every IV underlying, its end date must equal the
+current as-of date, and `(end_session_date - start_session_date).days` must
+equal the reference tenor with no `+1` or session-count substitution. Its
+reviewed annualized realized-volatility float is reused unchanged.
+
+Lineage flattens all 3C.7c daily-bar inputs and includes every current and
+historical normalized record in every complete candidate universe, including
+unchosen strikes. Discarded corrections, unselected relationship candidates,
+and fake references for calculated or assumption objects are excluded.
+Duplicate record IDs across all flattened inputs are rejected and all source
+IDs are retained. The methodology identity is `volatility_environment`,
+`paired-atm-volatility-environment`, `v0.1`.
+
+`parameters_json` is produced only by `canonicalize_lineage_parameters` and
+has exactly 20 top-level keys: `atm_candidate_universe`,
+`atm_selection_rule`, `call_put_combination_rule`, `current_observations`,
+`float_conversion_rule`, `historical_expected_session_dates`,
+`historical_matched_tenor_rule`, `historical_observation_count`,
+`historical_observations`, `historical_sample_semantics`, `iv_methodology`,
+`median_formula`, `percentile_formula`, `realized_volatility_dependency`,
+`realized_window_matching_rule`, `reference_tenor_days`, `strike_tie_rule`,
+`term_tenor_rule`, `underlying_midpoint_rule`, and `volatility_unit`. It
+discloses every candidate pair, selected ATM records and values, explicit
+sampling assumptions, and the complete prior calculation identity without
+placing normalized payloads or JSON floats in parameters.
+
+Every result carries `DECIMAL_TO_FLOAT_CONVERTED`, `ANNUALIZED`, and
+`ASSUMPTION_APPLIED`. Adjusted 3C.7c input, dominating selected corrections,
+system-composite normalized inputs, and actually interpolated normalized
+inputs conditionally propagate `ADJUSTED_INPUT_USED`, `CORRECTION_SELECTED`,
+`COMPOSITE_INPUT_USED`, and `INTERPOLATED` in enum order. Call/put averaging
+and lower-strike ties do not create `INTERPOLATED`, and
+`INCOMPLETE_INPUT_USED` is prohibited.
+
+Midpoints, distances, pair means, and even medians use exact isolated Decimal
+operations that trap unexpected rounding; percentile division alone uses
+precision 34 and round-half-even with inexact division permitted. The caller's
+entire Decimal context is preserved. Only final term-point IVs, percentile,
+and median convert to finite floats; the reviewed realized float is reused.
+Wrong exact Python types raise `TypeError`; malformed proofs, incomplete
+inputs, pairing, date, tenor, methodology, dependency, arithmetic,
+canonicalization, chronology, collision, and finite-float failures raise
+`ValueError`.
+
+The slice excludes wings, smile/skew and tail-relative metrics, interpolation,
+option or scenario pricing, rate/dividend economics, chain discovery, calendar
+generation, historical filling, screening, recommendations, execution,
+portfolio sizing, and generic volatility-surface infrastructure. Its next gate
+is one MVP-focused independent review of ordinary supported pairing, term,
+historical-sample, dependency, lineage, determinism, and failure behavior; an
+exhaustive strike surface or theoretical exponent matrix is not required.
+
 The following questions remain open:
 
 - Which MIC or listing registry should supply `listing_mic`?
