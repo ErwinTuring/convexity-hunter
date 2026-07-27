@@ -2,6 +2,7 @@
 
 import datetime
 import decimal
+import json
 import math
 from dataclasses import dataclass
 from enum import Enum
@@ -27,6 +28,7 @@ from .market_data import (
     MarketDataHistoricalSeriesFrequency,
     MarketDataHistoricalSeriesReasonCode,
     MarketDataHistoricalSeriesRequest,
+    MarketPhase,
     MarketDataRelationshipAssessment,
     MarketDataRelationshipGroup,
     MarketDataRelationshipGroupKind,
@@ -54,7 +56,11 @@ from .market_data import (
     canonicalize_lineage_parameters,
     semantic_observation_key,
 )
-from .evidence import TermVolatilityPoint, VolatilityEnvironment
+from .evidence import (
+    TailPricingSlice,
+    TermVolatilityPoint,
+    VolatilityEnvironment,
+)
 from .report import StructureLiquidity
 
 
@@ -69,6 +75,8 @@ __all__ = (
     "transform_historical_realized_volatility",
     "VolatilityEnvironmentTransformationResult",
     "transform_volatility_environment",
+    "TailPricingTransformationResult",
+    "transform_tail_pricing",
 )
 
 
@@ -391,6 +399,49 @@ class VolatilityEnvironmentTransformationResult:
             )
         if type(self.lineage) is not CalculationLineage:
             raise TypeError("lineage must have exact type CalculationLineage")
+
+
+@dataclass(frozen=True)
+class TailPricingTransformationResult:
+    records: Tuple[TailPricingSlice, ...]
+    lineage: CalculationLineage
+
+    def __post_init__(self) -> None:
+        if type(self.records) is not tuple:
+            raise TypeError("records must have exact type tuple")
+        if len(self.records) < 2:
+            raise ValueError("records must contain at least two items")
+        if any(type(record) is not TailPricingSlice for record in self.records):
+            raise TypeError("every record must have exact type TailPricingSlice")
+        if type(self.lineage) is not CalculationLineage:
+            raise TypeError("lineage must have exact type CalculationLineage")
+        if len({record.underlying for record in self.records}) != 1:
+            raise ValueError("records must share one underlying")
+        if len({record.as_of_date for record in self.records}) != 1:
+            raise ValueError("records must share one as_of_date")
+        if len({record.delta_methodology for record in self.records}) != 1:
+            raise ValueError("records must share one delta_methodology")
+        expirations = tuple(record.expiration for record in self.records)
+        if len(set(expirations)) != len(expirations):
+            raise ValueError("record expirations must be unique")
+        if any(
+            record.expiration <= record.as_of_date for record in self.records
+        ):
+            raise ValueError("every expiration must follow as_of_date")
+        ordering = tuple(
+            (
+                (record.expiration - record.as_of_date).days,
+                record.expiration,
+            )
+            for record in self.records
+        )
+        if any(
+            current <= previous
+            for previous, current in zip(ordering, ordering[1:])
+        ):
+            raise ValueError(
+                "records must already be in strictly ascending tenor order"
+            )
 
 
 @dataclass(frozen=True)
@@ -3230,4 +3281,1604 @@ def transform_volatility_environment(
     )
     return VolatilityEnvironmentTransformationResult(
         record=record, lineage=lineage
+    )
+
+
+_TAIL_GROUP_ROLES = {
+    MarketDataRelationshipGroupKind
+    .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1: (
+        MarketDataRelationshipRole.UNDERLYING_QUOTE,
+        MarketDataRelationshipRole.OPTION_QUOTE,
+    ),
+    MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1: (
+        MarketDataRelationshipRole.OPTION_QUOTE,
+        MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+        MarketDataRelationshipRole.OPTION_GREEKS,
+    ),
+    MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1: (
+        MarketDataRelationshipRole.OPTION_QUOTE,
+        MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+        MarketDataRelationshipRole.OPTION_GREEKS,
+        MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+    ),
+}
+_TAIL_RECORD_TYPE_BY_ROLE = {
+    MarketDataRelationshipRole.UNDERLYING_QUOTE: UnderlyingQuoteObservation,
+    MarketDataRelationshipRole.OPTION_QUOTE: OptionQuoteObservation,
+    MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY: (
+        OptionImpliedVolatilityObservation
+    ),
+    MarketDataRelationshipRole.OPTION_GREEKS: OptionGreeksObservation,
+    MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE: (
+        OptionContractReference
+    ),
+}
+_TAIL_TARGETS = {
+    "call_25": decimal.Decimal("0.25"),
+    "call_10": decimal.Decimal("0.10"),
+    "put_25": decimal.Decimal("-0.25"),
+    "put_10": decimal.Decimal("-0.10"),
+}
+_VOLATILITY_PARAMETER_KEYS = (
+    "atm_candidate_universe",
+    "atm_selection_rule",
+    "call_put_combination_rule",
+    "current_observations",
+    "float_conversion_rule",
+    "historical_expected_session_dates",
+    "historical_matched_tenor_rule",
+    "historical_observation_count",
+    "historical_observations",
+    "historical_sample_semantics",
+    "iv_methodology",
+    "median_formula",
+    "percentile_formula",
+    "realized_volatility_dependency",
+    "realized_window_matching_rule",
+    "reference_tenor_days",
+    "strike_tie_rule",
+    "term_tenor_rule",
+    "underlying_midpoint_rule",
+    "volatility_unit",
+)
+
+
+def _tail_contract_order_key(contract: OptionContractKey) -> tuple:
+    return (
+        contract.expiration,
+        contract.option_type,
+        contract.strike,
+        contract.contract_multiplier,
+        contract.currency,
+        (0, "") if contract.deliverable_id is None
+        else (1, contract.deliverable_id),
+    )
+
+
+def _validate_tail_selection(value: object) -> dict:
+    selection = _validate_relationship_selection(value)
+    _validate_selection_status(selection)
+    selected = _resolve_selected_candidate(selection)
+    if type(selected.request) is not MarketDataRelationshipRequest:
+        raise TypeError(
+            "selected request must have exact type MarketDataRelationshipRequest"
+        )
+    if type(selected.timing_assessment) is not MarketDataSnapshotTimingAssessment:
+        raise TypeError(
+            "selected timing assessment must have exact type "
+            "MarketDataSnapshotTimingAssessment"
+        )
+    if not selected.is_coherent:
+        raise ValueError("selected relationship assessment must remain coherent")
+    if not selected.timing_assessment.is_temporally_coherent:
+        raise ValueError("selected timing assessment must remain coherent")
+
+    groups = selected.request.groups
+    bindings = selected.timing_assessment.bindings
+    if type(groups) is not tuple:
+        raise TypeError("selected request groups must have exact type tuple")
+    if type(bindings) is not tuple:
+        raise TypeError("selected timing bindings must have exact type tuple")
+    for group in groups:
+        if type(group) is not MarketDataRelationshipGroup:
+            raise TypeError(
+                "every selected group must have exact type "
+                "MarketDataRelationshipGroup"
+            )
+        if type(group.group_kind) is not MarketDataRelationshipGroupKind:
+            raise TypeError(
+                "group_kind must have exact type MarketDataRelationshipGroupKind"
+            )
+        if group.group_kind not in _TAIL_GROUP_ROLES:
+            raise ValueError("tail selection contains an unsupported group kind")
+        if type(group.members) is not tuple:
+            raise TypeError("selected group members must have exact type tuple")
+        for member in group.members:
+            if type(member) is not MarketDataRelationshipGroupMember:
+                raise TypeError(
+                    "every selected member must have exact type "
+                    "MarketDataRelationshipGroupMember"
+                )
+            if type(member.role) is not MarketDataRelationshipRole:
+                raise TypeError(
+                    "member role must have exact type MarketDataRelationshipRole"
+                )
+            if type(member.reference) is not MarketDataBindingReference:
+                raise TypeError(
+                    "member reference must have exact type "
+                    "MarketDataBindingReference"
+                )
+        roles = tuple(member.role for member in group.members)
+        expected_roles = _TAIL_GROUP_ROLES[group.group_kind]
+        if len(roles) != len(expected_roles) or set(roles) != set(expected_roles):
+            raise ValueError(
+                "tail relationship group has the wrong exact role shape"
+            )
+    for binding in bindings:
+        if type(binding) is not SelectedFreshMarketDataBinding:
+            raise TypeError(
+                "every selected binding must have exact type "
+                "SelectedFreshMarketDataBinding"
+            )
+        if type(binding.correction_selection) is not CorrectionSelection:
+            raise TypeError(
+                "correction_selection must have exact type CorrectionSelection"
+            )
+        if type(binding.freshness_assessment) is not FreshnessAssessment:
+            raise TypeError(
+                "freshness_assessment must have exact type FreshnessAssessment"
+            )
+        if type(binding.freshness_policy) is not MarketDataFreshnessPolicy:
+            raise TypeError(
+                "freshness_policy must have exact type MarketDataFreshnessPolicy"
+            )
+        if type(binding.freshness_context) is not FreshnessContext:
+            raise TypeError(
+                "freshness_context must have exact type FreshnessContext"
+            )
+
+    entries = _resolve_selected_objects(groups, bindings)
+    for _group, member, _binding, record in entries:
+        expected_type = _TAIL_RECORD_TYPE_BY_ROLE.get(member.role)
+        if expected_type is None:
+            raise ValueError("tail selection contains an unsupported role")
+        if type(record) is not expected_type:
+            raise TypeError(
+                f"{member.role.value} selected record must have exact type "
+                f"{expected_type.__name__}"
+            )
+
+    entry_by_binding = {}
+    for entry in entries:
+        entry_by_binding.setdefault(id(entry[2]), entry)
+    if set(entry_by_binding) != {id(binding) for binding in bindings}:
+        raise ValueError("every selected binding must be referenced")
+    for _group, member, binding, record in entry_by_binding.values():
+        _validate_candidate_universe(
+            binding, binding.correction_selection, record
+        )
+        _validate_correction_proof(binding, binding.correction_selection)
+        _validate_freshness_proof(member.role, binding, record)
+        _validate_semantic_proof(member, binding, record)
+        _validate_volatility_metadata(record)
+    selected_ids = tuple(
+        entry[3].metadata.record_id for entry in entry_by_binding.values()
+    )
+    if len(set(selected_ids)) != len(selected_ids):
+        raise ValueError("selected normalized record IDs must be unique")
+
+    group_counts = {
+        kind: sum(group.group_kind is kind for group in groups)
+        for kind in _TAIL_GROUP_ROLES
+    }
+    candidate_count = group_counts[
+        MarketDataRelationshipGroupKind
+        .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+    ]
+    if candidate_count < 1 or any(
+        count != candidate_count for count in group_counts.values()
+    ):
+        raise ValueError(
+            "selection must contain exactly three groups per tail candidate"
+        )
+    if (
+        len(groups) != 3 * candidate_count
+        or len(bindings) != 1 + 4 * candidate_count
+    ):
+        raise ValueError("selection has the wrong exact group or binding count")
+
+    def group_records(group: MarketDataRelationshipGroup) -> dict:
+        matched = tuple(entry for entry in entries if entry[0] is group)
+        if len(matched) != len(group.members):
+            raise ValueError("group members must resolve exactly once")
+        return {entry[1].role: entry[3] for entry in matched}
+
+    by_kind_and_contract = {}
+    underlying_objects = []
+    reference_counts = {}
+    for group in groups:
+        records = group_records(group)
+        quote = records[MarketDataRelationshipRole.OPTION_QUOTE]
+        if type(quote.contract_key) is not OptionContractKey:
+            raise TypeError("option quote must retain an exact OptionContractKey")
+        contract = quote.contract_key
+        if group.group_kind is (
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+        ):
+            underlying_objects.append(
+                records[MarketDataRelationshipRole.UNDERLYING_QUOTE]
+            )
+        for role in (
+            MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY,
+            MarketDataRelationshipRole.OPTION_GREEKS,
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+        ):
+            record = records.get(role)
+            if record is not None:
+                if type(record.contract_key) is not OptionContractKey:
+                    raise TypeError(
+                        "tail record must retain an exact OptionContractKey"
+                    )
+                if record.contract_key != contract:
+                    raise ValueError(
+                        "all candidate records must share one contract key"
+                    )
+        key = (group.group_kind, contract)
+        if key in by_kind_and_contract:
+            raise ValueError(
+                "relationship groups must cover each contract exactly once"
+            )
+        by_kind_and_contract[key] = records
+        for record in records.values():
+            reference_counts[id(record)] = (
+                reference_counts.get(id(record), 0) + 1
+            )
+
+    contracts = {
+        contract
+        for kind, contract in by_kind_and_contract
+        if kind is MarketDataRelationshipGroupKind
+        .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1
+    }
+    if len(contracts) != candidate_count or any(
+        (kind, contract) not in by_kind_and_contract
+        for contract in contracts
+        for kind in _TAIL_GROUP_ROLES
+    ):
+        raise ValueError(
+            "each tail candidate must have the exact three-group proof"
+        )
+    if len({id(record) for record in underlying_objects}) != 1:
+        raise ValueError("selection must contain one shared underlying quote")
+    underlying = underlying_objects[0]
+    if reference_counts.get(id(underlying)) != candidate_count:
+        raise ValueError("shared underlying quote has the wrong reference count")
+
+    candidates = []
+    for contract in sorted(contracts, key=_tail_contract_order_key):
+        snapshot = by_kind_and_contract[(
+            MarketDataRelationshipGroupKind
+            .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+            contract,
+        )]
+        analytics = by_kind_and_contract[(
+            MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+            contract,
+        )]
+        reference_group = by_kind_and_contract[(
+            MarketDataRelationshipGroupKind.OPTION_CONTRACT_REFERENCE_V0_1,
+            contract,
+        )]
+        quote = snapshot[MarketDataRelationshipRole.OPTION_QUOTE]
+        iv = analytics[MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY]
+        greeks = analytics[MarketDataRelationshipRole.OPTION_GREEKS]
+        reference = reference_group[
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE
+        ]
+        if (
+            analytics[MarketDataRelationshipRole.OPTION_QUOTE] is not quote
+            or reference_group[
+                MarketDataRelationshipRole.OPTION_QUOTE
+            ] is not quote
+            or reference_group[
+                MarketDataRelationshipRole.OPTION_IMPLIED_VOLATILITY
+            ] is not iv
+            or reference_group[
+                MarketDataRelationshipRole.OPTION_GREEKS
+            ] is not greeks
+        ):
+            raise ValueError(
+                "required repeated references must retain exact identities"
+            )
+        if (
+            reference_counts.get(id(quote)) != 3
+            or reference_counts.get(id(iv)) != 2
+            or reference_counts.get(id(greeks)) != 2
+            or reference_counts.get(id(reference)) != 1
+        ):
+            raise ValueError(
+                "tail candidate records have wrong repeated-reference counts"
+            )
+        candidates.append((quote, iv, greeks, reference))
+
+    if len({item[0].contract_key.underlying_key for item in candidates}) != 1:
+        raise ValueError("selection must contain one common underlying identity")
+    underlying_key = candidates[0][0].contract_key.underlying_key
+    if underlying.underlying_key != underlying_key:
+        raise ValueError("underlying quote and option candidates must agree")
+    session_dates = {underlying.session_date}
+    for quote, iv, greeks, _reference in candidates:
+        if not (
+            quote.contract_key == iv.contract_key
+            == greeks.contract_key
+        ):
+            raise ValueError("candidate contract identities must agree")
+        if not quote.session_date == iv.session_date == greeks.session_date:
+            raise ValueError("candidate records must share one session date")
+        session_dates.add(quote.session_date)
+        if quote.contract_key.expiration <= quote.session_date:
+            raise ValueError("option expiration must follow the session date")
+        if (
+            iv.model_name != greeks.model_name
+            or iv.model_version != greeks.model_version
+            or iv.rate_input_description != greeks.rate_input_description
+            or iv.dividend_input_description
+            != greeks.dividend_input_description
+        ):
+            raise ValueError("IV and Greeks methodologies must agree")
+        if (
+            type(iv.implied_volatility) is not decimal.Decimal
+            or not iv.implied_volatility.is_finite()
+            or iv.implied_volatility <= 0
+        ):
+            raise ValueError("every implied volatility must be finite and positive")
+        delta = greeks.delta
+        if type(delta) is not decimal.Decimal:
+            if delta is None:
+                raise ValueError("every tail candidate must supply delta")
+            raise TypeError("delta must have exact type Decimal")
+        if not delta.is_finite():
+            raise ValueError("delta must be finite")
+        if quote.contract_key.option_type == "call":
+            if not decimal.Decimal("0") < delta < decimal.Decimal("1"):
+                raise ValueError("call delta must be strictly between 0 and 1")
+        elif quote.contract_key.option_type == "put":
+            if not decimal.Decimal("-1") < delta < decimal.Decimal("0"):
+                raise ValueError("put delta must be strictly between -1 and 0")
+        else:
+            raise ValueError("tail candidate option side is unsupported")
+    if len(session_dates) != 1:
+        raise ValueError("selection must contain one common session date")
+    session_date = next(iter(session_dates))
+    return {
+        "selection": selection,
+        "underlying_quote": underlying,
+        "underlying_key": underlying_key,
+        "session_date": session_date,
+        "candidates": tuple(candidates),
+        "bindings": tuple(entry[2] for entry in entry_by_binding.values()),
+        "records": tuple(entry[3] for entry in entry_by_binding.values()),
+    }
+
+
+def _tail_methodology(candidate: tuple) -> tuple:
+    _quote, iv, greeks, _reference = candidate
+    return (
+        iv.model_name,
+        iv.model_version,
+        iv.rate_input_description,
+        iv.dividend_input_description,
+        iv.metadata.unit_convention,
+        greeks.model_name,
+        greeks.model_version,
+        greeks.rate_input_description,
+        greeks.dividend_input_description,
+        greeks.metadata.unit_convention,
+    )
+
+
+def _tail_selected_point(
+    candidates: tuple,
+    option_type: str,
+    target: decimal.Decimal,
+) -> dict:
+    eligible = tuple(
+        item for item in candidates
+        if item[0].contract_key.option_type == option_type
+    )
+    if not eligible:
+        raise ValueError("tail target has no candidate on the required side")
+    distances = tuple(
+        (_exact_distance(item[2].delta, target), item) for item in eligible
+    )
+    minimum = min(item[0] for item in distances)
+    selected = tuple(item[1] for item in distances if item[0] == minimum)
+    if len(selected) != 1:
+        raise ValueError("nearest signed-delta target selection is ambiguous")
+    quote, iv, greeks, reference = selected[0]
+    contract = quote.contract_key
+    return {
+        "target_delta": target,
+        "selected_delta": greeks.delta,
+        "distance": minimum,
+        "option_type": contract.option_type,
+        "strike": contract.strike,
+        "contract_multiplier": contract.contract_multiplier,
+        "currency": contract.currency,
+        "deliverable_id": contract.deliverable_id,
+        "quote_record_id": quote.metadata.record_id,
+        "iv_record_id": iv.metadata.record_id,
+        "greeks_record_id": greeks.metadata.record_id,
+        "contract_reference_record_id": reference.metadata.record_id,
+        "implied_volatility": iv.implied_volatility,
+        "_contract": contract,
+    }
+
+
+def _tail_candidate_parameters(candidate: tuple) -> dict:
+    quote, iv, greeks, reference = candidate
+    contract = quote.contract_key
+    target_25 = (
+        _TAIL_TARGETS["call_25"]
+        if contract.option_type == "call"
+        else _TAIL_TARGETS["put_25"]
+    )
+    target_10 = (
+        _TAIL_TARGETS["call_10"]
+        if contract.option_type == "call"
+        else _TAIL_TARGETS["put_10"]
+    )
+    return {
+        "option_type": contract.option_type,
+        "strike": contract.strike,
+        "contract_multiplier": contract.contract_multiplier,
+        "currency": contract.currency,
+        "deliverable_id": contract.deliverable_id,
+        "quote_record_id": quote.metadata.record_id,
+        "iv_record_id": iv.metadata.record_id,
+        "greeks_record_id": greeks.metadata.record_id,
+        "contract_reference_record_id": reference.metadata.record_id,
+        "implied_volatility": iv.implied_volatility,
+        "signed_delta": greeks.delta,
+        "distance_to_25_target": _exact_distance(greeks.delta, target_25),
+        "distance_to_10_target": _exact_distance(greeks.delta, target_10),
+    }
+
+
+def _without_private_fields(value: dict) -> dict:
+    return {key: item for key, item in value.items() if not key.startswith("_")}
+
+
+def _tail_wings(candidates: tuple) -> dict:
+    selected = {
+        name: _tail_selected_point(
+            candidates,
+            "call" if name.startswith("call") else "put",
+            target,
+        )
+        for name, target in _TAIL_TARGETS.items()
+    }
+    for side in ("call", "put"):
+        point_10 = selected[f"{side}_10"]
+        point_25 = selected[f"{side}_25"]
+        if point_10["_contract"] == point_25["_contract"]:
+            raise ValueError(
+                "one economic contract cannot satisfy both same-side targets"
+            )
+        if not (
+            point_10["selected_delta"].copy_abs()
+            < point_25["selected_delta"].copy_abs()
+        ):
+            raise ValueError(
+                "selected 10-delta absolute value must be below 25-delta"
+            )
+    return selected
+
+
+def _tail_skew_metrics(
+    wings: dict, atm_iv: decimal.Decimal
+) -> dict:
+    put_25 = wings["put_25"]["implied_volatility"]
+    call_25 = wings["call_25"]["implied_volatility"]
+    put_10 = wings["put_10"]["implied_volatility"]
+    call_10 = wings["call_10"]["implied_volatility"]
+    return {
+        "downside_25_delta_skew": _exact_scaled_sum(
+            ((put_25, 1), (atm_iv.copy_negate(), 1))
+        ),
+        "upside_25_delta_skew": _exact_scaled_sum(
+            ((call_25, 1), (atm_iv.copy_negate(), 1))
+        ),
+        "downside_wing_curvature": _exact_scaled_sum(
+            ((put_10, 1), (put_25.copy_negate(), 1))
+        ),
+        "upside_wing_curvature": _exact_scaled_sum(
+            ((call_10, 1), (call_25.copy_negate(), 1))
+        ),
+    }
+
+
+def _decode_volatility_parameters(parameters_json: str) -> dict:
+    def reject_float(_value: str) -> object:
+        raise ValueError("3C.7d parameters must not contain JSON floats")
+
+    def reject_constant(_value: str) -> object:
+        raise ValueError("3C.7d parameters must not contain nonfinite constants")
+
+    def unique_object(pairs: list) -> dict:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("3C.7d parameters contain a duplicate JSON key")
+            result[key] = value
+        return result
+
+    try:
+        raw = json.loads(
+            parameters_json,
+            parse_float=reject_float,
+            parse_constant=reject_constant,
+            object_pairs_hook=unique_object,
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as error:
+        raise ValueError("3C.7d parameters_json is invalid") from error
+
+    def decode(value: object) -> object:
+        if value is None or type(value) in (bool, int, str):
+            return value
+        if type(value) is list:
+            return tuple(decode(item) for item in value)
+        if type(value) is not dict or len(value) != 1:
+            raise ValueError("3C.7d parameters use an unsupported JSON form")
+        tag, payload = next(iter(value.items()))
+        if tag == "$map":
+            if type(payload) is not list:
+                raise ValueError("$map payload must be a list")
+            result = {}
+            for pair in payload:
+                if (
+                    type(pair) is not list
+                    or len(pair) != 2
+                    or type(pair[0]) is not str
+                    or pair[0] in result
+                ):
+                    raise ValueError("$map entries must have unique string keys")
+                result[pair[0]] = decode(pair[1])
+            return result
+        if tag == "$list":
+            if type(payload) is not list:
+                raise ValueError("$list payload must be a list")
+            return tuple(decode(item) for item in payload)
+        if tag == "$decimal":
+            if type(payload) is not str:
+                raise ValueError("$decimal payload must be a string")
+            try:
+                result = decimal.Decimal(payload)
+            except decimal.InvalidOperation as error:
+                raise ValueError("$decimal payload is invalid") from error
+            if not result.is_finite():
+                raise ValueError("$decimal payload must be finite")
+            return result
+        if tag == "$date":
+            if type(payload) is not str:
+                raise ValueError("$date payload must be a string")
+            try:
+                result = datetime.date.fromisoformat(payload)
+            except ValueError as error:
+                raise ValueError("$date payload is invalid") from error
+            if result.isoformat() != payload:
+                raise ValueError("$date payload is noncanonical")
+            return result
+        if tag == "$datetime":
+            if type(payload) is not str or not payload.endswith("Z"):
+                raise ValueError("$datetime payload must be canonical UTC")
+            try:
+                result = datetime.datetime.fromisoformat(
+                    payload[:-1] + "+00:00"
+                )
+            except ValueError as error:
+                raise ValueError("$datetime payload is invalid") from error
+            return result
+        raise ValueError("3C.7d parameters contain an unknown tag")
+
+    decoded = decode(raw)
+    if type(decoded) is not dict:
+        raise ValueError("3C.7d parameters root must be a tagged map")
+    if tuple(sorted(decoded)) != tuple(sorted(_VOLATILITY_PARAMETER_KEYS)):
+        raise ValueError("3C.7d parameters have the wrong exact 20-key schema")
+    try:
+        if canonicalize_lineage_parameters(decoded) != parameters_json:
+            raise ValueError("3C.7d parameters are not byte-canonical")
+    except (TypeError, ValueError) as error:
+        raise ValueError("3C.7d parameters are not canonical") from error
+    return decoded
+
+
+def _validate_volatility_fixed_methodology(decoded: dict) -> None:
+    candidate_universe = decoded["atm_candidate_universe"]
+    if type(candidate_universe) is not dict:
+        raise TypeError(
+            "volatility-environment dependency ATM candidate universe "
+            "must have exact type dict"
+        )
+    candidate_keys = {
+        "declared_complete",
+        "scope",
+        "completeness_semantics",
+    }
+    if set(candidate_universe) != candidate_keys:
+        raise ValueError(
+            "volatility-environment dependency has incompatible fixed "
+            "methodology parameters"
+        )
+    if type(candidate_universe["declared_complete"]) is not bool:
+        raise TypeError(
+            "volatility-environment dependency declared_complete must have "
+            "exact type bool"
+        )
+    for key in ("scope", "completeness_semantics"):
+        if type(candidate_universe[key]) is not str:
+            raise TypeError(
+                "volatility-environment dependency candidate-universe "
+                "strings must have exact type str"
+            )
+    if candidate_universe != {
+        "declared_complete": True,
+        "scope": "all_exact_selected_session_expiration_universes",
+        "completeness_semantics": (
+            "no_eligible_paired_call_put_strike_omitted"
+        ),
+    }:
+        raise ValueError(
+            "volatility-environment dependency does not declare a complete "
+            "ATM candidate universe"
+        )
+
+    fixed_strings = {
+        "atm_selection_rule": (
+            "nearest_paired_call_put_strike_to_underlying_bid_ask_midpoint"
+        ),
+        "call_put_combination_rule": (
+            "arithmetic_mean_of_same_strike_call_and_put_implied_volatility"
+        ),
+        "float_conversion_rule": (
+            "convert_only_final_decimal_research_values_to_finite_float"
+        ),
+        "historical_matched_tenor_rule": (
+            "expiration_minus_session_date_calendar_days_equals_reference_"
+            "tenor"
+        ),
+        "historical_sample_semantics": (
+            "caller_declared_observation_sample"
+        ),
+        "median_formula": (
+            "odd_middle_even_arithmetic_mean_of_two_middle_values"
+        ),
+        "percentile_formula": (
+            "inclusive_count_historical_atm_iv_lte_current_reference_atm_iv_"
+            "divided_by_count"
+        ),
+        "realized_window_matching_rule": (
+            "realized_end_equals_current_as_of_and_calendar_span_equals_"
+            "reference_tenor"
+        ),
+        "strike_tie_rule": "lower_strike",
+        "term_tenor_rule": (
+            "expiration_minus_session_date_calendar_days"
+        ),
+        "underlying_midpoint_rule": (
+            "bid_ask_midpoint_no_last_fallback"
+        ),
+        "volatility_unit": "annualized_decimal_ratio",
+    }
+    for key, expected in fixed_strings.items():
+        if type(decoded[key]) is not str:
+            raise TypeError(
+                "volatility-environment dependency fixed methodology "
+                "declarations must have exact type str"
+            )
+        if decoded[key] != expected:
+            raise ValueError(
+                "volatility-environment dependency has incompatible fixed "
+                "methodology parameters"
+            )
+
+    iv_methodology = decoded["iv_methodology"]
+    if type(iv_methodology) is not dict:
+        raise TypeError(
+            "volatility-environment dependency iv_methodology must have "
+            "exact type dict"
+        )
+    iv_keys = {
+        "model_name",
+        "model_version",
+        "rate_input_description",
+        "dividend_input_description",
+        "unit_convention",
+    }
+    if set(iv_methodology) != iv_keys:
+        raise ValueError(
+            "volatility-environment dependency has incompatible fixed "
+            "methodology parameters"
+        )
+    for value in iv_methodology.values():
+        if type(value) is not str:
+            raise TypeError(
+                "volatility-environment dependency IV methodology values "
+                "must have exact type str"
+            )
+        if not value or value != value.strip():
+            raise ValueError(
+                "volatility-environment dependency IV methodology values "
+                "must be nonempty canonical strings"
+            )
+    if iv_methodology["unit_convention"] != "annualized_decimal_ratio":
+        raise ValueError(
+            "volatility-environment dependency has incompatible fixed "
+            "methodology parameters"
+        )
+
+
+def _validate_volatility_dependency(
+    value: object,
+    calculation_id: str,
+    calculated_at: datetime.datetime,
+) -> tuple:
+    if type(value) is not VolatilityEnvironmentTransformationResult:
+        raise TypeError(
+            "volatility_environment_result must have exact type "
+            "VolatilityEnvironmentTransformationResult"
+        )
+    record = value.record
+    lineage = value.lineage
+    if type(record) is not VolatilityEnvironment:
+        raise TypeError(
+            "volatility dependency record must have exact type "
+            "VolatilityEnvironment"
+        )
+    if type(lineage) is not CalculationLineage:
+        raise TypeError(
+            "volatility dependency lineage must have exact type "
+            "CalculationLineage"
+        )
+    if any(type(item) is not TermVolatilityPoint for item in record.term_structure):
+        raise TypeError("every dependency term point must have exact type TermVolatilityPoint")
+    if any(
+        type(item) is not CalculationInputReference for item in lineage.inputs
+    ):
+        raise TypeError(
+            "every prior input must have exact type CalculationInputReference"
+        )
+    if (
+        lineage.calculation_type != "volatility_environment"
+        or lineage.methodology_id != "paired-atm-volatility-environment"
+        or lineage.methodology_version != "v0.1"
+    ):
+        raise ValueError("volatility dependency lineage identity is invalid")
+    required = {
+        CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+        CalculationQualityFlag.ANNUALIZED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    if (
+        not required.issubset(lineage.quality_flags)
+        or CalculationQualityFlag.INCOMPLETE_INPUT_USED
+        in lineage.quality_flags
+    ):
+        raise ValueError("volatility dependency quality flags are invalid")
+    if calculation_id == lineage.calculation_id:
+        raise ValueError("new and prior calculation IDs must differ")
+    if calculated_at < lineage.calculated_at:
+        raise ValueError("new calculation must not precede dependency")
+    decoded = _decode_volatility_parameters(lineage.parameters_json)
+    _validate_volatility_fixed_methodology(decoded)
+    current = decoded["current_observations"]
+    historical = decoded["historical_observations"]
+    if type(current) is not tuple or type(historical) is not tuple:
+        raise ValueError("3C.7d observations must be canonical lists")
+    if decoded["historical_observation_count"] != len(historical):
+        raise ValueError("3C.7d historical observation count is inconsistent")
+    if record.iv_history_lookback_observations != len(historical):
+        raise ValueError("dependency record history count is inconsistent")
+    if decoded["reference_tenor_days"] != record.reference_tenor_days:
+        raise ValueError("dependency reference tenor is inconsistent")
+    if decoded["volatility_unit"] != "annualized_decimal_ratio":
+        raise ValueError("dependency volatility unit is invalid")
+    if len(current) != len(record.term_structure):
+        raise ValueError("dependency current term count is inconsistent")
+    by_tenor = {}
+    for item in current:
+        if type(item) is not dict:
+            raise ValueError("dependency current observation must be a map")
+        required_keys = {
+            "candidate_pairs",
+            "expiration",
+            "selected_atm_iv",
+            "selected_call_iv_record_id",
+            "selected_put_iv_record_id",
+            "selected_strike",
+            "session_date",
+            "tenor_days",
+            "underlying_midpoint",
+            "underlying_quote_record_id",
+        }
+        if set(item) != required_keys:
+            raise ValueError(
+                "dependency current observation has the wrong exact schema"
+            )
+        if (
+            type(item["session_date"]) is not datetime.date
+            or type(item["expiration"]) is not datetime.date
+            or type(item["tenor_days"]) is not int
+            or type(item["selected_atm_iv"]) is not decimal.Decimal
+            or type(item["underlying_midpoint"]) is not decimal.Decimal
+            or type(item["selected_call_iv_record_id"]) is not str
+            or type(item["selected_put_iv_record_id"]) is not str
+        ):
+            raise TypeError("dependency current observation has wrong exact types")
+        if item["session_date"] != record.as_of_date:
+            raise ValueError("dependency current as-of date is inconsistent")
+        if (
+            item["expiration"] - item["session_date"]
+        ).days != item["tenor_days"]:
+            raise ValueError("dependency current tenor is inconsistent")
+        if item["tenor_days"] in by_tenor:
+            raise ValueError("dependency current tenors must be unique")
+        by_tenor[item["tenor_days"]] = item
+    if set(by_tenor) != {
+        point.tenor_days for point in record.term_structure
+    }:
+        raise ValueError("dependency term points do not match parameters")
+    for point in record.term_structure:
+        if _finite_float(
+            by_tenor[point.tenor_days]["selected_atm_iv"]
+        ) != point.atm_iv:
+            raise ValueError("dependency term-point ATM IV is inconsistent")
+    historical_values = []
+    historical_dates = []
+    for item in historical:
+        if type(item) is not dict or set(item) != required_keys:
+            raise ValueError(
+                "dependency historical observation has the wrong exact schema"
+            )
+        if (
+            type(item["session_date"]) is not datetime.date
+            or type(item["expiration"]) is not datetime.date
+            or type(item["tenor_days"]) is not int
+            or type(item["selected_atm_iv"]) is not decimal.Decimal
+        ):
+            raise TypeError(
+                "dependency historical observation has wrong exact types"
+            )
+        if item["tenor_days"] != record.reference_tenor_days:
+            raise ValueError(
+                "dependency historical tenor differs from reference tenor"
+            )
+        if (
+            item["expiration"] - item["session_date"]
+        ).days != item["tenor_days"]:
+            raise ValueError("dependency historical tenor is inconsistent")
+        historical_dates.append(item["session_date"])
+        historical_values.append(item["selected_atm_iv"])
+    if tuple(historical_dates) != decoded[
+        "historical_expected_session_dates"
+    ]:
+        raise ValueError("dependency historical dates are inconsistent")
+    reference_atm = by_tenor[record.reference_tenor_days]["selected_atm_iv"]
+    expected_percentile = _percentile(
+        sum(value <= reference_atm for value in historical_values),
+        len(historical_values),
+    )
+    if record.iv_percentile != _finite_float(expected_percentile):
+        raise ValueError("dependency IV percentile is inconsistent")
+    if record.historical_median_atm_iv != _finite_float(
+        _median(tuple(historical_values))
+    ):
+        raise ValueError("dependency historical median is inconsistent")
+    realized = decoded["realized_volatility_dependency"]
+    if (
+        type(realized) is not dict
+        or realized.get("end_session_date") != record.as_of_date
+        or realized.get("annualized_realized_volatility_float_repr")
+        != repr(record.matched_realized_volatility)
+        or record.matched_realized_window_days
+        != record.reference_tenor_days
+    ):
+        raise ValueError("dependency realized-volatility fields are inconsistent")
+    input_ids = tuple(item.record_id for item in lineage.inputs)
+    expected_input_ids = set(realized.get("input_record_ids", ()))
+    for item in current + historical:
+        expected_input_ids.add(item["underlying_quote_record_id"])
+        for pair in item["candidate_pairs"]:
+            if type(pair) is not dict:
+                raise ValueError("dependency ATM candidate must be a map")
+            expected_input_ids.update((
+                pair["call_quote_record_id"],
+                pair["call_iv_record_id"],
+                pair["call_contract_reference_record_id"],
+                pair["put_quote_record_id"],
+                pair["put_iv_record_id"],
+                pair["put_contract_reference_record_id"],
+            ))
+    if len(input_ids) != len(set(input_ids)) or set(input_ids) != expected_input_ids:
+        raise ValueError("dependency lineage inputs are inconsistent with parameters")
+    return record, lineage, decoded, by_tenor
+
+
+def _historical_atm(
+    selection: dict,
+) -> dict:
+    underlying = selection["underlying_quote"]
+    if (
+        type(underlying.bid_price) is not decimal.Decimal
+        or type(underlying.ask_price) is not decimal.Decimal
+        or not underlying.bid_price.is_finite()
+        or not underlying.ask_price.is_finite()
+        or underlying.bid_price <= 0
+        or underlying.ask_price <= 0
+    ):
+        raise ValueError("historical underlying bid and ask must be positive")
+    midpoint = _exact_midpoint(underlying.bid_price, underlying.ask_price)
+    paired = {}
+    for candidate in selection["candidates"]:
+        contract = candidate[0].contract_key
+        key = (
+            contract.underlying_key,
+            contract.expiration,
+            contract.strike,
+            contract.contract_multiplier,
+            contract.currency,
+            contract.deliverable_id,
+        )
+        paired.setdefault(key, []).append(candidate)
+    candidates = []
+    for values in paired.values():
+        calls = tuple(
+            item for item in values
+            if item[0].contract_key.option_type == "call"
+        )
+        puts = tuple(
+            item for item in values
+            if item[0].contract_key.option_type == "put"
+        )
+        if len(calls) != 1 or len(puts) != 1 or len(values) != 2:
+            continue
+        call = calls[0]
+        put = puts[0]
+        strike = call[0].contract_key.strike
+        candidates.append({
+            "strike": strike,
+            "contract_multiplier": call[0].contract_key.contract_multiplier,
+            "currency": call[0].contract_key.currency,
+            "deliverable_id": call[0].contract_key.deliverable_id,
+            "call_quote_record_id": call[0].metadata.record_id,
+            "call_iv_record_id": call[1].metadata.record_id,
+            "call_contract_reference_record_id": call[3].metadata.record_id,
+            "put_quote_record_id": put[0].metadata.record_id,
+            "put_iv_record_id": put[1].metadata.record_id,
+            "put_contract_reference_record_id": put[3].metadata.record_id,
+            "call_implied_volatility": call[1].implied_volatility,
+            "put_implied_volatility": put[1].implied_volatility,
+            "paired_implied_volatility": _exact_two_value_mean(
+                call[1].implied_volatility, put[1].implied_volatility
+            ),
+            "distance_to_underlying_midpoint": _exact_distance(
+                strike, midpoint
+            ),
+        })
+    if not candidates:
+        raise ValueError("historical selection has no compatible ATM pair")
+    minimum = min(
+        item["distance_to_underlying_midpoint"] for item in candidates
+    )
+    closest = tuple(
+        item for item in candidates
+        if item["distance_to_underlying_midpoint"] == minimum
+    )
+    selected_strike = min(item["strike"] for item in closest)
+    final = tuple(item for item in closest if item["strike"] == selected_strike)
+    if len(final) != 1:
+        raise ValueError(
+            "historical ATM selection remains ambiguous at selected strike"
+        )
+    selected = final[0]
+    return {
+        "underlying_midpoint": midpoint,
+        "candidate_pairs": tuple(sorted(
+            candidates,
+            key=lambda item: (
+                item["strike"],
+                item["contract_multiplier"],
+                item["currency"],
+                (0, "") if item["deliverable_id"] is None
+                else (1, item["deliverable_id"]),
+                item["call_iv_record_id"],
+                item["put_iv_record_id"],
+            ),
+        )),
+        "selected_strike": selected["strike"],
+        "selected_call_iv_record_id": selected["call_iv_record_id"],
+        "selected_put_iv_record_id": selected["put_iv_record_id"],
+        "selected_atm_iv": selected["paired_implied_volatility"],
+    }
+
+
+def _tail_dependency_parameters(
+    record: VolatilityEnvironment,
+    lineage: CalculationLineage,
+    decoded: dict,
+) -> dict:
+    return {
+        "calculation_id": lineage.calculation_id,
+        "calculation_type": lineage.calculation_type,
+        "methodology_id": lineage.methodology_id,
+        "methodology_version": lineage.methodology_version,
+        "calculated_at": lineage.calculated_at,
+        "parameters_json": lineage.parameters_json,
+        "quality_flags": tuple(flag.value for flag in lineage.quality_flags),
+        "input_record_ids": tuple(item.record_id for item in lineage.inputs),
+        "underlying": record.underlying,
+        "as_of_date": record.as_of_date,
+        "reference_tenor_days": record.reference_tenor_days,
+        "historical_observation_count": (
+            record.iv_history_lookback_observations
+        ),
+        "term_points": tuple({
+            "tenor_days": point.tenor_days,
+            "atm_iv_float_repr": repr(point.atm_iv),
+        } for point in record.term_structure),
+        "current_atm_observations": decoded["current_observations"],
+        "historical_atm_observations": decoded["historical_observations"],
+    }
+
+
+def _union_lineage_inputs(
+    prior: tuple, direct_records: tuple
+) -> tuple:
+    direct = _construct_input_references(direct_records)
+    by_id = {}
+    for item in prior + direct:
+        if type(item) is not CalculationInputReference:
+            raise TypeError(
+                "every lineage input must have exact type "
+                "CalculationInputReference"
+            )
+        existing = by_id.get(item.record_id)
+        if existing is not None and existing != item:
+            raise ValueError(
+                "overlapping lineage references must be exactly equal"
+            )
+        by_id[item.record_id] = item
+    return tuple(by_id.values())
+
+
+def _validate_delta_methodology(value: object) -> tuple:
+    if type(value) is not dict:
+        raise TypeError("delta_methodology must have exact built-in type dict")
+    keys = {
+        "signed_delta_convention",
+        "delta_basis",
+        "premium_adjustment",
+        "model_provider_methodology",
+        "target_selection_methodology",
+        "interpolation_methodology",
+    }
+    if set(value) != keys:
+        raise ValueError("delta_methodology must contain exactly six keys")
+    if any(type(key) is not str for key in value):
+        raise TypeError("every delta_methodology key must have exact type str")
+    for item in value.values():
+        if type(item) is not str:
+            raise TypeError(
+                "every delta_methodology value must have exact type str"
+            )
+        if not item or item != item.strip():
+            raise ValueError(
+                "delta_methodology values must be nonempty canonical strings"
+            )
+    if value["signed_delta_convention"] != "call_positive_put_negative":
+        raise ValueError("signed_delta_convention is unsupported")
+    if value["delta_basis"] not in {"spot", "forward"}:
+        raise ValueError("delta_basis is unsupported")
+    if value["premium_adjustment"] not in {
+        "unadjusted", "premium_adjusted"
+    }:
+        raise ValueError("premium_adjustment is unsupported")
+    if (
+        value["target_selection_methodology"]
+        != "nearest_observed_signed_delta"
+        or value["interpolation_methodology"] != "none"
+    ):
+        raise ValueError("delta target or interpolation methodology is invalid")
+    return dict(value), canonicalize_lineage_parameters(value)
+
+
+def transform_tail_pricing(
+    calculation_id: object,
+    current_relationship_selection: object,
+    historical_relationship_selections: object,
+    historical_expected_session_dates: object,
+    volatility_environment_result: object,
+    tail_candidate_universes_complete: object,
+    historical_end_of_day_observations_declared: object,
+    historical_end_of_day_methodology: object,
+    delta_methodology: object,
+    calculated_at: object,
+) -> TailPricingTransformationResult:
+    """Construct an ordered nearest-observed-delta tail-pricing term structure."""
+
+    normalized_id = _validate_calculation_id(calculation_id)
+    if type(historical_relationship_selections) is not tuple:
+        raise TypeError(
+            "historical_relationship_selections must have exact type tuple"
+        )
+    if not historical_relationship_selections:
+        raise ValueError("historical_relationship_selections must not be empty")
+    if any(
+        type(item) is not MarketDataRelationshipSelection
+        for item in historical_relationship_selections
+    ):
+        raise TypeError(
+            "every historical selection must have exact type "
+            "MarketDataRelationshipSelection"
+        )
+    if type(historical_expected_session_dates) is not tuple:
+        raise TypeError(
+            "historical_expected_session_dates must have exact type tuple"
+        )
+    if not historical_expected_session_dates:
+        raise ValueError("historical_expected_session_dates must not be empty")
+    if any(
+        type(item) is not datetime.date
+        for item in historical_expected_session_dates
+    ):
+        raise TypeError("every historical date must have exact type date")
+    if any(
+        current <= previous
+        for previous, current in zip(
+            historical_expected_session_dates,
+            historical_expected_session_dates[1:],
+        )
+    ):
+        raise ValueError("historical dates must be strictly ascending")
+    if type(tail_candidate_universes_complete) is not bool:
+        raise TypeError(
+            "tail_candidate_universes_complete must have exact type bool"
+        )
+    if not tail_candidate_universes_complete:
+        raise ValueError("tail candidate universes must be declared complete")
+    if type(historical_end_of_day_observations_declared) is not bool:
+        raise TypeError(
+            "historical_end_of_day_observations_declared must have exact "
+            "type bool"
+        )
+    if not historical_end_of_day_observations_declared:
+        raise ValueError("historical observations must be declared end-of-day")
+    if type(historical_end_of_day_methodology) is not str:
+        raise TypeError(
+            "historical_end_of_day_methodology must have exact type str"
+        )
+    if (
+        not historical_end_of_day_methodology
+        or historical_end_of_day_methodology
+        != historical_end_of_day_methodology.strip()
+    ):
+        raise ValueError(
+            "historical_end_of_day_methodology must be canonical and nonempty"
+        )
+    delta_declaration, delta_string = _validate_delta_methodology(
+        delta_methodology
+    )
+    normalized_at = _normalize_calculated_at(calculated_at)
+    dependency_record, dependency_lineage, dependency_decoded, atm_by_tenor = (
+        _validate_volatility_dependency(
+            volatility_environment_result, normalized_id, normalized_at
+        )
+    )
+
+    current = _validate_tail_selection(current_relationship_selection)
+    expirations = tuple(sorted({
+        item[0].contract_key.expiration for item in current["candidates"]
+    }))
+    if len(expirations) < 2:
+        raise ValueError("current selection must contain at least two expirations")
+    if current["underlying_key"].symbol != dependency_record.underlying:
+        raise ValueError("current and dependency underlyings must match")
+    if current["session_date"] != dependency_record.as_of_date:
+        raise ValueError("current and dependency as-of dates must match")
+    current_tenors = tuple(
+        (expiration - current["session_date"]).days
+        for expiration in expirations
+    )
+    if (
+        any(tenor <= 0 for tenor in current_tenors)
+        or len(set(current_tenors)) != len(current_tenors)
+    ):
+        raise ValueError("current term tenors must be unique and positive")
+    if set(current_tenors) != set(atm_by_tenor):
+        raise ValueError("current expirations must exactly match dependency terms")
+
+    historical = tuple(
+        _validate_tail_selection(item)
+        for item in historical_relationship_selections
+    )
+    if len(historical) != (
+        len(historical_expected_session_dates) * len(current_tenors)
+    ):
+        raise ValueError("historical selections must form the exact D by T matrix")
+    historical_by_key = {}
+    for item in historical:
+        item_expirations = {
+            candidate[0].contract_key.expiration
+            for candidate in item["candidates"]
+        }
+        if len(item_expirations) != 1:
+            raise ValueError(
+                "every historical selection must contain one expiration universe"
+            )
+        expiration = next(iter(item_expirations))
+        key = (
+            item["session_date"],
+            (expiration - item["session_date"]).days,
+        )
+        if key in historical_by_key:
+            raise ValueError("historical intrinsic keys must be unique")
+        historical_by_key[key] = item
+        if any(
+            candidate[0].market_phase is not MarketPhase.REGULAR
+            for candidate in item["candidates"]
+        ):
+            raise ValueError("historical option quotes must use regular phase")
+    expected_keys = {
+        (session_date, tenor)
+        for session_date in historical_expected_session_dates
+        for tenor in current_tenors
+    }
+    if set(historical_by_key) != expected_keys:
+        raise ValueError("historical intrinsic keys must equal date by tenor")
+    if any(
+        session_date >= current["session_date"]
+        for session_date in historical_expected_session_dates
+    ):
+        raise ValueError("every historical date must precede current as_of_date")
+    dependency_dates = tuple(
+        dependency_decoded["historical_expected_session_dates"]
+    )
+    if dependency_dates != historical_expected_session_dates:
+        raise ValueError(
+            "historical dates must exactly equal the 3C.7d dependency sample"
+        )
+    if any(
+        item["underlying_key"] != current["underlying_key"]
+        for item in historical
+    ):
+        raise ValueError("all tail selections must share one underlying")
+
+    methodologies = tuple(
+        _tail_methodology(candidate)
+        for item in (current,) + historical
+        for candidate in item["candidates"]
+    )
+    if not methodologies or any(
+        item != methodologies[0] for item in methodologies[1:]
+    ):
+        raise ValueError(
+            "all IV and Greeks inputs must share one exact methodology"
+        )
+    analytics_methodology = methodologies[0]
+    if analytics_methodology[4] != "annualized_decimal_ratio":
+        raise ValueError("IV inputs must use annualized_decimal_ratio")
+    dependency_iv_methodology = dependency_decoded["iv_methodology"]
+    decoded_iv_methodology = (
+        dependency_iv_methodology["model_name"],
+        dependency_iv_methodology["model_version"],
+        dependency_iv_methodology["rate_input_description"],
+        dependency_iv_methodology["dividend_input_description"],
+        dependency_iv_methodology["unit_convention"],
+    )
+    if decoded_iv_methodology != analytics_methodology[:5]:
+        raise ValueError(
+            "volatility-environment dependency IV methodology does not "
+            "match authoritative IV inputs"
+        )
+
+    dependency_history_by_date = {
+        item["session_date"]: item
+        for item in dependency_decoded["historical_observations"]
+    }
+    historical_parameters_by_tenor = []
+    historical_skews_by_tenor = {}
+    reference_tenor = dependency_record.reference_tenor_days
+    for tenor in sorted(current_tenors):
+        observations = []
+        skew_values = []
+        for session_date in historical_expected_session_dates:
+            item = historical_by_key[(session_date, tenor)]
+            atm = _historical_atm(item)
+            if tenor == reference_tenor:
+                prior = dependency_history_by_date.get(session_date)
+                if prior is None:
+                    raise ValueError(
+                        "dependency reference history is missing a date"
+                    )
+                if atm["selected_atm_iv"] != prior["selected_atm_iv"]:
+                    raise ValueError(
+                        "reference-tenor historical ATM IV is inconsistent"
+                    )
+                if (
+                    atm["selected_call_iv_record_id"]
+                    != prior["selected_call_iv_record_id"]
+                    or atm["selected_put_iv_record_id"]
+                    != prior["selected_put_iv_record_id"]
+                ):
+                    raise ValueError(
+                        "reference-tenor historical ATM identities differ"
+                    )
+            wings = _tail_wings(item["candidates"])
+            metrics = _tail_skew_metrics(wings, atm["selected_atm_iv"])
+            skew_values.append(metrics["downside_25_delta_skew"])
+            expiration = session_date + datetime.timedelta(days=tenor)
+            observations.append({
+                "session_date": session_date,
+                "expiration": expiration,
+                "underlying_quote_record_id": (
+                    item["underlying_quote"].metadata.record_id
+                ),
+                "candidate_contracts": tuple(
+                    _tail_candidate_parameters(candidate)
+                    for candidate in item["candidates"]
+                ),
+                "selected_paired_atm_evidence": atm,
+                "atm_iv": atm["selected_atm_iv"],
+                "selected_put_25": _without_private_fields(wings["put_25"]),
+                "selected_call_25": _without_private_fields(wings["call_25"]),
+                "selected_put_10": _without_private_fields(wings["put_10"]),
+                "selected_call_10": _without_private_fields(wings["call_10"]),
+                "put_25_delta_iv": wings["put_25"]["implied_volatility"],
+                "call_25_delta_iv": wings["call_25"]["implied_volatility"],
+                "put_10_delta_iv": wings["put_10"]["implied_volatility"],
+                "call_10_delta_iv": wings["call_10"]["implied_volatility"],
+                **metrics,
+            })
+        historical_skews_by_tenor[tenor] = tuple(skew_values)
+        current_expiration = next(
+            expiration for expiration in expirations
+            if (expiration - current["session_date"]).days == tenor
+        )
+        historical_parameters_by_tenor.append({
+            "current_expiration": current_expiration,
+            "tenor_days": tenor,
+            "historical_observations": tuple(observations),
+        })
+
+    current_parameters = []
+    output_records = []
+    for expiration, tenor in zip(expirations, current_tenors):
+        candidates = tuple(
+            item for item in current["candidates"]
+            if item[0].contract_key.expiration == expiration
+        )
+        wings = _tail_wings(candidates)
+        dependency_atm = atm_by_tenor[tenor]
+        atm_iv = dependency_atm["selected_atm_iv"]
+        candidates_by_iv_id = {
+            item[1].metadata.record_id: item for item in candidates
+        }
+        call_atm_candidate = candidates_by_iv_id.get(
+            dependency_atm["selected_call_iv_record_id"]
+        )
+        put_atm_candidate = candidates_by_iv_id.get(
+            dependency_atm["selected_put_iv_record_id"]
+        )
+        if call_atm_candidate is None or put_atm_candidate is None:
+            raise ValueError(
+                "dependency ATM selected records are absent from current universe"
+            )
+        if (
+            call_atm_candidate[0].contract_key.option_type != "call"
+            or put_atm_candidate[0].contract_key.option_type != "put"
+            or _volatility_pair_key(
+                call_atm_candidate[0].contract_key
+            ) != _volatility_pair_key(
+                put_atm_candidate[0].contract_key
+            )
+            or _exact_two_value_mean(
+                call_atm_candidate[1].implied_volatility,
+                put_atm_candidate[1].implied_volatility,
+            ) != atm_iv
+            or _exact_midpoint(
+                current["underlying_quote"].bid_price,
+                current["underlying_quote"].ask_price,
+            ) != dependency_atm["underlying_midpoint"]
+        ):
+            raise ValueError(
+                "dependency ATM evidence differs from the current universe"
+            )
+        metrics = _tail_skew_metrics(wings, atm_iv)
+        history = historical_skews_by_tenor[tenor]
+        percentile = _percentile(
+            sum(
+                value <= metrics["downside_25_delta_skew"]
+                for value in history
+            ),
+            len(history),
+        )
+        current_parameters.append({
+            "session_date": current["session_date"],
+            "expiration": expiration,
+            "tenor_days": tenor,
+            "underlying_quote_record_id": (
+                current["underlying_quote"].metadata.record_id
+            ),
+            "atm_iv": atm_iv,
+            "atm_dependency_selected_call_iv_record_id": (
+                dependency_atm["selected_call_iv_record_id"]
+            ),
+            "atm_dependency_selected_put_iv_record_id": (
+                dependency_atm["selected_put_iv_record_id"]
+            ),
+            "candidate_contracts": tuple(
+                _tail_candidate_parameters(candidate)
+                for candidate in candidates
+            ),
+            "selected_put_25": _without_private_fields(wings["put_25"]),
+            "selected_call_25": _without_private_fields(wings["call_25"]),
+            "selected_put_10": _without_private_fields(wings["put_10"]),
+            "selected_call_10": _without_private_fields(wings["call_10"]),
+            **metrics,
+            "skew_percentile": percentile,
+            "historical_observation_count": len(history),
+        })
+        output_records.append(TailPricingSlice(
+            underlying=current["underlying_key"].symbol,
+            as_of_date=current["session_date"],
+            expiration=expiration,
+            atm_iv=_finite_float(atm_iv),
+            put_25_delta_iv=_finite_float(
+                wings["put_25"]["implied_volatility"]
+            ),
+            call_25_delta_iv=_finite_float(
+                wings["call_25"]["implied_volatility"]
+            ),
+            put_10_delta_iv=_finite_float(
+                wings["put_10"]["implied_volatility"]
+            ),
+            call_10_delta_iv=_finite_float(
+                wings["call_10"]["implied_volatility"]
+            ),
+            skew_percentile=_finite_float(percentile),
+            skew_history_lookback_observations=len(history),
+            delta_methodology=delta_string,
+        ))
+
+    parameters_json = canonicalize_lineage_parameters({
+        "tail_output_architecture": "ordered_tail_pricing_slice_tuple",
+        "candidate_universe": {
+            "declared_complete": True,
+            "scope": (
+                "current_delta_and_historical_atm_and_delta_candidate_"
+                "universes"
+            ),
+            "current_semantics": (
+                "no_eligible_nearest_signed_delta_candidate_omitted"
+            ),
+            "historical_semantics": (
+                "no_eligible_paired_atm_or_nearest_signed_delta_candidate_"
+                "omitted"
+            ),
+        },
+        "delta_convention": delta_declaration,
+        "target_deltas": dict(_TAIL_TARGETS),
+        "delta_point_selection_rule": "nearest_observed_signed_delta",
+        "interpolation_rule": "none",
+        "delta_tie_rule": (
+            "reject_equal_distance_or_remaining_economic_ambiguity"
+        ),
+        "same_contract_reuse_rule": (
+            "reject_same_economic_contract_across_10_and_25_same_side"
+        ),
+        "atm_dependency": _tail_dependency_parameters(
+            dependency_record, dependency_lineage, dependency_decoded
+        ),
+        "current_expiration_observations": tuple(current_parameters),
+        "historical_expected_session_dates": (
+            historical_expected_session_dates
+        ),
+        "historical_eod_semantics": {
+            "declared": True,
+            "methodology": historical_end_of_day_methodology,
+            "sample_semantics": (
+                "caller_declared_daily_eod_observation_sample"
+            ),
+            "scope": "every_historical_session_and_tenor_selection",
+        },
+        "historical_matched_tenor_rule": (
+            "expiration_minus_session_date_calendar_days_equals_current_tenor"
+        ),
+        "historical_observations_by_tenor": tuple(
+            historical_parameters_by_tenor
+        ),
+        "current_skew_formula": "put_25_delta_iv_minus_atm_iv",
+        "skew_percentile_formula": (
+            "inclusive_count_historical_downside_25_skew_lte_current_"
+            "divided_by_count"
+        ),
+        "skew_term_structure_ordering": (
+            "ascending_days_to_expiration_then_expiration"
+        ),
+        "analytics_methodology": {
+            "iv_model_name": analytics_methodology[0],
+            "iv_model_version": analytics_methodology[1],
+            "iv_rate_input_description": analytics_methodology[2],
+            "iv_dividend_input_description": analytics_methodology[3],
+            "iv_unit_convention": analytics_methodology[4],
+            "greeks_model_name": analytics_methodology[5],
+            "greeks_model_version": analytics_methodology[6],
+            "greeks_rate_input_description": analytics_methodology[7],
+            "greeks_dividend_input_description": analytics_methodology[8],
+            "greeks_unit_convention": analytics_methodology[9],
+        },
+        "float_conversion_rule": (
+            "convert_only_final_tail_pricing_record_values_to_finite_float"
+        ),
+        "volatility_unit": "annualized_decimal_ratio",
+    })
+    direct_records = current["records"] + tuple(
+        record for item in historical for record in item["records"]
+    )
+    inputs = _union_lineage_inputs(dependency_lineage.inputs, direct_records)
+    flags = {
+        CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+        CalculationQualityFlag.ANNUALIZED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    propagated = {
+        CalculationQualityFlag.ADJUSTED_INPUT_USED,
+        CalculationQualityFlag.CORRECTION_SELECTED,
+        CalculationQualityFlag.COMPOSITE_INPUT_USED,
+        CalculationQualityFlag.INTERPOLATED,
+    }
+    flags.update(
+        flag for flag in dependency_lineage.quality_flags
+        if flag in propagated
+    )
+    all_bindings = current["bindings"] + tuple(
+        binding for item in historical for binding in item["bindings"]
+    )
+    if any(
+        binding.correction_selection.reason_codes == (
+            CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,
+        )
+        for binding in all_bindings
+    ):
+        flags.add(CalculationQualityFlag.CORRECTION_SELECTED)
+    if any(
+        record.metadata.record_origin is DataOrigin.SYSTEM_COMPOSITE
+        for record in direct_records
+    ):
+        flags.add(CalculationQualityFlag.COMPOSITE_INPUT_USED)
+    if any(
+        NormalizationQualityFlag.INTERPOLATED in record.metadata.quality_flags
+        for record in direct_records
+    ):
+        flags.add(CalculationQualityFlag.INTERPOLATED)
+    flags.discard(CalculationQualityFlag.INCOMPLETE_INPUT_USED)
+    lineage = CalculationLineage(
+        calculation_id=normalized_id,
+        calculation_type="tail_pricing",
+        methodology_id=(
+            "nearest-observed-delta-wing-tail-relative-pricing"
+        ),
+        methodology_version="v0.1",
+        calculated_at=normalized_at,
+        inputs=inputs,
+        parameters_json=parameters_json,
+        quality_flags=tuple(
+            flag for flag in CalculationQualityFlag if flag in flags
+        ),
+    )
+    return TailPricingTransformationResult(
+        records=tuple(output_records),
+        lineage=lineage,
     )

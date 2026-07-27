@@ -5587,6 +5587,203 @@ is one MVP-focused independent review of ordinary supported pairing, term,
 historical-sample, dependency, lineage, determinism, and failure behavior; an
 exhaustive strike surface or theoretical exponent matrix is not required.
 
+## 13.20 Milestone 3C.7e tail-relative pricing and skew transformation
+
+Milestone 3C.7e is one viable implementation unit. It constructs a frozen
+`TailPricingTransformationResult` containing an ordered tuple of at least two
+existing `TailPricingSlice` records and one `CalculationLineage`. The public
+function is `transform_tail_pricing(calculation_id,
+current_relationship_selection, historical_relationship_selections,
+historical_expected_session_dates, volatility_environment_result,
+tail_candidate_universes_complete,
+historical_end_of_day_observations_declared,
+historical_end_of_day_methodology, delta_methodology, calculated_at)`.
+The transformation module exports exactly the prior ten names followed by
+`TailPricingTransformationResult` and `transform_tail_pricing`;
+`market_data.__all__` and the package root remain unchanged.
+
+One authoritative current relationship selection covers every current
+expiration. For `C` candidate contracts its proof has exactly `3C` groups:
+`C` underlying/option quote snapshots, `C` option quote/IV/Greeks analytics
+groups, and `C` option quote/IV/Greeks/contract-reference groups. Its unique
+selected-binding universe contains one shared underlying quote and four
+records per contract, for `1 + 4C` bindings. The shared underlying is
+referenced `C` times; each quote three times; each IV and Greeks record twice;
+and each contract reference once. Every selected ID resolves exactly once.
+The transformation consumes the selected assessment, timing assessment,
+bindings, correction sidecars, freshness sidecars, members, and references
+authoritatively. It does not recompute correction selection, freshness,
+snapshot timing, relationships, relationship selection, historical series, or
+the 3C.7d dependency. Unselected alternatives and discarded corrections never
+enter calculations or lineage.
+
+The exact Boolean declaration is
+`tail_candidate_universes_complete=True`. It means that no eligible current
+nearest-signed-delta candidate was omitted and that no eligible historical
+paired-ATM or nearest-signed-delta candidate was omitted. It is scoped to the
+supplied selections, not provider-global surface or option-chain completeness.
+The declaration and its combined scope remain in canonical parameters and
+always produce `ASSUMPTION_APPLIED`.
+
+The exact built-in delta-methodology map contains
+`signed_delta_convention`, `delta_basis`, `premium_adjustment`,
+`model_provider_methodology`, `target_selection_methodology`, and
+`interpolation_methodology`. The signed convention is
+`call_positive_put_negative`; basis is `spot` or `forward`; premium adjustment
+is `unadjusted` or `premium_adjusted`; target selection is
+`nearest_observed_signed_delta`; and interpolation is `none`. The provider
+methodology is one exact canonical caller string. The complete map is
+canonicalized and stored unchanged as every slice's `delta_methodology`.
+Numeric sign is validated but is not treated as proof of the declared
+convention.
+
+The frozen targets are call `0.25`, call `0.10`, put `-0.25`, and put `-0.10`
+as exact Decimals. Calls require `0 < delta < 1`; puts require
+`-1 < delta < 0`. For each expiration and target, selection minimizes the
+exact Decimal distance between observed and target signed delta. Equal minimum
+distance between economic contracts is rejected; strike, multiplier,
+currency, deliverable, IV, premium, liquidity, IDs, canonical order, and caller
+order are not tiebreakers. The selected target, observed delta, distance,
+complete contract identity, record IDs, and IV are retained. The 10-delta and
+25-delta labels mean target deltas selected by the disclosed nearest-observed
+signed-delta methodology; selected observed delta is retained. Same-side
+10- and 25-delta targets must use distinct complete `OptionContractKey`
+identities, and the selected 10-delta absolute delta must be strictly below the
+selected 25-delta absolute delta. There is no strike, expiration, delta-space,
+or volatility-surface interpolation or extrapolation.
+
+The reviewed `VolatilityEnvironmentTransformationResult` is the authoritative
+current ATM source. A private schema-specific decoder parses its canonical
+parameters with duplicate-key, JSON-float, nonfinite-constant, unknown-tag,
+noncanonical representation, missing-key, and extra-key rejection. It accepts
+only the exact reviewed 20-key 3C.7d schema and validates the exact dependency
+record, term points, lineage identity, quality flags, inputs, dates, tenors,
+ATM values, percentile, median, realized-volatility correspondence,
+calculation-ID separation, and chronology. Exact current ATM Decimals are
+decoded per expiration; the dependency's selected call/put IV identities must
+resolve in the current complete universe and reproduce the same paired ATM and
+underlying midpoint. The complete prior `parameters_json`, not a hash, is
+retained in the new parameters. No nearest-tenor substitution or
+`repr(float)`-to-Decimal reconstruction occurs.
+
+3C.7e does not trust a 3C.7d dependency based only on canonical JSON
+syntax, exact top-level key presence, lineage identity, or dynamic record
+correspondence. Before any ATM observation is consumed, the private decoder
+requires every frozen 3C.7d methodology declaration to retain its exact
+reviewed semantic value. In particular, `atm_candidate_universe` must be an
+exact map containing only `declared_complete=True`,
+`scope=all_exact_selected_session_expiration_universes`, and
+`completeness_semantics=no_eligible_paired_call_put_strike_omitted`.
+The reviewed ATM selection, call/put combination, float conversion,
+historical matching and sampling, median, percentile, realized-window,
+lower-strike tie, tenor, midpoint, and volatility-unit declarations are also
+exact-value requirements. The IV-methodology map retains its exact five-key
+shape, canonical nonempty strings, and `annualized_decimal_ratio` unit.
+A canonically encoded or internally consistent dependency with altered fixed
+methodology parameters is rejected.
+
+The decoded 3C.7d `iv_methodology` declaration is not trusted solely because
+it has the correct shape, canonical strings, and annualized-decimal unit.
+Before any ATM value is consumed, its model name, model version, rate-input
+description, dividend-input description, and unit convention must exactly
+equal the common authoritative IV methodology derived from every current and
+historical IV record consumed by 3C.7e. A canonically encoded dependency with
+a forged dynamic IV methodology is rejected even when its lineage and
+`VolatilityEnvironment` record remain internally consistent.
+
+For `D` explicitly declared historical dates and `T` current tenors, the
+caller supplies exactly `D × T` authoritative selections. Each contains one
+expiration universe. Intrinsic `(session_date,
+expiration-minus-session-date-calendar-days)` keys must uniquely equal the
+Cartesian product of every declared date and current tenor, independently of
+caller order. Every historical date strictly precedes the current as-of date;
+gaps are permitted; the current observation is excluded; and no exchange
+calendar, close time, listing registry, or missing date is inferred.
+
+Historical EOD status is caller declared under an explicit methodology and is
+not inferred from a close time or exchange calendar. The exact Boolean
+`historical_end_of_day_observations_declared=True` and one exact canonical
+methodology string mean every date is a valid US market session under caller
+authority, every date/tenor selection is its single EOD observation, and every
+candidate uses the same declared snapshot methodology. Retained historical
+quote proofs must be regular-session proofs. Parameters describe the history
+as `caller_declared_daily_eod_observation_sample`, not calendar-complete,
+exchange-calendar-complete, or contiguous history.
+
+Historical ATM uses the exact bid/ask midpoint. Compatible candidates group by
+underlying, expiration, strike, multiplier, currency, and deliverable; an
+eligible pair has exactly one call and one put; pair IV is their exact
+arithmetic mean. The minimum strike-to-midpoint distance wins, equal lower and
+upper strikes resolve to the lower strike, and multiple compatible pairs
+remaining at that strike are rejected. This averaging and lower-strike rule
+are not interpolation. Every historical expiration must exactly match its
+current calendar-day tenor. At the 3C.7d reference tenor, every calculated
+historical ATM Decimal and disclosed selected call/put identity must equal the
+reviewed dependency; non-reference tenors use their direct authoritative
+historical selections.
+
+For current and historical observations, downside skew is put-25 IV minus ATM
+IV, upside skew is call-25 IV minus ATM IV, downside curvature is put-10 IV
+minus put-25 IV, and upside curvature is call-10 IV minus call-25 IV. The
+singular `skew_percentile` uses only same-tenor downside 25-delta skew:
+the inclusive count of historical values less than or equal to the current
+value divided by `D`. Ties count, current is excluded, and at least one
+historical observation is required. Comparisons remain Decimal; only the final
+precision-34, round-half-even division may be inexact. The ordered skew term
+structure contains every current expiration in ascending
+`(days_to_expiration, expiration)` order.
+
+All target deltas, observed deltas, distances, midpoints, pair means, ATM IVs,
+wing IVs, skews, curvatures, comparisons, and percentile division stay in
+isolated Decimal arithmetic. The caller's complete Decimal context is
+preserved after success and ordinary failure. Only final
+`TailPricingSlice` numeric fields convert to finite floats; exact Decimal
+metrics remain in canonical parameters.
+
+Lineage includes every prior 3C.7d input and every current and historical
+shared underlying, candidate quote, IV, Greeks, and contract-reference record,
+including unchosen candidates that authorize nearest-point, tie, ATM, and
+ambiguity conclusions. Union is by record ID: an exactly equal
+`CalculationInputReference` overlap is retained once, while different
+normalized times or source IDs raise `ValueError`. The lineage identity is
+`tail_pricing`,
+`nearest-observed-delta-wing-tail-relative-pricing`, `v0.1`.
+
+Canonical parameters are produced only by
+`canonicalize_lineage_parameters` and contain exactly 20 top-level keys:
+`tail_output_architecture`, `candidate_universe`, `delta_convention`,
+`target_deltas`, `delta_point_selection_rule`, `interpolation_rule`,
+`delta_tie_rule`, `same_contract_reuse_rule`, `atm_dependency`,
+`current_expiration_observations`, `historical_expected_session_dates`,
+`historical_eod_semantics`, `historical_matched_tenor_rule`,
+`historical_observations_by_tenor`, `current_skew_formula`,
+`skew_percentile_formula`, `skew_term_structure_ordering`,
+`analytics_methodology`, `float_conversion_rule`, and `volatility_unit`.
+They retain exact candidates, selected points, historical paired ATM evidence,
+both skews, both curvatures, the complete dependency disclosure, and tagged
+Decimals without normalized payloads or JSON floats.
+
+Every result includes `DECIMAL_TO_FLOAT_CONVERTED`, `ANNUALIZED`, and
+`ASSUMPTION_APPLIED`. `ADJUSTED_INPUT_USED`, `CORRECTION_SELECTED`,
+`COMPOSITE_INPUT_USED`, and `INTERPOLATED` propagate only from the reviewed
+dependency or qualifying direct proof/input. Nearest-observed selection,
+paired averaging, and lower-strike resolution do not create `INTERPOLATED`;
+`INCOMPLETE_INPUT_USED` is prohibited. Wrong exact Python types raise
+`TypeError`; false declarations, malformed retained proof, incomplete or
+partial inputs, identity/session/expiration/methodology/delta/matrix/EOD/
+dependency/percentile/lineage/canonicalization/chronology/finite-float
+failures raise `ValueError`.
+
+The MVP-focused review standard covers the ordinary two-expiration result,
+signed nearest points, tie and reuse rejection, strict dependency decoding,
+the historical `D × T` matrix and EOD declaration, historical ATM and
+reference consistency, Decimal-before-float percentile behavior, complete
+lineage/parameters/flags, determinism, and failure boundaries without an
+exhaustive strike/delta matrix. Option valuation, scenario valuation, scenario
+P&L, probabilities, density, rates/dividends, screening, recommendations,
+execution, and portfolio sizing remain outside 3C.7e. Milestone 3C.7f remains
+responsible for pricing and scenarios.
+
 The following questions remain open:
 
 - Which MIC or listing registry should supply `listing_mic`?

@@ -1,5 +1,7 @@
 """Contract tests for Milestone 3C.7a exact-structure liquidity."""
 
+import base64
+import copy
 import dataclasses
 import datetime
 import decimal
@@ -10,6 +12,7 @@ import math
 import pathlib
 import sys
 import unittest
+import zlib
 from contextlib import ExitStack, contextmanager
 from dataclasses import FrozenInstanceError
 from unittest import mock
@@ -20,7 +23,11 @@ sys.path.insert(0, str(ROOT / "src"))
 import convexity_hunter
 import convexity_hunter.market_data as market_data
 import convexity_hunter.market_data_transformations as transformations
-from convexity_hunter.evidence import OptionLeg, OptionStructure
+from convexity_hunter.evidence import (
+    OptionLeg,
+    OptionStructure,
+    TailPricingSlice,
+)
 from convexity_hunter.market_data import (
     CalculationLineage,
     CalculationQualityFlag,
@@ -46,6 +53,7 @@ from convexity_hunter.market_data import (
     MarketDataRelationshipRole,
     MarketDataRelationshipSelection,
     MarketDataSelectionStatus,
+    MarketPhase,
     NormalizationQualityFlag,
     OptionContractReference,
     OptionImpliedVolatilityObservation,
@@ -68,10 +76,12 @@ from convexity_hunter.market_data_transformations import (
     HistoricalReturnPriceBasis,
     StructureCostsTransformationResult,
     StructureLiquidityTransformationResult,
+    TailPricingTransformationResult,
     VolatilityEnvironmentTransformationResult,
     transform_historical_realized_volatility,
     transform_structure_costs,
     transform_structure_liquidity,
+    transform_tail_pricing,
     transform_volatility_environment,
 )
 from convexity_hunter.evidence import StructureCosts
@@ -475,6 +485,302 @@ def make_volatility_result(
     return transform_volatility_environment(*arguments)
 
 
+TAIL_DELTA_METHODOLOGY = {
+    "signed_delta_convention": "call_positive_put_negative",
+    "delta_basis": "spot",
+    "premium_adjustment": "unadjusted",
+    "model_provider_methodology": "Synthetic Black-Scholes provider delta",
+    "target_selection_methodology": "nearest_observed_signed_delta",
+    "interpolation_methodology": "none",
+}
+TAIL_EOD_METHODOLOGY = "Synthetic official regular-session EOD snapshot"
+
+
+def make_tail_selection(
+    session_date,
+    candidates,
+    label,
+    market_phase=MarketPhase.REGULAR,
+    analytics_overrides=None,
+):
+    underlying_key = build_underlying_key()
+    underlying = build_relationship_binding(
+        MarketDataRelationshipRole.UNDERLYING_QUOTE,
+        f"{label}-underlying",
+        underlying_key=underlying_key,
+        session_date=session_date,
+        bid_price=decimal.Decimal("99"),
+        ask_price=decimal.Decimal("101"),
+        last_price=decimal.Decimal("777"),
+        market_phase=market_phase,
+    )
+    groups = []
+    unique_bindings = [underlying]
+    for stem, expiration, option_type, strike, iv_value, delta in candidates:
+        contract = build_option_contract_key(
+            underlying_key=underlying_key,
+            expiration=expiration,
+            option_type=option_type,
+            strike=decimal.Decimal(str(strike)),
+        )
+        quote = build_relationship_binding(
+            MarketDataRelationshipRole.OPTION_QUOTE,
+            f"{stem}-quote",
+            contract_key=contract,
+            session_date=session_date,
+            market_phase=market_phase,
+        )
+        iv_record = build_timed_record(
+            build_option_implied_volatility_observation,
+            f"{stem}-iv",
+            contract_key=contract,
+            session_date=session_date,
+            implied_volatility=decimal.Decimal(str(iv_value)),
+            **({} if analytics_overrides is None else analytics_overrides),
+        )
+        iv_record = dataclasses.replace(
+            iv_record,
+            metadata=dataclasses.replace(
+                iv_record.metadata,
+                unit_convention="annualized_decimal_ratio",
+            ),
+        )
+        iv = build_timing_binding(iv_record)
+        greeks = build_relationship_binding(
+            MarketDataRelationshipRole.OPTION_GREEKS,
+            f"{stem}-greeks",
+            contract_key=contract,
+            session_date=session_date,
+            delta=decimal.Decimal(str(delta)),
+            gamma=decimal.Decimal("0.01"),
+            theta=None,
+            vega=None,
+            theta_day_basis=None,
+            **({} if analytics_overrides is None else analytics_overrides),
+        )
+        reference = build_relationship_binding(
+            MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
+            f"{stem}-reference",
+            contract_key=contract,
+            listing_date=None,
+            last_trade_date=None,
+        )
+        specs = (
+            (
+                "snapshot",
+                MarketDataRelationshipGroupKind
+                .UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+                {
+                    MarketDataRelationshipRole.UNDERLYING_QUOTE: underlying,
+                    MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                },
+            ),
+            (
+                "analytics",
+                MarketDataRelationshipGroupKind.OPTION_QUOTE_ANALYTICS_V0_1,
+                {
+                    MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                    MarketDataRelationshipRole
+                    .OPTION_IMPLIED_VOLATILITY: iv,
+                    MarketDataRelationshipRole.OPTION_GREEKS: greeks,
+                },
+            ),
+            (
+                "reference",
+                MarketDataRelationshipGroupKind
+                .OPTION_CONTRACT_REFERENCE_V0_1,
+                {
+                    MarketDataRelationshipRole.OPTION_QUOTE: quote,
+                    MarketDataRelationshipRole
+                    .OPTION_IMPLIED_VOLATILITY: iv,
+                    MarketDataRelationshipRole.OPTION_GREEKS: greeks,
+                    MarketDataRelationshipRole
+                    .OPTION_CONTRACT_REFERENCE: reference,
+                },
+            ),
+        )
+        for suffix, kind, bindings in specs:
+            group, _aligned = build_resolved_relationship_group(
+                f"{stem}-{suffix}", kind, bindings
+            )
+            groups.append(group)
+        unique_bindings.extend((quote, iv, greeks, reference))
+    assessment = assess_market_data_relationships(
+        MarketDataRelationshipRequest(tuple(groups)),
+        assess_market_data_snapshot_timing(tuple(unique_bindings)),
+    )
+    return select_market_data_relationship_assessment((assessment,))
+
+
+def _tail_candidates(
+    session_date,
+    tenor,
+    label,
+    atm,
+    put_25,
+    call_25,
+    put_10,
+    call_10,
+    atm_stems=None,
+):
+    expiration = session_date + datetime.timedelta(days=tenor)
+    call_atm_stem, put_atm_stem = (
+        (
+            f"{label}-atm-call",
+            f"{label}-atm-put",
+        )
+        if atm_stems is None
+        else atm_stems
+    )
+    call_atm, put_atm = (
+        atm if type(atm) is tuple else (atm, atm)
+    )
+    return (
+        (call_atm_stem, expiration, "call", "100", call_atm, "0.50"),
+        (put_atm_stem, expiration, "put", "100", put_atm, "-0.50"),
+        (f"{label}-call25", expiration, "call", "105", call_25, "0.24"),
+        (f"{label}-call10", expiration, "call", "110", call_10, "0.11"),
+        (f"{label}-put25", expiration, "put", "95", put_25, "-0.24"),
+        (f"{label}-put10", expiration, "put", "90", put_10, "-0.11"),
+    )
+
+
+def _tail_selection_fixture_parts(selection):
+    validated = transformations._validate_tail_selection(selection)
+    candidates = tuple(
+        (
+            item[0].metadata.record_id.removesuffix("-quote"),
+            item[0].contract_key.expiration,
+            item[0].contract_key.option_type,
+            item[0].contract_key.strike,
+            item[1].implied_volatility,
+            item[2].delta,
+        )
+        for item in validated["candidates"]
+    )
+    label = validated[
+        "underlying_quote"
+    ].metadata.record_id.removesuffix("-underlying")
+    return validated["session_date"], candidates, label
+
+
+def make_tail_result(
+    *,
+    historical_skews=("0.04", "0.06", "0.08"),
+    return_arguments=False,
+):
+    historical_atms = tuple(
+        decimal.Decimal("0.20") + decimal.Decimal(index) / 100
+        for index in range(len(historical_skews))
+    )
+    dependency = make_volatility_result(
+        current_candidates=(
+            (
+                SESSION_DATE + datetime.timedelta(days=30),
+                "100",
+                "0.30",
+                "0.30",
+            ),
+            (
+                SESSION_DATE + datetime.timedelta(days=60),
+                "100",
+                "0.40",
+                "0.40",
+            ),
+        ),
+        historical_values=tuple(str(value) for value in historical_atms),
+    )
+    current_candidates = (
+        _tail_candidates(
+            SESSION_DATE,
+            30,
+            "tail-current-30",
+            "0.30",
+            "0.36",
+            "0.28",
+            "0.42",
+            "0.26",
+            ("ve-current-0-call", "ve-current-0-put"),
+        )
+        + _tail_candidates(
+            SESSION_DATE,
+            60,
+            "tail-current-60",
+            "0.40",
+            "0.46",
+            "0.38",
+            "0.52",
+            "0.36",
+            ("ve-current-1-call", "ve-current-1-put"),
+        )
+    )
+    current = make_tail_selection(
+        SESSION_DATE, current_candidates, "ve-current"
+    )
+    historical_dates = tuple(
+        SESSION_DATE - datetime.timedelta(
+            days=(len(historical_skews) - index) * 3
+        )
+        for index in range(len(historical_skews))
+    )
+    historical = []
+    for index, (session_date, atm, skew) in enumerate(
+        zip(historical_dates, historical_atms, historical_skews)
+    ):
+        skew_value = decimal.Decimal(skew)
+        for tenor in (30, 60):
+            selected_atm = (
+                atm if tenor == 30 else atm + decimal.Decimal("0.10")
+            )
+            candidates = _tail_candidates(
+                session_date,
+                tenor,
+                f"tail-history-{index}-{tenor}",
+                (
+                    (selected_atm - decimal.Decimal("0.01"),
+                     selected_atm + decimal.Decimal("0.01"))
+                    if tenor == 30
+                    else selected_atm
+                ),
+                selected_atm + skew_value,
+                selected_atm - decimal.Decimal("0.02"),
+                selected_atm + skew_value + decimal.Decimal("0.06"),
+                selected_atm - decimal.Decimal("0.04"),
+                (
+                    (
+                        f"ve-history-{index}-0-call",
+                        f"ve-history-{index}-0-put",
+                    )
+                    if tenor == 30
+                    else None
+                ),
+            )
+            historical.append(make_tail_selection(
+                session_date,
+                candidates,
+                (
+                    f"ve-history-{index}"
+                    if tenor == 30
+                    else f"tail-history-{index}-{tenor}"
+                ),
+            ))
+    arguments = (
+        " calculation-3c7e ",
+        current,
+        tuple(reversed(historical)),
+        historical_dates,
+        dependency,
+        True,
+        True,
+        TAIL_EOD_METHODOLOGY,
+        dict(TAIL_DELTA_METHODOLOGY),
+        CALCULATED_AT + datetime.timedelta(seconds=1),
+    )
+    if return_arguments:
+        return arguments
+    return transform_tail_pricing(*arguments)
+
+
 def make_cost_selection(
     structure,
     *,
@@ -690,6 +996,8 @@ class PublicSurfaceTests(unittest.TestCase):
                 "transform_historical_realized_volatility",
                 "VolatilityEnvironmentTransformationResult",
                 "transform_volatility_environment",
+                "TailPricingTransformationResult",
+                "transform_tail_pricing",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -2752,6 +3060,8 @@ class StructureCostsPublicSurfaceTests(unittest.TestCase):
                 "transform_historical_realized_volatility",
                 "VolatilityEnvironmentTransformationResult",
                 "transform_volatility_environment",
+                "TailPricingTransformationResult",
+                "transform_tail_pricing",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -3374,6 +3684,8 @@ class HistoricalRealizedVolatilityPublicContractTests(unittest.TestCase):
                 "transform_historical_realized_volatility",
                 "VolatilityEnvironmentTransformationResult",
                 "transform_volatility_environment",
+                "TailPricingTransformationResult",
+                "transform_tail_pricing",
             ),
         )
         self.assertEqual(
@@ -4088,6 +4400,8 @@ class VolatilityEnvironmentTransformationTests(unittest.TestCase):
                 "transform_historical_realized_volatility",
                 "VolatilityEnvironmentTransformationResult",
                 "transform_volatility_environment",
+                "TailPricingTransformationResult",
+                "transform_tail_pricing",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -4525,6 +4839,654 @@ class VolatilityEnvironmentTransformationTests(unittest.TestCase):
                 side_effect=AssertionError("dependency recalculated"),
             ))
             make_volatility_result()
+
+
+class TailPricingTransformationTests(unittest.TestCase):
+    def test_public_contract_wrapper_and_signature(self):
+        self.assertEqual(
+            transformations.__all__,
+            (
+                "StructureLiquidityTransformationResult",
+                "transform_structure_liquidity",
+                "StructureCostsTransformationResult",
+                "transform_structure_costs",
+                "HistoricalReturnPriceBasis",
+                "HistoricalRealizedVolatility",
+                "HistoricalRealizedVolatilityTransformationResult",
+                "transform_historical_realized_volatility",
+                "VolatilityEnvironmentTransformationResult",
+                "transform_volatility_environment",
+                "TailPricingTransformationResult",
+                "transform_tail_pricing",
+            ),
+        )
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(
+                TailPricingTransformationResult
+            )),
+            ("records", "lineage"),
+        )
+        self.assertEqual(
+            str(inspect.signature(transform_tail_pricing)),
+            (
+                "(calculation_id: object, current_relationship_selection: "
+                "object, historical_relationship_selections: object, "
+                "historical_expected_session_dates: object, "
+                "volatility_environment_result: object, "
+                "tail_candidate_universes_complete: object, "
+                "historical_end_of_day_observations_declared: object, "
+                "historical_end_of_day_methodology: object, "
+                "delta_methodology: object, calculated_at: object) -> "
+                "convexity_hunter.market_data_transformations."
+                "TailPricingTransformationResult"
+            ),
+        )
+        self.assertEqual(len(market_data.__all__), 64)
+        self.assertFalse(hasattr(convexity_hunter, "transform_tail_pricing"))
+        self.assertFalse(
+            hasattr(convexity_hunter, "TailPricingTransformationResult")
+        )
+
+    def test_ordinary_two_expiration_tail_term_structure(self):
+        result = make_tail_result()
+        self.assertEqual(len(result.records), 2)
+        first, second = result.records
+        self.assertEqual(
+            tuple(record.expiration for record in result.records),
+            (
+                SESSION_DATE + datetime.timedelta(days=30),
+                SESSION_DATE + datetime.timedelta(days=60),
+            ),
+        )
+        self.assertEqual(
+            (
+                first.atm_iv,
+                first.put_25_delta_iv,
+                first.call_25_delta_iv,
+                first.put_10_delta_iv,
+                first.call_10_delta_iv,
+            ),
+            (0.30, 0.36, 0.28, 0.42, 0.26),
+        )
+        self.assertEqual(
+            (
+                second.atm_iv,
+                second.put_25_delta_iv,
+                second.call_25_delta_iv,
+                second.put_10_delta_iv,
+                second.call_10_delta_iv,
+            ),
+            (0.40, 0.46, 0.38, 0.52, 0.36),
+        )
+        for record in result.records:
+            self.assertAlmostEqual(record.downside_25_delta_skew, 0.06)
+            self.assertAlmostEqual(record.upside_25_delta_skew, -0.02)
+            self.assertAlmostEqual(record.downside_wing_curvature, 0.06)
+            self.assertAlmostEqual(record.upside_wing_curvature, -0.02)
+            self.assertEqual(record.skew_percentile, 2 / 3)
+            self.assertEqual(record.skew_history_lookback_observations, 3)
+            self.assertEqual(
+                record.delta_methodology,
+                market_data.canonicalize_lineage_parameters(
+                    TAIL_DELTA_METHODOLOGY
+                ),
+            )
+        self.assertEqual(len(result.lineage.inputs), 202)
+
+    def test_parameters_identity_flags_and_exact_top_level_keys(self):
+        result = make_tail_result(historical_skews=("0.06",))
+        tree = json.loads(result.lineage.parameters_json)
+        keys = tuple(item[0] for item in tree["$map"])
+        self.assertEqual(
+            keys,
+            (
+                "analytics_methodology",
+                "atm_dependency",
+                "candidate_universe",
+                "current_expiration_observations",
+                "current_skew_formula",
+                "delta_convention",
+                "delta_point_selection_rule",
+                "delta_tie_rule",
+                "float_conversion_rule",
+                "historical_eod_semantics",
+                "historical_expected_session_dates",
+                "historical_matched_tenor_rule",
+                "historical_observations_by_tenor",
+                "interpolation_rule",
+                "same_contract_reuse_rule",
+                "skew_percentile_formula",
+                "skew_term_structure_ordering",
+                "tail_output_architecture",
+                "target_deltas",
+                "volatility_unit",
+            ),
+        )
+        self.assertEqual(result.lineage.calculation_type, "tail_pricing")
+        self.assertEqual(
+            result.lineage.methodology_id,
+            "nearest-observed-delta-wing-tail-relative-pricing",
+        )
+        self.assertEqual(result.lineage.methodology_version, "v0.1")
+        self.assertEqual(
+            set(result.lineage.quality_flags),
+            {
+                CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                CalculationQualityFlag.ANNUALIZED,
+                CalculationQualityFlag.ASSUMPTION_APPLIED,
+            },
+        )
+        serialized = result.lineage.parameters_json
+        self.assertIn(
+            '"current_delta_and_historical_atm_and_delta_candidate_universes"',
+            serialized,
+        )
+        self.assertIn('"nearest_observed_signed_delta"', serialized)
+        self.assertIn('"caller_declared_daily_eod_observation_sample"', serialized)
+        self.assertIn('{"$decimal":"0.25"}', serialized)
+        self.assertNotIn('"incomplete_input_used"', serialized)
+
+    def test_complete_canonical_parameters_literal_golden(self):
+        expected_compressed = "c-rk<S##US5&kPGRvyJI0;I5(-;&)tClx1ENfs^?1dOCv<KW_;R&n{ir+W@ya11a2Nr|A><+3HRr|0^n=j-kn;Opv7vA<t^{N<OGpZL*hL4(|jN%5S9X_P*_u5Q295>FW+Uve*`2O5$j^k}j#3oj&jkkNfX(`0qK`t+I<&ji%mNU<9xw)%WqDTvdML|)>@q*356kso|ne+r({h~!=Q1Icn;$0Pl{C^ND?SgKU!7i6SK|N8XvO;BbB(rr_j(83GS<UkTp?58v-GCwHRA$g<;32y>FNfR3Q(G3do7Sh8J!vTejhoX|z4g*Nc90DlW?Y^HRr61A%kq~qRH1;D@Pt(=s&)=|+U&Qdm9(qKQpotSd_tHl%gvPLs*$*FA_GY_TZ>;skUNHqQkU<&2ccJGOm0&^Rrtm+lyN}z=$Ib4C4g2%oW@%`wM?+|@^1*r={1~p<QpM{Y2l<fV?-4CtJ(3(~mL@UunM;>h20we)we%q;*@2bJS>qy_7tlMUn}COqVw=6aPcyw#6yeA+EO{AuBv3~{;HMzXLf-ZRS&O>Yn>7|#S8}o&kw@cwL}9S%4)8(alLKS6`C+@M1_$I1BX!V2t^Bt#Eymi!WOxzTow$q&ip|Pax7KD;4<aIB1z2O^09y*M^&cX_bSGsLvCm<!d>o4+1ptO5i(YB+<i#}Hr!*-#-4ngT(S~s_8V^~dEGEqX$hW2dHB6WRCVm*MK#V_%jtoCa*Q1{o8T~?9Ra>m9uryiq<o7*gt2ODaKpWN-Z)8p)67cmGLu>WJR|!r6R#j@kU{qxWI?2RxG=ifxrXWe0fz&Ik&MkxIIL@FFi8MucaE59*w2rsuwh`7bHezRHBdm!w!dj}0*v+#M)_fbWGqMrZBpYF!)<$gMubGY5O|=o$92;T1k&STP%0}=hcm{B%8B)r3;T*jBSFpfGu@38g(4ur|8MP^$63eqH_B5-a_IS2kv8^Gy(yn66vb5z-W?QVaeQ#!4Y*X8!gV>05(G1Da_Qk$mTlQK~!83D^x)UQ7MzJn{$P(+cnD@v0#Y$_#rmUW`!+HZ1;s2KS-`0^nz0)x4;`Gx&Ee9Ut>YBYq&sBz*RsSxe-FgQpf^Iv|LU_m+ju~(rzz5d$h$R|88-tn>HR9mp)^ZJtdtF<tb=&Dyi`B7>18ghYKKYpsBJhRxYtFv<>avZ_#huP&VTgKDEE6>MIdK8R4Y42v`w40iShQYFVn4x17l^s5B=umIc%ryR2m{Z|46X`p0lYM(1sDVuTjau~5=1@|6G}l%k(GpfnFr~fFukaQ{ElY7HYmbm)aJ2jF|>sTR(O|q5fsSEi0exTRGJsMHa2&%2MSg-|5Di((e$biH2r}lezOKYqs4QKVInUkeu6=q90p(3zzV}qd;R;7tU?4)R5Bx`1C0vKM{8=Dlx9SBgxIit4A>fV9QwMz>K1kw>U5bG?5@5kr4FOD(Suq|%W7-NFezEAOLAPva@>mMFhxLgDpaae$E~=IJ4SYTJ6-izOL;V7RTmr~KHYI>m>bb69n=QrslD6xS5?hY4+ZKkq0SLs6Fm*F_z;K<*j1>I6!uXGNY>#P+3*%28XICgEgA!+mKco;Rf`(wyU&Gdg4Ex4bi$-`O_N-~liZaVS{YfAYV>re-L+cM<x!irvr5+SR%vH$m8=<7$+{-1w3~00tYfXx&e$qhldY0<KC6TQpea^qH^(YjbFGr~K32(jd#fa->oH1wk)LA>x#n#AGoV{Z^y)nVrHkrx9m#<*2G8EXk4lo`LIVK`wKH{M@DvXbK+)u>I52&tPZ==j>tav8wH3yG5j=xFK8jVF75W>~q|6)jA#6wz`h3(q@>}Ugxw2H5u5Q~q-mS~sTb<B5a8kXuHpBi~_oMc|$E7sb0s8&T#qR<3^gTf93Qyk!Y-?;6=(_6T`#`T7f9jn8!*x@30(;6%poi$_UZ5SY6Yd78aeGsa+81U~_XEYIfrq|_h1HB{;8>E(t0EPub>s!aVBxWnIsnrNo9NHBuxfOtTZHoZa7#<NalEA=EcQ1hU!QLgBK^l(TDn^YTtv~<`4%4T(426oBQY@vsh@a{X$JPrXNA%*#CZ;3$O$O(dSWKUODaY9&MQ|k$pWk%K36r;B#6o!EF|BzyjD^OW+=j4QG``$dnLZ)BOiJXuX5kxV?{*Ql=Ck2ah=XY`{A!;USLqJg@?*k%h3`b;_D{&pi|x}&<qf@@9c&oRNmJL&Sf&P&sg`tqutsce!O$;x7!c!=iaF|srr17vNrLAP>Zc~&Il=cqjE|}E)DgZP|&JPo)luT%2f39M3ltkF^yEVBknDF;qs_EZvn>LtDitag-kWr+G^|?K8D>27EiL~t9>n-zwR`@C;rN<5O53$+-3}xef`yS1%O-*Ay*3`SAmh+1`;EMD1rZkJ_QylEgDb*pn<qJ4^&JHOg*qgpoAG1%``1~aOm<zyW@y;Ys|WAAM7K)E}I-zPLIp^pDQOAf5(61UIAVc{Pyj3K*ahmAW}iatq3*zw1;UW-h-dhyc(;_fANAS&56=uF4v{PSZ3RhL3>!KD)W$yin1@|&oIP_W{xJ$&+{~(Ju?T3fED9o*DWXwo|I2~_!yQI0L0@h;-<G#u)i~QQ>f9KrY)}(Dm!UCsZ9V^1Xk)o5?gCP1n_-6s3iXUkDvanh~xxxpp|1bq#B*#QI&a(AJVA$^3&h{!@jI$`v7|iW5ooj0~adIDp|2Kq=ceWF|du%&~9>d(HEM8>5JE~WA!Kvg0!Io7Hw7-s%fkk=)SZz3fR%o)IjIoqeIB|5&x-cI%Ox(*;Slomc420`TW;BFJs0cJb%xad}U!<z-1X24QM6f?sQ#4DC^LQ%I?|$$bM%^#UOse@F$6{iaq9N1Mb9k9CM5+0p2Qx(}OjXY2&PtueL!k-^|0u_EgS&C4qPn-g|YhmK_Yn6jJ5n=X)ScgHC?y(-!@f*)K}!CPe8ASTjlg1#{2hBf=0Bi|layT3tKk<|U~Y`FY_z0vUe*!Yh=tSL!GgWqHsB>KiF~J>nauxbc?`+C}QNZ;0h#1vYZ5L%P#Of{50<4ypoHx9U0k&^#R3UvRhTIh7^PGc?lXfMj_Zy_*7VoJf}dth^*Bt>%4YZZ)S*37dnc@RhW($p4BXMXl^_mHcgZWtxga(1M-z%BEDy^2&J3UG#*@;!<k)3;0o6QI%w_hD&HsmVm+Gv*wY1Z{De3ostQMgvX96*BzH(9_>N7q2pvnp4p#w8qL~xu#Y^ELVIjfmA3D6()JyfmX~7&Th4{}T@dp#?xr)I?$!Gj_>Hh=Q?4ASOQh4HJ9#8)=w#aMY398EAEj#MmbcTsJNM*UyD5_|5BT>?zNY!p5MY1kMSw>4R2XQ~7-GTR4PxQ$+*q(S=f;AZT{A35<QQTBnm-W>jxiQM_bIRdY7DVpSwmQ`&T1E6zgjR9c<ZMjVP_j5fvfHXg1nG8jsvd52nOpB9NeE91`FODc<U$91IH8wy1ii%3`}>1^~lz6f6|>{<Tl|#$RRfT^xRNk@}~1XbQ^MT%8i&I_ld&vCCO<>aNM{9m46{G-PPmBp_cM57!Sad6NZOKPl45hJDCOt_M3he>|z(rW{#z&i=!lRerA&rjDN6|t5YFx+W`YC><f2uzB^xK7z_s9$`}~zyDk_om~uYDa3X4ZBr#bQKOKUB5knn@!MfilAP&xF6Hdf!zbk?|f`f62I*NmaJutfhjYP+*kEgWFkik7h<EzhDY(Gk~pc@-oUVz+>vn(dx;qNo!)z%5()s{iLdiP%OYHP9aYHLosdN=BmSVzaJt!2ckon^<XotYePYrp}W({Mm%G4X0=+3{*;rgLbr`#Yy`4xPostDQy1tDSlNz@2S`gya1IXDRV&XVLL$XP!H-b4+1yq&wg&BVKJSHC}Dah*z6%!{g%B)-}ef>*s@AO1#>+fOz#%DaqBvtDOsoS1;99xwd$<^ZxPbCGyj&i&s1EAFo~_LA{Q6wR5rY>gIWD)-iGAgwI=DEnd}S*AzrJSwIyJdMnRuS5^-Hl3k<$UHLv0PkT=alI>G**Rk=e|5cJEeBSwO+<lhf<<hJrrMbv^BgJp{OtZ(gWhAC$?A2ETp?sO}U**yE#_4zU8T9;dWob?eydI0Ak&q`Je_1KGs-KnC>WnyD&v_}{>{F??fE=%tU)X3qbZuNiRb1Xafg&0C6?E_$Enel_;I$JH`!qpN0O*o5rh(_j5A><TC6B6lpYef%(0#%Ou3B~jiQT;6Ant$2$EwBANgAqm6B=mY_ZsT!47y2AA0MG+Kf1}t6W}yki)DNB*T4OIlPCT@e-=<{-%S@&s@_cJS3a>>-8<@yiw^__;nizgvEar6FFf$IUd^AJ+|g&7w9+hnPw;Fj>ORv18#n!lCUVI$JuAH{mE+BBE~Lo`b?$OZKVLL_wMYM8R^icA7OKnq9Ys(vWnIA!Z<`And-m}q2Ru4$pT;NT^P0_{qdO%dHt_J~%gTw>4PEFhj=l~|M8bft*{6M$x7nxYQgdUSwk|Ct($|5Bm~bXwVs1F9Ptm33$Qo^3V3w?>{SzZnwjm<sM<ROETxzbY-PA?z8gs%Cwqp*5nE{C&HJ6z)8-8!YVo2olyqSF0gz-xiCS=YA-aK&)xwHEH7d+~%_lcz8ZH0lfEAp&~wzE*9<2mml`OVcN+|J@deW#Al`y}4#=aCTh1jnHD;FLe!H}%K+rY`?|Q_Fsnl==Ih&Yw0vhqrsQkFq?M^=i`R=WutwL!b3R(&)`M)6ILe+}mWt2Ok_~lJXimqBt?-wKYz8*`_Hk`z=#mEsQ!F_FlF{WxfWwaFT~q4Cp_S@2jdVKON>QJsswp;ZXs7+K)%YV$xyG($iti8J;E5r~NdTSVTI^S$I0kIsIcKdXyi>C7tD@!<>bu!<^GUO`=EnDd2FK>9Bszv!tw;z6WRImosu?dPP_FSTsq=#!_WF!&KS!ZBu2=MWo7>%zdsfRpwkos%*(l(v_#m%wsi%8MEz1pD`PcdT0`7Mlp`1<j=Mf@@J+*$1shy-DuNjql}?Hn`Xohj!&v>jgo5P_!`QsjgG*gQ*6#9q}Z0~247){&AEgW+fx1D<)zrVoqFFqoAREe<|R>i9a7#7&Hb3DyJVTS?>{n$>Y`&M>IYex=jh4dtv%=$lfzc8dhYcqH(>`}lBznWOo95k)b`s^>uT70tpE&VfTQHWq>zliR?5!<@j63xUk@mUa=ov3CW)GN<fx&MmzD+E27KW<El9wJe#O+{Z9(<MW**_Y<BC#Vaa2*4w>V|(opzj-I>)FDawxl3*Roaa@*vV%uPbZ3Q>^*2GQ4&9e<R+{eg"
+        expected = zlib.decompress(
+            base64.b85decode(expected_compressed)
+        ).decode()
+        self.assertEqual(
+            make_tail_result(
+                historical_skews=("0.06",)
+            ).lineage.parameters_json,
+            expected,
+        )
+
+    def test_percentile_boundaries_tie_and_decimal_before_float(self):
+        cases = (
+            (("0.07",), 0.0),
+            (("0.06",), 1.0),
+            (("0.05",), 1.0),
+            (("0.04", "0.06", "0.08"), 2 / 3),
+        )
+        for history, expected in cases:
+            with self.subTest(history=history):
+                result = make_tail_result(historical_skews=history)
+                self.assertEqual(result.records[0].skew_percentile, expected)
+        current = decimal.Decimal("0.06")
+        historical = decimal.Decimal("0.060000000000000001")
+        self.assertLess(current, historical)
+        self.assertEqual(float(current), float(historical))
+        result = make_tail_result(historical_skews=(str(historical),))
+        self.assertEqual(result.records[0].skew_percentile, 0.0)
+
+    def test_historical_caller_order_invariance(self):
+        arguments = list(make_tail_result(
+            historical_skews=("0.04",),
+            return_arguments=True,
+        ))
+        expected = transform_tail_pricing(*arguments)
+        arguments[2] = tuple(reversed(arguments[2]))
+        actual = transform_tail_pricing(*arguments)
+        self.assertEqual(actual.records, expected.records)
+        self.assertEqual(
+            actual.lineage.parameters_json,
+            expected.lineage.parameters_json,
+        )
+        self.assertEqual(actual.lineage.inputs, expected.lineage.inputs)
+
+    def test_delta_tie_same_contract_reuse_and_wrong_sign_rejected(self):
+        base = list(make_tail_result(
+            historical_skews=("0.04",),
+            return_arguments=True,
+        ))
+        ordinary_30 = list(_tail_candidates(
+            SESSION_DATE,
+            30,
+            "tail-current-30",
+            "0.30",
+            "0.36",
+            "0.28",
+            "0.42",
+            "0.26",
+            ("ve-current-0-call", "ve-current-0-put"),
+        ))
+        ordinary_60 = _tail_candidates(
+            SESSION_DATE,
+            60,
+            "tail-current-60",
+            "0.40",
+            "0.46",
+            "0.38",
+            "0.52",
+            "0.36",
+            ("ve-current-1-call", "ve-current-1-put"),
+        )
+        expiration_30 = SESSION_DATE + datetime.timedelta(days=30)
+
+        tied = tuple(ordinary_30) + ((
+            "tail-current-30-call25-tie",
+            expiration_30,
+            "call",
+            "106",
+            "0.29",
+            "0.26",
+        ),) + ordinary_60
+        base[1] = make_tail_selection(SESSION_DATE, tied, "ve-current")
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            transform_tail_pricing(*base)
+
+        reused = [
+            item for item in ordinary_30
+            if item[0] != "tail-current-30-call10"
+        ]
+        reused = [
+            (
+                item[0], item[1], item[2], item[3], item[4],
+                "0.18" if item[0] == "tail-current-30-call25" else item[5],
+            )
+            for item in reused
+        ]
+        base[1] = make_tail_selection(
+            SESSION_DATE, tuple(reused) + ordinary_60, "ve-current"
+        )
+        with self.assertRaisesRegex(ValueError, "one economic contract"):
+            transform_tail_pricing(*base)
+
+        wrong_sign = [
+            (
+                item[0], item[1], item[2], item[3], item[4],
+                "-0.24" if item[0] == "tail-current-30-call25" else item[5],
+            )
+            for item in ordinary_30
+        ]
+        base[1] = make_tail_selection(
+            SESSION_DATE, tuple(wrong_sign) + ordinary_60, "ve-current"
+        )
+        with self.assertRaisesRegex(ValueError, "call delta"):
+            transform_tail_pricing(*base)
+
+    def test_historical_matrix_regular_eod_and_dependency_decoder_failures(self):
+        arguments = list(make_tail_result(
+            historical_skews=("0.04",),
+            return_arguments=True,
+        ))
+        arguments[2] = (arguments[2][0], arguments[2][0])
+        with self.assertRaisesRegex(ValueError, "intrinsic keys"):
+            transform_tail_pricing(*arguments)
+
+        arguments = list(make_tail_result(
+            historical_skews=("0.04",),
+            return_arguments=True,
+        ))
+        lineage = arguments[4].lineage
+        malformed = (
+            '{"$map":[],"$map":[]}',
+            lineage.parameters_json.replace(
+                '{"$decimal":"0.30"}',
+                '{"$bogus":"0.30"}',
+                1,
+            ),
+            lineage.parameters_json.replace(
+                '"historical_observation_count",1',
+                '"historical_observation_count",1.0',
+                1,
+            ),
+        )
+        for parameters_json in malformed:
+            with self.subTest(parameters_json=parameters_json[:40]):
+                with changed(lineage, "parameters_json", parameters_json):
+                    with self.assertRaises(ValueError):
+                        transform_tail_pricing(*arguments)
+
+    def test_current_and_historical_methodology_partitions_are_both_authoritative(self):
+        def iv_methodologies(selection):
+            self.assertIs(
+                selection.status,
+                MarketDataSelectionStatus.SELECTED,
+            )
+            selected = selection.selected_candidate
+            self.assertIsNotNone(selected)
+            self.assertTrue(selected.is_coherent)
+            self.assertTrue(selected.timing_assessment.is_temporally_coherent)
+            validated = transformations._validate_tail_selection(selection)
+            results = set()
+            for _quote, iv, greeks, _reference in validated["candidates"]:
+                self.assertEqual(
+                    (
+                        iv.model_name,
+                        iv.model_version,
+                        iv.rate_input_description,
+                        iv.dividend_input_description,
+                    ),
+                    (
+                        greeks.model_name,
+                        greeks.model_version,
+                        greeks.rate_input_description,
+                        greeks.dividend_input_description,
+                    ),
+                )
+                results.add((
+                    iv.model_name,
+                    iv.model_version,
+                    iv.rate_input_description,
+                    iv.dividend_input_description,
+                    iv.metadata.unit_convention,
+                ))
+            return results
+
+        base = list(make_tail_result(
+            historical_skews=("0.04",),
+            return_arguments=True,
+        ))
+        current_parts = _tail_selection_fixture_parts(base[1])
+        forged_current = make_tail_selection(
+            *current_parts,
+            analytics_overrides={
+                "model_name": "Current-only forged model",
+            },
+        )
+        current_methods = iv_methodologies(forged_current)
+        historical_methods = {
+            methodology
+            for selection in base[2]
+            for methodology in iv_methodologies(selection)
+        }
+        self.assertEqual(len(current_methods), 1)
+        self.assertEqual(len(historical_methods), 1)
+        self.assertNotEqual(current_methods, historical_methods)
+        current_arguments = list(base)
+        current_arguments[1] = forged_current
+        with self.subTest(partition="current"):
+            with self.assertRaises(ValueError):
+                transform_tail_pricing(*current_arguments)
+
+        forged_historical = tuple(
+            make_tail_selection(
+                *_tail_selection_fixture_parts(selection),
+                analytics_overrides={
+                    "model_name": "Historical-only forged model",
+                },
+            )
+            for selection in base[2]
+        )
+        current_methods = iv_methodologies(base[1])
+        historical_methods = {
+            methodology
+            for selection in forged_historical
+            for methodology in iv_methodologies(selection)
+        }
+        self.assertEqual(len(current_methods), 1)
+        self.assertEqual(len(historical_methods), 1)
+        self.assertNotEqual(current_methods, historical_methods)
+        historical_arguments = list(base)
+        historical_arguments[2] = forged_historical
+        with self.subTest(partition="historical"):
+            with self.assertRaises(ValueError):
+                transform_tail_pricing(*historical_arguments)
+
+    def test_canonical_dependency_fixed_methodology_forgery_matrix(self):
+        arguments = list(make_tail_result(
+            historical_skews=("0.04",),
+            return_arguments=True,
+        ))
+        dependency = arguments[4]
+        decoded = transformations._decode_volatility_parameters(
+            dependency.lineage.parameters_json
+        )
+        mutations = (
+            (
+                ("atm_candidate_universe", "declared_complete"),
+                False,
+                ValueError,
+            ),
+            (
+                ("atm_candidate_universe", "scope"),
+                "wrong_scope",
+                ValueError,
+            ),
+            (
+                ("atm_candidate_universe", "completeness_semantics"),
+                "wrong_semantics",
+                ValueError,
+            ),
+            (("atm_selection_rule",), "wrong_rule", ValueError),
+            (("strike_tie_rule",), "upper_strike", ValueError),
+            (
+                ("historical_sample_semantics",),
+                "calendar_complete_history",
+                ValueError,
+            ),
+            (("volatility_unit",), "percentage_points", ValueError),
+            (("atm_candidate_universe",), ("not", "a", "dict"), TypeError),
+            (
+                ("atm_candidate_universe", "declared_complete"),
+                1,
+                TypeError,
+            ),
+            (("atm_selection_rule",), 1, TypeError),
+            (("iv_methodology",), ("not", "a", "dict"), TypeError),
+            (
+                ("iv_methodology", "unit_convention"),
+                1,
+                TypeError,
+            ),
+            (
+                ("iv_methodology", "model_name"),
+                "Forged canonical model",
+                ValueError,
+            ),
+            (
+                ("iv_methodology", "model_version"),
+                "forged-v9",
+                ValueError,
+            ),
+            (
+                ("iv_methodology", "rate_input_description"),
+                "Forged curve",
+                ValueError,
+            ),
+            (
+                ("iv_methodology", "dividend_input_description"),
+                "Forged dividends",
+                ValueError,
+            ),
+        )
+        for path, forged_value, expected_error in mutations:
+            forged = copy.deepcopy(decoded)
+            target = forged
+            for key in path[:-1]:
+                target = target[key]
+            target[path[-1]] = forged_value
+            forged_parameters = (
+                market_data.canonicalize_lineage_parameters(forged)
+            )
+            forged_lineage = CalculationLineage(
+                calculation_id=dependency.lineage.calculation_id,
+                calculation_type=dependency.lineage.calculation_type,
+                methodology_id=dependency.lineage.methodology_id,
+                methodology_version=dependency.lineage.methodology_version,
+                calculated_at=dependency.lineage.calculated_at,
+                inputs=dependency.lineage.inputs,
+                parameters_json=forged_parameters,
+                quality_flags=dependency.lineage.quality_flags,
+            )
+            arguments[4] = VolatilityEnvironmentTransformationResult(
+                record=dependency.record,
+                lineage=forged_lineage,
+            )
+            with self.subTest(path=path, forged_value=forged_value):
+                if path == (
+                    "atm_candidate_universe",
+                    "declared_complete",
+                ) and forged_value is False:
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "complete ATM candidate universe|"
+                        "incompatible fixed methodology",
+                    ):
+                        transform_tail_pricing(*arguments)
+                elif (
+                    path[0] == "iv_methodology"
+                    and path[-1] in {
+                        "model_name",
+                        "model_version",
+                        "rate_input_description",
+                        "dividend_input_description",
+                    }
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "dependency IV methodology|authoritative IV inputs",
+                    ):
+                        transform_tail_pricing(*arguments)
+                else:
+                    with self.assertRaises(expected_error):
+                        transform_tail_pricing(*arguments)
+
+        forged = copy.deepcopy(decoded)
+        forged["iv_methodology"]["model_name"] = (
+            "Forged canonical model"
+        )
+        forged_lineage = CalculationLineage(
+            calculation_id=dependency.lineage.calculation_id,
+            calculation_type=dependency.lineage.calculation_type,
+            methodology_id=dependency.lineage.methodology_id,
+            methodology_version=dependency.lineage.methodology_version,
+            calculated_at=dependency.lineage.calculated_at,
+            inputs=dependency.lineage.inputs,
+            parameters_json=(
+                market_data.canonicalize_lineage_parameters(forged)
+            ),
+            quality_flags=dependency.lineage.quality_flags,
+        )
+        ordering_arguments = list(make_tail_result(
+            historical_skews=("0.04",),
+            return_arguments=True,
+        ))
+        ordering_arguments[4] = VolatilityEnvironmentTransformationResult(
+            record=dependency.record,
+            lineage=forged_lineage,
+        )
+        with mock.patch.object(
+            TailPricingSlice,
+            "__init__",
+            side_effect=AssertionError(
+                "TailPricingSlice must not be constructed before "
+                "methodology rejection"
+            ),
+        ) as tail_init, mock.patch.object(
+            CalculationLineage,
+            "__init__",
+            side_effect=AssertionError(
+                "CalculationLineage must not be constructed before "
+                "methodology rejection"
+            ),
+        ) as lineage_init:
+            with self.assertRaisesRegex(
+                ValueError,
+                "dependency IV methodology|authoritative IV inputs",
+            ):
+                transform_tail_pricing(*ordering_arguments)
+            tail_init.assert_not_called()
+            lineage_init.assert_not_called()
+
+    def test_declarations_and_delta_methodology_exactness(self):
+        base = list(make_tail_result(
+            historical_skews=("0.04",),
+            return_arguments=True,
+        ))
+        cases = (
+            (5, 1, TypeError),
+            (5, False, ValueError),
+            (6, 1, TypeError),
+            (6, False, ValueError),
+            (7, f" {TAIL_EOD_METHODOLOGY}", ValueError),
+            (8, tuple(TAIL_DELTA_METHODOLOGY.items()), TypeError),
+        )
+        for index, value, error in cases:
+            arguments = list(base)
+            arguments[index] = value
+            with self.subTest(index=index, value=value):
+                with self.assertRaises(error):
+                    transform_tail_pricing(*arguments)
+        bad_delta = dict(TAIL_DELTA_METHODOLOGY)
+        bad_delta["interpolation_methodology"] = "linear"
+        base[8] = bad_delta
+        with self.assertRaises(ValueError):
+            transform_tail_pricing(*base)
+
+    def test_wrapper_rejects_reordering_and_wrong_exact_types(self):
+        result = make_tail_result(historical_skews=("0.04",))
+        with self.assertRaises(FrozenInstanceError):
+            result.records = ()  # type: ignore[misc]
+        with self.assertRaises(TypeError):
+            TailPricingTransformationResult(
+                list(result.records), result.lineage  # type: ignore[arg-type]
+            )
+        with self.assertRaises(ValueError):
+            TailPricingTransformationResult(
+                tuple(reversed(result.records)), result.lineage
+            )
+        class SliceSubclass(TailPricingSlice):
+            pass
+        with self.assertRaises(TypeError):
+            TailPricingTransformationResult(
+                (
+                    SliceSubclass(**dataclasses.asdict(result.records[0])),
+                    result.records[1],
+                ),
+                result.lineage,
+            )
+
+    def test_no_proof_or_dependency_recomputation(self):
+        blocked = (
+            "select_correction_candidate",
+            "assess_market_data_freshness",
+            "bind_selected_fresh_market_data",
+            "assess_market_data_snapshot_timing",
+            "assess_market_data_relationships",
+            "select_market_data_relationship_assessment",
+            "assess_market_data_historical_series",
+            "transform_volatility_environment",
+        )
+        with ExitStack() as stack:
+            for name in blocked:
+                stack.enter_context(mock.patch.object(
+                    transformations,
+                    name,
+                    side_effect=AssertionError(f"{name} called"),
+                    create=True,
+                ))
+            make_tail_result(historical_skews=("0.04",))
+
+    def test_decimal_context_is_unchanged_after_success_and_failure(self):
+        context = decimal.getcontext()
+        original = context.copy()
+        context.prec = 7
+        context.rounding = decimal.ROUND_DOWN
+        context.clear_flags()
+        def state():
+            return (
+                context.prec,
+                context.rounding,
+                context.Emin,
+                context.Emax,
+                context.capitals,
+                context.clamp,
+                tuple(context.traps.items()),
+                tuple(context.flags.items()),
+            )
+        configured = state()
+        try:
+            make_tail_result(historical_skews=("0.04",))
+            self.assertEqual(state(), configured)
+            arguments = list(make_tail_result(
+                historical_skews=("0.04",),
+                return_arguments=True,
+            ))
+            arguments[5] = False
+            with self.assertRaises(ValueError):
+                transform_tail_pricing(*arguments)
+            self.assertEqual(state(), configured)
+        finally:
+            decimal.setcontext(original)
 
 
 if __name__ == "__main__":
