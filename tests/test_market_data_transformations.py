@@ -26,9 +26,11 @@ import convexity_hunter.market_data_transformations as transformations
 from convexity_hunter.evidence import (
     OptionLeg,
     OptionStructure,
+    Scenario,
     TailPricingSlice,
 )
 from convexity_hunter.market_data import (
+    CalculationInputReference,
     CalculationLineage,
     CalculationQualityFlag,
     CorrectionSelection,
@@ -76,6 +78,10 @@ from convexity_hunter.market_data_transformations import (
     HistoricalReturnPriceBasis,
     StructureCostsTransformationResult,
     StructureLiquidityTransformationResult,
+    ScenarioPricingCalculationResult,
+    ScenarioPricingLegCalculation,
+    ScenarioPricingMethodology,
+    NonExpirationScenarioPricingCalculation,
     TailPricingTransformationResult,
     VolatilityEnvironmentTransformationResult,
     transform_historical_realized_volatility,
@@ -998,6 +1004,10 @@ class PublicSurfaceTests(unittest.TestCase):
                 "transform_volatility_environment",
                 "TailPricingTransformationResult",
                 "transform_tail_pricing",
+                "ScenarioPricingMethodology",
+                "ScenarioPricingLegCalculation",
+                "NonExpirationScenarioPricingCalculation",
+                "ScenarioPricingCalculationResult",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -3062,6 +3072,10 @@ class StructureCostsPublicSurfaceTests(unittest.TestCase):
                 "transform_volatility_environment",
                 "TailPricingTransformationResult",
                 "transform_tail_pricing",
+                "ScenarioPricingMethodology",
+                "ScenarioPricingLegCalculation",
+                "NonExpirationScenarioPricingCalculation",
+                "ScenarioPricingCalculationResult",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -3686,6 +3700,10 @@ class HistoricalRealizedVolatilityPublicContractTests(unittest.TestCase):
                 "transform_volatility_environment",
                 "TailPricingTransformationResult",
                 "transform_tail_pricing",
+                "ScenarioPricingMethodology",
+                "ScenarioPricingLegCalculation",
+                "NonExpirationScenarioPricingCalculation",
+                "ScenarioPricingCalculationResult",
             ),
         )
         self.assertEqual(
@@ -4402,6 +4420,10 @@ class VolatilityEnvironmentTransformationTests(unittest.TestCase):
                 "transform_volatility_environment",
                 "TailPricingTransformationResult",
                 "transform_tail_pricing",
+                "ScenarioPricingMethodology",
+                "ScenarioPricingLegCalculation",
+                "NonExpirationScenarioPricingCalculation",
+                "ScenarioPricingCalculationResult",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -4858,6 +4880,10 @@ class TailPricingTransformationTests(unittest.TestCase):
                 "transform_volatility_environment",
                 "TailPricingTransformationResult",
                 "transform_tail_pricing",
+                "ScenarioPricingMethodology",
+                "ScenarioPricingLegCalculation",
+                "NonExpirationScenarioPricingCalculation",
+                "ScenarioPricingCalculationResult",
             ),
         )
         self.assertEqual(
@@ -5487,6 +5513,969 @@ class TailPricingTransformationTests(unittest.TestCase):
             self.assertEqual(state(), configured)
         finally:
             decimal.setcontext(original)
+
+
+def make_scenario_pricing_methodology(**overrides):
+    values = {
+        "pricing_source_classification": "provider_calculated",
+        "producer_name": "Synthetic Scenario Provider",
+        "producer_version": "provider-v3",
+        "pricing_request_id": "scenario-request-001",
+        "pricing_payload_sha256": "b" * 64,
+        "producer_calculated_at": (
+            CALCULATED_AT + datetime.timedelta(seconds=1)
+        ),
+        "pricing_model_name": "Synthetic disclosed option model",
+        "pricing_model_version": "model-v2",
+        "supported_exercise_settlement_pairs": (
+            ("american", "physical"),
+        ),
+        "settlement_treatment": "physical settlement at declared terms",
+        "rate_source": "Synthetic USD curve",
+        "rate_curve_identity": "synthetic-usd-curve-20300102",
+        "rate_effective_date": SESSION_DATE,
+        "rate_currency": "USD",
+        "rate_remaining_tenor_treatment": "remaining calendar tenor",
+        "rate_compounding_conversion": "continuous equivalent",
+        "rate_day_count_convention": "actual_365",
+        "rate_interpolation": "none",
+        "dividend_source": "explicit_zero_dividend_assumption",
+        "dividend_treatment": "explicit_zero_dividend_assumption",
+        "dividend_coverage_start_date": SESSION_DATE,
+        "dividend_coverage_end_date": EXPIRATION,
+        "explicit_zero_dividend_assumption": True,
+        "volatility_surface_treatment": "actual leg IV parallel shock",
+        "skew_treatment": "preserve leg-level base differences",
+        "term_treatment": "remaining tenor per scenario",
+        "volatility_interpolation": "none",
+        "remaining_time_rule": (
+            "expiration_minus_valuation_date_calendar_days"
+        ),
+        "position_scaling_rule": (
+            "per_underlying_unit_value_times_quantity_times_contract_multiplier"
+        ),
+        "numerical_calculation_boundary": (
+            "provider option values; local validation only"
+        ),
+        "limitations": (
+            "Self-consistent declarations are not provider-authenticated."
+        ),
+    }
+    values.update(overrides)
+    return ScenarioPricingMethodology(**values)
+
+
+def _pricing_test_underlying_identity(key):
+    return {
+        "symbol": key.symbol,
+        "listing_mic": key.listing_mic,
+        "security_type": key.security_type.value,
+        "currency": key.currency,
+    }
+
+
+def _pricing_test_contract_identity(key):
+    return {
+        "underlying_key": _pricing_test_underlying_identity(
+            key.underlying_key
+        ),
+        "expiration": key.expiration,
+        "option_type": key.option_type,
+        "strike": key.strike,
+        "contract_multiplier": key.contract_multiplier,
+        "currency": key.currency,
+        "deliverable_id": key.deliverable_id,
+    }
+
+
+def _pricing_test_leg_identity(leg):
+    return {
+        "underlying": leg.underlying,
+        "option_type": leg.option_type,
+        "strike": decimal.Decimal(str(leg.strike)),
+        "expiration": leg.expiration,
+        "quantity": leg.quantity,
+        "contract_multiplier": leg.contract_multiplier,
+    }
+
+
+def make_scenario_pricing_result(option_types=("call",)):
+    structure = make_structure(option_types)
+    contracts = tuple(
+        build_option_contract_key(
+            option_type=leg.option_type,
+            strike=decimal.Decimal(str(leg.strike)),
+            contract_multiplier=leg.contract_multiplier,
+            expiration=leg.expiration,
+            underlying_key=build_underlying_key(
+                listing_mic="ARCX",
+                currency="USD",
+            ),
+            currency="USD",
+            deliverable_id="standard-100-share",
+        )
+        for leg in structure.legs
+    )
+    methodology = make_scenario_pricing_methodology()
+    base_ivs = tuple(
+        decimal.Decimal(value)
+        for value in (("0.20",) if len(contracts) == 1 else ("0.20", "0.30"))
+    )
+    scenario_specs = (
+        (Scenario(0.0, 0.0, "immediate"), ("2.50", "3.50")),
+        (Scenario(0.1, 0.2, "days_forward", 7), ("3.00", "4.00")),
+        (Scenario(-0.05, -0.1, "holding_horizon"), ("2.00", "3.00")),
+    )
+    records = []
+    for scenario, per_unit_values in scenario_specs:
+        valuation_date = (
+            SESSION_DATE
+            if scenario.valuation_time == "immediate"
+            else SESSION_DATE + datetime.timedelta(
+                days=(
+                    scenario.days_forward
+                    if scenario.valuation_time == "days_forward"
+                    else structure.expected_holding_days
+                )
+            )
+        )
+        shocked_underlying = decimal.Decimal("100") * (
+            decimal.Decimal(1)
+            + decimal.Decimal(str(scenario.underlying_move))
+        )
+        calculations = []
+        for index, (leg, contract, base_iv) in enumerate(
+            zip(structure.legs, contracts, base_ivs)
+        ):
+            per_unit = decimal.Decimal(per_unit_values[index])
+            total = (
+                per_unit
+                * decimal.Decimal(leg.quantity)
+                * decimal.Decimal(leg.contract_multiplier)
+            )
+            calculations.append(ScenarioPricingLegCalculation(
+                leg=leg,
+                contract_key=contract,
+                base_iv=base_iv,
+                shocked_iv=base_iv * (
+                    decimal.Decimal(1)
+                    + decimal.Decimal(str(scenario.iv_change))
+                ),
+                remaining_calendar_days=(
+                    leg.expiration - valuation_date
+                ).days,
+                per_underlying_unit_option_value=per_unit,
+                total_leg_value=total,
+                exercise_style="american",
+                settlement_type="physical",
+                implied_volatility_record_id=f"scenario-iv-{index}",
+                contract_reference_record_id=f"scenario-reference-{index}",
+            ))
+        records.append(NonExpirationScenarioPricingCalculation(
+            structure=structure,
+            as_of_date=SESSION_DATE,
+            scenario=scenario,
+            valuation_date=valuation_date,
+            base_underlying_price=decimal.Decimal("100"),
+            shocked_underlying_price=shocked_underlying,
+            underlying_quote_record_id="scenario-underlying-quote",
+            leg_calculations=tuple(calculations),
+            estimated_gross_position_value=sum(
+                (item.total_leg_value for item in calculations),
+                decimal.Decimal(0),
+            ),
+            pricing_methodology=methodology,
+        ))
+    records = tuple(records)
+    first = records[0]
+    common_evidence = {
+        "normalized_at": CALCULATED_AT,
+        "source_ids": ("source-001",),
+        "propagated_quality_flags": (),
+    }
+    underlying_evidence = {
+        **common_evidence,
+        "record_id": first.underlying_quote_record_id,
+        "underlying_key": _pricing_test_underlying_identity(
+            contracts[0].underlying_key
+        ),
+        "session_date": SESSION_DATE,
+        "bid_price": decimal.Decimal("99"),
+        "ask_price": decimal.Decimal("101"),
+        "midpoint_formula": "bid_price_plus_ask_price_divided_by_2",
+        "base_underlying_price": decimal.Decimal("100"),
+    }
+    iv_evidence = tuple({
+        **common_evidence,
+        "record_id": item.implied_volatility_record_id,
+        "leg": _pricing_test_leg_identity(item.leg),
+        "contract_key": _pricing_test_contract_identity(item.contract_key),
+        "session_date": SESSION_DATE,
+        "implied_volatility": item.base_iv,
+        "model_name": "Synthetic IV model",
+        "model_version": "iv-v1",
+        "rate_input_description": "Synthetic USD curve",
+        "dividend_input_description": "Explicit zero dividends",
+        "unit_convention": "annualized_decimal_ratio",
+    } for item in first.leg_calculations)
+    reference_evidence = tuple({
+        **common_evidence,
+        "record_id": item.contract_reference_record_id,
+        "leg": _pricing_test_leg_identity(item.leg),
+        "contract_key": _pricing_test_contract_identity(item.contract_key),
+        "exercise_style": item.exercise_style,
+        "settlement_type": item.settlement_type,
+    } for item in first.leg_calculations)
+    parameters = transformations._scenario_pricing_expected_fixed_parameters(
+        records
+    )
+    parameters.update({
+        "base_underlying_evidence": underlying_evidence,
+        "leg_iv_evidence": iv_evidence,
+        "contract_reference_evidence": reference_evidence,
+    })
+    inputs = tuple(
+        CalculationInputReference(
+            evidence["record_id"],
+            evidence["normalized_at"],
+            evidence["source_ids"],
+        )
+        for evidence in (
+            (underlying_evidence,) + iv_evidence + reference_evidence
+        )
+    )
+    lineage = CalculationLineage(
+        calculation_id="scenario-pricing-calculation-001",
+        calculation_type="nonexpiration_scenario_pricing",
+        methodology_id=(
+            "authoritative-provider-option-scenario-pricing-evidence"
+        ),
+        methodology_version="v0.1",
+        calculated_at=CALCULATED_AT + datetime.timedelta(seconds=2),
+        inputs=inputs,
+        parameters_json=market_data.canonicalize_lineage_parameters(
+            parameters
+        ),
+        quality_flags=(
+            CalculationQualityFlag.ANNUALIZED,
+            CalculationQualityFlag.ASSUMPTION_APPLIED,
+        ),
+    )
+    return ScenarioPricingCalculationResult(records, lineage)
+
+
+def rebuild_scenario_pricing_result(
+    result,
+    *,
+    decoded_parameters=None,
+    inputs=None,
+    records=None,
+):
+    parameters_json = result.lineage.parameters_json
+    if decoded_parameters is not None:
+        parameters_json = market_data.canonicalize_lineage_parameters(
+            decoded_parameters
+        )
+    lineage = dataclasses.replace(
+        result.lineage,
+        inputs=result.lineage.inputs if inputs is None else inputs,
+        parameters_json=parameters_json,
+    )
+    return ScenarioPricingCalculationResult(
+        result.records if records is None else records,
+        lineage,
+    )
+
+
+class ScenarioPricingCalculationContractTests(unittest.TestCase):
+    def test_exact_public_api_fields_and_root_exclusions(self):
+        self.assertEqual(len(transformations.__all__), 16)
+        self.assertEqual(transformations.__all__[-4:], (
+            "ScenarioPricingMethodology",
+            "ScenarioPricingLegCalculation",
+            "NonExpirationScenarioPricingCalculation",
+            "ScenarioPricingCalculationResult",
+        ))
+        self.assertEqual(len(market_data.__all__), 64)
+        for record_type, expected in (
+            (ScenarioPricingMethodology, (
+                "pricing_source_classification", "producer_name",
+                "producer_version", "pricing_request_id",
+                "pricing_payload_sha256", "producer_calculated_at",
+                "pricing_model_name", "pricing_model_version",
+                "supported_exercise_settlement_pairs",
+                "settlement_treatment", "rate_source",
+                "rate_curve_identity", "rate_effective_date",
+                "rate_currency", "rate_remaining_tenor_treatment",
+                "rate_compounding_conversion",
+                "rate_day_count_convention", "rate_interpolation",
+                "dividend_source", "dividend_treatment",
+                "dividend_coverage_start_date",
+                "dividend_coverage_end_date",
+                "explicit_zero_dividend_assumption",
+                "volatility_surface_treatment", "skew_treatment",
+                "term_treatment", "volatility_interpolation",
+                "remaining_time_rule", "position_scaling_rule",
+                "numerical_calculation_boundary", "limitations",
+            )),
+            (ScenarioPricingLegCalculation, (
+                "leg", "contract_key", "base_iv", "shocked_iv",
+                "remaining_calendar_days",
+                "per_underlying_unit_option_value", "total_leg_value",
+                "exercise_style", "settlement_type",
+                "implied_volatility_record_id",
+                "contract_reference_record_id",
+            )),
+            (NonExpirationScenarioPricingCalculation, (
+                "structure", "as_of_date", "scenario", "valuation_date",
+                "base_underlying_price", "shocked_underlying_price",
+                "underlying_quote_record_id", "leg_calculations",
+                "estimated_gross_position_value",
+                "pricing_methodology",
+            )),
+            (ScenarioPricingCalculationResult, ("records", "lineage")),
+        ):
+            self.assertEqual(
+                tuple(field.name for field in dataclasses.fields(record_type)),
+                expected,
+            )
+        for name in transformations.__all__[-4:]:
+            self.assertFalse(hasattr(convexity_hunter, name))
+        public_functions = tuple(
+            name for name in transformations.__all__
+            if inspect.isfunction(getattr(transformations, name))
+        )
+        self.assertEqual(public_functions, (
+            "transform_structure_liquidity",
+            "transform_structure_costs",
+            "transform_historical_realized_volatility",
+            "transform_volatility_environment",
+            "transform_tail_pricing",
+        ))
+
+    def test_call_put_and_straddle_direct_construction(self):
+        call = make_scenario_pricing_result(("call",))
+        put = make_scenario_pricing_result(("put",))
+        straddle = make_scenario_pricing_result(("call", "put"))
+        self.assertEqual(
+            tuple(record.estimated_gross_position_value for record in call.records),
+            (
+                decimal.Decimal("250.00"),
+                decimal.Decimal("300.00"),
+                decimal.Decimal("200.00"),
+            ),
+        )
+        self.assertEqual(
+            tuple(record.estimated_gross_position_value for record in put.records),
+            (
+                decimal.Decimal("250.00"),
+                decimal.Decimal("300.00"),
+                decimal.Decimal("200.00"),
+            ),
+        )
+        self.assertEqual(
+            tuple(
+                record.estimated_gross_position_value
+                for record in straddle.records
+            ),
+            (
+                decimal.Decimal("600.00"),
+                decimal.Decimal("700.00"),
+                decimal.Decimal("500.00"),
+            ),
+        )
+        self.assertEqual(
+            straddle.records[1].leg_calculations[0].shocked_iv,
+            decimal.Decimal("0.240"),
+        )
+        self.assertEqual(
+            straddle.records[1].leg_calculations[1].shocked_iv,
+            decimal.Decimal("0.360"),
+        )
+        self.assertEqual(
+            tuple(record.valuation_date for record in call.records),
+            (
+                SESSION_DATE,
+                SESSION_DATE + datetime.timedelta(days=7),
+                SESSION_DATE + datetime.timedelta(days=14),
+            ),
+        )
+
+    def test_methodology_and_nonexpiration_boundaries(self):
+        with self.assertRaises(ValueError):
+            make_scenario_pricing_methodology(
+                pricing_source_classification="internal_model"
+            )
+        with self.assertRaises(ValueError):
+            make_scenario_pricing_methodology(
+                pricing_payload_sha256="A" * 64
+            )
+        with self.assertRaises(TypeError):
+            make_scenario_pricing_methodology(
+                producer_calculated_at=SESSION_DATE
+            )
+        result = make_scenario_pricing_result()
+        record = result.records[0]
+        with self.assertRaisesRegex(ValueError, "expiration"):
+            NonExpirationScenarioPricingCalculation(
+                **{
+                    **dataclasses.asdict(record),
+                    "structure": record.structure,
+                    "scenario": Scenario(0.0, 0.0, "expiration"),
+                    "valuation_date": EXPIRATION,
+                    "leg_calculations": record.leg_calculations,
+                    "pricing_methodology": record.pricing_methodology,
+                }
+            )
+
+    def test_lineage_schema_flags_and_forgery_rejection(self):
+        result = make_scenario_pricing_result(("call", "put"))
+        decoded = transformations._decode_scenario_pricing_parameters(
+            result.lineage.parameters_json
+        )
+        self.assertEqual(
+            set(decoded),
+            transformations._SCENARIO_PRICING_PARAMETER_KEYS,
+        )
+        self.assertEqual(len(decoded), 23)
+        self.assertIn('"$decimal"', result.lineage.parameters_json)
+        forged = copy.deepcopy(decoded)
+        forged["producer_provenance"]["pricing_request_id"] = "forged"
+        forged_lineage = dataclasses.replace(
+            result.lineage,
+            parameters_json=market_data.canonicalize_lineage_parameters(forged),
+        )
+        with self.assertRaises(ValueError):
+            ScenarioPricingCalculationResult(
+                result.records, forged_lineage
+            )
+        forged_flags = dataclasses.replace(
+                result.lineage,
+                quality_flags=(
+                    CalculationQualityFlag.ANNUALIZED,
+                    CalculationQualityFlag.ASSUMPTION_APPLIED,
+                    CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                ),
+            )
+        with self.assertRaises(ValueError):
+            ScenarioPricingCalculationResult(
+                result.records, forged_flags
+            )
+
+    def test_exact_types_order_and_decimal_context(self):
+        result = make_scenario_pricing_result()
+        with self.assertRaises(TypeError):
+            ScenarioPricingCalculationResult(
+                list(result.records), result.lineage
+            )
+        with self.assertRaises(ValueError):
+            ScenarioPricingCalculationResult(
+                tuple(reversed(result.records)), result.lineage
+            )
+        context = decimal.getcontext()
+        original = context.copy()
+        context.prec = 7
+        context.rounding = decimal.ROUND_DOWN
+        context.clear_flags()
+        configured = (
+            context.prec, context.rounding, context.Emin, context.Emax,
+            context.capitals, context.clamp, tuple(context.traps.items()),
+            tuple(context.flags.items()),
+        )
+        try:
+            make_scenario_pricing_result()
+            self.assertEqual(configured, (
+                context.prec, context.rounding, context.Emin, context.Emax,
+                context.capitals, context.clamp,
+                tuple(context.traps.items()), tuple(context.flags.items()),
+            ))
+        finally:
+            decimal.setcontext(original)
+
+    def test_complete_canonical_parameters_literal_golden(self):
+        expected_compressed = "c-rk*OK;pZ5dJHI(BsO`?q;3XJr!vVy%a&+7HtEApe61uYl>7zO7SMhf6wqC>bVaiiIV{9lUL$AIP=ZN;pjvBQ-RC)`puj84l9Bxo)gJ-ly4BJX-;@X;@O9G5mxu8l+-`XNk$9I;_G;x&f|}_v$2-x#i?IR^T`EQSMGg5^HNZ*(OSr&VmO|)BB*4QLct%DQ{!)r?sjMq8(|JIn9=v}3~OfqYocjEz``P3rb#+a(#4<i)%7yHPM=+*_U}Jux|E{C8xY9R+X~d^9a=NIQC1P7N<%nq?Mg{9A#+4?@J?lfV@XBQMj&}x2~Dg=iYP?|N5+rfP|q1>TZu}-j%ePq<{u|1gxXo|g!!KAdU?t!DIt0AF#hZ2S8Ls<F-r@Y!P8&<c=?Za3f7wK>0Jq4#YC^&^IdT#7(BRn{cn5=2A$0evkWq!%|2?(D$?`u!+tm&1Ofrq3LET=6iT5|DB7ABNG(?BMI*?_<^(rrJy4NeEWCnDa4m7B#}RB^0Pr*|86`5Ffx}j49NnBSS`&%y81YchnCDpL3CJXBi>1Q=c_^v0;Tt1hnao$tD^c3r`;<V;nahcm^nN0U7k)F}0uYdaljHVTn};&w8vFunkBddeWmDKhc41j@s*$%i3AT%sS13t=DK|3U5;3`jLf!%Ho-eFFTan!ZfG4r$RcN6xLjkk<a1D++9`J0^i?6Y1`0yQIE1ub~(i&x3%r|6Yd5nuf)O(j1r(9)QmYl`3C`e9CmVEG<O&+i73DcGc(dl&Ax^s{)Z$HkSgm#wcnRd>!^F*|>3{cxkJD00twDasF+6lOR1noROOgoFyXlK5Mc6zoR$vpEXVxFrfWS+&DdCtu9bPdl@=2^Ws!aVaAr!_q37jAfxz$u5R2iB#lJ>;_$EH`3XA?bU_+vE7>Y8ArwRrzOr*$G=fpd@QzKu`LY_c2MFN#HX{fIJYHQD9o7cg(EE1pzo<9{-3G@l8i10klc#Godvj1>w5cZn@nlh^<G%DZ`PbGTcyz=cpihD{{farVo&?AQJ}18>k%kF<o_SHpWtbd#R5Oc7mMq*1+rm(2xNmzb8_l@E$8w6*lE@PfkmMwF%A1qQ_Uww5-Sw*4Q}NCPGzZDWo2-NfY~k{cfs!2G&eq4RPWSC_DU;m8};pI9Oo}EwktAIRapC0VU~s8|2O&)S%dtz9r#CgKu;!Z!2Wf*@>VRL8ca<%-f@)>7D?BlBiPfLj-y5qQ3SVaeQW-#14mvmlh`CIjV&jQCcdR)Jkiw?nh(lL*&?$oB=t&{@en5T?7X%rM#?w`-#dV^^_XF^0XTn+Krl}Y7a>F(#($r&q4qk5XZKYzS(iTg)SnCe)~JJZ{l{1KMu^0u}<pw(|)mmMUz=;JqD;mfQH&(_b`Wi`OiAkpP1bHg*mT$V4CC2X1Y`Jw4mB1UzvRnwoX8U0u!Jl0wIPSHdF)!8F8T_h?ha7OmGF822+`d-G$wfsI-X=mf4nSlIcp4Ar1i|Rc5htCn{6$roxOWxHlP3YB-Oj$g2#lpE-pH+C2p+Ux=L8?kN)%j+QNQbcc1e?FQbX^>@Kv1(4tPJiG?>2OPd^ze{x_m9eRzlQ4A>!vkXU>#Ag7q#Y(N3W~w7f^RRTuFbYN@eM~)G5+UNWja(^_x3iRymIFkL)|ZHosc$Zid^MJu0i@aVgdxrFPdAKNN~36o18AjoT`ioMe;^tTbg~zwnXjkq+X2r^G-Y3oI_FjKEe(3z?deoaQvt4$-BNN^kW2SEdshr7^w-1O#cO*uKnTf1dWQGV3<&Vb|8-kau$Udg1tz$eE{VkUJ4Hp*MJV!s7kIelxWum<P>VpxMpaqgfe0b9JH-yz)%Bp!}7Wz^d`mO?I;xuhNIU$$#G9xn}ATO^>Sp>yaP4EFZE3>OT2>?9J=`}UaT%n-~5?>J)}tT7SO0iO`Cn{IIXkVGaw)W7;|k1r@y^W10?T9qJ4hS$*}623?0hfSA+ItCW_Kjot<}u>xwxep|UBjM5Q9w7Ol-JOvgd#M1RpduSo|G&_?*QCzZ+*`#LeMr}K2tisg6*<|{rt0W1p9@^aNKB~TriCE8;rk3aDC6o7r(4*P5=?J2Wn5a{Zyl@9mW$rJQ;FitdiYiPFZTA&@{aDVI1z6PVm?vN0U!ZqmgXWnFw`^~<UelK56zOy-MZ^(=6aco=2j+fBB_uHf4EOcNA8X<l^-1%(icNiqh+C8_!g^3M#wR^*7yX4^(XA9TfH$Z?OhueZ{e4vk-J|nO~VturZ?bHT1(9B}if<X+Y#_Ds+eGO2dz<?z{sPWd#@aNC`{X!kPAAXNl4L_2%-QsD^wDI@;FyTIIuyD0@GcM5BuJw&+FDyj?o9Y_1^D`4nqtSL@;ZcDfXi*i&&7CU4ri-yReZaSlc_*P0Z~g^2oad%_ZE)2A`gl4v{8({hRyHj5@uvu@T^*>44v@Wx&g%&>@5T{Mi2p5A<H_P0sh&jkgpE!?cI(X5<|q3o3@r"
+        expected = zlib.decompress(
+            base64.b85decode(expected_compressed)
+        ).decode()
+        self.assertEqual(
+            make_scenario_pricing_result().lineage.parameters_json,
+            expected,
+        )
+
+    def test_contract_mapping_actual_iv_and_date_boundaries(self):
+        result = make_scenario_pricing_result(("call", "put"))
+        call, put = result.records[0].leg_calculations
+        self.assertEqual(call.base_iv, decimal.Decimal("0.20"))
+        self.assertEqual(put.base_iv, decimal.Decimal("0.30"))
+        self.assertEqual(call.contract_key.underlying_key.listing_mic, "ARCX")
+        self.assertEqual(call.contract_key.currency, "USD")
+        self.assertEqual(
+            call.contract_key.deliverable_id, "standard-100-share"
+        )
+        self.assertEqual(
+            call.contract_key.strike,
+            decimal.Decimal(str(call.leg.strike)),
+        )
+        immediate = result.records[0]
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                immediate,
+                scenario=Scenario(0.0, 0.0, "days_forward", 72),
+                valuation_date=EXPIRATION,
+            )
+        horizon_structure = dataclasses.replace(
+            immediate.structure,
+            expected_holding_days=72,
+        )
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                immediate,
+                structure=horizon_structure,
+                scenario=Scenario(0.0, 0.0, "holding_horizon"),
+                valuation_date=EXPIRATION,
+            )
+
+    def test_canonical_decoder_and_evidence_lineage_failures(self):
+        result = make_scenario_pricing_result()
+        lineage = result.lineage
+        malformed = (
+            lineage.parameters_json
+            .replace('"maximum_leg_count",2', '"maximum_leg_count",2.0', 1)
+        )
+        with self.assertRaises(ValueError):
+            dataclasses.replace(lineage, parameters_json=malformed)
+        unknown = lineage.parameters_json.replace(
+            '"$decimal"', '"$unknown"', 1
+        )
+        with self.assertRaises(ValueError):
+            dataclasses.replace(lineage, parameters_json=unknown)
+        decoded = transformations._decode_scenario_pricing_parameters(
+            lineage.parameters_json
+        )
+        missing = copy.deepcopy(decoded)
+        missing.pop("limitations")
+        with self.assertRaises(ValueError):
+            forged = dataclasses.replace(
+                lineage,
+                parameters_json=market_data.canonicalize_lineage_parameters(
+                    missing
+                ),
+            )
+            ScenarioPricingCalculationResult(result.records, forged)
+        evidence_mismatch = copy.deepcopy(decoded)
+        evidence_mismatch["base_underlying_evidence"]["normalized_at"] = (
+            CALCULATED_AT - datetime.timedelta(seconds=1)
+        )
+        forged = dataclasses.replace(
+            lineage,
+            parameters_json=market_data.canonicalize_lineage_parameters(
+                evidence_mismatch
+            ),
+        )
+        with self.assertRaises(ValueError):
+            ScenarioPricingCalculationResult(result.records, forged)
+        wrong_type = copy.deepcopy(decoded)
+        wrong_type["base_underlying_evidence"][
+            "base_underlying_price"
+        ] = 100
+        forged = dataclasses.replace(
+            lineage,
+            parameters_json=market_data.canonicalize_lineage_parameters(
+                wrong_type
+            ),
+        )
+        with self.assertRaises(TypeError):
+            ScenarioPricingCalculationResult(result.records, forged)
+
+    def test_conditional_quality_flags_and_interpolation(self):
+        result = make_scenario_pricing_result()
+        decoded = transformations._decode_scenario_pricing_parameters(
+            result.lineage.parameters_json
+        )
+        decoded["base_underlying_evidence"][
+            "propagated_quality_flags"
+        ] = ("correction_selected",)
+        lineage = dataclasses.replace(
+            result.lineage,
+            parameters_json=market_data.canonicalize_lineage_parameters(
+                decoded
+            ),
+            quality_flags=(
+                CalculationQualityFlag.ANNUALIZED,
+                CalculationQualityFlag.CORRECTION_SELECTED,
+                CalculationQualityFlag.ASSUMPTION_APPLIED,
+            ),
+        )
+        flagged = ScenarioPricingCalculationResult(result.records, lineage)
+        self.assertIn(
+            CalculationQualityFlag.CORRECTION_SELECTED,
+            flagged.lineage.quality_flags,
+        )
+        methodology = dataclasses.replace(
+            result.records[0].pricing_methodology,
+            rate_interpolation="linear disclosed interpolation",
+        )
+        records = tuple(
+            dataclasses.replace(record, pricing_methodology=methodology)
+            for record in result.records
+        )
+        parameters = (
+            transformations._scenario_pricing_expected_fixed_parameters(
+                records
+            )
+        )
+        parameters.update({
+            "base_underlying_evidence": decoded["base_underlying_evidence"],
+            "leg_iv_evidence": decoded["leg_iv_evidence"],
+            "contract_reference_evidence": (
+                decoded["contract_reference_evidence"]
+            ),
+        })
+        lineage = dataclasses.replace(
+            result.lineage,
+            parameters_json=market_data.canonicalize_lineage_parameters(
+                parameters
+            ),
+            quality_flags=(
+                CalculationQualityFlag.INTERPOLATED,
+                CalculationQualityFlag.ANNUALIZED,
+                CalculationQualityFlag.CORRECTION_SELECTED,
+                CalculationQualityFlag.ASSUMPTION_APPLIED,
+            ),
+        )
+        interpolated = ScenarioPricingCalculationResult(records, lineage)
+        self.assertIn(
+            CalculationQualityFlag.INTERPOLATED,
+            interpolated.lineage.quality_flags,
+        )
+
+    def test_wrong_exact_public_types_and_immutability(self):
+        result = make_scenario_pricing_result()
+        record = result.records[0]
+        with self.assertRaises(FrozenInstanceError):
+            record.valuation_date = SESSION_DATE  # type: ignore[misc]
+        with self.assertRaises(TypeError):
+            make_scenario_pricing_methodology(
+                supported_exercise_settlement_pairs=[
+                    ("american", "physical")
+                ]
+            )
+        with self.assertRaises(TypeError):
+            dataclasses.replace(
+                record,
+                leg_calculations=list(record.leg_calculations),
+            )
+        with self.assertRaises(TypeError):
+            dataclasses.replace(
+                record.leg_calculations[0],
+                base_iv=0.20,
+            )
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                record.leg_calculations[0],
+                total_leg_value=decimal.Decimal("249.99"),
+            )
+        class UnderlyingKeySubclass(market_data.UnderlyingKey):
+            pass
+        key = record.leg_calculations[0].contract_key.underlying_key
+        subclass_key = UnderlyingKeySubclass(
+            key.symbol,
+            key.listing_mic,
+            key.security_type,
+            key.currency,
+        )
+        contract = dataclasses.replace(
+            record.leg_calculations[0].contract_key,
+            underlying_key=subclass_key,
+        )
+        with self.assertRaises(TypeError):
+            dataclasses.replace(
+                record.leg_calculations[0],
+                contract_key=contract,
+            )
+
+    def test_review_mutation_matrix_evidence_and_lineage(self):
+        one_leg = make_scenario_pricing_result()
+        calculation = one_leg.records[0].leg_calculations[0]
+        near_contract = dataclasses.replace(
+            calculation.contract_key,
+            strike=decimal.Decimal("100.00000000000001"),
+        )
+        with self.subTest(mutation="near_strike_substitution"):
+            with self.assertRaises(ValueError):
+                dataclasses.replace(
+                    calculation,
+                    contract_key=near_contract,
+                )
+
+        straddle = make_scenario_pricing_result(("call", "put"))
+        base_parameters = (
+            transformations._decode_scenario_pricing_parameters(
+                straddle.lineage.parameters_json
+            )
+        )
+        evidence_mutations = (
+            (
+                "iv_value_substitution",
+                lambda parameters: parameters["leg_iv_evidence"][0].__setitem__(
+                    "implied_volatility", decimal.Decimal("0.20000000000001")
+                ),
+            ),
+            (
+                "cross_leg_iv_record_substitution",
+                lambda parameters: parameters["leg_iv_evidence"][0].__setitem__(
+                    "record_id",
+                    parameters["leg_iv_evidence"][1]["record_id"],
+                ),
+            ),
+            (
+                "current_session_iv_mismatch",
+                lambda parameters: parameters["leg_iv_evidence"][0].__setitem__(
+                    "session_date",
+                    SESSION_DATE - datetime.timedelta(days=1),
+                ),
+            ),
+        )
+        for name, mutate in evidence_mutations:
+            parameters = copy.deepcopy(base_parameters)
+            mutate(parameters)
+            with self.subTest(mutation=name):
+                with self.assertRaises(ValueError):
+                    rebuild_scenario_pricing_result(
+                        straddle,
+                        decoded_parameters=parameters,
+                    )
+
+        missing_inputs = straddle.lineage.inputs[:-1]
+        extra_inputs = straddle.lineage.inputs + (
+            CalculationInputReference(
+                "undisclosed-extra-input",
+                CALCULATED_AT,
+                ("extra-source-001",),
+            ),
+        )
+        first_input = straddle.lineage.inputs[0]
+        mismatched_source_inputs = (
+            dataclasses.replace(
+                first_input,
+                source_ids=("different-source-001",),
+            ),
+        ) + straddle.lineage.inputs[1:]
+        lineage_mutations = (
+            ("missing_lineage_input", missing_inputs),
+            ("extra_lineage_input", extra_inputs),
+            ("lineage_source_id_mismatch", mismatched_source_inputs),
+        )
+        for name, inputs in lineage_mutations:
+            with self.subTest(mutation=name):
+                with self.assertRaises(ValueError):
+                    rebuild_scenario_pricing_result(
+                        straddle,
+                        inputs=inputs,
+                    )
+
+    def test_review_mutation_matrix_methodology_and_batch(self):
+        one_leg = make_scenario_pricing_result()
+        record = one_leg.records[0]
+        methodology_cases = (
+            (
+                "rate_effective_date",
+                {
+                    "rate_effective_date": (
+                        SESSION_DATE - datetime.timedelta(days=1)
+                    )
+                },
+            ),
+            (
+                "dividend_coverage_end",
+                {
+                    "dividend_coverage_end_date": (
+                        EXPIRATION - datetime.timedelta(days=1)
+                    )
+                },
+            ),
+            (
+                "dividend_coverage_start",
+                {
+                    "dividend_coverage_start_date": (
+                        SESSION_DATE + datetime.timedelta(days=1)
+                    )
+                },
+            ),
+        )
+        for name, changes in methodology_cases:
+            methodology = dataclasses.replace(
+                record.pricing_methodology,
+                **changes,
+            )
+            with self.subTest(mutation=name):
+                with self.assertRaises(ValueError):
+                    dataclasses.replace(
+                        record,
+                        pricing_methodology=methodology,
+                    )
+
+        zero_dividend_cases = (
+            {
+                "explicit_zero_dividend_assumption": True,
+                "dividend_source": "provider forecast",
+            },
+            {
+                "explicit_zero_dividend_assumption": True,
+                "dividend_treatment": "provider forecast",
+            },
+            {
+                "explicit_zero_dividend_assumption": False,
+                "dividend_source": "explicit_zero_dividend_assumption",
+                "dividend_treatment": "provider forecast",
+            },
+            {
+                "explicit_zero_dividend_assumption": False,
+                "dividend_source": "provider forecast",
+                "dividend_treatment": "explicit_zero_dividend_assumption",
+            },
+        )
+        for changes in zero_dividend_cases:
+            with self.subTest(mutation="zero_dividend", changes=changes):
+                with self.assertRaises(ValueError):
+                    dataclasses.replace(
+                        record.pricing_methodology,
+                        **changes,
+                    )
+
+        duplicate_records = (record, record)
+        original_parameters = (
+            transformations._decode_scenario_pricing_parameters(
+                one_leg.lineage.parameters_json
+            )
+        )
+        duplicate_parameters = (
+            transformations._scenario_pricing_expected_fixed_parameters(
+                duplicate_records
+            )
+        )
+        duplicate_parameters.update({
+            "base_underlying_evidence": (
+                original_parameters["base_underlying_evidence"]
+            ),
+            "leg_iv_evidence": original_parameters["leg_iv_evidence"],
+            "contract_reference_evidence": (
+                original_parameters["contract_reference_evidence"]
+            ),
+        })
+        duplicate_lineage = dataclasses.replace(
+            one_leg.lineage,
+            parameters_json=market_data.canonicalize_lineage_parameters(
+                duplicate_parameters
+            ),
+        )
+        with self.subTest(mutation="duplicate_scenario_identity"):
+            with self.assertRaises(ValueError):
+                ScenarioPricingCalculationResult(
+                    duplicate_records,
+                    duplicate_lineage,
+                )
+
+        straddle = make_scenario_pricing_result(("call", "put"))
+        straddle_record = straddle.records[0]
+        with self.subTest(mutation="aggregate_gross_value"):
+            with self.assertRaises(ValueError):
+                dataclasses.replace(
+                    straddle_record,
+                    estimated_gross_position_value=decimal.Decimal("599.99"),
+                )
+
+        unsupported_leg = dataclasses.replace(
+            record.leg_calculations[0],
+            exercise_style="european",
+            settlement_type="cash",
+        )
+        with self.subTest(mutation="unsupported_exercise_settlement"):
+            with self.assertRaises(ValueError):
+                dataclasses.replace(
+                    record,
+                    leg_calculations=(unsupported_leg,),
+                )
+
+    def test_review_quantity_scaling(self):
+        source = make_scenario_pricing_result().records[0].leg_calculations[0]
+        quantity_two_leg = dataclasses.replace(source.leg, quantity=2)
+        valid = ScenarioPricingLegCalculation(
+            leg=quantity_two_leg,
+            contract_key=source.contract_key,
+            base_iv=source.base_iv,
+            shocked_iv=source.shocked_iv,
+            remaining_calendar_days=source.remaining_calendar_days,
+            per_underlying_unit_option_value=decimal.Decimal("1.25"),
+            total_leg_value=decimal.Decimal("250.00"),
+            exercise_style=source.exercise_style,
+            settlement_type=source.settlement_type,
+            implied_volatility_record_id=source.implied_volatility_record_id,
+            contract_reference_record_id=source.contract_reference_record_id,
+        )
+        self.assertEqual(valid.leg.quantity, 2)
+        self.assertEqual(valid.leg.contract_multiplier, 100)
+        self.assertEqual(valid.total_leg_value, decimal.Decimal("250.00"))
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                valid,
+                total_leg_value=decimal.Decimal("125.00"),
+            )
+
+    def test_review_decimal_context_preserved_on_ordinary_failure(self):
+        record = make_scenario_pricing_result(
+            ("call", "put")
+        ).records[0]
+        context = decimal.getcontext()
+        original = context.copy()
+        context.prec = 9
+        context.rounding = decimal.ROUND_FLOOR
+        context.clear_flags()
+
+        def context_state():
+            return (
+                context.prec,
+                context.rounding,
+                tuple(context.traps.items()),
+                tuple(context.flags.items()),
+                context.Emin,
+                context.Emax,
+                context.capitals,
+                context.clamp,
+            )
+
+        configured = context_state()
+        try:
+            with self.assertRaises(ValueError):
+                dataclasses.replace(
+                    record,
+                    estimated_gross_position_value=decimal.Decimal("599.99"),
+                )
+            self.assertEqual(context_state(), configured)
+        finally:
+            decimal.setcontext(original)
+
+    def test_scope_exclusions_are_not_called(self):
+        blocked = (
+            "ScenarioResult",
+            "transform_structure_costs",
+            "transform_tail_pricing",
+            "transform_volatility_environment",
+            "black_scholes",
+            "expiration_payoff",
+            "entry_cost",
+            "exit_cost",
+            "profit_and_loss",
+        )
+        with ExitStack() as stack:
+            for name in blocked:
+                stack.enter_context(mock.patch.object(
+                    transformations,
+                    name,
+                    side_effect=AssertionError(f"{name} called"),
+                    create=True,
+                ))
+            make_scenario_pricing_result()
 
 
 if __name__ == "__main__":

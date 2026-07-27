@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Tuple
 
-from .evidence import OptionLeg, OptionStructure, StructureCosts
+from .evidence import OptionLeg, OptionStructure, Scenario, StructureCosts
 from .market_data import (
     CalculationInputReference,
     CalculationLineage,
@@ -77,6 +77,10 @@ __all__ = (
     "transform_volatility_environment",
     "TailPricingTransformationResult",
     "transform_tail_pricing",
+    "ScenarioPricingMethodology",
+    "ScenarioPricingLegCalculation",
+    "NonExpirationScenarioPricingCalculation",
+    "ScenarioPricingCalculationResult",
 )
 
 
@@ -1176,7 +1180,7 @@ def _convert_position_values(
     try:
         quoted_bid_value = float(bid_value)
         quoted_ask_value = float(ask_value)
-    except (OverflowError, ValueError) as error:
+    except (OverflowError, TypeError, ValueError) as error:
         raise ValueError("position values must be finite floats") from error
     if not math.isfinite(quoted_bid_value) or not math.isfinite(quoted_ask_value):
         raise ValueError("position values must be finite floats")
@@ -4882,3 +4886,1291 @@ def transform_tail_pricing(
         records=tuple(output_records),
         lineage=lineage,
     )
+
+
+_SCENARIO_PRICING_PARAMETER_KEYS = {
+    "output_architecture",
+    "supported_structure_scope",
+    "producer_identity",
+    "producer_provenance",
+    "pricing_methodology",
+    "structure_identity",
+    "leg_correspondence",
+    "scenario_definitions",
+    "scenario_ordering",
+    "valuation_date_rules",
+    "underlying_shock_rule",
+    "iv_shock_rule",
+    "base_underlying_evidence",
+    "leg_iv_evidence",
+    "contract_reference_evidence",
+    "rate_methodology",
+    "dividend_methodology",
+    "exercise_and_settlement_support",
+    "remaining_time_rule",
+    "position_scaling_rule",
+    "calculation_values",
+    "float_conversion_rule",
+    "limitations",
+}
+_SCENARIO_PRICING_PROPAGATED_FLAGS = (
+    "adjusted_input_used",
+    "correction_selected",
+    "composite_input_used",
+)
+_SCENARIO_PRICING_REMAINING_TIME_RULE = (
+    "expiration_minus_valuation_date_calendar_days"
+)
+_SCENARIO_PRICING_SCALING_RULE = (
+    "per_underlying_unit_value_times_quantity_times_contract_multiplier"
+)
+
+
+def _scenario_pricing_string(name: str, value: object) -> str:
+    if type(value) is not str:
+        raise TypeError(f"{name} must have exact type str")
+    if not value or value != value.strip():
+        raise ValueError(f"{name} must be a nonempty canonical string")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise ValueError(f"{name} must not contain a Unicode surrogate") from error
+    return value
+
+
+def _scenario_pricing_date(name: str, value: object) -> datetime.date:
+    if type(value) is not datetime.date:
+        raise TypeError(f"{name} must have exact type date")
+    return value
+
+
+def _scenario_pricing_datetime(
+    name: str, value: object
+) -> datetime.datetime:
+    if type(value) is not datetime.datetime:
+        raise TypeError(f"{name} must have exact type datetime")
+    try:
+        offset = value.utcoffset()
+        if offset is None:
+            raise ValueError(f"{name} must be timezone-aware")
+        normalized = value.astimezone(datetime.timezone.utc)
+    except (OverflowError, ValueError) as error:
+        raise ValueError(f"{name} must support valid UTC conversion") from error
+    return normalized
+
+
+def _scenario_pricing_decimal(
+    name: str, value: object, *, positive: bool = False
+) -> decimal.Decimal:
+    if type(value) is not decimal.Decimal:
+        raise TypeError(f"{name} must have exact type Decimal")
+    if not value.is_finite():
+        raise ValueError(f"{name} must be finite")
+    if positive and value <= 0:
+        raise ValueError(f"{name} must be greater than zero")
+    if not positive and value < 0:
+        raise ValueError(f"{name} must be nonnegative")
+    return value
+
+
+def _scenario_pricing_context() -> decimal.Context:
+    context = decimal.Context(
+        prec=34,
+        rounding=decimal.ROUND_HALF_EVEN,
+        Emin=decimal.MIN_EMIN,
+        Emax=decimal.MAX_EMAX,
+        capitals=1,
+        clamp=0,
+    )
+    context.clear_flags()
+    return context
+
+
+def _scenario_pricing_multiply(
+    *values: decimal.Decimal,
+) -> decimal.Decimal:
+    context = _scenario_pricing_context()
+    result = decimal.Decimal(1)
+    try:
+        for value in values:
+            result = context.multiply(result, value)
+    except decimal.DecimalException as error:
+        raise ValueError("scenario-pricing Decimal multiplication failed") from error
+    if not result.is_finite():
+        raise ValueError("scenario-pricing Decimal result must be finite")
+    return result
+
+
+def _scenario_pricing_sum(
+    values: Tuple[decimal.Decimal, ...],
+) -> decimal.Decimal:
+    context = _scenario_pricing_context()
+    result = decimal.Decimal(0)
+    try:
+        for value in values:
+            result = context.add(result, value)
+    except decimal.DecimalException as error:
+        raise ValueError("scenario-pricing Decimal sum failed") from error
+    if not result.is_finite():
+        raise ValueError("scenario-pricing Decimal result must be finite")
+    return result
+
+
+def _scenario_pricing_ratio(value: object) -> decimal.Decimal:
+    try:
+        result = decimal.Decimal(str(value))
+    except decimal.DecimalException as error:
+        raise ValueError("scenario ratio must convert exactly to Decimal") from error
+    if not result.is_finite():
+        raise ValueError("scenario ratio must be finite")
+    return result
+
+
+def _scenario_pricing_shock(
+    base: decimal.Decimal, ratio: object
+) -> decimal.Decimal:
+    context = _scenario_pricing_context()
+    try:
+        factor = context.add(decimal.Decimal(1), _scenario_pricing_ratio(ratio))
+        result = context.multiply(base, factor)
+    except decimal.DecimalException as error:
+        raise ValueError("scenario shock calculation failed") from error
+    if not result.is_finite():
+        raise ValueError("scenario shock result must be finite")
+    return result
+
+
+def _scenario_pricing_leg_identity(leg: OptionLeg) -> dict:
+    return {
+        "underlying": leg.underlying,
+        "option_type": leg.option_type,
+        "strike": decimal.Decimal(str(leg.strike)),
+        "expiration": leg.expiration,
+        "quantity": leg.quantity,
+        "contract_multiplier": leg.contract_multiplier,
+    }
+
+
+def _scenario_pricing_underlying_identity(key: UnderlyingKey) -> dict:
+    return {
+        "symbol": key.symbol,
+        "listing_mic": key.listing_mic,
+        "security_type": key.security_type.value,
+        "currency": key.currency,
+    }
+
+
+def _scenario_pricing_contract_identity(key: OptionContractKey) -> dict:
+    return {
+        "underlying_key": _scenario_pricing_underlying_identity(
+            key.underlying_key
+        ),
+        "expiration": key.expiration,
+        "option_type": key.option_type,
+        "strike": key.strike,
+        "contract_multiplier": key.contract_multiplier,
+        "currency": key.currency,
+        "deliverable_id": key.deliverable_id,
+    }
+
+
+def _scenario_pricing_validate_leg_contract(
+    leg: OptionLeg, contract_key: OptionContractKey
+) -> None:
+    if (
+        contract_key.underlying_key.symbol != leg.underlying
+        or contract_key.option_type != leg.option_type
+        or contract_key.expiration != leg.expiration
+        or contract_key.strike != decimal.Decimal(str(leg.strike))
+        or contract_key.contract_multiplier != leg.contract_multiplier
+    ):
+        raise ValueError("contract_key must exactly correspond to leg")
+
+
+@dataclass(frozen=True)
+class ScenarioPricingMethodology:
+    pricing_source_classification: str
+    producer_name: str
+    producer_version: str
+    pricing_request_id: str
+    pricing_payload_sha256: str
+    producer_calculated_at: datetime.datetime
+    pricing_model_name: str
+    pricing_model_version: str
+    supported_exercise_settlement_pairs: Tuple[Tuple[str, str], ...]
+    settlement_treatment: str
+    rate_source: str
+    rate_curve_identity: str
+    rate_effective_date: datetime.date
+    rate_currency: str
+    rate_remaining_tenor_treatment: str
+    rate_compounding_conversion: str
+    rate_day_count_convention: str
+    rate_interpolation: str
+    dividend_source: str
+    dividend_treatment: str
+    dividend_coverage_start_date: datetime.date
+    dividend_coverage_end_date: datetime.date
+    explicit_zero_dividend_assumption: bool
+    volatility_surface_treatment: str
+    skew_treatment: str
+    term_treatment: str
+    volatility_interpolation: str
+    remaining_time_rule: str
+    position_scaling_rule: str
+    numerical_calculation_boundary: str
+    limitations: str
+
+    def __post_init__(self) -> None:
+        string_fields = (
+            "pricing_source_classification",
+            "producer_name",
+            "producer_version",
+            "pricing_request_id",
+            "pricing_payload_sha256",
+            "pricing_model_name",
+            "pricing_model_version",
+            "settlement_treatment",
+            "rate_source",
+            "rate_curve_identity",
+            "rate_currency",
+            "rate_remaining_tenor_treatment",
+            "rate_compounding_conversion",
+            "rate_day_count_convention",
+            "rate_interpolation",
+            "dividend_source",
+            "dividend_treatment",
+            "volatility_surface_treatment",
+            "skew_treatment",
+            "term_treatment",
+            "volatility_interpolation",
+            "remaining_time_rule",
+            "position_scaling_rule",
+            "numerical_calculation_boundary",
+            "limitations",
+        )
+        for name in string_fields:
+            _scenario_pricing_string(name, getattr(self, name))
+        if self.pricing_source_classification != "provider_calculated":
+            raise ValueError(
+                "pricing_source_classification must be provider_calculated"
+            )
+        if (
+            len(self.pricing_payload_sha256) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.pricing_payload_sha256
+            )
+        ):
+            raise ValueError(
+                "pricing_payload_sha256 must be 64 lowercase hexadecimal characters"
+            )
+        producer_calculated_at = _scenario_pricing_datetime(
+            "producer_calculated_at", self.producer_calculated_at
+        )
+        for name in (
+            "rate_effective_date",
+            "dividend_coverage_start_date",
+            "dividend_coverage_end_date",
+        ):
+            _scenario_pricing_date(name, getattr(self, name))
+        if self.dividend_coverage_start_date > self.dividend_coverage_end_date:
+            raise ValueError("dividend coverage dates are reversed")
+        if type(self.supported_exercise_settlement_pairs) is not tuple:
+            raise TypeError(
+                "supported_exercise_settlement_pairs must have exact type tuple"
+            )
+        pairs = self.supported_exercise_settlement_pairs
+        if not pairs:
+            raise ValueError(
+                "supported_exercise_settlement_pairs must not be empty"
+            )
+        for pair in pairs:
+            if type(pair) is not tuple:
+                raise TypeError("every supported pair must have exact type tuple")
+            if len(pair) != 2:
+                raise ValueError("every supported pair must contain two strings")
+            _scenario_pricing_string("exercise_style", pair[0])
+            _scenario_pricing_string("settlement_type", pair[1])
+        if len(set(pairs)) != len(pairs):
+            raise ValueError("supported pairs must be unique")
+        if pairs != tuple(sorted(pairs)):
+            raise ValueError("supported pairs must be in strict canonical order")
+        if type(self.explicit_zero_dividend_assumption) is not bool:
+            raise TypeError(
+                "explicit_zero_dividend_assumption must have exact type bool"
+            )
+        reserved = "explicit_zero_dividend_assumption"
+        if self.explicit_zero_dividend_assumption:
+            if (
+                self.dividend_source != reserved
+                or self.dividend_treatment != reserved
+            ):
+                raise ValueError(
+                    "explicit zero dividends require matching source and treatment"
+                )
+        elif (
+            self.dividend_source == reserved
+            or self.dividend_treatment == reserved
+        ):
+            raise ValueError(
+                "reserved zero-dividend methodology requires a true assumption"
+            )
+        if self.rate_currency != "USD":
+            raise ValueError("rate_currency must be USD")
+        if self.remaining_time_rule != _SCENARIO_PRICING_REMAINING_TIME_RULE:
+            raise ValueError("remaining_time_rule is unsupported")
+        if self.position_scaling_rule != _SCENARIO_PRICING_SCALING_RULE:
+            raise ValueError("position_scaling_rule is unsupported")
+        object.__setattr__(
+            self, "producer_calculated_at", producer_calculated_at
+        )
+
+
+@dataclass(frozen=True)
+class ScenarioPricingLegCalculation:
+    leg: OptionLeg
+    contract_key: OptionContractKey
+    base_iv: decimal.Decimal
+    shocked_iv: decimal.Decimal
+    remaining_calendar_days: int
+    per_underlying_unit_option_value: decimal.Decimal
+    total_leg_value: decimal.Decimal
+    exercise_style: str
+    settlement_type: str
+    implied_volatility_record_id: str
+    contract_reference_record_id: str
+
+    def __post_init__(self) -> None:
+        if type(self.leg) is not OptionLeg:
+            raise TypeError("leg must have exact type OptionLeg")
+        if type(self.contract_key) is not OptionContractKey:
+            raise TypeError("contract_key must have exact type OptionContractKey")
+        if type(self.contract_key.underlying_key) is not UnderlyingKey:
+            raise TypeError(
+                "contract_key.underlying_key must have exact type UnderlyingKey"
+            )
+        _scenario_pricing_validate_leg_contract(self.leg, self.contract_key)
+        _scenario_pricing_decimal("base_iv", self.base_iv, positive=True)
+        _scenario_pricing_decimal("shocked_iv", self.shocked_iv, positive=True)
+        _scenario_pricing_decimal(
+            "per_underlying_unit_option_value",
+            self.per_underlying_unit_option_value,
+        )
+        _scenario_pricing_decimal("total_leg_value", self.total_leg_value)
+        if type(self.remaining_calendar_days) is not int:
+            raise TypeError(
+                "remaining_calendar_days must have exact type int excluding bool"
+            )
+        if self.remaining_calendar_days <= 0:
+            raise ValueError("remaining_calendar_days must be positive")
+        for name in (
+            "exercise_style",
+            "settlement_type",
+            "implied_volatility_record_id",
+            "contract_reference_record_id",
+        ):
+            _scenario_pricing_string(name, getattr(self, name))
+        if (
+            self.implied_volatility_record_id
+            == self.contract_reference_record_id
+        ):
+            raise ValueError("IV and contract-reference record IDs must differ")
+        expected = _scenario_pricing_multiply(
+            self.per_underlying_unit_option_value,
+            decimal.Decimal(self.leg.quantity),
+            decimal.Decimal(self.leg.contract_multiplier),
+        )
+        if self.total_leg_value != expected:
+            raise ValueError("total_leg_value does not match exact leg scaling")
+
+
+def _scenario_pricing_valuation_date(
+    structure: OptionStructure,
+    as_of_date: datetime.date,
+    scenario: Scenario,
+) -> datetime.date:
+    if scenario.valuation_time == "expiration":
+        raise ValueError("expiration scenarios are unsupported by 3C.7f1")
+    try:
+        if scenario.valuation_time == "immediate":
+            return as_of_date
+        if scenario.valuation_time == "days_forward":
+            return as_of_date + datetime.timedelta(days=scenario.days_forward)
+        if scenario.valuation_time == "holding_horizon":
+            return as_of_date + datetime.timedelta(
+                days=structure.expected_holding_days
+            )
+    except OverflowError as error:
+        raise ValueError("scenario valuation date is outside the date range") from error
+    raise ValueError("scenario valuation_time is unsupported")
+
+
+@dataclass(frozen=True)
+class NonExpirationScenarioPricingCalculation:
+    structure: OptionStructure
+    as_of_date: datetime.date
+    scenario: Scenario
+    valuation_date: datetime.date
+    base_underlying_price: decimal.Decimal
+    shocked_underlying_price: decimal.Decimal
+    underlying_quote_record_id: str
+    leg_calculations: Tuple[ScenarioPricingLegCalculation, ...]
+    estimated_gross_position_value: decimal.Decimal
+    pricing_methodology: ScenarioPricingMethodology
+
+    def __post_init__(self) -> None:
+        if type(self.structure) is not OptionStructure:
+            raise TypeError("structure must have exact type OptionStructure")
+        if type(self.scenario) is not Scenario:
+            raise TypeError("scenario must have exact type Scenario")
+        if type(self.pricing_methodology) is not ScenarioPricingMethodology:
+            raise TypeError(
+                "pricing_methodology must have exact type "
+                "ScenarioPricingMethodology"
+            )
+        _scenario_pricing_date("as_of_date", self.as_of_date)
+        _scenario_pricing_date("valuation_date", self.valuation_date)
+        _scenario_pricing_decimal(
+            "base_underlying_price", self.base_underlying_price, positive=True
+        )
+        _scenario_pricing_decimal(
+            "shocked_underlying_price",
+            self.shocked_underlying_price,
+            positive=True,
+        )
+        _scenario_pricing_decimal(
+            "estimated_gross_position_value",
+            self.estimated_gross_position_value,
+        )
+        _scenario_pricing_string(
+            "underlying_quote_record_id", self.underlying_quote_record_id
+        )
+        if type(self.leg_calculations) is not tuple:
+            raise TypeError("leg_calculations must have exact type tuple")
+        if any(
+            type(item) is not ScenarioPricingLegCalculation
+            for item in self.leg_calculations
+        ):
+            raise TypeError(
+                "every leg calculation must have exact public record type"
+            )
+        if self.structure.structure_type not in {
+            "long_call", "long_put", "long_straddle"
+        }:
+            raise ValueError("structure type is unsupported")
+        legs = self.structure.legs
+        if len(legs) not in {1, 2} or any(
+            type(leg) is not OptionLeg for leg in legs
+        ):
+            raise ValueError("structure must contain one or two exact option legs")
+        if (
+            len({leg.underlying for leg in legs}) != 1
+            or len({leg.expiration for leg in legs}) != 1
+            or any(leg.quantity <= 0 or leg.contract_multiplier <= 0 for leg in legs)
+        ):
+            raise ValueError("structure legs must share identity and be positive")
+        if len(legs) == 2:
+            call = next((leg for leg in legs if leg.option_type == "call"), None)
+            put = next((leg for leg in legs if leg.option_type == "put"), None)
+            if (
+                call is None
+                or put is None
+                or call.strike != put.strike
+                or call.expiration != put.expiration
+                or call.underlying != put.underlying
+                or call.quantity != put.quantity
+                or call.contract_multiplier != put.contract_multiplier
+            ):
+                raise ValueError("two-leg structure violates exact straddle rules")
+        expiration = legs[0].expiration
+        if self.as_of_date >= expiration:
+            raise ValueError("as_of_date must precede expiration")
+        required_valuation_date = _scenario_pricing_valuation_date(
+            self.structure, self.as_of_date, self.scenario
+        )
+        if required_valuation_date >= expiration:
+            raise ValueError("resolved valuation date must precede expiration")
+        if self.valuation_date != required_valuation_date:
+            raise ValueError("valuation_date does not match scenario rule")
+        expected_underlying = _scenario_pricing_shock(
+            self.base_underlying_price, self.scenario.underlying_move
+        )
+        if self.shocked_underlying_price != expected_underlying:
+            raise ValueError(
+                "shocked_underlying_price does not match the scenario shock"
+            )
+        if len(self.leg_calculations) != len(legs):
+            raise ValueError("leg calculation count must equal structure leg count")
+        if tuple(item.leg for item in self.leg_calculations) != legs:
+            raise ValueError(
+                "leg calculations must already follow exact structure-leg order"
+            )
+        if len(set(legs)) != len(legs):
+            raise ValueError("each structure leg must occur exactly once")
+        contract_keys = tuple(
+            item.contract_key for item in self.leg_calculations
+        )
+        if len(set(contract_keys)) != len(contract_keys):
+            raise ValueError("each contract key must occur exactly once")
+        underlying_keys = tuple(
+            contract.underlying_key for contract in contract_keys
+        )
+        if any(
+            type(key) is not UnderlyingKey or key != underlying_keys[0]
+            for key in underlying_keys
+        ):
+            raise ValueError(
+                "all leg contract keys must share one complete UnderlyingKey"
+            )
+        record_ids = [self.underlying_quote_record_id]
+        for item in self.leg_calculations:
+            if item.remaining_calendar_days != (
+                item.leg.expiration - self.valuation_date
+            ).days:
+                raise ValueError("remaining_calendar_days is inconsistent")
+            expected_iv = _scenario_pricing_shock(
+                item.base_iv, self.scenario.iv_change
+            )
+            if item.shocked_iv != expected_iv:
+                raise ValueError("shocked_iv does not match the scenario shock")
+            if (
+                item.exercise_style,
+                item.settlement_type,
+            ) not in self.pricing_methodology.supported_exercise_settlement_pairs:
+                raise ValueError("exercise and settlement pair is unsupported")
+            record_ids.extend((
+                item.implied_volatility_record_id,
+                item.contract_reference_record_id,
+            ))
+        if len(set(record_ids)) != len(record_ids):
+            raise ValueError("all normalized evidence record IDs must be unique")
+        expected_total = _scenario_pricing_sum(
+            tuple(item.total_leg_value for item in self.leg_calculations)
+        )
+        if self.estimated_gross_position_value != expected_total:
+            raise ValueError(
+                "estimated_gross_position_value must equal the exact leg sum"
+            )
+        methodology = self.pricing_methodology
+        if methodology.rate_effective_date != self.as_of_date:
+            raise ValueError("rate_effective_date must equal as_of_date")
+        if (
+            methodology.dividend_coverage_start_date > self.as_of_date
+            or methodology.dividend_coverage_end_date < expiration
+        ):
+            raise ValueError("dividend methodology does not cover the calculation")
+
+
+def _scenario_pricing_methodology_sections(
+    methodology: ScenarioPricingMethodology,
+) -> Tuple[dict, dict, dict, dict, dict, tuple]:
+    producer_identity = {
+        "producer_name": methodology.producer_name,
+        "producer_version": methodology.producer_version,
+    }
+    producer_provenance = {
+        "pricing_source_classification": (
+            methodology.pricing_source_classification
+        ),
+        "pricing_request_id": methodology.pricing_request_id,
+        "pricing_payload_sha256": methodology.pricing_payload_sha256,
+        "producer_calculated_at": methodology.producer_calculated_at,
+    }
+    pricing_methodology = {
+        "pricing_model_name": methodology.pricing_model_name,
+        "pricing_model_version": methodology.pricing_model_version,
+        "settlement_treatment": methodology.settlement_treatment,
+        "volatility_surface_treatment": (
+            methodology.volatility_surface_treatment
+        ),
+        "skew_treatment": methodology.skew_treatment,
+        "term_treatment": methodology.term_treatment,
+        "volatility_interpolation": methodology.volatility_interpolation,
+        "numerical_calculation_boundary": (
+            methodology.numerical_calculation_boundary
+        ),
+    }
+    rate_methodology = {
+        "rate_source": methodology.rate_source,
+        "rate_curve_identity": methodology.rate_curve_identity,
+        "rate_effective_date": methodology.rate_effective_date,
+        "rate_currency": methodology.rate_currency,
+        "rate_remaining_tenor_treatment": (
+            methodology.rate_remaining_tenor_treatment
+        ),
+        "rate_compounding_conversion": (
+            methodology.rate_compounding_conversion
+        ),
+        "rate_day_count_convention": methodology.rate_day_count_convention,
+        "rate_interpolation": methodology.rate_interpolation,
+    }
+    dividend_methodology = {
+        "dividend_source": methodology.dividend_source,
+        "dividend_treatment": methodology.dividend_treatment,
+        "dividend_coverage_start_date": (
+            methodology.dividend_coverage_start_date
+        ),
+        "dividend_coverage_end_date": methodology.dividend_coverage_end_date,
+        "explicit_zero_dividend_assumption": (
+            methodology.explicit_zero_dividend_assumption
+        ),
+    }
+    return (
+        producer_identity,
+        producer_provenance,
+        pricing_methodology,
+        rate_methodology,
+        dividend_methodology,
+        methodology.supported_exercise_settlement_pairs,
+    )
+
+
+def _scenario_pricing_structure_identity(
+    record: NonExpirationScenarioPricingCalculation,
+) -> dict:
+    structure = record.structure
+    return {
+        "structure_type": structure.structure_type,
+        "legs": tuple(
+            _scenario_pricing_leg_identity(leg) for leg in structure.legs
+        ),
+        "assumed_portfolio_value": decimal.Decimal(
+            str(structure.assumed_portfolio_value)
+        ),
+        "expected_holding_days": structure.expected_holding_days,
+        "as_of_date": record.as_of_date,
+        "shared_expiration": structure.legs[0].expiration,
+    }
+
+
+def _scenario_pricing_leg_correspondence(
+    record: NonExpirationScenarioPricingCalculation,
+) -> tuple:
+    return tuple({
+        "leg": _scenario_pricing_leg_identity(item.leg),
+        "contract_key": _scenario_pricing_contract_identity(
+            item.contract_key
+        ),
+        "base_iv": item.base_iv,
+        "exercise_style": item.exercise_style,
+        "settlement_type": item.settlement_type,
+        "implied_volatility_record_id": (
+            item.implied_volatility_record_id
+        ),
+        "contract_reference_record_id": (
+            item.contract_reference_record_id
+        ),
+    } for item in record.leg_calculations)
+
+
+def _scenario_pricing_scenario_definition(
+    record: NonExpirationScenarioPricingCalculation,
+) -> dict:
+    return {
+        "valuation_time": record.scenario.valuation_time,
+        "days_forward": record.scenario.days_forward,
+        "underlying_move": _scenario_pricing_ratio(
+            record.scenario.underlying_move
+        ),
+        "iv_change": _scenario_pricing_ratio(record.scenario.iv_change),
+    }
+
+
+def _scenario_pricing_calculation_values(
+    record: NonExpirationScenarioPricingCalculation,
+) -> dict:
+    return {
+        "scenario": _scenario_pricing_scenario_definition(record),
+        "valuation_date": record.valuation_date,
+        "base_underlying_price": record.base_underlying_price,
+        "shocked_underlying_price": record.shocked_underlying_price,
+        "underlying_quote_record_id": record.underlying_quote_record_id,
+        "leg_values": tuple({
+            "leg": _scenario_pricing_leg_identity(item.leg),
+            "contract_key": _scenario_pricing_contract_identity(
+                item.contract_key
+            ),
+            "base_iv": item.base_iv,
+            "shocked_iv": item.shocked_iv,
+            "remaining_calendar_days": item.remaining_calendar_days,
+            "per_underlying_unit_option_value": (
+                item.per_underlying_unit_option_value
+            ),
+            "total_leg_value": item.total_leg_value,
+        } for item in record.leg_calculations),
+        "estimated_gross_position_value": (
+            record.estimated_gross_position_value
+        ),
+    }
+
+
+def _decode_scenario_pricing_parameters(parameters_json: str) -> dict:
+    def reject_float(_value: str) -> object:
+        raise ValueError("3C.7f1 parameters must not contain JSON floats")
+
+    def reject_constant(_value: str) -> object:
+        raise ValueError("3C.7f1 parameters must not contain constants")
+
+    def unique_object(pairs: list) -> dict:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("3C.7f1 parameters contain a duplicate key")
+            result[key] = value
+        return result
+
+    try:
+        raw = json.loads(
+            parameters_json,
+            parse_float=reject_float,
+            parse_constant=reject_constant,
+            object_pairs_hook=unique_object,
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as error:
+        raise ValueError("3C.7f1 parameters_json is invalid") from error
+
+    def decode(value: object) -> object:
+        if value is None or type(value) in (bool, int, str):
+            return value
+        if type(value) is list:
+            return tuple(decode(item) for item in value)
+        if type(value) is not dict or len(value) != 1:
+            raise ValueError("3C.7f1 parameters use unsupported JSON")
+        tag, payload = next(iter(value.items()))
+        if tag == "$map":
+            if type(payload) is not list:
+                raise ValueError("$map payload must be a list")
+            result = {}
+            for pair in payload:
+                if (
+                    type(pair) is not list
+                    or len(pair) != 2
+                    or type(pair[0]) is not str
+                    or pair[0] in result
+                ):
+                    raise ValueError("$map entries must have unique string keys")
+                result[pair[0]] = decode(pair[1])
+            return result
+        if tag == "$list":
+            if type(payload) is not list:
+                raise ValueError("$list payload must be a list")
+            return tuple(decode(item) for item in payload)
+        if tag == "$decimal":
+            if type(payload) is not str:
+                raise ValueError("$decimal payload must be a string")
+            try:
+                result = decimal.Decimal(payload)
+            except decimal.InvalidOperation as error:
+                raise ValueError("$decimal payload is invalid") from error
+            if not result.is_finite():
+                raise ValueError("$decimal payload must be finite")
+            return result
+        if tag == "$date":
+            if type(payload) is not str:
+                raise ValueError("$date payload must be a string")
+            try:
+                result = datetime.date.fromisoformat(payload)
+            except ValueError as error:
+                raise ValueError("$date payload is invalid") from error
+            if result.isoformat() != payload:
+                raise ValueError("$date payload is noncanonical")
+            return result
+        if tag == "$datetime":
+            if type(payload) is not str or not payload.endswith("Z"):
+                raise ValueError("$datetime payload must be canonical UTC")
+            try:
+                result = datetime.datetime.fromisoformat(
+                    payload[:-1] + "+00:00"
+                )
+            except ValueError as error:
+                raise ValueError("$datetime payload is invalid") from error
+            return result
+        raise ValueError("3C.7f1 parameters contain an unknown tag")
+
+    decoded = decode(raw)
+    if type(decoded) is not dict:
+        raise ValueError("3C.7f1 parameters root must be a tagged map")
+    if set(decoded) != _SCENARIO_PRICING_PARAMETER_KEYS:
+        raise ValueError("3C.7f1 parameters have the wrong exact 23-key schema")
+    try:
+        if canonicalize_lineage_parameters(decoded) != parameters_json:
+            raise ValueError("3C.7f1 parameters are not byte-canonical")
+    except (TypeError, ValueError) as error:
+        raise ValueError("3C.7f1 parameters are not canonical") from error
+    return decoded
+
+
+def _scenario_pricing_evidence_common(
+    value: object, expected_record_id: str
+) -> Tuple[datetime.datetime, Tuple[str, ...], Tuple[str, ...]]:
+    if type(value) is not dict:
+        raise TypeError("normalized evidence must have exact type dict")
+    record_id = _scenario_pricing_string("record_id", value.get("record_id"))
+    if record_id != expected_record_id:
+        raise ValueError("normalized evidence record_id is inconsistent")
+    normalized_at = _scenario_pricing_datetime(
+        "normalized_at", value.get("normalized_at")
+    )
+    source_ids = value.get("source_ids")
+    if type(source_ids) is not tuple:
+        raise TypeError("source_ids must have exact type tuple")
+    if not source_ids:
+        raise ValueError("source_ids must not be empty")
+    for source_id in source_ids:
+        _scenario_pricing_string("source_id", source_id)
+    if len(set(source_ids)) != len(source_ids) or source_ids != tuple(
+        sorted(source_ids)
+    ):
+        raise ValueError("source_ids must be unique and canonically ordered")
+    flags = value.get("propagated_quality_flags")
+    if type(flags) is not tuple:
+        raise TypeError("propagated_quality_flags must have exact type tuple")
+    if any(type(flag) is not str for flag in flags):
+        raise TypeError("every propagated quality flag must have exact type str")
+    expected_order = tuple(
+        flag for flag in _SCENARIO_PRICING_PROPAGATED_FLAGS if flag in flags
+    )
+    if (
+        flags != expected_order
+        or len(set(flags)) != len(flags)
+        or any(flag not in _SCENARIO_PRICING_PROPAGATED_FLAGS for flag in flags)
+    ):
+        raise ValueError("propagated quality flags are not a canonical subset")
+    return normalized_at, source_ids, flags
+
+
+def _scenario_pricing_require_correspondence(
+    name: str, actual: object, expected: object
+) -> None:
+    expected_type = type(expected)
+    if expected_type is dict:
+        if type(actual) is not dict:
+            raise TypeError(f"{name} must have exact type dict")
+        if set(actual) != set(expected):
+            raise ValueError(f"{name} has the wrong exact schema")
+        for key in expected:
+            _scenario_pricing_require_correspondence(
+                f"{name}.{key}", actual[key], expected[key]
+            )
+        return
+    if expected_type is tuple:
+        if type(actual) is not tuple:
+            raise TypeError(f"{name} must have exact type tuple")
+        if len(actual) != len(expected):
+            raise ValueError(f"{name} has the wrong tuple length")
+        for index, (actual_item, expected_item) in enumerate(
+            zip(actual, expected)
+        ):
+            _scenario_pricing_require_correspondence(
+                f"{name}[{index}]", actual_item, expected_item
+            )
+        return
+    if type(actual) is not expected_type:
+        raise TypeError(
+            f"{name} must have exact type {expected_type.__name__}"
+        )
+    if actual != expected:
+        raise ValueError(f"{name} does not match the public records")
+
+
+def _scenario_pricing_validate_evidence(
+    decoded: dict,
+    records: Tuple[NonExpirationScenarioPricingCalculation, ...],
+    lineage: CalculationLineage,
+) -> Tuple[str, ...]:
+    common = records[0]
+    underlying = decoded["base_underlying_evidence"]
+    underlying_keys = {
+        "record_id",
+        "normalized_at",
+        "source_ids",
+        "propagated_quality_flags",
+        "underlying_key",
+        "session_date",
+        "bid_price",
+        "ask_price",
+        "midpoint_formula",
+        "base_underlying_price",
+    }
+    if type(underlying) is not dict or set(underlying) != underlying_keys:
+        raise ValueError("base_underlying_evidence has the wrong exact schema")
+    _scenario_pricing_evidence_common(
+        underlying, common.underlying_quote_record_id
+    )
+    _scenario_pricing_require_correspondence(
+        "base_underlying_evidence.underlying_key",
+        underlying["underlying_key"],
+        _scenario_pricing_underlying_identity(
+            common.leg_calculations[0].contract_key.underlying_key
+        ),
+    )
+    _scenario_pricing_require_correspondence(
+        "base_underlying_evidence.session_date",
+        underlying["session_date"],
+        common.as_of_date,
+    )
+    _scenario_pricing_require_correspondence(
+        "base_underlying_evidence.midpoint_formula",
+        underlying["midpoint_formula"],
+        "bid_price_plus_ask_price_divided_by_2",
+    )
+    base_evidence_price = _scenario_pricing_decimal(
+        "base_underlying_evidence.base_underlying_price",
+        underlying["base_underlying_price"],
+        positive=True,
+    )
+    if base_evidence_price != common.base_underlying_price:
+        raise ValueError("base underlying evidence price is inconsistent")
+    bid = _scenario_pricing_decimal("bid_price", underlying["bid_price"])
+    ask = _scenario_pricing_decimal(
+        "ask_price", underlying["ask_price"], positive=True
+    )
+    midpoint_context = _scenario_pricing_context()
+    try:
+        midpoint = midpoint_context.divide(
+            midpoint_context.add(bid, ask), decimal.Decimal(2)
+        )
+    except decimal.DecimalException as error:
+        raise ValueError("underlying midpoint calculation failed") from error
+    if common.base_underlying_price != midpoint:
+        raise ValueError("base underlying price must equal quote midpoint")
+
+    iv_entries = decoded["leg_iv_evidence"]
+    reference_entries = decoded["contract_reference_evidence"]
+    if type(iv_entries) is not tuple or type(reference_entries) is not tuple:
+        raise TypeError("leg evidence containers must have exact type tuple")
+    if (
+        len(iv_entries) != len(common.leg_calculations)
+        or len(reference_entries) != len(common.leg_calculations)
+    ):
+        raise ValueError("leg evidence counts must equal the structure leg count")
+    iv_keys = {
+        "record_id",
+        "normalized_at",
+        "source_ids",
+        "propagated_quality_flags",
+        "leg",
+        "contract_key",
+        "session_date",
+        "implied_volatility",
+        "model_name",
+        "model_version",
+        "rate_input_description",
+        "dividend_input_description",
+        "unit_convention",
+    }
+    reference_keys = {
+        "record_id",
+        "normalized_at",
+        "source_ids",
+        "propagated_quality_flags",
+        "leg",
+        "contract_key",
+        "exercise_style",
+        "settlement_type",
+    }
+    record_ids = [common.underlying_quote_record_id]
+    for calculation, iv, reference in zip(
+        common.leg_calculations, iv_entries, reference_entries
+    ):
+        if type(iv) is not dict or set(iv) != iv_keys:
+            raise ValueError("leg_iv_evidence has the wrong exact schema")
+        if type(reference) is not dict or set(reference) != reference_keys:
+            raise ValueError(
+                "contract_reference_evidence has the wrong exact schema"
+            )
+        _scenario_pricing_evidence_common(
+            iv, calculation.implied_volatility_record_id
+        )
+        _scenario_pricing_evidence_common(
+            reference, calculation.contract_reference_record_id
+        )
+        for name in (
+            "model_name",
+            "model_version",
+            "rate_input_description",
+            "dividend_input_description",
+        ):
+            _scenario_pricing_string(name, iv[name])
+        for name, actual, expected in (
+            ("leg", iv["leg"], _scenario_pricing_leg_identity(calculation.leg)),
+            (
+                "contract_key",
+                iv["contract_key"],
+                _scenario_pricing_contract_identity(calculation.contract_key),
+            ),
+            ("session_date", iv["session_date"], common.as_of_date),
+            ("unit_convention", iv["unit_convention"], "annualized_decimal_ratio"),
+        ):
+            _scenario_pricing_require_correspondence(
+                f"leg_iv_evidence.{name}", actual, expected
+            )
+        evidence_iv = _scenario_pricing_decimal(
+            "leg_iv_evidence.implied_volatility",
+            iv["implied_volatility"],
+            positive=True,
+        )
+        if evidence_iv != calculation.base_iv:
+            raise ValueError("leg IV evidence value is inconsistent")
+        for name, actual, expected in (
+            (
+                "leg",
+                reference["leg"],
+                _scenario_pricing_leg_identity(calculation.leg),
+            ),
+            (
+                "contract_key",
+                reference["contract_key"],
+                _scenario_pricing_contract_identity(calculation.contract_key),
+            ),
+            (
+                "exercise_style",
+                reference["exercise_style"],
+                calculation.exercise_style,
+            ),
+            (
+                "settlement_type",
+                reference["settlement_type"],
+                calculation.settlement_type,
+            ),
+        ):
+            _scenario_pricing_require_correspondence(
+                f"contract_reference_evidence.{name}", actual, expected
+            )
+        record_ids.extend((
+            calculation.implied_volatility_record_id,
+            calculation.contract_reference_record_id,
+        ))
+
+    references = {item.record_id: item for item in lineage.inputs}
+    if set(references) != set(record_ids):
+        raise ValueError("lineage inputs must equal exact disclosed evidence IDs")
+    for evidence in (underlying,) + iv_entries + reference_entries:
+        reference = references[evidence["record_id"]]
+        if (
+            evidence["normalized_at"] != reference.normalized_at
+            or evidence["source_ids"] != reference.source_ids
+        ):
+            raise ValueError("normalized evidence differs from lineage input")
+        if evidence["normalized_at"] > common.pricing_methodology.producer_calculated_at:
+            raise ValueError("input normalization must not follow producer time")
+    return tuple(
+        flag
+        for evidence in (underlying,) + iv_entries + reference_entries
+        for flag in evidence["propagated_quality_flags"]
+    )
+
+
+def _scenario_pricing_expected_fixed_parameters(
+    records: Tuple[NonExpirationScenarioPricingCalculation, ...],
+) -> dict:
+    common = records[0]
+    (
+        producer_identity,
+        producer_provenance,
+        pricing_methodology,
+        rate_methodology,
+        dividend_methodology,
+        supported_pairs,
+    ) = _scenario_pricing_methodology_sections(common.pricing_methodology)
+    return {
+        "output_architecture": {
+            "record_type": "NonExpirationScenarioPricingCalculation",
+            "records_container": "ordered_tuple",
+            "lineage_scope": "shared_batch",
+            "construction_boundary": (
+                "authoritative_producer_direct_construction"
+            ),
+        },
+        "supported_structure_scope": {
+            "structure_types": (
+                "long_call", "long_put", "long_straddle"
+            ),
+            "long_only": True,
+            "common_expiration": True,
+            "maximum_leg_count": 2,
+        },
+        "producer_identity": producer_identity,
+        "producer_provenance": producer_provenance,
+        "pricing_methodology": pricing_methodology,
+        "structure_identity": _scenario_pricing_structure_identity(common),
+        "leg_correspondence": _scenario_pricing_leg_correspondence(common),
+        "scenario_definitions": tuple(
+            _scenario_pricing_scenario_definition(record)
+            for record in records
+        ),
+        "scenario_ordering": {
+            "keys": (
+                "valuation_date",
+                "valuation_time_rank",
+                "days_forward",
+                "underlying_move_decimal",
+                "iv_change_decimal",
+            ),
+            "valuation_time_rank": {
+                "immediate": 0,
+                "days_forward": 1,
+                "holding_horizon": 2,
+            },
+        },
+        "valuation_date_rules": {
+            "immediate": "as_of_date",
+            "days_forward": "as_of_date_plus_days_forward_calendar_days",
+            "holding_horizon": (
+                "as_of_date_plus_expected_holding_days_calendar_days"
+            ),
+            "expiration": "rejected",
+        },
+        "underlying_shock_rule": (
+            "base_underlying_price_times_one_plus_decimal_string_"
+            "underlying_move"
+        ),
+        "iv_shock_rule": (
+            "base_iv_times_one_plus_decimal_string_iv_change"
+        ),
+        "rate_methodology": rate_methodology,
+        "dividend_methodology": dividend_methodology,
+        "exercise_and_settlement_support": supported_pairs,
+        "remaining_time_rule": _SCENARIO_PRICING_REMAINING_TIME_RULE,
+        "position_scaling_rule": _SCENARIO_PRICING_SCALING_RULE,
+        "calculation_values": tuple(
+            _scenario_pricing_calculation_values(record)
+            for record in records
+        ),
+        "float_conversion_rule": (
+            "none_all_3c7f1_economic_values_remain_decimal"
+        ),
+        "limitations": common.pricing_methodology.limitations,
+    }
+
+
+@dataclass(frozen=True)
+class ScenarioPricingCalculationResult:
+    records: Tuple[NonExpirationScenarioPricingCalculation, ...]
+    lineage: CalculationLineage
+
+    def __post_init__(self) -> None:
+        if type(self.records) is not tuple:
+            raise TypeError("records must have exact type tuple")
+        if not self.records:
+            raise ValueError("records must not be empty")
+        if any(
+            type(record) is not NonExpirationScenarioPricingCalculation
+            for record in self.records
+        ):
+            raise TypeError(
+                "every record must have exact type "
+                "NonExpirationScenarioPricingCalculation"
+            )
+        if type(self.lineage) is not CalculationLineage:
+            raise TypeError("lineage must have exact type CalculationLineage")
+        first = self.records[0]
+        common_fields = (
+            "structure",
+            "as_of_date",
+            "base_underlying_price",
+            "underlying_quote_record_id",
+            "pricing_methodology",
+        )
+        if any(
+            any(getattr(record, name) != getattr(first, name)
+                for name in common_fields)
+            for record in self.records[1:]
+        ):
+            raise ValueError("scenario records must share one batch identity")
+        base_leg_tuple = tuple(
+            (
+                item.leg,
+                item.contract_key,
+                item.base_iv,
+                item.exercise_style,
+                item.settlement_type,
+                item.implied_volatility_record_id,
+                item.contract_reference_record_id,
+            )
+            for item in first.leg_calculations
+        )
+        for record in self.records[1:]:
+            candidate = tuple(
+                (
+                    item.leg,
+                    item.contract_key,
+                    item.base_iv,
+                    item.exercise_style,
+                    item.settlement_type,
+                    item.implied_volatility_record_id,
+                    item.contract_reference_record_id,
+                )
+                for item in record.leg_calculations
+            )
+            if candidate != base_leg_tuple:
+                raise ValueError("per-leg base evidence must be common to the batch")
+        identities = tuple(
+            (
+                record.scenario.valuation_time,
+                record.scenario.days_forward,
+                _scenario_pricing_ratio(record.scenario.underlying_move),
+                _scenario_pricing_ratio(record.scenario.iv_change),
+            )
+            for record in self.records
+        )
+        if len(set(identities)) != len(identities):
+            raise ValueError("scenario identities must be unique")
+        ranks = {"immediate": 0, "days_forward": 1, "holding_horizon": 2}
+        ordering = tuple(
+            (
+                record.valuation_date,
+                ranks[record.scenario.valuation_time],
+                record.scenario.days_forward,
+                _scenario_pricing_ratio(record.scenario.underlying_move),
+                _scenario_pricing_ratio(record.scenario.iv_change),
+            )
+            for record in self.records
+        )
+        if ordering != tuple(sorted(ordering)):
+            raise ValueError("scenario records must be in strict canonical order")
+        lineage = self.lineage
+        if (
+            lineage.calculation_type != "nonexpiration_scenario_pricing"
+            or lineage.methodology_id
+            != "authoritative-provider-option-scenario-pricing-evidence"
+            or lineage.methodology_version != "v0.1"
+        ):
+            raise ValueError("lineage calculation identity is invalid")
+        if lineage.calculated_at < first.pricing_methodology.producer_calculated_at:
+            raise ValueError("lineage time must not precede producer time")
+        decoded = _decode_scenario_pricing_parameters(lineage.parameters_json)
+        expected = _scenario_pricing_expected_fixed_parameters(self.records)
+        for name, value in expected.items():
+            _scenario_pricing_require_correspondence(
+                name, decoded[name], value
+            )
+        propagated_flags = _scenario_pricing_validate_evidence(
+            decoded, self.records, lineage
+        )
+        expected_flags = {
+            CalculationQualityFlag.ANNUALIZED,
+            CalculationQualityFlag.ASSUMPTION_APPLIED,
+        }
+        propagated_map = {
+            "adjusted_input_used": CalculationQualityFlag.ADJUSTED_INPUT_USED,
+            "correction_selected": CalculationQualityFlag.CORRECTION_SELECTED,
+            "composite_input_used": CalculationQualityFlag.COMPOSITE_INPUT_USED,
+        }
+        expected_flags.update(
+            propagated_map[value] for value in set(propagated_flags)
+        )
+        methodology = first.pricing_methodology
+        if (
+            methodology.rate_interpolation != "none"
+            or methodology.volatility_interpolation != "none"
+        ):
+            expected_flags.add(CalculationQualityFlag.INTERPOLATED)
+        expected_tuple = tuple(
+            flag for flag in CalculationQualityFlag if flag in expected_flags
+        )
+        if lineage.quality_flags != expected_tuple:
+            raise ValueError(
+                "lineage quality flags must equal the complete expected set"
+            )

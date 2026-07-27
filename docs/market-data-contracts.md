@@ -5784,6 +5784,136 @@ P&L, probabilities, density, rates/dividends, screening, recommendations,
 execution, and portfolio sizing remain outside 3C.7e. Milestone 3C.7f remains
 responsible for pricing and scenarios.
 
+## 13.21 Milestone 3C.7f1 authoritative non-expiration scenario pricing
+
+Broad Milestone 3C.7f was not viable as one implementation unit and is
+decomposed into 3C.7f1 and 3C.7f2. Milestone 3C.7f1 stores and validates
+authoritative provider-calculated option-pricing evidence for `immediate`,
+`days_forward`, and `holding_horizon` scenarios. It always rejects
+`expiration`. Milestone 3C.7f2 remains responsible for `ScenarioResult`
+construction, expiration payoff, structure costs, bounded loss, and downstream
+lineage.
+
+The transformation module appends four immutable public records:
+`ScenarioPricingMethodology`, `ScenarioPricingLegCalculation`,
+`NonExpirationScenarioPricingCalculation`, and
+`ScenarioPricingCalculationResult`. There is no public assembler, pricing
+function, raw-value labeling helper, provider API, or internal option-pricing
+engine. An authoritative producer directly constructs the methodology, leg
+calculations, scenario calculations, shared `CalculationLineage`, and final
+wrapper. The wrapper validates the complete batch. Its economic output is
+estimated gross position value before entry, exit, or liquidation costs.
+
+Only long calls, long puts, and exact long straddles are supported, with one or
+two positive long legs sharing one underlying and expiration. Each leg retains
+its exact `OptionLeg`, complete `OptionContractKey`, actual leg-level base IV,
+shocked IV, remaining calendar days, provider-calculated per-underlying-unit
+option value, scaled total value, exercise style, settlement type, IV record
+ID, and contract-reference record ID. The contract key must reproduce the
+leg's symbol, option type, expiration, exact `Decimal(str(leg.strike))`, and
+multiplier while preserving listing MIC, security type, currency, and
+deliverable. No ATM substitution is permitted.
+
+The methodology classification is exactly `provider_calculated`. It retains
+producer and model identity, request ID, lowercase 64-character payload
+SHA-256, UTC-normalized producer time, supported exercise/settlement pairs,
+settlement treatment, complete rate and dividend disclosures, volatility
+surface/skew/term/interpolation treatment, remaining-time and position-scaling
+rules, numerical boundary, and limitations. Rates are USD and effective on the
+batch as-of date. Dividend coverage spans the as-of date through expiration.
+An explicit-zero-dividend declaration requires the exact reserved source and
+treatment strings. Supported exercise/settlement pairs are a nonempty, unique,
+strictly lexicographically ordered tuple and every leg must use one declared
+pair.
+
+Valuation dates resolve as as-of date for `immediate`, as-of plus declared
+calendar days for `days_forward`, and as-of plus the structure's expected
+holding calendar days for `holding_horizon`. Every resolved date must precede
+expiration. Underlying and IV shocks use precision-34, round-half-even isolated
+Decimal arithmetic:
+`base_underlying_price * (1 + Decimal(str(underlying_move)))` and
+`base_iv * (1 + Decimal(str(iv_change)))`. Remaining time is exactly expiration
+minus valuation date in calendar days. Each leg total is per-underlying-unit
+value times quantity times multiplier, and gross position value is the exact
+sum of leg totals. Provider-calculated option values are validated but never
+calculated. The caller's complete Decimal context is preserved.
+
+One batch shares structure, as-of date, expiration, base underlying price,
+underlying-quote ID, methodology, producer/model identity, and each leg's base
+evidence tuple. Scenario identity is
+`(valuation_time, days_forward, Decimal(str(underlying_move)),
+Decimal(str(iv_change)))`. Identities are unique and records arrive already in
+strict order by valuation date, valuation-time rank (`immediate`,
+`days_forward`, `holding_horizon`), days forward, underlying move Decimal, and
+IV-change Decimal. The wrapper never reorders.
+
+Canonical parameters use only `canonicalize_lineage_parameters`, contain no
+Python or JSON float, and have exactly these 23 top-level keys:
+`output_architecture`, `supported_structure_scope`, `producer_identity`,
+`producer_provenance`, `pricing_methodology`, `structure_identity`,
+`leg_correspondence`, `scenario_definitions`, `scenario_ordering`,
+`valuation_date_rules`, `underlying_shock_rule`, `iv_shock_rule`,
+`base_underlying_evidence`, `leg_iv_evidence`,
+`contract_reference_evidence`, `rate_methodology`, `dividend_methodology`,
+`exercise_and_settlement_support`, `remaining_time_rule`,
+`position_scaling_rule`, `calculation_values`, `float_conversion_rule`, and
+`limitations`. A private 3C.7f1 decoder rejects duplicate keys, JSON floats,
+nonfinite constants, unknown tags, noncanonical tagged values, missing or
+extra keys, and non-byte-canonical encodings. Fixed architecture, scope,
+ordering, date, shock, remaining-time, scaling, and no-float declarations are
+validated exactly. Producer, methodology, structure, leg, scenario, and
+calculation sections must reproduce the public records.
+
+The normalized evidence disclosure is exactly one underlying quote plus one IV
+observation and one contract-reference record per leg: three inputs for a
+one-leg structure and five for a straddle. Every entry contains exactly
+`record_id`, UTC `normalized_at`, a nonempty unique canonically ordered
+`source_ids` tuple, and a canonical subset of propagated quality flags, plus
+only its record-specific consumed fields. Underlying evidence retains the
+complete `UnderlyingKey`, session date, bid, ask, exact midpoint formula, and
+base price; the price must equal `(bid + ask) / 2` with no last-price fallback.
+IV evidence retains leg and complete contract identity, session date, actual
+base IV, model name/version, rate and dividend input descriptions, and exact
+`annualized_decimal_ratio` unit. Contract-reference evidence retains leg and
+contract identity plus exercise and settlement. Complete normalized payloads,
+sizes, unrelated quote fields, provider payload bodies, and fabricated
+provider-internal curve, dividend, surface, quote, or Greeks records are
+excluded.
+
+Shared lineage identity is `nonexpiration_scenario_pricing`,
+`authoritative-provider-option-scenario-pricing-evidence`, `v0.1`. Its exact
+input set equals the distinct disclosed record IDs; each record ID,
+normalized time, and source-ID tuple matches its `CalculationInputReference`.
+Inputs cannot postdate producer calculation, and lineage calculation cannot
+predate it. Provider request, payload, model, methodology, scenarios, and
+calculated records are not fake normalized inputs.
+
+`ANNUALIZED` and `ASSUMPTION_APPLIED` are always required.
+`ADJUSTED_INPUT_USED`, `CORRECTION_SELECTED`, and `COMPOSITE_INPUT_USED` occur
+if and only if disclosed by at least one normalized evidence entry.
+`INTERPOLATED` occurs if and only if rate or volatility interpolation is not
+`none`. `DECIMAL_TO_FLOAT_CONVERTED` and `INCOMPLETE_INPUT_USED` are always
+prohibited. The tuple equals the complete expected set in canonical enum
+order.
+
+Wrong exact Python types raise `TypeError`; invalid semantic, arithmetic,
+chronology, evidence, lineage, flag, or canonical-parameter states raise
+`ValueError`. Exact tuple fields never normalize lists. The MVP-focused review
+standard covers ordinary call, put, and straddle batches, exact actual-leg IV
+and contract mapping, non-expiration dates, Decimal shock/scaling/aggregation,
+provider provenance and methodology, canonical parameters, exact evidence
+counts, lineage, flags, failure boundaries, and scope exclusions. It does not
+require an exhaustive pricing-model or scenario-grid test.
+
+This trust boundary verifies an exact provider classification, producer/model
+identity, request ID, payload-hash format, producer time, disclosed
+methodology, record arithmetic, normalized-input disclosure, lineage, and
+canonical parameters. It does not prove that a deliberately self-consistent
+fraudulent provider declaration is truthful without access to the retained
+provider payload or a provider signature. Milestone 3C.7f1 performs no network
+verification, payload retrieval, provider authentication, or signature
+verification.
+
 The following questions remain open:
 
 - Which MIC or listing registry should supply `listing_mic`?

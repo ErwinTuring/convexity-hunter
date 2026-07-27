@@ -77,10 +77,177 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
 - The final reviewed 3C.7e architecture has exact public result `TailPricingTransformationResult` with fields `records` and `lineage`, and exact public function `transform_tail_pricing`. The result retains an ordered `Tuple[TailPricingSlice, ...]` and one `CalculationLineage`, requires at least two expirations, and canonically orders records by `days_to_expiration` and then `expiration`. Its frozen methodology requires a combined tail-candidate-universe completeness declaration: current candidates contain nearest-observed signed 10-delta and 25-delta candidates; historical candidates contain paired nearest-strike ATM candidates plus nearest-observed signed 10-delta and 25-delta candidates. Deltas are signed call-positive and put-negative. Selection is nearest observed signed delta with no delta, strike, or expiration interpolation; equal-distance ambiguity rejects; the same economic contract cannot serve both same-side targets; and `abs(selected 10-delta) < abs(selected 25-delta)` is strict. The transformation strictly decodes the 3C.7d canonical dependency and requires exact dependency-to-authoritative IV-methodology correspondence, consumes the historical dates × current tenors relationship matrix under caller-declared historical EOD observations and an explicit methodology, requires exact historical calendar-tenor matching and historical paired call/put ATM methodology, uses downside 25-delta skew for the singular skew percentile, computes the inclusive empirical percentile Decimal-first, and deterministically unions prior 3C.7d lineage inputs with direct 3C.7e inputs. `market_data_transformations.__all__` has exactly 12 names, `market_data.__all__` has exactly 64 names, and package-root exports are unchanged.
 - Final 3C.7e validation passes with 103 focused transformation tests, all original 102 pre-final-test-correction focused tests, all original 101 pre-first-fix focused tests, all 89 pre-3C.7e transformation tests, 365 market-data tests, 777 full-suite tests, compileall, `git diff --check`, exact public API checks, exact wrapper-field and function-signature checks, and both import orders. `TailPricingSlice`, `VolatilityEnvironment`, and `TermVolatilityPoint` fields remain unchanged. Focused mutation protection proves that current-only and historical-only methodology divergences reject; all four canonical dependency dynamic-IV-methodology forgeries reject; dependency unit forgery rejects; `atm_candidate_universe.declared_complete=False` rejects; representative frozen-rule semantic forgeries reject; representative exact-type forgeries raise `TypeError`; and dependency mismatch rejects before either `TailPricingSlice` or new `CalculationLineage` construction. The unchanged ordinary 30-day output is ATM `0.30`, put-25 `0.36`, call-25 `0.28`, put-10 `0.42`, call-10 `0.26`, downside skew `0.06`, upside skew `-0.02`, downside curvature `0.06`, upside curvature `-0.02`, and skew percentile `2/3`; the unchanged ordinary 60-day output is ATM `0.40`, put-25 `0.46`, call-25 `0.38`, put-10 `0.52`, call-10 `0.36`, the same skews and curvatures, and skew percentile `2/3`. Ordinary lineage contains 202 unique normalized inputs; ordinary canonical parameters retain the exact 20-key schema and the literal golden remains byte-identical. The implementation consumes reviewed proof and lineage without calling any upstream proof function, recomputing correction, freshness, timing, relationships, or selection, or calling `transform_volatility_environment`.
 - Milestone 3C.7e is implemented, independently reviewed, corrected, targeted re-reviewed, test-adequacy corrected, finally re-reviewed, validated, and ready to commit and push. This operation commits and pushes Milestone 3C.7e. Milestone 3C.7f remains unimplemented and broad Milestone 3 remains incomplete.
+- Broad Milestone 3C.7f preflight returned
+  `PREFLIGHT RESULT: DECOMPOSE 3C.7F BEFORE IMPLEMENTATION`. It is decomposed
+  into 3C.7f1, the authoritative non-expiration scenario-pricing calculation
+  contract, and 3C.7f2, `ScenarioResult` construction, expiration intrinsic
+  payoff, reviewed `StructureCosts` and `TailPricing` dependencies, exit costs,
+  bounded-loss handling, and downstream lineage.
+- The 3C.7f1 contract preflight returned
+  `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7F1`. The selected architecture has
+  four immutable public calculated-evidence records, accepts
+  `provider_calculated` evidence only, uses direct authoritative producer
+  construction, and adds no public assembler or internal pricing engine. It
+  supports non-expiration scenarios only and validates exact Decimal shocks,
+  leg scaling, aggregate sums, canonical parameters, normalized-evidence
+  disclosure, and shared lineage.
+- Milestone 3C.7f1 is implemented locally and remains uncommitted and unpushed.
+  The transformation API has exactly 16 names, `market_data.__all__` remains
+  exactly 64 names, package-root exports remain unchanged, and no public
+  function was added. Local validation passes with 114 focused transformation
+  tests (all 103 prior tests plus 11 new tests), 365 market-data tests, 788
+  full-suite tests, compileall, exact API/import/root/field checks, and
+  `git diff --check`.
+- The 3C.7f1 provider trust boundary validates classification, producer/model
+  identity, request ID, payload-hash format, chronology, methodology,
+  arithmetic, normalized evidence, lineage, parameters, and flags. It cannot
+  prove that a deliberately self-consistent fraudulent provider declaration is
+  truthful without the retained provider payload or a provider signature.
+  No network verification, payload retrieval, authentication, or signature
+  verification is attempted. Milestone 3C.7f2 remains unimplemented and broad
+  Milestone 3 remains incomplete.
+- The first 3C.7f1 independent review returned
+  `MVP-FOCUSED REVIEW RESULT: FAIL` with exactly one MAJOR finding. The
+  production implementation passed inspection and adversarial probes, but
+  focused tests did not protect several frozen realistic invariants. Missing
+  protections covered near-strike substitution, leg-IV evidence substitution,
+  quantity scaling, missing and extra lineage inputs, source-ID mismatch,
+  current-session IV mismatch, rate-date mismatch, dividend coverage and zero
+  semantics, duplicate scenario identity, aggregate gross-value mismatch,
+  unsupported exercise/settlement pairs, Decimal-context preservation on an
+  ordinary failure, and the `transform_volatility_environment` scope sentinel.
+  A future regression could accept the wrong option contract or IV evidence,
+  mis-scale a position, accept incomplete or inconsistent provenance, misapply
+  rate/dividend/style methodology, or cross the frozen scope boundary while
+  the focused suite remained green.
+- The test-adequacy-only correction adds four compact public-construction
+  protections: one evidence/lineage mutation matrix, one methodology/batch
+  matrix, one quantity-two scaling test, and one ordinary-failure Decimal
+  context test. The existing scope sentinel now also blocks
+  `transform_volatility_environment` and entry-cost, exit-cost, and P&L paths.
+  All sixteen requested mutation classes are protected. Validation passes with
+  118 focused transformation tests, an independent exclusion run of all 114
+  original focused tests, 365 market-data tests, 792 full-suite tests,
+  compileall, and `git diff --check`.
+- No production defect was found. No production file or contract-document file
+  was changed by the correction. Milestone 3C.7f1 remains uncommitted and
+  unpushed; Milestone 3C.7f2 remains unimplemented and broad Milestone 3
+  remains incomplete.
+- The initial 3C.7f1 implementation returned
+  `IMPLEMENTATION RESULT: READY FOR MVP-FOCUSED INDEPENDENT REVIEW`. Its frozen
+  architecture has exactly four immutable public calculated-evidence records:
+  `ScenarioPricingMethodology`, `ScenarioPricingLegCalculation`,
+  `NonExpirationScenarioPricingCalculation`, and
+  `ScenarioPricingCalculationResult`. The result fields are exactly `records`
+  and `lineage`: an ordered
+  `Tuple[NonExpirationScenarioPricingCalculation, ...]` and one shared
+  `CalculationLineage`. `provider_calculated` is the only source
+  classification. The authoritative provider constructs final evidence
+  directly; there is no public assembler, internal pricing engine, or public
+  pricing function, and 3C.7f1 does not calculate option values. It accepts
+  `immediate`, `days_forward`, and `holding_horizon` scenarios and rejects
+  `expiration`. `market_data_transformations.__all__` has exactly 16 names,
+  `market_data.__all__` has exactly 64, package-root exports are unchanged,
+  and no public function was added.
+- The frozen economic scope is one long call, one long put, or one exact long
+  straddle: one or two positive-quantity long legs with positive multipliers,
+  one shared underlying, and one shared expiration. Short options, spreads,
+  multiple expirations, and exotic options are excluded. Leg-to-contract
+  correspondence requires exact underlying symbol, option type, expiration,
+  `Decimal(str(OptionLeg.strike))`, and multiplier equality while preserving
+  listing MIC, security type, currency, and deliverable from the exact
+  `OptionContractKey`. Every leg uses one exact current-session IV evidence
+  item in `annualized_decimal_ratio`; ATM or tail-wing substitution is
+  prohibited unless that exact selected contract is the structure leg.
+  Shocked IV is base IV times `1 + Decimal(str(scenario.iv_change))`. Base
+  underlying is the disclosed bid/ask midpoint, and shocked underlying is base
+  underlying times `1 + Decimal(str(scenario.underlying_move))`. After ratio
+  conversion there is no binary-float arithmetic; local arithmetic uses
+  precision 34 and `ROUND_HALF_EVEN` while preserving the caller Decimal
+  context.
+- `ScenarioPricingMethodology` retains provider classification, producer and
+  model names and versions, request ID, payload SHA-256, producer time,
+  supported exercise/settlement pairs, settlement treatment, provider-managed
+  rate and dividend methodology, volatility-surface/skew/term/interpolation
+  treatments, remaining-time and position-scaling rules, numerical boundary,
+  and limitations. Fixed values are `provider_calculated`, USD,
+  `expiration_minus_valuation_date_calendar_days`, and
+  `per_underlying_unit_value_times_quantity_times_contract_multiplier`.
+  Unsupported style/settlement pairs reject; the rate effective date equals
+  `as_of_date`; dividend coverage includes `as_of_date` through shared
+  expiration; missing dividends never imply zero; and explicit zero dividends
+  require the exact reserved source and treatment declarations.
+- Exact per-leg scaling is per-underlying-unit option value times leg quantity
+  times contract multiplier. Estimated gross position value is the sum of
+  total leg values. Scenario identity is valuation time, days forward,
+  `Decimal(str(underlying_move))`, and `Decimal(str(iv_change))`. Canonical
+  caller order is valuation date, valuation-time rank (`immediate`,
+  `days_forward`, `holding_horizon`), days forward, underlying-move Decimal,
+  and IV-change Decimal; noncanonical order rejects rather than being silently
+  reordered.
+- Exact normalized input scope is one underlying quote plus one IV and one
+  contract-reference record per structure leg: three inputs for one-leg
+  structures and five for long straddles. Direct option-quote and Greeks inputs
+  are not supported in v0.1. Provider-internal rate, dividend, surface,
+  calibration, quote, and Greeks data are disclosed through request ID,
+  payload hash, typed methodology, and limitations rather than fabricated
+  normalized records. Evidence and lineage correspond exactly on `record_id`,
+  `normalized_at`, and `source_ids`; missing or extra inputs, source-ID
+  mismatches, and current-session IV mismatches reject. Lineage identity is
+  `nonexpiration_scenario_pricing`,
+  `authoritative-provider-option-scenario-pricing-evidence`, `v0.1`, with
+  every input normalized no later than producer calculation and producer
+  calculation no later than lineage calculation.
+- Canonical parameters use only `canonicalize_lineage_parameters`, tagged
+  Decimals, no JSON floats, and an exact byte-canonical 23-key schema:
+  `output_architecture`, `supported_structure_scope`, `producer_identity`,
+  `producer_provenance`, `pricing_methodology`, `structure_identity`,
+  `leg_correspondence`, `scenario_definitions`, `scenario_ordering`,
+  `valuation_date_rules`, `underlying_shock_rule`, `iv_shock_rule`,
+  `base_underlying_evidence`, `leg_iv_evidence`,
+  `contract_reference_evidence`, `rate_methodology`, `dividend_methodology`,
+  `exercise_and_settlement_support`, `remaining_time_rule`,
+  `position_scaling_rule`, `calculation_values`, `float_conversion_rule`, and
+  `limitations`. Duplicate keys, nonfinite constants, unknown or noncanonical
+  tags, and missing or extra keys reject. `ANNUALIZED` and
+  `ASSUMPTION_APPLIED` are always required. `ADJUSTED_INPUT_USED`,
+  `CORRECTION_SELECTED`, `COMPOSITE_INPUT_USED`, and `INTERPOLATED` are
+  conditional; `INTERPOLATED` arises only from disclosed rate or volatility
+  interpolation, never scenario shocks. `DECIMAL_TO_FLOAT_CONVERTED` and
+  `INCOMPLETE_INPUT_USED` are prohibited.
+- The accepted MVP trust limitation is explicit: 3C.7f1 validates internal
+  coherence, provider/model identity, request ID, payload-hash format,
+  chronology, normalized evidence, canonical parameters, arithmetic, and
+  lineage, but without the retained provider payload or a provider signature
+  it cannot disprove a deliberately self-consistent fraudulent declaration.
+  This disclosed limitation is not an unresolved blocker.
+- The final focused-test correction protects canonical near-strike, IV-value,
+  cross-leg IV-record, quantity-two, missing/extra/source-mismatched lineage,
+  current-session IV, rate/dividend applicability, zero-dividend semantics,
+  duplicate-scenario, straddle aggregate, unsupported style/settlement, and
+  ordinary-failure Decimal-context fixtures, plus the expanded scope sentinel
+  including `transform_volatility_environment`. The final targeted review
+  returned `TARGETED RE-REVIEW RESULT: PASS`, with no findings and no remaining
+  blocker. The single MAJOR test-adequacy gap is closed; production source and
+  contract documentation remained byte-identical.
+- Final validation passed: 118 focused transformation tests, all original 114
+  focused tests independently, 365 market-data tests, 792 full-suite tests,
+  compileall, and `git diff --check`. The exact 23-key literal golden, exact
+  16-name API, exact four frozen field tuples, 64-name market-data API, both
+  import orders, package-root exclusions, protected files, and all sixteen
+  mutation protections passed. Ordinary gross values remain call `250.00`,
+  `300.00`, `200.00`; put `250.00`, `300.00`, `200.00`; and straddle `600.00`,
+  `700.00`, `500.00`, with straddle base IVs `0.20` and `0.30`. No internal
+  pricing engine, `ScenarioResult` construction, expiration payoff, upstream
+  transformation call, costs, P&L, or 3C.7f2 behavior exists.
+- Milestone 3C.7f1 is implemented, independently reviewed, test-adequacy
+  corrected, targeted re-reviewed, validated, and ready to commit and push.
+  This operation commits and pushes Milestone 3C.7f1. Milestone 3C.7f2 remains
+  unimplemented and broad Milestone 3 remains incomplete.
 
 ## Current task
 
-Finalize, commit, and push Milestone 3C.7e.
+Finalize, commit, and push Milestone 3C.7f1.
 
 ## Last completed checkpoint
 
@@ -312,11 +479,11 @@ Finalize, commit, and push Milestone 3C.7e.
 
 ## Next task
 
-Perform a short specification preflight for Milestone 3C.7f option pricing and
-scenario-valuation transformation using authoritative leg-level market inputs,
-reviewed structure costs, reviewed tail-pricing evidence, explicit valuation
-times, underlying shocks, volatility shocks, exit costs, and auditable
-`CalculationLineage`.
+Perform a specification preflight for Milestone 3C.7f2 `ScenarioResult`
+construction, including reviewed 3C.7f1 non-expiration evidence, internally
+calculated expiration intrinsic payoff, `StructureCosts` and `TailPricing`
+dependencies, explicit exit-cost assumptions, bounded-loss validation, ordered
+`ScenarioResult` records, and auditable downstream `CalculationLineage`.
 
 ## Deferred
 
