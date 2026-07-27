@@ -241,13 +241,169 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
   pricing engine, `ScenarioResult` construction, expiration payoff, upstream
   transformation call, costs, P&L, or 3C.7f2 behavior exists.
 - Milestone 3C.7f1 is implemented, independently reviewed, test-adequacy
-  corrected, targeted re-reviewed, validated, and ready to commit and push.
-  This operation commits and pushes Milestone 3C.7f1. Milestone 3C.7f2 remains
+  corrected, targeted re-reviewed, validated, committed, and pushed at
+  `9d938465993306d61e5e0e6105f917f27d076614`
+  (`Implement scenario pricing evidence contract`). Milestone 3C.7f2 remains
   unimplemented and broad Milestone 3 remains incomplete.
+- The Milestone 3C.7f2 specification preflight returned
+  `PREFLIGHT RESULT: NOT READY TO IMPLEMENT 3C.7F2`. Its accepted blocker was
+  that a modified but valid `StructureCosts` record could be paired with
+  untouched reviewed v0.1 lineage: changing quoted midpoint from `120.0` to
+  `1120.0` changed the derived total entry cost from `141.25` to `1141.25`,
+  while direct `StructureCostsTransformationResult` construction still
+  accepted the pair.
+- The bounded Milestone 3C.7b correction preflight returned
+  `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7B DOWNSTREAM-VERIFIABILITY
+  CORRECTION`. The selected architecture strengthens the existing wrapper and
+  transformation parameters with no public API additions and no upstream proof
+  replay. Methodology identity is now `structure_costs`,
+  `exact-structure-costs`, `v0.2`; canonical parameters have exactly 20
+  top-level keys; and the wrapper intrinsically verifies public record,
+  structure identity, exact and stable calculation values, normalized
+  evidence, lineage references, methodology, repeated bets, quality flags,
+  and chronology.
+- The selected Architecture A strengthens the existing
+  `StructureCostsTransformationResult` wrapper and
+  `transform_structure_costs` canonical parameters; it adds no public
+  verifier, adapter, result class, generic calculated-artifact framework,
+  producer bypass, or construction bypass. Direct wrapper validation does not
+  invoke the producer, replay correction, freshness, snapshot timing,
+  relationship assessment or selection, invoke a later transformation,
+  construct `ScenarioResult`, or construct 3C.7f2 lineage.
+- The exact correction identity is calculation type `structure_costs`,
+  methodology ID `exact-structure-costs`, and methodology version `v0.2`.
+  Version v0.2 is required because its exact canonical schema is incompatible
+  with the prior 17-key v0.1 schema; no committed downstream transformation
+  depended on v0.1 and no persisted-artifact migration requirement existed.
+  Two incompatible exact canonical contracts do not share one methodology
+  identity, and direct v0.1 dependencies intentionally reject.
+- The original 17 top-level parameter keys remain, and exactly
+  `calculation_values`, `normalized_evidence`, and `structure_identity` were
+  added. The exact 20-key schema is `calculation_values`,
+  `commission_and_fee_scope`, `commissions_and_fees_usd`, `gamma_input_unit`,
+  `gamma_position_rule`, `greeks_methodology`, `leg_correspondence`,
+  `normalized_evidence`, `position_value_unit`, `premium_input_unit`,
+  `premium_midpoint_rule`, `repeated_bet_count`, `spread_cost_rule`,
+  `spread_cost_scope`, `structure_identity`, `theta_day_basis`,
+  `theta_input_unit`, `theta_position_rule`, `underlying_price_rule`, and
+  `underlying_price_unit`. The private decoder rejects duplicate keys, JSON
+  floats, nonfinite constants, unknown or noncanonical tags, wrong containers,
+  missing or extra keys, and non-byte-canonical representations;
+  `canonicalize_lineage_parameters` remains the only serializer.
+- `structure_identity` has exactly `structure_type`, `underlying`,
+  `assumed_portfolio_value_repr`, `expected_holding_days`, and `legs`; every
+  leg has exactly `underlying`, `option_type`, `strike_float_repr`,
+  `expiration`, `quantity`, and `contract_multiplier`. Public structure order
+  is retained without silent reordering. Public `OptionStructure`,
+  `structure_identity`, `leg_correspondence`, and normalized evidence
+  correspond one-to-one on symbol, complete `UnderlyingKey`, option type,
+  expiration, `Decimal(str(OptionLeg.strike))`, multiplier, quantity,
+  currency, listing MIC, security type, and deliverable, with no missing,
+  extra, duplicated, or reordered leg.
+- `calculation_values` retains exact tagged Decimals for quoted midpoint,
+  spread cost, commissions and fees, Theta, Gamma, underlying price, total
+  entry cost, maximum loss, and cumulative repeated-bet cost. Its stable
+  representation retains exact public `repr` strings for those nine direct or
+  derived public values. Tagged Decimals preserve economic calculations;
+  stable repr strings preserve the actual public binary-float boundary. Direct
+  fields require `float(exact Decimal) == public float` and exact public repr.
+  Total entry cost is independently checked using normal left-to-right public
+  float addition. The reviewed exact `0.300` and stable
+  `0.30000000000000004` case is valid and protected.
+- Exact arithmetic remains total bid and ask as premium times quantity times
+  multiplier; midpoint and one-way spread as their exact half-sum and
+  half-difference; position Theta and Gamma as scaled sums; underlying price
+  as the bid/ask midpoint; total entry as midpoint plus spread plus fees;
+  maximum loss as total entry; and cumulative repeated-bet cost as total entry
+  times the exact repeated-bet count. Public and canonical repeated-bet counts,
+  exact cumulative cost, and stable cumulative repr must all correspond.
+- `normalized_evidence` has exactly `underlying_quote`, `option_quotes`,
+  `option_greeks`, and `contract_references`. Every item retains exact
+  `record_id`, UTC `normalized_at`, sorted unique `source_ids`, and
+  `propagated_quality_flags`, without complete normalized payloads or source
+  payload bodies. One-leg results have exactly four inputs and straddles seven:
+  one underlying quote, then one option quote, Greeks observation, and
+  contract-reference record per public structure leg. Public as-of date equals
+  all consumed observation sessions and every session precedes expiration.
+- Normalized evidence corresponds exactly to each
+  `CalculationInputReference` on record ID, normalization time, and source IDs.
+  Missing or extra inputs, duplicate record IDs, normalization-time mismatch,
+  and source-ID mismatch reject. Every normalized time is no later than
+  lineage calculation time, while contract listing, last-trade, observation,
+  and expiration chronology remains valid.
+- The six-field Greeks methodology is `model_name`, `model_version`,
+  `rate_input_description`, `dividend_input_description`, `theta_day_basis`,
+  and `unit_convention`. Every leg uses one exact tuple, and canonical
+  methodology generates the existing public disclosure string exactly.
+  Public-only, canonical-only, single-leg evidence, and cross-leg methodology
+  divergences reject.
+- `DECIMAL_TO_FLOAT_CONVERTED` and `ASSUMPTION_APPLIED` are always required.
+  `INTERPOLATED`, `CORRECTION_SELECTED`, and `COMPOSITE_INPUT_USED` are present
+  if and only if normalized evidence discloses them. `ANNUALIZED`,
+  `ADJUSTED_INPUT_USED`, and `INCOMPLETE_INPUT_USED` are prohibited, enum
+  declaration order remains unchanged, and incomplete or partial selected
+  evidence rejects before final result construction.
+- Intrinsic wrapper validation covers exact public types, exact v0.2 identity,
+  strict canonical syntax and schema, fixed rules and units, structure and
+  as-of correspondence, leg/evidence correspondence, deterministic arithmetic,
+  exact Decimal/public-float/stable-repr correspondence, Greeks methodology,
+  repeated bets, exact lineage inputs, flags, and chronology. It detects
+  public-record-only, canonical-parameter-only, normalized-evidence-value-only,
+  lineage-reference-only, methodology, repeated-bet, flag, and chronology
+  forgeries. It does not establish cryptographic authenticity; without
+  signatures or immutable retained payloads, a deliberately self-consistent
+  fabrication of record, parameters, evidence, source references, and lineage
+  may remain possible. This accepted non-cryptographic MVP limitation is not a
+  remaining blocker.
+- The reviewed decisive direct-wrapper probe now raises `ValueError` when the
+  valid ordinary record's midpoint is changed from `120.0` to `1120.0`, moving
+  its derived total from `141.25` to `1141.25`, while its original v0.2 lineage
+  remains untouched. Independent valid record-only changes also reject for
+  quoted midpoint, spread cost, commissions and fees, Theta, Gamma, underlying
+  price, Greeks methodology, repeated-bet count, structure, and as-of date.
+- Ordinary one-leg stable values remain midpoint `120.0`, spread `20.0`, fees
+  `1.25`, Theta `-10.0`, Gamma `2.0`, underlying `100.0`, and total `141.25`;
+  exact values are `120.000`, `20.000`, `1.25`, `-10.000`, `2.000`,
+  `100.000`, and `141.250`. Ordinary straddle stable values remain midpoint
+  `350.0`, spread `50.0`, fees `1.25`, Theta `-25.0`, Gamma `5.0`, underlying
+  `100.0`, and total `401.25`; exact values are `350.000`, `50.000`, `1.25`,
+  `-25.000`, `5.000`, `100.000`, and `401.250`.
+- Final validation passes with 128 focused transformation tests, 365
+  market-data tests, 802 full-suite tests, compileall, and `git diff --check`.
+  All pre-correction functional scenarios remain covered under required v0.2
+  expectations. Three literal base-source assumptions were intentionally
+  replaced because they asserted the obsolete v0.1 golden schema, obsolete
+  v0.1 canonical ordering, and acceptance of partial or incomplete cost
+  evidence; these are frozen-contract changes, not regressions. Precision,
+  rounding, traps, flags, `Emin`, `Emax`, capitals, and clamp remain unchanged
+  after successful transformation and direct construction and after record-,
+  parameter-, evidence-, and lineage-only ordinary failures.
+- The exact public boundaries remain two result fields (`record`, `lineage`),
+  the unchanged `transform_structure_costs` signature, exactly 16
+  transformation exports, exactly 64 market-data exports, unchanged package
+  root, no new public names, and unchanged stable-domain files. A valid exact
+  v0.2 dependency now proves structure, as-of date, exact and stable
+  underlying-price basis, midpoint, spread, fees, total entry, maximum loss,
+  Theta, Gamma, methodology, repeated bets, normalized evidence, lineage input
+  set, flags, and chronology. Downstream 3C.7f2 therefore no longer needs the
+  original relationship selection, selected/fresh bindings, complete
+  normalized records, producer invocation, or upstream proof replay.
+- The independent correction review returned
+  `MVP-FOCUSED REVIEW RESULT: PASS`: findings none and remaining correction
+  blocker none. It confirmed v0.2 identity and intentional v0.1 rejection, the
+  exact 20-key schema, record/parameter/evidence/lineage binding, strict
+  Decimal/stable-float boundary, ordinary arithmetic, flags, chronology,
+  Decimal-context isolation, scope boundaries, focused-test adequacy, and the
+  3C.7f2 downstream guarantee. The correction is implemented, independently
+  reviewed, validated, and ready to commit and push. This operation commits
+  and pushes the 3C.7b downstream-verifiability correction. Milestone 3C.7f2
+  remains unimplemented, broad 3C.7f remains incomplete, and broad Milestone 3
+  remains incomplete.
 
 ## Current task
 
-Finalize, commit, and push Milestone 3C.7f1.
+Finalize, commit, and push the reviewed 3C.7b downstream-verifiability
+correction.
 
 ## Last completed checkpoint
 
@@ -479,11 +635,10 @@ Finalize, commit, and push Milestone 3C.7f1.
 
 ## Next task
 
-Perform a specification preflight for Milestone 3C.7f2 `ScenarioResult`
-construction, including reviewed 3C.7f1 non-expiration evidence, internally
-calculated expiration intrinsic payoff, `StructureCosts` and `TailPricing`
-dependencies, explicit exit-cost assumptions, bounded-loss validation, ordered
-`ScenarioResult` records, and auditable downstream `CalculationLineage`.
+Re-run the Milestone 3C.7f2 specification preflight against the committed
+`StructureCosts` v0.2 dependency and freeze `ScenarioResult` construction,
+hybrid non-expiration/expiration valuation, exit-cost assumptions, bounded-loss
+validation, canonical parameters, and downstream lineage.
 
 ## Deferred
 

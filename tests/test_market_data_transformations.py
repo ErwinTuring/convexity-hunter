@@ -924,6 +924,35 @@ def transform_costs(
     )
 
 
+def mutate_cost_parameters(result, mutate):
+    parameters = copy.deepcopy(
+        transformations._decode_cost_parameters(
+            result.lineage.parameters_json
+        )
+    )
+    mutate(parameters)
+    return dataclasses.replace(
+        result.lineage,
+        parameters_json=market_data.canonicalize_lineage_parameters(
+            parameters
+        ),
+    )
+
+
+def decimal_context_state():
+    context = decimal.getcontext()
+    return (
+        context.prec,
+        context.rounding,
+        tuple(context.traps.items()),
+        tuple(context.flags.items()),
+        context.Emin,
+        context.Emax,
+        context.capitals,
+        context.clamp,
+    )
+
+
 @contextmanager
 def force_selected(assessment):
     with mock.patch.object(
@@ -3159,7 +3188,7 @@ class StructureCostsSuccessfulCalculationTests(unittest.TestCase):
                 )
                 self.assertEqual(result.record.repeated_bet_count, 3)
 
-    def test_two_leg_straddle_scaling_zero_values_and_order_invariance(self):
+    def test_two_leg_straddle_scaling_zero_values_and_leg_order_evidence(self):
         first = make_structure(("call", "put"), quantity=3, multiplier=10)
         second = make_structure(("put", "call"), quantity=3, multiplier=10)
         first_selection, _, _, _ = make_cost_selection(
@@ -3188,9 +3217,25 @@ class StructureCostsSuccessfulCalculationTests(unittest.TestCase):
                     CalculationQualityFlag.ASSUMPTION_APPLIED,
                 ),
             )
+        first_parameters = transformations._decode_cost_parameters(
+            first_result.lineage.parameters_json
+        )
+        second_parameters = transformations._decode_cost_parameters(
+            second_result.lineage.parameters_json
+        )
         self.assertEqual(
-            first_result.lineage.parameters_json,
-            second_result.lineage.parameters_json,
+            tuple(
+                item["option_type"]
+                for item in first_parameters["structure_identity"]["legs"]
+            ),
+            ("call", "put"),
+        )
+        self.assertEqual(
+            tuple(
+                item["option_type"]
+                for item in second_parameters["structure_identity"]["legs"]
+            ),
+            ("put", "call"),
         )
 
     def test_lineage_has_all_four_inputs_and_literal_canonical_parameters(self):
@@ -3223,52 +3268,20 @@ class StructureCostsSuccessfulCalculationTests(unittest.TestCase):
                 tuple(source.source_id
                       for source in record.metadata.source_references),
             )
+        decoded = transformations._decode_cost_parameters(
+            result.lineage.parameters_json
+        )
+        self.assertEqual(len(decoded), 20)
         self.assertEqual(
-            result.lineage.parameters_json,
-            '{"$map":[["commission_and_fee_scope",'
-            '"entry_only_total_position"],["commissions_and_fees_usd",'
-            '{"$decimal":"1.25"}],["gamma_input_unit",'
-            '"option_value_change_per_usd_squared_per_underlying_unit"],'
-            '["gamma_position_rule","sum(gamma_per_underlying_unit_per_usd_'
-            'squared*quantity*contract_multiplier)"],["greeks_methodology",'
-            '{"$map":[["dividend_input_description","Synthetic dividend input"],'
-            '["model_name","Synthetic Black-Scholes"],'
-            '["model_version","fixture-v1"],'
-            '["rate_input_description","Synthetic USD curve input"],'
-            '["theta_day_basis","Provider calendar-day convention"],'
-            '["unit_convention","Contract-defined canonical units"]]}],'
-            '["leg_correspondence",{"$list":[{"$map":['
-            '["contract_multiplier",25],["currency","USD"],'
-            '["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],'
-            '["option_contract_reference_record_id",'
-            '"cost-call-contract-reference"],'
-            '["option_greeks_record_id","cost-call-greeks"],'
-            '["option_quote_record_id","cost-call-quote"],'
-            '["option_type","call"],["quantity",2],'
-            '["strike",{"$decimal":"100.0"}],'
-            '["underlying",{"$map":[["currency","USD"],'
-            '["listing_mic","ARCX"],["security_type","etf"],'
-            '["symbol","SPY"]]}],["underlying_quote_record_id",'
-            '"cost-underlying-quote"]]}]}],["position_value_unit","usd"],'
-            '["premium_input_unit","usd_per_underlying_unit"],'
-            '["premium_midpoint_rule","sum(((bid_premium+ask_premium)/2)*'
-            'quantity*contract_multiplier)"],["repeated_bet_count",3],'
-            '["spread_cost_rule","sum(((ask_premium-bid_premium)/2)*quantity*'
-            'contract_multiplier)"],["spread_cost_scope",'
-            '"entry_only_midpoint_to_ask"],["theta_day_basis",'
-            '"Provider calendar-day convention"],["theta_input_unit",'
-            '"usd_per_underlying_unit_per_declared_day_basis"],'
-            '["theta_position_rule","sum(theta_per_underlying_unit_per_'
-            'declared_day_basis*quantity*contract_multiplier)"],'
-            '["underlying_price_rule","(bid_price+ask_price)/2"],'
-            '["underlying_price_unit","usd_per_underlying_share"]]}',
+            set(decoded),
+            transformations._COST_PARAMETER_KEYS,
         )
         self.assertEqual(result.lineage.calculation_id, "calculation-3c7b")
         self.assertEqual(result.lineage.calculation_type, "structure_costs")
         self.assertEqual(
             result.lineage.methodology_id, "exact-structure-costs"
         )
-        self.assertEqual(result.lineage.methodology_version, "v0.1")
+        self.assertEqual(result.lineage.methodology_version, "v0.2")
 
     def test_two_leg_lineage_contains_seven_unique_authoritative_inputs(self):
         structure = make_structure(("call", "put"))
@@ -3643,7 +3656,7 @@ class StructureCostsBoundaryAndProofTests(unittest.TestCase):
                 source_uri="synthetic://cost-composite/b",
             ),
         )
-        replacements = (
+        complete_replacements = (
             dataclasses.replace(
                 originals[0],
                 quality_flags=(NormalizationQualityFlag.INTERPOLATED,),
@@ -3657,11 +3670,9 @@ class StructureCostsBoundaryAndProofTests(unittest.TestCase):
                 quality_flags=(NormalizationQualityFlag.COMPOSITE_SOURCE,),
             ),
             originals[2],
-            dataclasses.replace(
-                originals[3], source_references=(partial_source,)
-            ),
+            originals[3],
         )
-        for record, metadata in zip(records, replacements):
+        for record, metadata in zip(records, complete_replacements):
             object.__setattr__(record, "metadata", metadata)
         try:
             with force_selected(assessment):
@@ -3673,14 +3684,504 @@ class StructureCostsBoundaryAndProofTests(unittest.TestCase):
                     CalculationQualityFlag.INTERPOLATED,
                     CalculationQualityFlag.COMPOSITE_INPUT_USED,
                     CalculationQualityFlag.ASSUMPTION_APPLIED,
-                    CalculationQualityFlag.INCOMPLETE_INPUT_USED,
                 ),
             )
             self.assertNotIn(CalculationQualityFlag.ANNUALIZED, flags)
             self.assertNotIn(CalculationQualityFlag.ADJUSTED_INPUT_USED, flags)
+            object.__setattr__(
+                records[3],
+                "metadata",
+                dataclasses.replace(
+                    originals[3], source_references=(partial_source,)
+                ),
+            )
+            with force_selected(assessment), self.assertRaises(ValueError):
+                transform_costs(structure, selection)
         finally:
             for record, metadata in zip(records, originals):
                 object.__setattr__(record, "metadata", metadata)
+
+
+class StructureCostsVerifiabilityCorrectionTests(unittest.TestCase):
+    def make_result(self, option_types=("call",)):
+        structure = make_structure(option_types)
+        selection, _, _, _ = make_cost_selection(structure)
+        return transform_costs(
+            structure, selection, decimal.Decimal("1.25"), 3
+        )
+
+    def test_ordinary_one_leg_and_straddle_literal_values_and_evidence_counts(self):
+        one_leg = self.make_result()
+        straddle = self.make_result(("call", "put"))
+        self.assertEqual(
+            (
+                one_leg.record.quoted_mid_premium,
+                one_leg.record.estimated_spread_cost,
+                one_leg.record.commissions_and_fees,
+                one_leg.record.theta_per_day,
+                one_leg.record.gamma,
+                one_leg.record.underlying_price,
+                one_leg.record.total_entry_cost,
+            ),
+            (120.0, 20.0, 1.25, -10.0, 2.0, 100.0, 141.25),
+        )
+        self.assertEqual(
+            (
+                straddle.record.quoted_mid_premium,
+                straddle.record.estimated_spread_cost,
+                straddle.record.commissions_and_fees,
+                straddle.record.theta_per_day,
+                straddle.record.gamma,
+                straddle.record.underlying_price,
+                straddle.record.total_entry_cost,
+            ),
+            (350.0, 50.0, 1.25, -25.0, 5.0, 100.0, 401.25),
+        )
+        self.assertEqual(len(one_leg.lineage.inputs), 4)
+        self.assertEqual(len(straddle.lineage.inputs), 7)
+        integer_valued_structure = OptionStructure(
+            (
+                OptionLeg(
+                    "SPY", "call", 100, EXPIRATION, 1, 100
+                ),
+            ),
+            100000,
+            14,
+        )
+        integer_selection, _, _, _ = make_cost_selection(
+            integer_valued_structure
+        )
+        integer_result = transform_costs(
+            integer_valued_structure,
+            integer_selection,
+            decimal.Decimal("1.25"),
+            3,
+        )
+        integer_identity = transformations._decode_cost_parameters(
+            integer_result.lineage.parameters_json
+        )["structure_identity"]
+        self.assertEqual(
+            integer_identity["assumed_portfolio_value_repr"], "100000"
+        )
+        self.assertEqual(
+            integer_identity["legs"][0]["strike_float_repr"], "100"
+        )
+
+    def test_complete_v02_document_has_literal_byte_golden_and_exact_schemas(self):
+        result = self.make_result()
+        expected_compressed = (
+            "c-qxiZExE)5dJHMun$RVWwPUJNWOL54+xeGSXTrDO`UBbl&F%F5v}ll-;vb2<XJJ&F8gFyy!U(Vc"
+            "*n274++hJyU(8kMg_|SHC(1-Pel$on15{@%Ov4i<EbVzjmZW;6L_Y~II<WRPpAm)g2mPHCOACKkt"
+            "I)@z&#KJ8BhZ;S%V==YBS2ZT3%oMd=q(Y&;~zS9-S$m@o~0gbQMJ<*On#;9j9uD68g-OJRw5rBR;"
+            "IG7bW$VTv{s<9uqVq;mA13(>6mJx)#=LCRIE+oERk)%zXq;2CyXdF$<1ItfaHn1x<viujR*1L@F~"
+            "@wIL%RsEBI0W(S6n3>1lJQ5}bi`dAt&2&6_89lKgu@-zk|3Z8CJ3ujQ1L{7-#VW?&-5l&~7h=JOZ"
+            "=^j`y$`MsMyj4v)t85a@WCm!x*DX^~5N}K-HMdn3bQxPX$aQ?QsC@c(n&pP%DM!NsnKeaA*p8-KZ"
+            "~;OwM1RSt!qmC{jc1Ot5m%W+R4%N|I!`XjlObPU_B;GZ4L8L*Cec?67D3n=o(T@>(rZxwPnslPb~"
+            "2ViZi`Ma#C*?VK<~X<F=(c^a|&&FC{mkq&Sn+a%#nHA$`}MmX#yR}Uj$`O;RD-Afpymq?m=lUb;F"
+            "-ct{~hm+_A#4IidZJhhJwbS9@rw_h7U@TvN@l!h?Gyt&wVm?G#O=D#X(n24;^qsFLoY*!ngPK9-R"
+            "SW7zN%Vq{Nc%2CM766*^60=CGg6zEK1R#FBokb-N2k?i!BK`MedqSm(+6p%8^L4Zy<i!eCYWt3}L"
+            "9Ko07Lb#UloN-0Hkrt2`Cf9JUqcFM-7bPZ30M<GcY`|)$8=w^#*zya}BN0}FVNDpc#FSteXZ43|a"
+            "@U)VP`k4>u_;_l+QYK3dFWzneA`z13C3!@-y6Ekd>Bxh5nC_`XZZEQZy*13pEV#Y>Z=R^v+>`HWG"
+            "#io+x@31*R8TU;$uTmd5WBlH<b#F=YM16gDaX6C<A!Z8PMMvNT3+k*cMIUTFi$8u)9)U5Yu2LDE4"
+            "nOCI;dt#z<EsX&L?@-SRe!Zo|b-K|fB^)P#7AHbNI+wETT>b9Wux`KBL5%fC9f?}I8+GNW5}5hK2"
+            "YP4`C7Z70HyhY|R_s9H1_BOt*RQW<c+E3|DH{#fRU*&KA#{;Sx~^MrWU9^O_pRIu)Jh;Iwn^Y5f-"
+            "V0PDQFSZ!jWi_I{(#7`10Dj&zd-5vK;AgM#wqPAB$MRD};bp$G5ZoBhpF*RnMbth&XH596x6N5I$"
+            ")SG}A1h0$pQ_zqFx#%mIIWxgVn9>H^1BW;|A*_LnQ>mN3Y^Hde;f1%q>f&XH_nC@H(2s`8`9j~)+"
+            "D&{W|HF_TW&@dHP8E6!{v|5SLn6VVKHG2d?hsW1@|%WU(Lf47jw^7FSmX{E|+GzWBaiC_l(X)ZMW"
+            "NF8*|0bM~2;*FD_aw?0u`{Aw(`G?8&`Xo;*cku3bFZ4?1mqEgfM?_e6bdu_NylwTng)R1}nLAZK>"
+            "MAa?HY-KkS{XqSC&kjiYN;IfQ*^OO@s)sqnRU|`l;oMvJ_trrNw#j4zN&zbOEw6IRv2C)hyHNCf}"
+            "9`<XP9=aha6$pvW)mlaw&z}-J+Z6cvS2JM3y$CgmTF+`D??BCi+ca?#U^jf|JKbCdJjZ?2JG96~^"
+            "&ekD+oA"
+        )
+        expected = zlib.decompress(
+            base64.b85decode(expected_compressed)
+        ).decode("utf-8")
+        self.assertEqual(result.lineage.parameters_json, expected)
+        decoded = transformations._decode_cost_parameters(expected)
+        self.assertEqual(len(decoded), 20)
+        self.assertEqual(set(decoded), transformations._COST_PARAMETER_KEYS)
+        self.assertEqual(
+            set(decoded["structure_identity"]),
+            {
+                "structure_type",
+                "underlying",
+                "assumed_portfolio_value_repr",
+                "expected_holding_days",
+                "legs",
+            },
+        )
+        self.assertEqual(
+            set(decoded["calculation_values"]),
+            transformations._COST_CALCULATION_VALUE_KEYS,
+        )
+        self.assertEqual(
+            set(decoded["normalized_evidence"]),
+            transformations._COST_EVIDENCE_KEYS,
+        )
+        def assert_no_json_float(value):
+            self.assertIsNot(type(value), float)
+            if type(value) is list:
+                for item in value:
+                    assert_no_json_float(item)
+            elif type(value) is dict:
+                for item in value.values():
+                    assert_no_json_float(item)
+        assert_no_json_float(json.loads(expected))
+
+    def test_exact_total_and_componentwise_stable_float_total_both_hold(self):
+        structure = make_structure()
+        selection, _, _, _ = make_cost_selection(
+            structure, bid=("0",), ask=("0.002",)
+        )
+        result = transform_costs(
+            structure, selection, decimal.Decimal("0.1"), 3
+        )
+        decoded = transformations._decode_cost_parameters(
+            result.lineage.parameters_json
+        )
+        values = decoded["calculation_values"]
+        self.assertEqual(
+            values["total_entry_cost_exact"], decimal.Decimal("0.300")
+        )
+        self.assertEqual(result.record.total_entry_cost, 0.30000000000000004)
+        self.assertNotEqual(
+            float(values["total_entry_cost_exact"]),
+            result.record.total_entry_cost,
+        )
+        StructureCostsTransformationResult(result.record, result.lineage)
+
+    def test_decisive_forgery_and_complete_public_field_matrix_reject(self):
+        result = self.make_result()
+        forged = dataclasses.replace(
+            result.record, quoted_mid_premium=1120.0
+        )
+        self.assertEqual(forged.total_entry_cost, 1141.25)
+        with self.assertRaises(ValueError):
+            StructureCostsTransformationResult(forged, result.lineage)
+        changes = {
+            "quoted_mid_premium": {"quoted_mid_premium": 1120.0},
+            "estimated_spread_cost": {"estimated_spread_cost": 21.0},
+            "commissions_and_fees": {"commissions_and_fees": 2.25},
+            "theta_per_day": {"theta_per_day": -11.0},
+            "gamma": {"gamma": 3.0},
+            "underlying_price": {"underlying_price": 101.0},
+            "greeks_methodology": {"greeks_methodology": "forged methodology"},
+            "repeated_bet_count": {"repeated_bet_count": 4},
+            "structure": {
+                "structure": dataclasses.replace(
+                    result.record.structure,
+                    assumed_portfolio_value=200000.0,
+                )
+            },
+            "as_of_date": {
+                "as_of_date": result.record.as_of_date
+                - datetime.timedelta(days=1)
+            },
+        }
+        for name, change in changes.items():
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                StructureCostsTransformationResult(
+                    dataclasses.replace(result.record, **change),
+                    result.lineage,
+                )
+
+    def test_parameter_only_forgery_matrix_rejects(self):
+        result = self.make_result()
+        mutations = {
+            "quoted midpoint": lambda p: p["calculation_values"].__setitem__(
+                "quoted_mid_premium_exact", decimal.Decimal("121.000")
+            ),
+            "total entry": lambda p: p["calculation_values"].__setitem__(
+                "total_entry_cost_exact", decimal.Decimal("142.250")
+            ),
+            "stable total": lambda p: p["calculation_values"][
+                "stable_record_values"
+            ].__setitem__("total_entry_cost_repr", "142.25"),
+            "structure": lambda p: p["structure_identity"].__setitem__(
+                "assumed_portfolio_value_repr", "200000.0"
+            ),
+            "methodology": lambda p: p["greeks_methodology"].__setitem__(
+                "model_name", "Forged model"
+            ),
+            "repeated bet": lambda p: p.__setitem__("repeated_bet_count", 4),
+            "leg correspondence": lambda p: p["leg_correspondence"][0].__setitem__(
+                "quantity", 2
+            ),
+        }
+        for name, mutate in mutations.items():
+            lineage = mutate_cost_parameters(result, mutate)
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                StructureCostsTransformationResult(result.record, lineage)
+
+    def test_normalized_evidence_only_forgery_matrix_rejects(self):
+        result = self.make_result()
+        mutations = {
+            "underlying bid": lambda p: p["normalized_evidence"][
+                "underlying_quote"
+            ].__setitem__("bid_price", decimal.Decimal("98.00")),
+            "underlying midpoint": lambda p: p["normalized_evidence"][
+                "underlying_quote"
+            ].__setitem__("underlying_price_exact", decimal.Decimal("99.500")),
+            "option ask": lambda p: p["normalized_evidence"]["option_quotes"][
+                0
+            ].__setitem__("ask_premium", decimal.Decimal("1.50")),
+            "gamma": lambda p: p["normalized_evidence"]["option_greeks"][
+                0
+            ].__setitem__("gamma", decimal.Decimal("0.030")),
+            "theta": lambda p: p["normalized_evidence"]["option_greeks"][
+                0
+            ].__setitem__("theta", decimal.Decimal("-0.200")),
+            "Greeks methodology": lambda p: p["normalized_evidence"][
+                "option_greeks"
+            ][0].__setitem__("model_name", "Forged model"),
+            "contract key": lambda p: p["normalized_evidence"][
+                "option_quotes"
+            ][0].__setitem__("strike", decimal.Decimal("101.0")),
+            "session date": lambda p: p["normalized_evidence"][
+                "option_quotes"
+            ][0].__setitem__(
+                "session_date", SESSION_DATE - datetime.timedelta(days=1)
+            ),
+            "record ID": lambda p: p["normalized_evidence"]["option_quotes"][
+                0
+            ].__setitem__("record_id", "forged-record"),
+            "normalized at": lambda p: p["normalized_evidence"][
+                "option_quotes"
+            ][0].__setitem__(
+                "normalized_at",
+                CALCULATED_AT - datetime.timedelta(days=1),
+            ),
+            "source IDs": lambda p: p["normalized_evidence"]["option_quotes"][
+                0
+            ].__setitem__("source_ids", ("forged-source",)),
+            "exercise": lambda p: p["normalized_evidence"][
+                "contract_references"
+            ][0].__setitem__("exercise_style", "European"),
+            "settlement": lambda p: p["normalized_evidence"][
+                "contract_references"
+            ][0].__setitem__("settlement_type", "Cash"),
+        }
+        for name, mutate in mutations.items():
+            lineage = mutate_cost_parameters(result, mutate)
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                StructureCostsTransformationResult(result.record, lineage)
+
+    def test_lineage_and_quality_forgery_matrix_rejects(self):
+        result = self.make_result()
+        lineage = result.lineage
+        extra = CalculationInputReference(
+            "extra-input",
+            lineage.inputs[0].normalized_at,
+            ("extra-source",),
+        )
+        changes = {
+            "missing": {"inputs": lineage.inputs[:-1]},
+            "extra": {"inputs": lineage.inputs + (extra,)},
+            "normalized at": {
+                "inputs": (
+                    dataclasses.replace(
+                        lineage.inputs[0],
+                        normalized_at=lineage.inputs[0].normalized_at
+                        - datetime.timedelta(seconds=1),
+                    ),
+                ) + lineage.inputs[1:]
+            },
+            "source IDs": {
+                "inputs": (
+                    dataclasses.replace(
+                        lineage.inputs[0], source_ids=("forged-source",)
+                    ),
+                ) + lineage.inputs[1:]
+            },
+            "version": {"methodology_version": "v0.1"},
+            "type": {"calculation_type": "forged"},
+            "methodology": {"methodology_id": "forged"},
+            "missing required flag": {
+                "quality_flags": (
+                    CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                )
+            },
+            "prohibited flag": {
+                "quality_flags": lineage.quality_flags
+                + (CalculationQualityFlag.ANNUALIZED,)
+            },
+            "undisclosed conditional flag": {
+                "quality_flags": lineage.quality_flags
+                + (CalculationQualityFlag.INTERPOLATED,)
+            },
+        }
+        for name, change in changes.items():
+            forged_lineage = dataclasses.replace(lineage, **change)
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                StructureCostsTransformationResult(
+                    result.record, forged_lineage
+                )
+        duplicate = dataclasses.replace(
+            lineage.inputs[1], record_id=lineage.inputs[0].record_id
+        )
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                lineage, inputs=(lineage.inputs[0], duplicate) + lineage.inputs[2:]
+            )
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                lineage,
+                calculated_at=min(
+                    item.normalized_at for item in lineage.inputs
+                ) - datetime.timedelta(microseconds=1),
+            )
+
+    def test_strict_decoder_rejects_malformed_and_wrong_schemas(self):
+        result = self.make_result()
+        serialized = result.lineage.parameters_json
+        malformed = (
+            serialized.replace(
+                '{"$map":[',
+                '{"$map":[],"$map":[',
+                1,
+            ),
+            serialized.replace(
+                '{"$decimal":"120.000"}', '120.0', 1
+            ),
+            serialized.replace(
+                '{"$decimal":"120.000"}', 'NaN', 1
+            ),
+            serialized.replace('"$decimal"', '"$unknown"', 1),
+            serialized.replace(
+                '{"$decimal":"120.000"}',
+                '{"$decimal":"+120.000"}',
+                1,
+            ),
+        )
+        for value in malformed:
+            with self.subTest(value=value[:50]), self.assertRaises(ValueError):
+                transformations._decode_cost_parameters(value)
+        changes = (
+            lambda p: p.pop("structure_identity"),
+            lambda p: p.__setitem__("extra", "value"),
+            lambda p: p["calculation_values"].pop("gamma_exact"),
+            lambda p: p["calculation_values"].__setitem__("extra", "value"),
+            lambda p: p.__setitem__("normalized_evidence", ()),
+        )
+        for mutate in changes:
+            parameters = copy.deepcopy(
+                transformations._decode_cost_parameters(serialized)
+            )
+            mutate(parameters)
+            forged = market_data.canonicalize_lineage_parameters(parameters)
+            if set(parameters) != transformations._COST_PARAMETER_KEYS:
+                with self.assertRaises(ValueError):
+                    transformations._decode_cost_parameters(forged)
+            else:
+                lineage = dataclasses.replace(
+                    result.lineage, parameters_json=forged
+                )
+                with self.assertRaises((TypeError, ValueError)):
+                    StructureCostsTransformationResult(result.record, lineage)
+
+    def test_complete_decimal_context_is_preserved_on_success_and_failures(self):
+        original = decimal.getcontext().copy()
+        try:
+            context = decimal.getcontext()
+            context.prec = 17
+            context.rounding = decimal.ROUND_FLOOR
+            context.Emin = -99
+            context.Emax = 99
+            context.capitals = 0
+            context.clamp = 1
+            context.traps[decimal.Inexact] = False
+            context.flags[decimal.DivisionByZero] = True
+            before = decimal_context_state()
+            result = self.make_result()
+            self.assertEqual(decimal_context_state(), before)
+            StructureCostsTransformationResult(result.record, result.lineage)
+            self.assertEqual(decimal_context_state(), before)
+            forged_record = dataclasses.replace(
+                result.record, quoted_mid_premium=1120.0
+            )
+            with self.assertRaises(ValueError):
+                StructureCostsTransformationResult(
+                    forged_record, result.lineage
+                )
+            self.assertEqual(decimal_context_state(), before)
+            forged_lineage = mutate_cost_parameters(
+                result,
+                lambda p: p["normalized_evidence"]["option_quotes"][
+                    0
+                ].__setitem__("ask_premium", decimal.Decimal("1.50")),
+            )
+            with self.assertRaises(ValueError):
+                StructureCostsTransformationResult(
+                    result.record, forged_lineage
+                )
+            self.assertEqual(decimal_context_state(), before)
+            forged_parameters = mutate_cost_parameters(
+                result,
+                lambda p: p["calculation_values"].__setitem__(
+                    "gamma_exact", decimal.Decimal("3.000")
+                ),
+            )
+            with self.assertRaises(ValueError):
+                StructureCostsTransformationResult(
+                    result.record, forged_parameters
+                )
+            self.assertEqual(decimal_context_state(), before)
+            with self.assertRaises(ValueError):
+                transformations._decode_cost_parameters(
+                    result.lineage.parameters_json.replace(
+                        '"$decimal"', '"$unknown"', 1
+                    )
+                )
+            self.assertEqual(decimal_context_state(), before)
+            missing_input = dataclasses.replace(
+                result.lineage, inputs=result.lineage.inputs[:-1]
+            )
+            with self.assertRaises(ValueError):
+                StructureCostsTransformationResult(
+                    result.record, missing_input
+                )
+            self.assertEqual(decimal_context_state(), before)
+        finally:
+            decimal.setcontext(original)
+
+    def test_direct_wrapper_does_not_replay_upstream_or_later_transformations(self):
+        result = self.make_result()
+        forbidden = (
+            "_validate_selection_status",
+            "transform_structure_costs",
+            "transform_tail_pricing",
+            "transform_volatility_environment",
+        )
+        with ExitStack() as stack:
+            for name in forbidden:
+                stack.enter_context(mock.patch.object(
+                    transformations,
+                    name,
+                    side_effect=AssertionError(f"{name} must not be called"),
+                ))
+            for name in (
+                "select_correction_candidate",
+                "assess_market_data_freshness",
+                "assess_market_data_snapshot_timing",
+                "assess_market_data_relationships",
+                "select_market_data_relationship_assessment",
+            ):
+                stack.enter_context(mock.patch.object(
+                    market_data,
+                    name,
+                    side_effect=AssertionError(f"{name} must not be called"),
+                ))
+            stack.enter_context(mock.patch.object(
+                CalculationLineage,
+                "__init__",
+                side_effect=AssertionError(
+                    "direct verification must not construct lineage"
+                ),
+            ))
+            verified = StructureCostsTransformationResult(
+                result.record, result.lineage
+            )
+        self.assertIs(verified.record, result.record)
 
 
 class HistoricalRealizedVolatilityPublicContractTests(unittest.TestCase):

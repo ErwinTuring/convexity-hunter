@@ -470,6 +470,8 @@ class StructureCostsTransformationResult:
             raise TypeError("record must have exact type StructureCosts")
         if type(self.lineage) is not CalculationLineage:
             raise TypeError("lineage must have exact type CalculationLineage")
+        with decimal.localcontext():
+            _validate_structure_costs_result(self.record, self.lineage)
 
 
 def _validate_calculation_id(value: object) -> str:
@@ -1912,9 +1914,183 @@ def _greeks_methodology_disclosure(methodology: tuple) -> str:
     )
 
 
-def _canonical_cost_consumed(matched: tuple) -> Tuple[tuple, tuple, tuple]:
+_COST_PARAMETER_KEYS = {
+    "commission_and_fee_scope",
+    "commissions_and_fees_usd",
+    "gamma_input_unit",
+    "gamma_position_rule",
+    "greeks_methodology",
+    "leg_correspondence",
+    "position_value_unit",
+    "premium_input_unit",
+    "premium_midpoint_rule",
+    "repeated_bet_count",
+    "spread_cost_rule",
+    "spread_cost_scope",
+    "theta_day_basis",
+    "theta_input_unit",
+    "theta_position_rule",
+    "underlying_price_rule",
+    "underlying_price_unit",
+    "calculation_values",
+    "normalized_evidence",
+    "structure_identity",
+}
+_COST_METHODOLOGY_KEYS = {
+    "model_name",
+    "model_version",
+    "rate_input_description",
+    "dividend_input_description",
+    "theta_day_basis",
+    "unit_convention",
+}
+_COST_UNDERLYING_KEYS = {
+    "symbol",
+    "listing_mic",
+    "security_type",
+    "currency",
+}
+_COST_LEG_IDENTITY_KEYS = {
+    "underlying",
+    "option_type",
+    "strike_float_repr",
+    "expiration",
+    "quantity",
+    "contract_multiplier",
+}
+_COST_CONTRACT_FIELDS = {
+    "underlying",
+    "option_type",
+    "expiration",
+    "strike",
+    "currency",
+    "deliverable_id",
+    "contract_multiplier",
+}
+_COST_COMMON_EVIDENCE_FIELDS = {
+    "record_id",
+    "normalized_at",
+    "source_ids",
+    "propagated_quality_flags",
+}
+_COST_STABLE_VALUE_KEYS = {
+    "quoted_mid_premium_repr",
+    "estimated_spread_cost_repr",
+    "commissions_and_fees_repr",
+    "theta_per_day_repr",
+    "gamma_repr",
+    "underlying_price_repr",
+    "total_entry_cost_repr",
+    "maximum_loss_repr",
+    "cumulative_repeated_bet_cost_repr",
+}
+_COST_CALCULATION_VALUE_KEYS = {
+    "quoted_mid_premium_exact",
+    "estimated_spread_cost_exact",
+    "commissions_and_fees_exact",
+    "theta_per_day_exact",
+    "gamma_exact",
+    "underlying_price_exact",
+    "total_entry_cost_exact",
+    "maximum_loss_exact",
+    "cumulative_repeated_bet_cost_exact",
+    "stable_record_values",
+}
+_COST_EVIDENCE_KEYS = {
+    "underlying_quote",
+    "option_quotes",
+    "option_greeks",
+    "contract_references",
+}
+_COST_PROPAGATED_FLAG_ORDER = (
+    "interpolated",
+    "correction_selected",
+    "composite_input_used",
+)
+
+
+def _cost_underlying_identity(underlying: UnderlyingKey) -> dict:
+    return {
+        "symbol": underlying.symbol,
+        "listing_mic": underlying.listing_mic,
+        "security_type": underlying.security_type.value,
+        "currency": underlying.currency,
+    }
+
+
+def _cost_contract_identity(contract: OptionContractKey) -> dict:
+    return {
+        "underlying": _cost_underlying_identity(contract.underlying_key),
+        "option_type": contract.option_type,
+        "expiration": contract.expiration,
+        "strike": contract.strike,
+        "currency": contract.currency,
+        "deliverable_id": contract.deliverable_id,
+        "contract_multiplier": contract.contract_multiplier,
+    }
+
+
+def _cost_structure_leg_identity(leg: OptionLeg) -> dict:
+    return {
+        "underlying": leg.underlying,
+        "option_type": leg.option_type,
+        "strike_float_repr": repr(leg.strike),
+        "expiration": leg.expiration,
+        "quantity": leg.quantity,
+        "contract_multiplier": leg.contract_multiplier,
+    }
+
+
+def _cost_propagated_flags(
+    binding: SelectedFreshMarketDataBinding,
+    record: object,
+) -> tuple:
+    selected = set()
+    if NormalizationQualityFlag.INTERPOLATED in record.metadata.quality_flags:
+        selected.add("interpolated")
+    if binding.correction_selection.reason_codes == (
+        CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,
+    ):
+        selected.add("correction_selected")
+    if record.metadata.record_origin is DataOrigin.SYSTEM_COMPOSITE:
+        selected.add("composite_input_used")
+    return tuple(
+        flag for flag in _COST_PROPAGATED_FLAG_ORDER if flag in selected
+    )
+
+
+def _cost_evidence_common(
+    binding: SelectedFreshMarketDataBinding,
+    record: object,
+) -> dict:
+    return {
+        "record_id": record.metadata.record_id,
+        "normalized_at": record.metadata.normalized_at,
+        "source_ids": tuple(
+            source.source_id for source in record.metadata.source_references
+        ),
+        "propagated_quality_flags": _cost_propagated_flags(binding, record),
+    }
+
+
+def _cost_contract_evidence(
+    binding: SelectedFreshMarketDataBinding,
+    record: object,
+    leg: OptionLeg,
+) -> dict:
+    result = _cost_evidence_common(binding, record)
+    result.update(_cost_contract_identity(record.contract_key))
+    result["quantity"] = leg.quantity
+    return result
+
+
+def _canonical_cost_consumed(
+    matched: tuple,
+    structure: OptionStructure,
+) -> Tuple[tuple, tuple, tuple]:
     canonical = tuple(
-        sorted(matched, key=lambda item: _contract_order_key(item[0]))
+        next(item for item in matched if item[1] is leg)
+        for leg in structure.legs
     )
     underlying_record = canonical[0][3]
     underlying_binding = canonical[0][2]
@@ -1936,6 +2112,8 @@ def _construct_cost_parameters(
     commissions_and_fees: decimal.Decimal,
     repeated_bet_count: int,
     methodology: tuple,
+    decimal_values: tuple,
+    record: StructureCosts,
 ) -> str:
     underlying_record_id = canonical_matched[0][3].metadata.record_id
     leg_correspondence = []
@@ -1969,6 +2147,115 @@ def _construct_cost_parameters(
         "theta_day_basis": methodology[4],
         "unit_convention": methodology[5],
     }
+    (
+        quoted_mid,
+        spread_cost,
+        fees,
+        theta,
+        gamma,
+        underlying_price,
+    ) = decimal_values
+    total_entry_cost = _exact_scaled_sum((
+        (quoted_mid, 1),
+        (spread_cost, 1),
+        (fees, 1),
+    ))
+    cumulative_repeated_bet_cost = _exact_scaled_sum((
+        (total_entry_cost, repeated_bet_count),
+    ))
+    stable_record_values = {
+        "quoted_mid_premium_repr": repr(record.quoted_mid_premium),
+        "estimated_spread_cost_repr": repr(record.estimated_spread_cost),
+        "commissions_and_fees_repr": repr(record.commissions_and_fees),
+        "theta_per_day_repr": repr(record.theta_per_day),
+        "gamma_repr": repr(record.gamma),
+        "underlying_price_repr": repr(record.underlying_price),
+        "total_entry_cost_repr": repr(record.total_entry_cost),
+        "maximum_loss_repr": repr(record.maximum_loss),
+        "cumulative_repeated_bet_cost_repr": repr(
+            record.cumulative_repeated_bet_cost
+        ),
+    }
+    calculation_values = {
+        "quoted_mid_premium_exact": quoted_mid,
+        "estimated_spread_cost_exact": spread_cost,
+        "commissions_and_fees_exact": fees,
+        "theta_per_day_exact": theta,
+        "gamma_exact": gamma,
+        "underlying_price_exact": underlying_price,
+        "total_entry_cost_exact": total_entry_cost,
+        "maximum_loss_exact": total_entry_cost,
+        "cumulative_repeated_bet_cost_exact": cumulative_repeated_bet_cost,
+        "stable_record_values": stable_record_values,
+    }
+    underlying = canonical_matched[0][3]
+    underlying_evidence = _cost_evidence_common(
+        canonical_matched[0][2], underlying
+    )
+    underlying_evidence.update({
+        "underlying": _cost_underlying_identity(underlying.underlying_key),
+        "session_date": underlying.session_date,
+        "bid_price": underlying.bid_price,
+        "ask_price": underlying.ask_price,
+        "midpoint_rule": "(bid_price+ask_price)/2",
+        "underlying_price_exact": underlying_price,
+    })
+    option_quotes = []
+    option_greeks = []
+    contract_references = []
+    for item in canonical_matched:
+        leg = item[1]
+        quote = item[5]
+        greeks = item[7]
+        reference = item[9]
+        quote_evidence = _cost_contract_evidence(item[4], quote, leg)
+        quote_evidence.update({
+            "session_date": quote.session_date,
+            "bid_premium": quote.bid_premium,
+            "ask_premium": quote.ask_premium,
+        })
+        option_quotes.append(quote_evidence)
+        greeks_evidence = _cost_contract_evidence(item[6], greeks, leg)
+        greeks_evidence.update({
+            "session_date": greeks.session_date,
+            "gamma": greeks.gamma,
+            "theta": greeks.theta,
+            "theta_day_basis": greeks.theta_day_basis,
+            "model_name": greeks.model_name,
+            "model_version": greeks.model_version,
+            "rate_input_description": greeks.rate_input_description,
+            "dividend_input_description": greeks.dividend_input_description,
+            "unit_convention": greeks.metadata.unit_convention,
+        })
+        option_greeks.append(greeks_evidence)
+        reference_evidence = _cost_contract_evidence(
+            item[8], reference, leg
+        )
+        reference_evidence.update({
+            "listing_date": reference.listing_date,
+            "last_trade_date": reference.last_trade_date,
+            "exercise_style": reference.exercise_style,
+            "settlement_type": reference.settlement_type,
+        })
+        contract_references.append(reference_evidence)
+    normalized_evidence = {
+        "underlying_quote": underlying_evidence,
+        "option_quotes": tuple(option_quotes),
+        "option_greeks": tuple(option_greeks),
+        "contract_references": tuple(contract_references),
+    }
+    structure = record.structure
+    structure_identity = {
+        "structure_type": structure.structure_type,
+        "underlying": structure.underlying,
+        "assumed_portfolio_value_repr": repr(
+            structure.assumed_portfolio_value
+        ),
+        "expected_holding_days": structure.expected_holding_days,
+        "legs": tuple(
+            _cost_structure_leg_identity(leg) for leg in structure.legs
+        ),
+    }
     return canonicalize_lineage_parameters({
         "commission_and_fee_scope": "entry_only_total_position",
         "commissions_and_fees_usd": commissions_and_fees,
@@ -2001,6 +2288,9 @@ def _construct_cost_parameters(
         ),
         "underlying_price_rule": "(bid_price+ask_price)/2",
         "underlying_price_unit": "usd_per_underlying_share",
+        "calculation_values": calculation_values,
+        "normalized_evidence": normalized_evidence,
+        "structure_identity": structure_identity,
     })
 
 
@@ -2011,6 +2301,814 @@ def _derive_cost_quality_flags(
     selected = set(_derive_quality_flags(bindings, records))
     selected.add(CalculationQualityFlag.ASSUMPTION_APPLIED)
     return tuple(flag for flag in CalculationQualityFlag if flag in selected)
+
+
+def _validate_complete_cost_evidence(records: tuple) -> None:
+    if any(
+        NormalizationQualityFlag.INCOMPLETE in record.metadata.quality_flags
+        or any(
+            SourceQualityFlag.PARTIAL in source.quality_flags
+            for source in record.metadata.source_references
+        )
+        for record in records
+    ):
+        raise ValueError("structure costs require complete normalized evidence")
+
+
+def _decode_cost_parameters(parameters_json: str) -> dict:
+    def reject_float(_value: str) -> object:
+        raise ValueError("3C.7b v0.2 parameters must not contain JSON floats")
+
+    def reject_constant(_value: str) -> object:
+        raise ValueError(
+            "3C.7b v0.2 parameters must not contain nonfinite constants"
+        )
+
+    def unique_object(pairs: list) -> dict:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    "3C.7b v0.2 parameters contain a duplicate JSON key"
+                )
+            result[key] = value
+        return result
+
+    try:
+        raw = json.loads(
+            parameters_json,
+            parse_float=reject_float,
+            parse_constant=reject_constant,
+            object_pairs_hook=unique_object,
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as error:
+        raise ValueError("3C.7b v0.2 parameters_json is invalid") from error
+
+    def decode(value: object) -> object:
+        if value is None or type(value) in (bool, int, str):
+            return value
+        if type(value) is list:
+            return tuple(decode(item) for item in value)
+        if type(value) is not dict or len(value) != 1:
+            raise ValueError("3C.7b v0.2 parameters use unsupported JSON")
+        tag, payload = next(iter(value.items()))
+        if tag == "$map":
+            if type(payload) is not list:
+                raise ValueError("$map payload must be a list")
+            result = {}
+            for pair in payload:
+                if (
+                    type(pair) is not list
+                    or len(pair) != 2
+                    or type(pair[0]) is not str
+                    or pair[0] in result
+                ):
+                    raise ValueError(
+                        "$map entries must have unique string keys"
+                    )
+                result[pair[0]] = decode(pair[1])
+            return result
+        if tag == "$list":
+            if type(payload) is not list:
+                raise ValueError("$list payload must be a list")
+            return tuple(decode(item) for item in payload)
+        if tag == "$decimal":
+            if type(payload) is not str:
+                raise ValueError("$decimal payload must be a string")
+            try:
+                result = decimal.Decimal(payload)
+            except decimal.InvalidOperation as error:
+                raise ValueError("$decimal payload is invalid") from error
+            if not result.is_finite():
+                raise ValueError("$decimal payload must be finite")
+            return result
+        if tag == "$date":
+            if type(payload) is not str:
+                raise ValueError("$date payload must be a string")
+            try:
+                result = datetime.date.fromisoformat(payload)
+            except ValueError as error:
+                raise ValueError("$date payload is invalid") from error
+            if result.isoformat() != payload:
+                raise ValueError("$date payload is noncanonical")
+            return result
+        if tag == "$datetime":
+            if type(payload) is not str or not payload.endswith("Z"):
+                raise ValueError("$datetime payload must be canonical UTC")
+            try:
+                result = datetime.datetime.fromisoformat(
+                    payload[:-1] + "+00:00"
+                )
+            except ValueError as error:
+                raise ValueError("$datetime payload is invalid") from error
+            if result.isoformat().replace("+00:00", "Z") != payload:
+                raise ValueError("$datetime payload is noncanonical")
+            return result
+        raise ValueError("3C.7b v0.2 parameters contain an unknown tag")
+
+    decoded = decode(raw)
+    if type(decoded) is not dict:
+        raise ValueError("3C.7b v0.2 parameters root must be a tagged map")
+    if set(decoded) != _COST_PARAMETER_KEYS:
+        raise ValueError(
+            "3C.7b v0.2 parameters have the wrong exact 20-key schema"
+        )
+    try:
+        if canonicalize_lineage_parameters(decoded) != parameters_json:
+            raise ValueError("3C.7b v0.2 parameters are not byte-canonical")
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "3C.7b v0.2 parameters are not canonical"
+        ) from error
+    return decoded
+
+
+def _cost_exact_dict(
+    value: object,
+    keys: set,
+    label: str,
+) -> dict:
+    if type(value) is not dict:
+        raise TypeError(f"{label} must have exact type dict")
+    if set(value) != keys:
+        raise ValueError(f"{label} has the wrong exact key schema")
+    return value
+
+
+def _cost_exact_tuple(value: object, label: str) -> tuple:
+    if type(value) is not tuple:
+        raise TypeError(f"{label} must have exact type tuple")
+    return value
+
+
+def _cost_required_string(value: object, label: str) -> str:
+    if type(value) is not str:
+        raise TypeError(f"{label} must have exact type str")
+    if not value or value.strip() != value:
+        raise ValueError(f"{label} must be a canonical nonempty string")
+    return value
+
+
+def _cost_stable_float_repr(value: object, label: str) -> float:
+    text = _cost_required_string(value, label)
+    try:
+        converted = float(text)
+    except (OverflowError, ValueError) as error:
+        raise ValueError(f"{label} must represent a finite float") from error
+    if not math.isfinite(converted) or repr(converted) != text:
+        raise ValueError(f"{label} must be a canonical finite float repr")
+    return converted
+
+
+def _validate_cost_underlying_identity(
+    value: object,
+    expected_symbol: str,
+) -> dict:
+    identity = _cost_exact_dict(
+        value, _COST_UNDERLYING_KEYS, "underlying identity"
+    )
+    for key in ("symbol", "security_type", "currency"):
+        _cost_required_string(identity[key], f"underlying identity {key}")
+    if identity["listing_mic"] is not None:
+        _cost_required_string(
+            identity["listing_mic"], "underlying identity listing_mic"
+        )
+    if (
+        identity["symbol"] != expected_symbol
+        or identity["security_type"] not in {"equity", "etf"}
+        or identity["currency"] != "USD"
+    ):
+        raise ValueError("underlying identity does not match the structure")
+    return identity
+
+
+def _validate_cost_evidence_common(value: dict) -> tuple:
+    record_id = _cost_required_string(value["record_id"], "record_id")
+    normalized_at = value["normalized_at"]
+    if type(normalized_at) is not datetime.datetime:
+        raise TypeError("normalized_at must have exact type datetime")
+    if (
+        normalized_at.tzinfo is None
+        or normalized_at.utcoffset() != datetime.timedelta(0)
+    ):
+        raise ValueError("normalized_at must be an aware UTC datetime")
+    source_ids = _cost_exact_tuple(value["source_ids"], "source_ids")
+    if any(type(item) is not str for item in source_ids):
+        raise TypeError("every source_ids item must have exact type str")
+    if (
+        not source_ids
+        or any(not item or item.strip() != item for item in source_ids)
+        or len(set(source_ids)) != len(source_ids)
+        or source_ids != tuple(sorted(source_ids))
+    ):
+        raise ValueError(
+            "source_ids must be unique canonical strings in lexical order"
+        )
+    flags = _cost_exact_tuple(
+        value["propagated_quality_flags"], "propagated_quality_flags"
+    )
+    if any(type(item) is not str for item in flags):
+        raise TypeError(
+            "every propagated quality flag must have exact type str"
+        )
+    if (
+        len(set(flags)) != len(flags)
+        or flags != tuple(
+            item for item in _COST_PROPAGATED_FLAG_ORDER if item in set(flags)
+        )
+    ):
+        raise ValueError("propagated quality flags are invalid")
+    return record_id, normalized_at, source_ids, flags
+
+
+def _validate_cost_contract_evidence(
+    value: dict,
+    leg: OptionLeg,
+    expected_underlying: dict,
+) -> None:
+    if value["underlying"] != expected_underlying:
+        raise ValueError("contract underlying identity is inconsistent")
+    if type(value["option_type"]) is not str:
+        raise TypeError("contract option_type must have exact type str")
+    if type(value["expiration"]) is not datetime.date:
+        raise TypeError("contract expiration must have exact type date")
+    if type(value["strike"]) is not decimal.Decimal:
+        raise TypeError("contract strike must have exact type Decimal")
+    if type(value["currency"]) is not str:
+        raise TypeError("contract currency must have exact type str")
+    if (
+        value["deliverable_id"] is not None
+        and type(value["deliverable_id"]) is not str
+    ):
+        raise TypeError("contract deliverable_id must be str or None")
+    if (
+        type(value["deliverable_id"]) is str
+        and (
+            not value["deliverable_id"]
+            or value["deliverable_id"].strip() != value["deliverable_id"]
+        )
+    ):
+        raise ValueError("contract deliverable_id must be canonical")
+    if type(value["contract_multiplier"]) is not int:
+        raise TypeError("contract_multiplier must have exact type int")
+    if type(value["quantity"]) is not int:
+        raise TypeError("quantity must have exact type int")
+    if (
+        value["option_type"] != leg.option_type
+        or value["expiration"] != leg.expiration
+        or value["strike"] != decimal.Decimal(str(leg.strike))
+        or value["currency"] != expected_underlying["currency"]
+        or value["contract_multiplier"] != leg.contract_multiplier
+        or value["quantity"] != leg.quantity
+    ):
+        raise ValueError("contract evidence does not match the structure leg")
+
+
+def _validate_cost_fixed_parameters(decoded: dict) -> dict:
+    fixed = {
+        "commission_and_fee_scope": "entry_only_total_position",
+        "gamma_input_unit": (
+            "option_value_change_per_usd_squared_per_underlying_unit"
+        ),
+        "gamma_position_rule": (
+            "sum(gamma_per_underlying_unit_per_usd_squared*quantity*"
+            "contract_multiplier)"
+        ),
+        "position_value_unit": "usd",
+        "premium_input_unit": "usd_per_underlying_unit",
+        "premium_midpoint_rule": (
+            "sum(((bid_premium+ask_premium)/2)*quantity*contract_multiplier)"
+        ),
+        "spread_cost_rule": (
+            "sum(((ask_premium-bid_premium)/2)*quantity*contract_multiplier)"
+        ),
+        "spread_cost_scope": "entry_only_midpoint_to_ask",
+        "theta_input_unit": (
+            "usd_per_underlying_unit_per_declared_day_basis"
+        ),
+        "theta_position_rule": (
+            "sum(theta_per_underlying_unit_per_declared_day_basis*quantity*"
+            "contract_multiplier)"
+        ),
+        "underlying_price_rule": "(bid_price+ask_price)/2",
+        "underlying_price_unit": "usd_per_underlying_share",
+    }
+    for key, expected in fixed.items():
+        if type(decoded[key]) is not str:
+            raise TypeError(f"{key} must have exact type str")
+        if decoded[key] != expected:
+            raise ValueError(f"{key} has an unsupported value")
+    if type(decoded["commissions_and_fees_usd"]) is not decimal.Decimal:
+        raise TypeError("commissions_and_fees_usd must be a Decimal")
+    if (
+        not decoded["commissions_and_fees_usd"].is_finite()
+        or decoded["commissions_and_fees_usd"] < 0
+    ):
+        raise ValueError("commissions_and_fees_usd must be finite and nonnegative")
+    if type(decoded["repeated_bet_count"]) is not int:
+        raise TypeError("repeated_bet_count must have exact type int")
+    if decoded["repeated_bet_count"] <= 0:
+        raise ValueError("repeated_bet_count must be positive")
+    methodology = _cost_exact_dict(
+        decoded["greeks_methodology"],
+        _COST_METHODOLOGY_KEYS,
+        "greeks_methodology",
+    )
+    for key in (
+        "model_name",
+        "rate_input_description",
+        "dividend_input_description",
+        "theta_day_basis",
+        "unit_convention",
+    ):
+        _cost_required_string(methodology[key], f"greeks_methodology {key}")
+    if methodology["model_version"] is not None:
+        _cost_required_string(
+            methodology["model_version"], "greeks_methodology model_version"
+        )
+    if type(decoded["theta_day_basis"]) is not str:
+        raise TypeError("theta_day_basis must have exact type str")
+    if decoded["theta_day_basis"] != methodology["theta_day_basis"]:
+        raise ValueError("theta_day_basis must match greeks_methodology")
+    return methodology
+
+
+def _validate_cost_structure_identity(
+    value: object,
+    record: StructureCosts,
+) -> tuple:
+    identity = _cost_exact_dict(
+        value,
+        {
+            "structure_type",
+            "underlying",
+            "assumed_portfolio_value_repr",
+            "expected_holding_days",
+            "legs",
+        },
+        "structure_identity",
+    )
+    if type(record.structure) is not OptionStructure:
+        raise TypeError("record structure must have exact type OptionStructure")
+    for key in ("structure_type", "underlying"):
+        if type(identity[key]) is not str:
+            raise TypeError(f"structure_identity {key} must have exact type str")
+    if type(identity["expected_holding_days"]) is not int:
+        raise TypeError(
+            "structure_identity expected_holding_days must have exact type int"
+        )
+    _cost_required_string(
+        identity["assumed_portfolio_value_repr"],
+        "assumed_portfolio_value_repr",
+    )
+    if (
+        identity["structure_type"] != record.structure.structure_type
+        or identity["underlying"] != record.structure.underlying
+        or identity["assumed_portfolio_value_repr"]
+        != repr(record.structure.assumed_portfolio_value)
+        or identity["expected_holding_days"]
+        != record.structure.expected_holding_days
+    ):
+        raise ValueError("structure_identity does not match the public structure")
+    legs = _cost_exact_tuple(identity["legs"], "structure_identity legs")
+    if len(legs) != len(record.structure.legs):
+        raise ValueError("structure_identity leg count is inconsistent")
+    for value_leg, public_leg in zip(legs, record.structure.legs):
+        exact_leg = _cost_exact_dict(
+            value_leg, _COST_LEG_IDENTITY_KEYS, "structure_identity leg"
+        )
+        for key in ("underlying", "option_type", "strike_float_repr"):
+            if type(exact_leg[key]) is not str:
+                raise TypeError(
+                    f"structure_identity leg {key} must have exact type str"
+                )
+        if type(exact_leg["expiration"]) is not datetime.date:
+            raise TypeError(
+                "structure_identity leg expiration must have exact type date"
+            )
+        for key in ("quantity", "contract_multiplier"):
+            if type(exact_leg[key]) is not int:
+                raise TypeError(
+                    f"structure_identity leg {key} must have exact type int"
+                )
+        if (
+            exact_leg["underlying"] != public_leg.underlying
+            or exact_leg["option_type"] != public_leg.option_type
+            or exact_leg["strike_float_repr"] != repr(public_leg.strike)
+            or exact_leg["expiration"] != public_leg.expiration
+            or exact_leg["quantity"] != public_leg.quantity
+            or exact_leg["contract_multiplier"]
+            != public_leg.contract_multiplier
+        ):
+            raise ValueError(
+                "structure_identity leg does not match the public structure"
+            )
+        _cost_required_string(
+            exact_leg["strike_float_repr"], "strike_float_repr"
+        )
+    return legs
+
+
+def _validate_structure_costs_result(
+    record: StructureCosts,
+    lineage: CalculationLineage,
+) -> None:
+    if (
+        lineage.calculation_type != "structure_costs"
+        or lineage.methodology_id != "exact-structure-costs"
+        or lineage.methodology_version != "v0.2"
+    ):
+        raise ValueError("lineage has the wrong 3C.7b v0.2 identity")
+    decoded = _decode_cost_parameters(lineage.parameters_json)
+    methodology = _validate_cost_fixed_parameters(decoded)
+    _validate_cost_structure_identity(
+        decoded["structure_identity"], record
+    )
+    if type(record.as_of_date) is not datetime.date:
+        raise TypeError("record as_of_date must have exact type date")
+
+    evidence = _cost_exact_dict(
+        decoded["normalized_evidence"],
+        _COST_EVIDENCE_KEYS,
+        "normalized_evidence",
+    )
+    underlying = _cost_exact_dict(
+        evidence["underlying_quote"],
+        _COST_COMMON_EVIDENCE_FIELDS
+        | {
+            "underlying",
+            "session_date",
+            "bid_price",
+            "ask_price",
+            "midpoint_rule",
+            "underlying_price_exact",
+        },
+        "underlying_quote evidence",
+    )
+    _validate_cost_evidence_common(underlying)
+    underlying_identity = _validate_cost_underlying_identity(
+        underlying["underlying"], record.structure.underlying
+    )
+    if type(underlying["session_date"]) is not datetime.date:
+        raise TypeError("underlying evidence session_date must be an exact date")
+    if type(underlying["midpoint_rule"]) is not str:
+        raise TypeError("underlying evidence midpoint_rule must be str")
+    for key in ("bid_price", "ask_price", "underlying_price_exact"):
+        if type(underlying[key]) is not decimal.Decimal:
+            raise TypeError(f"underlying evidence {key} must be a Decimal")
+        if not underlying[key].is_finite():
+            raise ValueError(f"underlying evidence {key} must be finite")
+    if (
+        underlying["bid_price"] <= 0
+        or underlying["ask_price"] <= 0
+        or underlying["ask_price"] < underlying["bid_price"]
+        or underlying["midpoint_rule"] != "(bid_price+ask_price)/2"
+        or underlying["session_date"] != record.as_of_date
+    ):
+        raise ValueError("underlying quote evidence is inconsistent")
+    expected_underlying_price = _exact_half(_exact_scaled_sum((
+        (underlying["bid_price"], 1),
+        (underlying["ask_price"], 1),
+    )))
+    if underlying["underlying_price_exact"] != expected_underlying_price:
+        raise ValueError("underlying midpoint evidence is inconsistent")
+
+    quotes = _cost_exact_tuple(evidence["option_quotes"], "option_quotes")
+    greeks = _cost_exact_tuple(evidence["option_greeks"], "option_greeks")
+    references = _cost_exact_tuple(
+        evidence["contract_references"], "contract_references"
+    )
+    leg_count = len(record.structure.legs)
+    if not (len(quotes) == len(greeks) == len(references) == leg_count):
+        raise ValueError("normalized evidence must cover every structure leg")
+    quote_keys = (
+        _COST_COMMON_EVIDENCE_FIELDS
+        | _COST_CONTRACT_FIELDS
+        | {"quantity", "session_date", "bid_premium", "ask_premium"}
+    )
+    greeks_keys = (
+        _COST_COMMON_EVIDENCE_FIELDS
+        | _COST_CONTRACT_FIELDS
+        | {
+            "quantity",
+            "session_date",
+            "gamma",
+            "theta",
+            "theta_day_basis",
+            "model_name",
+            "model_version",
+            "rate_input_description",
+            "dividend_input_description",
+            "unit_convention",
+        }
+    )
+    reference_keys = (
+        _COST_COMMON_EVIDENCE_FIELDS
+        | _COST_CONTRACT_FIELDS
+        | {
+            "quantity",
+            "listing_date",
+            "last_trade_date",
+            "exercise_style",
+            "settlement_type",
+        }
+    )
+    common_records = [underlying]
+    for index, public_leg in enumerate(record.structure.legs):
+        quote = _cost_exact_dict(
+            quotes[index], quote_keys, "option quote evidence"
+        )
+        greek = _cost_exact_dict(
+            greeks[index], greeks_keys, "option Greeks evidence"
+        )
+        reference = _cost_exact_dict(
+            references[index], reference_keys, "contract reference evidence"
+        )
+        for item in (quote, greek, reference):
+            _validate_cost_evidence_common(item)
+            _validate_cost_contract_evidence(
+                item, public_leg, underlying_identity
+            )
+            common_records.append(item)
+        contract_identity = {
+            key: quote[key] for key in _COST_CONTRACT_FIELDS
+        }
+        if any(
+            {key: item[key] for key in _COST_CONTRACT_FIELDS}
+            != contract_identity
+            for item in (greek, reference)
+        ):
+            raise ValueError("leg evidence contract identities are inconsistent")
+        for key in ("bid_premium", "ask_premium"):
+            if type(quote[key]) is not decimal.Decimal:
+                raise TypeError(f"{key} must have exact type Decimal")
+            if not quote[key].is_finite():
+                raise ValueError(f"{key} must be finite")
+        if type(quote["session_date"]) is not datetime.date:
+            raise TypeError("option quote session_date must be an exact date")
+        if (
+            quote["session_date"] != record.as_of_date
+            or quote["bid_premium"] < 0
+            or quote["ask_premium"] <= 0
+            or quote["ask_premium"] < quote["bid_premium"]
+        ):
+            raise ValueError("option quote evidence is inconsistent")
+        for key in ("gamma", "theta"):
+            if type(greek[key]) is not decimal.Decimal:
+                raise TypeError(f"{key} must have exact type Decimal")
+            if not greek[key].is_finite():
+                raise ValueError(f"{key} must be finite")
+        if type(greek["session_date"]) is not datetime.date:
+            raise TypeError("Greeks session_date must be an exact date")
+        for key in (
+            "theta_day_basis",
+            "model_name",
+            "rate_input_description",
+            "dividend_input_description",
+            "unit_convention",
+        ):
+            _cost_required_string(greek[key], f"Greeks evidence {key}")
+        if greek["model_version"] is not None:
+            _cost_required_string(
+                greek["model_version"], "Greeks evidence model_version"
+            )
+        if (
+            greek["session_date"] != record.as_of_date
+            or greek["gamma"] < 0
+            or greek["theta"] > 0
+        ):
+            raise ValueError("Greeks evidence is inconsistent")
+        for key in _COST_METHODOLOGY_KEYS:
+            if greek[key] != methodology[key]:
+                raise ValueError(
+                    "Greeks evidence methodology is inconsistent"
+                )
+        for key in ("listing_date", "last_trade_date"):
+            if reference[key] is not None and type(reference[key]) is not datetime.date:
+                raise TypeError(f"{key} must be an exact date or None")
+        for key in ("exercise_style", "settlement_type"):
+            if reference[key] is not None:
+                _cost_required_string(reference[key], key)
+        if (
+            reference["exercise_style"] != "American"
+            or reference["settlement_type"] != "Physical"
+        ):
+            raise ValueError(
+                "contract reference exercise and settlement are unsupported"
+            )
+        listing_date = reference["listing_date"]
+        last_trade_date = reference["last_trade_date"]
+        if (
+            (listing_date is not None and listing_date > record.as_of_date)
+            or (last_trade_date is not None
+                and last_trade_date < record.as_of_date)
+            or (listing_date is not None and last_trade_date is not None
+                and listing_date > last_trade_date)
+            or (last_trade_date is not None
+                and last_trade_date > public_leg.expiration)
+        ):
+            raise ValueError("contract reference chronology is inconsistent")
+
+    correspondence = _cost_exact_tuple(
+        decoded["leg_correspondence"], "leg_correspondence"
+    )
+    correspondence_keys = _COST_CONTRACT_FIELDS | {
+        "quantity",
+        "underlying_quote_record_id",
+        "option_quote_record_id",
+        "option_greeks_record_id",
+        "option_contract_reference_record_id",
+    }
+    if len(correspondence) != leg_count:
+        raise ValueError("leg_correspondence must cover every leg")
+    for index, public_leg in enumerate(record.structure.legs):
+        item = _cost_exact_dict(
+            correspondence[index],
+            correspondence_keys,
+            "leg_correspondence item",
+        )
+        _validate_cost_contract_evidence(
+            item, public_leg, underlying_identity
+        )
+        expected_ids = {
+            "underlying_quote_record_id": underlying["record_id"],
+            "option_quote_record_id": quotes[index]["record_id"],
+            "option_greeks_record_id": greeks[index]["record_id"],
+            "option_contract_reference_record_id": references[index]["record_id"],
+        }
+        if any(item[key] != value for key, value in expected_ids.items()):
+            raise ValueError("leg_correspondence record IDs are inconsistent")
+
+    values = _cost_exact_dict(
+        decoded["calculation_values"],
+        _COST_CALCULATION_VALUE_KEYS,
+        "calculation_values",
+    )
+    stable = _cost_exact_dict(
+        values["stable_record_values"],
+        _COST_STABLE_VALUE_KEYS,
+        "stable_record_values",
+    )
+    for key in _COST_CALCULATION_VALUE_KEYS - {"stable_record_values"}:
+        if type(values[key]) is not decimal.Decimal:
+            raise TypeError(f"{key} must have exact type Decimal")
+        if not values[key].is_finite():
+            raise ValueError(f"{key} must be finite")
+    bid_total = _exact_scaled_sum(tuple(
+        (quote["bid_premium"], leg.quantity * leg.contract_multiplier)
+        for quote, leg in zip(quotes, record.structure.legs)
+    ))
+    ask_total = _exact_scaled_sum(tuple(
+        (quote["ask_premium"], leg.quantity * leg.contract_multiplier)
+        for quote, leg in zip(quotes, record.structure.legs)
+    ))
+    exact_expected = {
+        "quoted_mid_premium_exact": _exact_half(_exact_scaled_sum((
+            (bid_total, 1), (ask_total, 1)
+        ))),
+        "estimated_spread_cost_exact": _exact_half(_exact_scaled_sum((
+            (ask_total, 1), (bid_total.copy_negate(), 1)
+        ))),
+        "commissions_and_fees_exact": decoded["commissions_and_fees_usd"],
+        "theta_per_day_exact": _exact_scaled_sum(tuple(
+            (greek["theta"], leg.quantity * leg.contract_multiplier)
+            for greek, leg in zip(greeks, record.structure.legs)
+        )),
+        "gamma_exact": _exact_scaled_sum(tuple(
+            (greek["gamma"], leg.quantity * leg.contract_multiplier)
+            for greek, leg in zip(greeks, record.structure.legs)
+        )),
+        "underlying_price_exact": expected_underlying_price,
+    }
+    for key, expected in exact_expected.items():
+        if values[key] != expected:
+            raise ValueError(f"{key} does not match normalized evidence")
+    exact_total = _exact_scaled_sum((
+        (values["quoted_mid_premium_exact"], 1),
+        (values["estimated_spread_cost_exact"], 1),
+        (values["commissions_and_fees_exact"], 1),
+    ))
+    if (
+        values["total_entry_cost_exact"] != exact_total
+        or values["maximum_loss_exact"] != exact_total
+        or values["cumulative_repeated_bet_cost_exact"]
+        != _exact_scaled_sum(((exact_total, decoded["repeated_bet_count"]),))
+    ):
+        raise ValueError("derived exact cost values are inconsistent")
+
+    direct_fields = (
+        "quoted_mid_premium",
+        "estimated_spread_cost",
+        "commissions_and_fees",
+        "theta_per_day",
+        "gamma",
+        "underlying_price",
+    )
+    for field in direct_fields:
+        public_value = getattr(record, field)
+        exact_value = values[f"{field}_exact"]
+        stable_value = _cost_stable_float_repr(
+            stable[f"{field}_repr"], f"{field}_repr"
+        )
+        if (
+            not math.isfinite(public_value)
+            or float(exact_value) != public_value
+            or stable_value != public_value
+            or stable[f"{field}_repr"] != repr(public_value)
+        ):
+            raise ValueError(f"public {field} does not match exact evidence")
+    stable_total = (
+        record.quoted_mid_premium
+        + record.estimated_spread_cost
+        + record.commissions_and_fees
+    )
+    if record.total_entry_cost != stable_total:
+        raise ValueError("public total_entry_cost is inconsistent")
+    stable_total_value = _cost_stable_float_repr(
+        stable["total_entry_cost_repr"], "total_entry_cost_repr"
+    )
+    stable_maximum = _cost_stable_float_repr(
+        stable["maximum_loss_repr"], "maximum_loss_repr"
+    )
+    stable_cumulative = _cost_stable_float_repr(
+        stable["cumulative_repeated_bet_cost_repr"],
+        "cumulative_repeated_bet_cost_repr",
+    )
+    if (
+        stable_total_value != record.total_entry_cost
+        or stable["total_entry_cost_repr"] != repr(record.total_entry_cost)
+        or stable_maximum != record.maximum_loss
+        or stable["maximum_loss_repr"] != repr(record.maximum_loss)
+    ):
+        raise ValueError("stable total or maximum-loss evidence is inconsistent")
+    if decoded["repeated_bet_count"] != record.repeated_bet_count:
+        raise ValueError("repeated_bet_count does not match the public record")
+    if (
+        stable_cumulative != record.cumulative_repeated_bet_cost
+        or stable["cumulative_repeated_bet_cost_repr"]
+        != repr(record.cumulative_repeated_bet_cost)
+    ):
+        raise ValueError("stable repeated-bet evidence is inconsistent")
+
+    generated_methodology = _greeks_methodology_disclosure((
+        methodology["model_name"],
+        methodology["model_version"],
+        methodology["rate_input_description"],
+        methodology["dividend_input_description"],
+        methodology["theta_day_basis"],
+        methodology["unit_convention"],
+    ))
+    if generated_methodology != record.greeks_methodology:
+        raise ValueError("public Greeks methodology is inconsistent")
+
+    evidence_references = tuple(
+        (
+            item["record_id"],
+            item["normalized_at"],
+            item["source_ids"],
+        )
+        for item in common_records
+    )
+    if len({item[0] for item in evidence_references}) != len(
+        evidence_references
+    ):
+        raise ValueError("normalized evidence record IDs must be unique")
+    lineage_references = tuple(
+        (item.record_id, item.normalized_at, item.source_ids)
+        for item in lineage.inputs
+    )
+    if tuple(sorted(evidence_references)) != lineage_references:
+        raise ValueError(
+            "normalized evidence and lineage inputs do not correspond exactly"
+        )
+
+    propagated = {
+        flag for item in common_records
+        for flag in item["propagated_quality_flags"]
+    }
+    required_flags = {
+        CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    propagated_map = {
+        "interpolated": CalculationQualityFlag.INTERPOLATED,
+        "correction_selected": CalculationQualityFlag.CORRECTION_SELECTED,
+        "composite_input_used": CalculationQualityFlag.COMPOSITE_INPUT_USED,
+    }
+    required_flags.update(propagated_map[flag] for flag in propagated)
+    expected_flags = tuple(
+        flag for flag in CalculationQualityFlag if flag in required_flags
+    )
+    if lineage.quality_flags != expected_flags:
+        raise ValueError("lineage quality flags do not match disclosed evidence")
+
+    if any(
+        normalized_at > lineage.calculated_at
+        for _record_id, normalized_at, _source_ids in evidence_references
+    ):
+        raise ValueError("lineage calculation precedes normalized evidence")
+    if any(record.as_of_date >= leg.expiration for leg in record.structure.legs):
+        raise ValueError("record as_of_date must precede every expiration")
 
 
 def _construct_cost_lineage(
@@ -2024,7 +3122,7 @@ def _construct_cost_lineage(
         calculation_id=calculation_id,
         calculation_type="structure_costs",
         methodology_id="exact-structure-costs",
-        methodology_version="v0.1",
+        methodology_version="v0.2",
         calculated_at=calculated_at,
         inputs=inputs,
         parameters_json=parameters_json,
@@ -2080,14 +3178,17 @@ def transform_structure_costs(
         repeated_bet_count=exact_repeated_bet_count,
     )
     canonical_matched, records, consumed_bindings = _canonical_cost_consumed(
-        matched
+        matched, exact_structure
     )
+    _validate_complete_cost_evidence(records)
     inputs = _construct_input_references(records)
     parameters_json = _construct_cost_parameters(
         canonical_matched,
         exact_fees,
         exact_repeated_bet_count,
         methodology,
+        decimal_values,
+        record,
     )
     quality_flags = _derive_cost_quality_flags(consumed_bindings, records)
     lineage = _construct_cost_lineage(

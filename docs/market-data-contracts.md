@@ -4569,8 +4569,9 @@ Milestone 3C.7b adds `StructureCostsTransformationResult` and
 that module's public API to exactly four names while leaving
 `market_data.__all__` at 64 and the package root unchanged. The frozen result
 stores exactly one exact `StructureCosts` record and one exact
-`CalculationLineage`; direct result construction validates only that structural
-pair.
+`CalculationLineage`. Both the transformation and direct downstream result
+construction perform the same intrinsic v0.2 record, parameter, normalized
+evidence, and lineage verification.
 
 The function accepts an explicit calculation ID, exact supplied
 `OptionStructure`, authoritative `MarketDataRelationshipSelection`, exact
@@ -4654,7 +4655,7 @@ convert to finite floats before the public `StructureCosts` constructor
 validates the complete record.
 
 Lineage uses calculation type `structure_costs`, methodology ID
-`exact-structure-costs`, and methodology version `v0.1`. Its inputs include
+`exact-structure-costs`, and methodology version `v0.2`. Its inputs include
 every unique authoritative record used numerically or to authorize the result:
 the underlying quote and each leg's quote, Greeks, and contract reference.
 Discarded correction candidates, unselected relationship candidates,
@@ -4682,6 +4683,9 @@ theta_input_unit
 theta_position_rule
 underlying_price_rule
 underlying_price_unit
+calculation_values
+normalized_evidence
+structure_identity
 ```
 
 The fixed units and formulas are the literal formulas above.
@@ -4691,7 +4695,7 @@ The fixed units and formulas are the literal formulas above.
 `entry_only_midpoint_to_ask`, and `underlying_price_unit` is
 `usd_per_underlying_share`. The exact fee Decimal and repeated-bet integer are
 stored directly. `greeks_methodology` contains exactly the six common source
-methodology fields. Each canonically contract-ordered leg correspondence
+methodology fields. Each public-structure-ordered leg correspondence
 contains the complete underlying map, option type, expiration, strike,
 currency, deliverable ID, multiplier, quantity, and the underlying-quote,
 option-quote, Greeks, and contract-reference record IDs. No float enters the
@@ -4699,10 +4703,11 @@ canonicalizer.
 
 `DECIMAL_TO_FLOAT_CONVERTED` and `ASSUMPTION_APPLIED` are always present,
 including zero fees and a repeated-bet count of one. `CORRECTION_SELECTED`,
-`COMPOSITE_INPUT_USED`, `INTERPOLATED`, and `INCOMPLETE_INPUT_USED` appear only
-when a unique lineage input establishes the corresponding condition.
+`COMPOSITE_INPUT_USED`, and `INTERPOLATED` appear only when a unique lineage
+input establishes the corresponding condition.
 `ANNUALIZED` and `ADJUSTED_INPUT_USED` never appear. Missing required records
-or values are errors, never zero substitutions.
+or values, incomplete normalization, and partial sources are errors, never zero
+substitutions. `INCOMPLETE_INPUT_USED` is prohibited.
 
 Wrong exact Python types raise `TypeError`. Invalid selection, shape, reuse,
 proof, correspondence, session, methodology, required value, assumption,
@@ -4717,6 +4722,123 @@ model, candidate aggregate, screening, recommendation, execution, provider
 adapter, network access, registry, generic transformation base class, or
 plugin framework. Milestones 3C.7c through 3C.7f and broad Milestone 3 remain
 incomplete.
+
+#### 13.17.1 Milestone 3C.7b v0.2 downstream-verifiability correction
+
+The reviewed v0.1 producer lineage was sufficient to reproduce the producer's
+ordinary calculation, but its structural-only result wrapper did not bind the
+public `StructureCosts` record back to that lineage. A valid record with
+`quoted_mid_premium` changed from `120.0` to `1120.0` could therefore be paired
+with untouched reviewed lineage; its derived total changed from `141.25` to
+`1141.25` and the wrapper accepted it. Version v0.2 closes that blocker without
+changing the public result fields, the transformation signature, any
+`StructureCosts` stable field, or any ordinary economic formula.
+
+The v0.2 schema is intentionally incompatible with the former 17-key v0.1
+document. No committed downstream transformation consumes the old schema and
+no persisted-artifact migration is required, so the wrapper accepts only the
+exact identity `structure_costs`, `exact-structure-costs`, `v0.2`. The exact
+top-level schema is the former 17 keys plus `calculation_values`,
+`normalized_evidence`, and `structure_identity`, for exactly 20 keys.
+
+`structure_identity` contains exactly `structure_type`, `underlying`,
+`assumed_portfolio_value_repr`, `expected_holding_days`, and `legs`. Every leg
+contains exactly `underlying`, `option_type`, `strike_float_repr`,
+`expiration`, `quantity`, and `contract_multiplier`, in public structure-leg
+order. The complete contract identity and every evidence leg must correspond
+to that same ordered structure identity; no leg is silently reordered.
+
+`calculation_values` contains the exact tagged Decimals
+`quoted_mid_premium_exact`, `estimated_spread_cost_exact`,
+`commissions_and_fees_exact`, `theta_per_day_exact`, `gamma_exact`,
+`underlying_price_exact`, `total_entry_cost_exact`, `maximum_loss_exact`, and
+`cumulative_repeated_bet_cost_exact`, plus `stable_record_values`. The latter
+contains canonical `repr` strings for the six direct public floats and the
+derived total-entry, maximum-loss, and cumulative repeated-bet values. Exact
+Decimals retain the economic calculation; stable repr strings retain the
+existing public binary-float boundary. The verifier deliberately recomputes
+the public total by ordinary left-to-right float addition and does not require
+`float(total_entry_cost_exact)` when component-wise float addition yields a
+different final binary rounding.
+
+`normalized_evidence` contains exactly one `underlying_quote` and ordered
+`option_quotes`, `option_greeks`, and `contract_references`, one item of each
+leg kind per structure leg. Every item carries exactly the common provenance
+fields `record_id`, UTC `normalized_at`, sorted unique nonempty `source_ids`,
+and canonical `propagated_quality_flags`. Only `interpolated`,
+`correction_selected`, and `composite_input_used` may propagate there.
+Complete normalized record payloads and source payload bodies are not copied.
+
+The underlying item additionally retains the complete `UnderlyingKey`,
+session, bid and ask, midpoint rule, and exact midpoint. Each option item
+retains the complete `OptionContractKey`, leg quantity, and its consumed
+session premiums, Gamma and Theta methodology, or bounded contract-reference
+terms. Quote and Greeks sessions equal the public as-of date; bids, asks,
+Gamma, and Theta retain their existing sign and finiteness constraints.
+Contract listing, last-trade, American-exercise, and physical-settlement
+disclosures remain bounded authorization evidence rather than recalculated
+facts.
+
+The existing `leg_correspondence` is now strictly decoded. It provides exact
+one-to-one public-structure, structure-identity, normalized-evidence, and
+record-ID correspondence. The existing `greeks_methodology` is also strict:
+all six fields equal every Greeks evidence item and generate the public
+methodology string with the existing separators and `none` version spelling.
+Repeated-bet count equals the public record, exact cumulative cost is exact
+entry cost times the count, and the stable cumulative repr equals the existing
+derived public property.
+
+`StructureCostsTransformationResult.__post_init__` uses a private
+schema-specific decoder. It rejects duplicate JSON keys, JSON floats,
+nonfinite constants, unknown or noncanonical tags, wrong containers and item
+types, missing or extra top-level or nested keys, and any representation that
+is not byte-identical to `canonicalize_lineage_parameters`. No Python or JSON
+float appears in parameters; stable floats appear only as canonical repr
+strings.
+
+After fixed semantics and all identity correspondences, the wrapper
+recomputes only deterministic cost arithmetic from the disclosed canonical
+evidence: underlying midpoint, position midpoint and spread, position Theta
+and Gamma, total entry cost, maximum loss, and cumulative repeated-bet cost.
+It does not call the transformation, replay correction selection, freshness,
+snapshot timing, relationship assessment or selection, or invoke any later
+transformation.
+
+The evidence set corresponds exactly to lineage references on `record_id`,
+`normalized_at`, and `source_ids`: four unique inputs for one leg and seven
+for a straddle, with no missing, extra, or duplicated input. Evidence
+normalization cannot follow lineage calculation. The as-of/session date
+precedes every expiration, and reference dates retain listing, last-trade,
+and expiration chronology.
+
+`DECIMAL_TO_FLOAT_CONVERTED` and `ASSUMPTION_APPLIED` are always required.
+`INTERPOLATED`, `CORRECTION_SELECTED`, and `COMPOSITE_INPUT_USED` are present
+if and only if disclosed by normalized evidence. `ANNUALIZED`,
+`ADJUSTED_INPUT_USED`, and `INCOMPLETE_INPUT_USED` are prohibited. Incomplete
+or partial selected evidence is rejected before final result construction.
+The complete caller Decimal context—precision, rounding, traps, flags, exponent
+bounds, capitals, and clamp—is preserved on successful and failing paths.
+
+Validation precedence is exact record type, exact lineage type, v0.2 identity,
+strict syntax/schema, fixed semantics, structure/as-of correspondence,
+leg/evidence correspondence, arithmetic, Decimal/public-float/stable-repr
+correspondence, Greeks methodology, repeated bets, lineage references, quality
+flags, and chronology. Wrong exact Python types raise `TypeError`; invalid
+canonical, semantic, arithmetic, methodology, evidence, lineage, quality, or
+chronology state raises `ValueError`.
+
+This correction establishes a downstream 3C.7f2 guarantee: an untouched
+reviewed v0.2 dependency rejects a modified public cost record, a modified
+canonical output, normalized-evidence-only changes, lineage-reference changes,
+methodology or repeated-bet inconsistencies, flag inconsistencies, and
+chronology inconsistencies. It is an internal-coherence guarantee, not
+cryptographic authenticity. Without signatures or immutable retained payloads,
+a deliberately self-consistent fabrication of the record, canonical
+parameters, normalized evidence, source references, and lineage may still be
+possible. That accepted non-cryptographic MVP limitation does not authorize
+provider authentication, signatures, adapters, or a generic calculated-
+artifact framework. MVP review therefore focuses on the exact disclosed trust
+boundary and mutation-resistant correspondence, not unattainable authenticity.
 
 ## 14. Canonical calculation lineage
 
