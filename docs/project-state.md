@@ -6,7 +6,9 @@ Convexity Hunter is an investigation assistant for identifying concrete long-opt
 
 ## Current milestone
 
-Milestone 3: Define auditable, provider-neutral external market-data contracts before connecting live data sources.
+Milestone 3 complete: auditable, provider-neutral external market-data
+contracts are defined before connecting live data sources. The next milestone
+has not yet been selected from the accepted MVP specification.
 
 ## Decisions locked
 
@@ -399,11 +401,272 @@ Milestone 3: Define auditable, provider-neutral external market-data contracts b
   and pushes the 3C.7b downstream-verifiability correction. Milestone 3C.7f2
   remains unimplemented, broad 3C.7f remains incomplete, and broad Milestone 3
   remains incomplete.
+- Milestone 3C.7f1 is committed and pushed at
+  `9d938465993306d61e5e0e6105f917f27d076614`. The StructureCosts v0.2
+  downstream-verifiability correction is committed and pushed at
+  `1f8df729857d9ba6496da5440d72087a39ff592c`
+  (`Strengthen structure costs evidence verification`).
+- The prior 3C.7f2 StructureCosts blocker is closed. The rerun specification
+  preflight returned `PREFLIGHT RESULT: READY TO IMPLEMENT 3C.7F2`.
+- Milestone 3C.7f2 is implemented locally under the frozen hybrid
+  architecture: reviewed 3C.7f1 gross values are authoritative for
+  non-expiration scenarios without repricing; expiration uses internal exact
+  terminal intrinsic payoff; all results use reviewed StructureCosts v0.2,
+  contextual TailPricing v0.1, actual leg-level IV evidence, explicit ordered
+  exit costs, bounded-loss validation, and one shared downstream lineage.
+- The transformation API adds exactly
+  `ScenarioValuationTransformationResult` and
+  `transform_scenario_valuation`, for exactly 18 transformation exports.
+  The wrapper fields are exactly `records` and `lineage`;
+  `market_data.__all__` remains exactly 64 and package-root exports remain
+  unchanged.
+- Exact dependencies are `structure_costs` / `exact-structure-costs` / `v0.2`,
+  `tail_pricing` /
+  `nearest-observed-delta-wing-tail-relative-pricing` / `v0.1`, and
+  `nonexpiration_scenario_pricing` /
+  `authoritative-provider-option-scenario-pricing-evidence` / `v0.1`.
+  All calculation IDs are mutually distinct and all dependencies must precede
+  the new calculation.
+- Declared scenarios are a nonempty canonical exact tuple with at least one
+  non-expiration scenario. `scenario_grid_complete=False` explicitly
+  discloses a subset; `True` requires the exact frozen 7-by-4 Cartesian product
+  for every valuation-time/days-forward group. Exit costs are an ordered exact
+  tuple using the same scenario objects and finite nonnegative Decimals.
+- Every public ScenarioResult methodology uses the exact canonical 15-key v0.1
+  schema and every downstream lineage uses the exact canonical 25-key schema.
+  The lineage identity is `scenario_valuation`,
+  `hybrid-authoritative-nonexpiration-terminal-intrinsic-after-costs`, `v0.1`;
+  ordinary no-overlap input counts are 209 for one leg and 214 for a straddle.
+- The first 3C.7f2 independent review returned
+  `MVP-FOCUSED REVIEW RESULT: FAIL` with exactly two BLOCKER findings, one
+  MAJOR finding, and zero MINOR findings: exactly `2 BLOCKER`, `1 MAJOR`,
+  `0 MINOR`.
+- BLOCKER 1: direct `ScenarioValuationTransformationResult` construction
+  validated only part of `calculation_values` and did not bind public base IVs,
+  shocked IVs, complete dependency identities, or complete nested schemas to
+  lineage. Canonical, internally inconsistent artifacts were accepted when
+  public base IV `0.20` was changed to `0.91` with untouched lineage, when the
+  StructureCosts downstream disclosure was changed from v0.2 to v0.1, and when
+  the ScenarioPricing downstream methodology identity was forged.
+- BLOCKER 2: an exact TailPricing matching candidate compared contract identity
+  and IV but did not compare IV record ID or contract-reference record ID with
+  the ScenarioPricing leg evidence. A matching Tail candidate with IV evidence
+  `ve-current-1-call-iv` and contract-reference evidence
+  `ve-current-1-call-reference` accepted ScenarioPricing evidence IDs
+  `scenario-iv-0` and `scenario-reference-0`.
+- MAJOR: the focused tests did not directly protect the two blocker paths.
+- The bounded correction completes intrinsic validation of every public
+  ScenarioResult field, complete 20-key calculation-value entries, all three
+  dependency disclosures and identities, and the complete nested 15-key record
+  methodology. It also requires exact IV-record and contract-reference IDs
+  whenever a structure leg matches a current TailPricing candidate by contract
+  and IV.
+- Direct adversarial regressions now protect public-IV and cross-leg forgeries;
+  dependency identity, nested schema, fixed-semantic, stable-representation,
+  scenario-identity, valuation-source, and methodology mutations; both Tail
+  evidence-ID mismatches; constructor precedence; and complete Decimal-context
+  preservation on the corrected failure paths.
+- Post-correction validation passes 144 focused transformation tests, all
+  original 139 focused tests in an independently assembled suite, 365
+  market-data tests, and 818 full-suite tests. Compileall, `git diff --check`,
+  exact API/fields/signature, both import orders, package-root, four-file scope,
+  protected-file, unstaged, and no-untracked-file checks pass.
+- The first targeted 3C.7f2 re-review returned
+  `TARGETED RE-REVIEW RESULT: FAIL` with exactly `1 BLOCKER`, `1 MAJOR`,
+  `0 MINOR`.
+- Remaining BLOCKER: the ScenarioValuation intrinsic verifier did not
+  completely validate nested TailPricing v0.1 `parameters_json` schemas.
+  Canonical missing or extra fields in selected-put/selected-call records and
+  historical observations were accepted with untouched public ScenarioResult
+  records.
+- MAJOR: focused tests did not mutate nested content inside retained
+  TailPricing `parameters_json`, allowing the incomplete validation to remain
+  green.
+- The final bounded correction reuses one authoritative private TailPricing
+  schema validator for the producer dependency and downstream intrinsic
+  decoder. It validates the complete current, selected-option, candidate,
+  historical, paired-ATM, embedded dependency, exact-container, canonical-tag,
+  ordering, selection-correspondence, and metric tree. Direct byte-canonical
+  mutations protect every reviewed nested boundary and complete Decimal-context
+  preservation.
+- Final post-correction validation passes 147 focused transformation tests,
+  the previous 144-test and 139-test focused checkpoints in independently
+  assembled suites, 365 market-data tests, and 821 full-suite tests.
+  Compileall, `git diff --check`, exact API/fields/signature, both import
+  orders, package-root, four-file scope, protected-file, unstaged, and
+  no-untracked-file checks pass.
+- The final targeted 3C.7f2 re-review returned
+  `FINAL TARGETED RE-REVIEW RESULT: PASS`: findings none and remaining 3C.7f2
+  blocker none. One broad independent review and its bounded targeted
+  re-reviews are complete.
+- The final frozen architecture consumes reviewed 3C.7f1 authoritative
+  provider-calculated gross values unchanged for every non-expiration scenario
+  and calculates exact terminal intrinsic payoff internally for expiration.
+  Every scenario consumes intrinsically revalidated StructureCosts v0.2,
+  contextual TailPricing v0.1, actual 3C.7f1 per-leg IV evidence, and one
+  explicit per-scenario exit cost; constructs one ordered existing
+  `ScenarioResult`; validates liquidation, after-cost P&L, return, and bounded
+  loss; and contributes to one shared `CalculationLineage`. It adds no internal
+  non-expiration pricing engine, provider API, probability or expected-return
+  forecast, screening, recommendation, candidate-state derivation, sizing,
+  execution, `CandidateResearchRecord`, short, spread, multiple-expiration, or
+  exotic behavior.
+- The exact API additions are `ScenarioValuationTransformationResult` and
+  `transform_scenario_valuation`. Wrapper fields are exactly `records` and
+  `lineage`; there is no public exit-cost-assumption record. The signature is
+  `transform_scenario_valuation(calculation_id: object,
+  structure_costs_result: object, tail_pricing_result: object,
+  scenario_pricing_result: object, scenarios: object,
+  scenario_grid_complete: object, exit_cost_assumptions: object,
+  exit_cost_methodology: object, calculated_at: object) ->
+  ScenarioValuationTransformationResult`. Transformation exports are exactly
+  18, `market_data` exports remain exactly 64, and package-root exports are
+  unchanged.
+- The downstream identity is exactly `scenario_valuation`,
+  `hybrid-authoritative-nonexpiration-terminal-intrinsic-after-costs`, `v0.1`.
+  Its three calculated dependencies are `structure_costs` /
+  `exact-structure-costs` / `v0.2`, `tail_pricing` /
+  `nearest-observed-delta-wing-tail-relative-pricing` / `v0.1`, and
+  `nonexpiration_scenario_pricing` /
+  `authoritative-provider-option-scenario-pricing-evidence` / `v0.1`.
+  StructureCosts is completely revalidated for exact underlying, midpoint,
+  spread, fees, total entry, maximum loss, stable representations, structure,
+  evidence, inputs, flags, and chronology; its reviewed stable underlying and
+  total-entry floats are reused directly. TailPricing is contextual evidence
+  only and never substitutes ATM, wing, skew, or curvature for actual leg IV.
+  ScenarioPricing gross values, shocks, remaining time, methodology, and
+  evidence are consumed without repricing.
+- All dependencies correspond exactly on structure, underlying, as-of date,
+  expiration, leg order, economic contracts, multipliers, exact base
+  underlying, and actual leg IV evidence. The new and three dependency
+  calculation IDs are mutually distinct, and no dependency calculation time
+  may follow the new calculation.
+- `scenarios` is an exact nonempty canonical tuple of unique exact `Scenario`
+  items with at least one non-expiration item. Identity is valuation time,
+  days forward, Decimal-string underlying move, and Decimal-string IV change.
+  Supported times are immediate, days forward, holding horizon, and optional
+  expiration. `scenario_grid_complete` is an exact bool: false declares the
+  supplied subset; true requires the exact 7-by-4 product of moves `-0.20`,
+  `-0.10`, `-0.05`, `0`, `0.05`, `0.10`, `0.20` and relative IV changes
+  `-0.20`, `0`, `0.20`, `0.50` in every time/days group. Valuation dates are
+  the as-of date, calendar-days-forward date, expected-holding-days date, or
+  expiration. Ordering is valuation date, time rank, days forward, move
+  Decimal, then IV-change Decimal; caller order is validated, never reordered.
+- Actual per-leg IVs come only from reviewed 3C.7f1 evidence and correspond on
+  public leg order, economic contract, IV, IV record ID, and contract-reference
+  ID. `LegVolatilityInput` follows public structure order. Shocked IV is exact
+  base IV times one plus the Decimal-string relative shock. Expiration results
+  retain the same base-IV audit inputs even though payoff is IV-independent.
+- The ScenarioPricing record set equals the declared non-expiration set with
+  exactly one record per scenario and exact date, underlying, shock, leg-IV,
+  and evidence correspondence; its gross position value is consumed unchanged
+  and no repricing function or provider adapter is called. Expiration uses
+  isolated precision-34, `ROUND_HALF_EVEN` Decimal arithmetic, exact shocked
+  underlying, and the exact sum of long-call
+  `max(shocked-strike, 0) * quantity * multiplier` and long-put
+  `max(strike-shocked, 0) * quantity * multiplier` payoffs. Expiration date is
+  the valuation date, remaining days are zero, provider expiration values are
+  prohibited, and IV does not affect terminal payoff.
+- Exit costs are exactly `Tuple[Tuple[Scenario, Decimal], ...]`, one finite
+  nonnegative Decimal for each identical declared scenario object in identical
+  order and cardinality, with no missing, extra, duplicate, or reordered item.
+  One shared canonical nonempty methodology applies. Zero is valid only when
+  explicitly supplied; costs are not inferred from entry costs, spreads,
+  liquidity, or TailPricing.
+- Exactly one `ScenarioResult` is constructed per scenario from the reviewed
+  common structure/date, exact scenario object and date rule, stable
+  StructureCosts underlying and entry-cost floats, actual ordered leg IVs,
+  provider or intrinsic gross value, explicit finite exit-cost float, and
+  canonical methodology. The exact 15-key methodology retains both active and
+  inactive branches, uses valuation source
+  `authoritative_provider_nonexpiration` or
+  `terminal_intrinsic_expiration`, contains no JSON float, is serialized only
+  by `canonicalize_lineage_parameters`, and exactly matches both its
+  calculation-value item and top-level disclosure. Both reviewed methodology
+  byte goldens remain unchanged and pass.
+- Downstream parameters retain exactly the reviewed 25 keys and golden.
+  Duplicate keys, JSON floats, nonfinite constants, unknown or noncanonical
+  tags, wrong containers/items, missing or extra top-level or nested keys, and
+  non-byte-canonical documents reject. Direct
+  `ScenarioValuationTransformationResult(records, lineage)` construction uses
+  the producer's complete intrinsic verifier and binds every record's
+  structure, date, scenario, underlying, base and shocked IVs, gross, entry,
+  exit, methodology, liquidation, P&L, return, and bounded-loss state to
+  canonical calculation values. A public base IV changed from `0.20` to `0.91`
+  with untouched `0.20` lineage rejects, as does cross-leg `0.20`/`0.30`
+  substitution.
+- All three retained dependency disclosures are checked for complete identity,
+  exact nested schema, complete retained `parameters_json`, calculation time,
+  flags, and selected decoded values. Canonical StructureCosts v0.2-to-v0.1,
+  TailPricing v0.1-to-v9.9, and forged ScenarioPricing-methodology disclosures
+  reject.
+- Complete retained TailPricing parameters mean the full frozen v0.1 tree:
+  current observations have exactly 18 keys; selected put/call and current
+  candidate records each have exactly 13 keys; historical observations have
+  exactly 18 keys; historical selected options use the complete shared schema;
+  and nested containers enforce exact items, cardinality, keys, canonical tags,
+  uniqueness, correspondence, and order. Missing or extra selected-put,
+  selected-call, candidate, historical, or historical-selected-option fields;
+  tuple-for-map or map-for-collection substitutions; reordered current
+  candidates or history; Decimal-to-string; and date-to-datetime mutations all
+  reject. Complete unmodified parameters validate. An exact current Tail
+  candidate agrees with ScenarioPricing on economic contract, IV, IV record
+  ID, and contract-reference ID; either ID mismatch rejects and all-four-match
+  succeeds. Arbitrary structure legs need not be selected Tail candidates.
+- Normalized lineage references are flattened only from the three calculated
+  dependencies. Equal record ID, normalized time, and source IDs deduplicate;
+  conflicting overlaps reject. Ordinary counts are 209 for one leg and 214 for
+  a straddle regardless of scenario count. Dependencies, scenarios,
+  assumptions, calculations, and results are not fabricated normalized inputs.
+  Required flags are `DECIMAL_TO_FLOAT_CONVERTED`, `ANNUALIZED`, and
+  `ASSUMPTION_APPLIED` in enum order; `INTERPOLATED`,
+  `ADJUSTED_INPUT_USED`, `CORRECTION_SELECTED`, and `COMPOSITE_INPUT_USED`
+  propagate if and only if present; intrinsic expiration alone does not add
+  interpolation; `INCOMPLETE_INPUT_USED` is prohibited.
+- Decimal remains authoritative through scenario identities, shocks, provider
+  values, expiration payoff, base/shocked IVs, exit assumptions, and canonical
+  values. Conversion occurs only for public leg IV, gross value, and exit cost;
+  reviewed StructureCosts stable floats are reused. Precision, rounding, traps,
+  flags, Emin, Emax, capitals, and clamp are preserved after success and every
+  reviewed failure.
+- Net liquidation is `max(gross - exit cost, 0.0)`; after-cost P&L is net
+  liquidation less entry cost; return is P&L divided by entry cost. Every
+  result has `loss_is_within_entry_cost` true and P&L no worse than negative
+  entry cost; exact maximum loss equals exact total entry cost; liquidation
+  floors at zero when exit cost exceeds gross value.
+- Review chronology is preserved: the broad review returned
+  `MVP-FOCUSED REVIEW RESULT: FAIL` with exactly `2 BLOCKER`, `1 MAJOR`,
+  `0 MINOR` for incomplete direct binding, missing Tail/Scenario evidence-ID
+  comparison, and missing adversarial protection. The first targeted re-review
+  returned `TARGETED RE-REVIEW RESULT: FAIL` with exactly `1 BLOCKER`,
+  `1 MAJOR`, `0 MINOR` for incomplete nested TailPricing validation and tests.
+  Every accepted finding was corrected, and the final targeted re-review
+  passed.
+- Final validation passes 147 focused transformation tests, independently
+  assembled previous checkpoints of 144 and 139 tests, 365 market-data tests,
+  and 821 full-suite tests; compileall and `git diff --check` pass. Ordinary
+  long-call and long-put gross values are each `250.0`, `300.0`, `200.0`,
+  `1000.0`; straddle values are `600.0`, `700.0`, `500.0`, `1000.0`. Both
+  15-key methodology goldens and the exact 25-key lineage golden remain
+  unchanged and pass.
+- The 3C.7f2 trust boundary validates internal consistency of reviewed
+  dependencies, scenarios, assumptions, arithmetic, public records, canonical
+  parameters, lineage, flags, and chronology. It does not establish
+  cryptographic authenticity; without signatures or immutable retained
+  provider payloads, a deliberately self-consistent fabrication of every
+  dependency artifact may remain possible. This accepted non-cryptographic MVP
+  limitation is not a blocker.
+- Milestone 3C.7f2 is implemented, corrected for all accepted review findings,
+  independently reviewed, final-targeted-re-review passed, validated, and ready
+  to commit and push. This operation commits and pushes Milestone 3C.7f2.
+  Milestone 3C.7f2 is complete, broad Milestone 3C.7f is complete, and because
+  3C.7f2 was the final explicitly defined Milestone 3 gate, broad Milestone 3
+  is complete.
 
 ## Current task
 
-Finalize, commit, and push the reviewed 3C.7b downstream-verifiability
-correction.
+Finalize, commit, and push the reviewed Milestone 3C.7f2 hybrid
+scenario-valuation transformation.
 
 ## Last completed checkpoint
 
@@ -635,10 +898,8 @@ correction.
 
 ## Next task
 
-Re-run the Milestone 3C.7f2 specification preflight against the committed
-`StructureCosts` v0.2 dependency and freeze `ScenarioResult` construction,
-hybrid non-expiration/expiration valuation, exit-cost assumptions, bounded-loss
-validation, canonical parameters, and downstream lineage.
+Determine and preflight the next milestone from the accepted MVP
+specification.
 
 ## Deferred
 

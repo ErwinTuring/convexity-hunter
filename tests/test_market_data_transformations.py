@@ -6,6 +6,7 @@ import dataclasses
 import datetime
 import decimal
 import enum
+import hashlib
 import inspect
 import json
 import math
@@ -79,6 +80,7 @@ from convexity_hunter.market_data_transformations import (
     StructureCostsTransformationResult,
     StructureLiquidityTransformationResult,
     ScenarioPricingCalculationResult,
+    ScenarioValuationTransformationResult,
     ScenarioPricingLegCalculation,
     ScenarioPricingMethodology,
     NonExpirationScenarioPricingCalculation,
@@ -88,6 +90,7 @@ from convexity_hunter.market_data_transformations import (
     transform_structure_costs,
     transform_structure_liquidity,
     transform_tail_pricing,
+    transform_scenario_valuation,
     transform_volatility_environment,
 )
 from convexity_hunter.evidence import StructureCosts
@@ -850,6 +853,11 @@ def make_cost_selection(
             MarketDataRelationshipRole.OPTION_CONTRACT_REFERENCE,
             f"cost-{label}-contract-reference",
             contract_key=contract,
+            **(
+                {}
+                if leg.expiration == EXPIRATION
+                else {"last_trade_date": leg.expiration}
+            ),
         )
         group_specs = (
             (
@@ -1037,6 +1045,8 @@ class PublicSurfaceTests(unittest.TestCase):
                 "ScenarioPricingLegCalculation",
                 "NonExpirationScenarioPricingCalculation",
                 "ScenarioPricingCalculationResult",
+                "ScenarioValuationTransformationResult",
+                "transform_scenario_valuation",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -3105,6 +3115,8 @@ class StructureCostsPublicSurfaceTests(unittest.TestCase):
                 "ScenarioPricingLegCalculation",
                 "NonExpirationScenarioPricingCalculation",
                 "ScenarioPricingCalculationResult",
+                "ScenarioValuationTransformationResult",
+                "transform_scenario_valuation",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -4205,6 +4217,8 @@ class HistoricalRealizedVolatilityPublicContractTests(unittest.TestCase):
                 "ScenarioPricingLegCalculation",
                 "NonExpirationScenarioPricingCalculation",
                 "ScenarioPricingCalculationResult",
+                "ScenarioValuationTransformationResult",
+                "transform_scenario_valuation",
             ),
         )
         self.assertEqual(
@@ -4925,6 +4939,8 @@ class VolatilityEnvironmentTransformationTests(unittest.TestCase):
                 "ScenarioPricingLegCalculation",
                 "NonExpirationScenarioPricingCalculation",
                 "ScenarioPricingCalculationResult",
+                "ScenarioValuationTransformationResult",
+                "transform_scenario_valuation",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -5385,6 +5401,8 @@ class TailPricingTransformationTests(unittest.TestCase):
                 "ScenarioPricingLegCalculation",
                 "NonExpirationScenarioPricingCalculation",
                 "ScenarioPricingCalculationResult",
+                "ScenarioValuationTransformationResult",
+                "transform_scenario_valuation",
             ),
         )
         self.assertEqual(
@@ -6100,8 +6118,18 @@ def _pricing_test_leg_identity(leg):
     }
 
 
-def make_scenario_pricing_result(option_types=("call",)):
-    structure = make_structure(option_types)
+def make_scenario_pricing_result(
+    option_types=("call",),
+    structure=None,
+    *,
+    deliverable_id="standard-100-share",
+    base_iv_values=None,
+    iv_record_ids=None,
+    reference_record_ids=None,
+):
+    structure = (
+        make_structure(option_types) if structure is None else structure
+    )
     contracts = tuple(
         build_option_contract_key(
             option_type=leg.option_type,
@@ -6113,14 +6141,24 @@ def make_scenario_pricing_result(option_types=("call",)):
                 currency="USD",
             ),
             currency="USD",
-            deliverable_id="standard-100-share",
+            deliverable_id=deliverable_id,
         )
         for leg in structure.legs
     )
     methodology = make_scenario_pricing_methodology()
-    base_ivs = tuple(
-        decimal.Decimal(value)
-        for value in (("0.20",) if len(contracts) == 1 else ("0.20", "0.30"))
+    base_ivs = tuple(decimal.Decimal(value) for value in (
+        (("0.20",) if len(contracts) == 1 else ("0.20", "0.30"))
+        if base_iv_values is None else base_iv_values
+    ))
+    iv_record_ids = (
+        tuple(f"scenario-iv-{index}" for index in range(len(contracts)))
+        if iv_record_ids is None else tuple(iv_record_ids)
+    )
+    reference_record_ids = (
+        tuple(
+            f"scenario-reference-{index}" for index in range(len(contracts))
+        )
+        if reference_record_ids is None else tuple(reference_record_ids)
     )
     scenario_specs = (
         (Scenario(0.0, 0.0, "immediate"), ("2.50", "3.50")),
@@ -6169,8 +6207,8 @@ def make_scenario_pricing_result(option_types=("call",)):
                 total_leg_value=total,
                 exercise_style="american",
                 settlement_type="physical",
-                implied_volatility_record_id=f"scenario-iv-{index}",
-                contract_reference_record_id=f"scenario-reference-{index}",
+                implied_volatility_record_id=iv_record_ids[index],
+                contract_reference_record_id=reference_record_ids[index],
             ))
         records.append(NonExpirationScenarioPricingCalculation(
             structure=structure,
@@ -6290,12 +6328,14 @@ def rebuild_scenario_pricing_result(
 
 class ScenarioPricingCalculationContractTests(unittest.TestCase):
     def test_exact_public_api_fields_and_root_exclusions(self):
-        self.assertEqual(len(transformations.__all__), 16)
-        self.assertEqual(transformations.__all__[-4:], (
+        self.assertEqual(len(transformations.__all__), 18)
+        self.assertEqual(transformations.__all__[-6:], (
             "ScenarioPricingMethodology",
             "ScenarioPricingLegCalculation",
             "NonExpirationScenarioPricingCalculation",
             "ScenarioPricingCalculationResult",
+            "ScenarioValuationTransformationResult",
+            "transform_scenario_valuation",
         ))
         self.assertEqual(len(market_data.__all__), 64)
         for record_type, expected in (
@@ -6352,6 +6392,7 @@ class ScenarioPricingCalculationContractTests(unittest.TestCase):
             "transform_historical_realized_volatility",
             "transform_volatility_environment",
             "transform_tail_pricing",
+            "transform_scenario_valuation",
         ))
 
     def test_call_put_and_straddle_direct_construction(self):
@@ -6977,6 +7018,1411 @@ class ScenarioPricingCalculationContractTests(unittest.TestCase):
                     create=True,
                 ))
             make_scenario_pricing_result()
+
+
+def make_scenario_valuation_result(
+    option_types=("call",),
+    *,
+    quantity=1,
+    expiration_move=None,
+    expiration_iv_change=0.5,
+    expiration_exit_cost="0",
+    include_expiration=True,
+    scenario_grid_complete=False,
+):
+    expiration = SESSION_DATE + datetime.timedelta(days=60)
+    structure = OptionStructure(
+        tuple(
+            OptionLeg(
+                "SPY",
+                option_type,
+                100.0,
+                expiration,
+                quantity,
+                100,
+            )
+            for option_type in option_types
+        ),
+        assumed_portfolio_value=100000.0,
+        expected_holding_days=14,
+    )
+    selection = make_cost_selection(structure)[0]
+    costs = transform_costs(
+        structure,
+        selection,
+        commissions_and_fees=decimal.Decimal("1.25"),
+        calculation_id="scenario-valuation-costs",
+    )
+    tail = make_tail_result()
+    pricing = make_scenario_pricing_result(option_types, structure)
+    scenarios = tuple(record.scenario for record in pricing.records)
+    if include_expiration:
+        if expiration_move is None:
+            expiration_move = (
+                -0.1 if option_types == ("put",) else 0.1
+            )
+        scenarios += (
+            Scenario(
+                expiration_move,
+                expiration_iv_change,
+                "expiration",
+            ),
+        )
+    exit_costs = tuple(
+        (
+            scenario,
+            decimal.Decimal(expiration_exit_cost)
+            if scenario.valuation_time == "expiration"
+            else decimal.Decimal("2.50"),
+        )
+        for scenario in scenarios
+    )
+    return transform_scenario_valuation(
+        "scenario-valuation-calculation-001",
+        costs,
+        tail,
+        pricing,
+        scenarios,
+        scenario_grid_complete,
+        exit_costs,
+        "explicit_fixture_exit_cost_v0.1",
+        CALCULATED_AT + datetime.timedelta(seconds=10),
+    )
+
+
+def rebuild_scenario_pricing_scenarios(result, scenarios):
+    first = result.records[0]
+    records = []
+    for scenario in scenarios:
+        valuation_date = transformations._scenario_pricing_valuation_date(
+            first.structure, first.as_of_date, scenario
+        )
+        calculations = tuple(
+            dataclasses.replace(
+                item,
+                shocked_iv=transformations._scenario_pricing_shock(
+                    item.base_iv, scenario.iv_change
+                ),
+                remaining_calendar_days=(
+                    item.leg.expiration - valuation_date
+                ).days,
+            )
+            for item in first.leg_calculations
+        )
+        records.append(NonExpirationScenarioPricingCalculation(
+            structure=first.structure,
+            as_of_date=first.as_of_date,
+            scenario=scenario,
+            valuation_date=valuation_date,
+            base_underlying_price=first.base_underlying_price,
+            shocked_underlying_price=transformations._scenario_pricing_shock(
+                first.base_underlying_price, scenario.underlying_move
+            ),
+            underlying_quote_record_id=first.underlying_quote_record_id,
+            leg_calculations=calculations,
+            estimated_gross_position_value=sum(
+                (item.total_leg_value for item in calculations),
+                decimal.Decimal(0),
+            ),
+            pricing_methodology=first.pricing_methodology,
+        ))
+    records = tuple(records)
+    old = transformations._decode_scenario_pricing_parameters(
+        result.lineage.parameters_json
+    )
+    parameters = transformations._scenario_pricing_expected_fixed_parameters(
+        records
+    )
+    for key in (
+        "base_underlying_evidence",
+        "leg_iv_evidence",
+        "contract_reference_evidence",
+    ):
+        parameters[key] = old[key]
+    lineage = dataclasses.replace(
+        result.lineage,
+        parameters_json=market_data.canonicalize_lineage_parameters(
+            parameters
+        ),
+    )
+    return ScenarioPricingCalculationResult(records, lineage)
+
+
+def reidentify_scenario_pricing(
+    result,
+    *,
+    underlying_record_id,
+    iv_record_ids=None,
+    reference_record_ids=None,
+    normalized_at=CALCULATED_AT,
+    reference_overrides=None,
+):
+    first = result.records[0]
+    iv_record_ids = (
+        tuple(item.implied_volatility_record_id
+              for item in first.leg_calculations)
+        if iv_record_ids is None else iv_record_ids
+    )
+    reference_record_ids = (
+        tuple(item.contract_reference_record_id
+              for item in first.leg_calculations)
+        if reference_record_ids is None else reference_record_ids
+    )
+    records = tuple(
+        dataclasses.replace(
+            record,
+            underlying_quote_record_id=underlying_record_id,
+            leg_calculations=tuple(
+                dataclasses.replace(
+                    item,
+                    implied_volatility_record_id=iv_id,
+                    contract_reference_record_id=reference_id,
+                )
+                for item, iv_id, reference_id in zip(
+                    record.leg_calculations,
+                    iv_record_ids,
+                    reference_record_ids,
+                )
+            ),
+        )
+        for record in result.records
+    )
+    old = transformations._decode_scenario_pricing_parameters(
+        result.lineage.parameters_json
+    )
+    reference_overrides = (
+        {} if reference_overrides is None else reference_overrides
+    )
+
+    def reference_values(record_id):
+        return reference_overrides.get(
+            record_id, (normalized_at, ("source-001",))
+        )
+
+    underlying_normalized_at, underlying_source_ids = reference_values(
+        underlying_record_id
+    )
+    underlying = dict(old["base_underlying_evidence"])
+    underlying.update({
+        "record_id": underlying_record_id,
+        "normalized_at": underlying_normalized_at,
+        "source_ids": underlying_source_ids,
+    })
+    iv_evidence = tuple(
+        {
+            **item,
+            "record_id": record_id,
+            "normalized_at": reference_values(record_id)[0],
+            "source_ids": reference_values(record_id)[1],
+        }
+        for item, record_id in zip(old["leg_iv_evidence"], iv_record_ids)
+    )
+    references = tuple(
+        {
+            **item,
+            "record_id": record_id,
+            "normalized_at": reference_values(record_id)[0],
+            "source_ids": reference_values(record_id)[1],
+        }
+        for item, record_id in zip(
+            old["contract_reference_evidence"], reference_record_ids
+        )
+    )
+    parameters = transformations._scenario_pricing_expected_fixed_parameters(
+        records
+    )
+    parameters.update({
+        "base_underlying_evidence": underlying,
+        "leg_iv_evidence": iv_evidence,
+        "contract_reference_evidence": references,
+    })
+    inputs = tuple(
+        CalculationInputReference(
+            evidence["record_id"],
+            evidence["normalized_at"],
+            evidence["source_ids"],
+        )
+        for evidence in (underlying,) + iv_evidence + references
+    )
+    lineage = dataclasses.replace(
+        result.lineage,
+        inputs=inputs,
+        parameters_json=market_data.canonicalize_lineage_parameters(
+            parameters
+        ),
+    )
+    return ScenarioPricingCalculationResult(records, lineage)
+
+
+def mutate_scenario_valuation_lineage(result, mutate):
+    parameters = copy.deepcopy(
+        transformations._decode_scenario_valuation_parameters(
+            result.lineage.parameters_json
+        )
+    )
+    mutate(parameters)
+    return dataclasses.replace(
+        result.lineage,
+        parameters_json=market_data.canonicalize_lineage_parameters(
+            parameters
+        ),
+    )
+
+
+def mutate_embedded_tail_pricing_parameters(result, mutate):
+    downstream = copy.deepcopy(
+        transformations._decode_scenario_valuation_parameters(
+            result.lineage.parameters_json
+        )
+    )
+    embedded = transformations._decode_strict_tagged_parameters(
+        downstream["tail_pricing_dependency"]["parameters_json"],
+        transformations._TAIL_PRICING_PARAMETER_KEYS,
+        "test TailPricing",
+    )
+    mutate(embedded)
+    downstream["tail_pricing_dependency"]["parameters_json"] = (
+        market_data.canonicalize_lineage_parameters(embedded)
+    )
+    return dataclasses.replace(
+        result.lineage,
+        parameters_json=market_data.canonicalize_lineage_parameters(
+            downstream
+        ),
+    )
+
+
+def make_tail_matching_scenario_valuation_arguments(iv_id, reference_id):
+    expiration = SESSION_DATE + datetime.timedelta(days=60)
+    structure = OptionStructure(
+        (OptionLeg("SPY", "call", 100.0, expiration, 1, 100),),
+        100000.0,
+        14,
+    )
+    costs = transform_costs(
+        structure,
+        make_cost_selection(structure)[0],
+        calculation_id="scenario-valuation-costs",
+    )
+    tail = make_tail_result()
+    pricing = make_scenario_pricing_result(
+        ("call",),
+        structure,
+        deliverable_id=None,
+        base_iv_values=("0.40",),
+        iv_record_ids=(iv_id,),
+        reference_record_ids=(reference_id,),
+    )
+    pricing = reidentify_scenario_pricing(
+        pricing,
+        underlying_record_id=pricing.records[0].underlying_quote_record_id,
+        iv_record_ids=(iv_id,),
+        reference_record_ids=(reference_id,),
+        reference_overrides={
+            item.record_id: (item.normalized_at, item.source_ids)
+            for item in tail.lineage.inputs
+            if item.record_id in {iv_id, reference_id}
+        },
+    )
+    scenarios = tuple(record.scenario for record in pricing.records)
+    return (
+        costs,
+        tail,
+        pricing,
+        scenarios,
+        tuple((scenario, decimal.Decimal("0")) for scenario in scenarios),
+    )
+
+
+class ScenarioValuationTransformationTests(unittest.TestCase):
+    def test_exact_public_surface_fields_signature_and_package_boundary(self):
+        self.assertEqual(len(transformations.__all__), 18)
+        self.assertEqual(transformations.__all__[-2:], (
+            "ScenarioValuationTransformationResult",
+            "transform_scenario_valuation",
+        ))
+        self.assertEqual(len(market_data.__all__), 64)
+        self.assertEqual(
+            tuple(
+                field.name for field in dataclasses.fields(
+                    ScenarioValuationTransformationResult
+                )
+            ),
+            ("records", "lineage"),
+        )
+        self.assertEqual(
+            tuple(inspect.signature(transform_scenario_valuation).parameters),
+            (
+                "calculation_id",
+                "structure_costs_result",
+                "tail_pricing_result",
+                "scenario_pricing_result",
+                "scenarios",
+                "scenario_grid_complete",
+                "exit_cost_assumptions",
+                "exit_cost_methodology",
+                "calculated_at",
+            ),
+        )
+        self.assertFalse(
+            hasattr(convexity_hunter, "ScenarioValuationTransformationResult")
+        )
+        self.assertFalse(
+            hasattr(convexity_hunter, "transform_scenario_valuation")
+        )
+        result = make_scenario_valuation_result()
+        with self.assertRaises(FrozenInstanceError):
+            result.records = ()
+
+    def test_long_call_put_and_straddle_literal_outputs(self):
+        call = make_scenario_valuation_result(("call",))
+        put = make_scenario_valuation_result(("put",))
+        straddle = make_scenario_valuation_result(("call", "put"))
+        self.assertEqual(
+            tuple(item.estimated_position_value for item in call.records),
+            (250.0, 300.0, 200.0, 1000.0),
+        )
+        self.assertEqual(
+            tuple(item.estimated_position_value for item in put.records),
+            (250.0, 300.0, 200.0, 1000.0),
+        )
+        self.assertEqual(
+            tuple(item.estimated_position_value for item in straddle.records),
+            (600.0, 700.0, 500.0, 1000.0),
+        )
+        self.assertEqual(call.records[-1].base_ivs, (0.2,))
+        self.assertEqual(straddle.records[-1].base_ivs, (0.2, 0.3))
+        self.assertEqual(call.records[-1].valuation_date,
+                         SESSION_DATE + datetime.timedelta(days=60))
+        self.assertEqual(
+            call.lineage.calculation_type, "scenario_valuation"
+        )
+        self.assertEqual(
+            call.lineage.methodology_id,
+            "hybrid-authoritative-nonexpiration-terminal-intrinsic-after-costs",
+        )
+        self.assertEqual(call.lineage.methodology_version, "v0.1")
+        self.assertEqual(len(call.lineage.inputs), 209)
+        self.assertEqual(len(straddle.lineage.inputs), 214)
+
+    def test_expiration_payoff_scaling_zero_and_iv_independence(self):
+        zero_call = make_scenario_valuation_result(
+            ("call",), expiration_move=-0.1, expiration_iv_change=-0.2
+        )
+        positive_call = make_scenario_valuation_result(
+            ("call",), expiration_move=0.1, expiration_iv_change=0.5
+        )
+        same_call = make_scenario_valuation_result(
+            ("call",), expiration_move=0.1, expiration_iv_change=-0.2
+        )
+        self.assertEqual(zero_call.records[-1].estimated_position_value, 0.0)
+        self.assertEqual(
+            positive_call.records[-1].estimated_position_value, 1000.0
+        )
+        self.assertEqual(
+            same_call.records[-1].estimated_position_value, 1000.0
+        )
+        quantity_two = make_scenario_valuation_result(
+            ("call",),
+            quantity=2,
+            expiration_move=0.1,
+        )
+        self.assertEqual(
+            quantity_two.records[-1].estimated_position_value, 2000.0
+        )
+
+    def test_exit_cost_floor_and_exact_methodology_schemas(self):
+        result = make_scenario_valuation_result(
+            expiration_exit_cost="2000"
+        )
+        expiration = result.records[-1]
+        self.assertEqual(expiration.net_liquidation_value, 0.0)
+        self.assertEqual(
+            expiration.pnl_after_costs, -expiration.entry_cost_basis
+        )
+        self.assertTrue(expiration.loss_is_within_entry_cost)
+        methodology = transformations._decode_strict_tagged_parameters(
+            expiration.pricing_methodology,
+            transformations._SCENARIO_METHODOLOGY_KEYS,
+            "test",
+        )
+        self.assertEqual(len(methodology), 15)
+        self.assertEqual(
+            methodology["valuation_source"],
+            "terminal_intrinsic_expiration",
+        )
+        parameters = transformations._decode_scenario_valuation_parameters(
+            result.lineage.parameters_json
+        )
+        self.assertEqual(len(parameters), 25)
+        self.assertEqual(
+            set(parameters),
+            transformations._SCENARIO_VALUATION_PARAMETER_KEYS,
+        )
+        self.assertEqual(
+            hashlib.sha256(
+                result.records[0].pricing_methodology.encode()
+            ).hexdigest(),
+            "9e90314e7f363f2976715298e45f95e58203bfef8669408219a5f11cd970344f",
+        )
+        self.assertEqual(
+            hashlib.sha256(
+                expiration.pricing_methodology.encode()
+            ).hexdigest(),
+            "d39130d8c78bc33a5533b0f2f1bf885486ac64aee8149132f35efa77bc836cf6",
+        )
+        self.assertEqual(
+            hashlib.sha256(
+                result.lineage.parameters_json.encode()
+            ).hexdigest(),
+            "6dc7c7be4d622dfd11ad3be69f8b28e9e7fba486e81addd4e939e14a4c850ff9",
+        )
+
+    def test_complete_grid_and_explicit_subset(self):
+        expiration = SESSION_DATE + datetime.timedelta(days=60)
+        structure = OptionStructure(
+            (OptionLeg("SPY", "call", 100.0, expiration, 1, 100),),
+            100000.0,
+            14,
+        )
+        costs = transform_costs(
+            structure,
+            make_cost_selection(structure)[0],
+            calculation_id="scenario-valuation-costs",
+        )
+        tail = make_tail_result()
+        base_pricing = make_scenario_pricing_result(("call",), structure)
+        scenarios = tuple(
+            Scenario(float(move), float(iv), "immediate")
+            for move in transformations._SCENARIO_GRID_MOVES
+            for iv in transformations._SCENARIO_GRID_IV_CHANGES
+        )
+        pricing = rebuild_scenario_pricing_scenarios(
+            base_pricing, scenarios
+        )
+        assumptions = tuple(
+            (scenario, decimal.Decimal("0")) for scenario in scenarios
+        )
+        result = transform_scenario_valuation(
+            "scenario-valuation-complete-grid",
+            costs,
+            tail,
+            pricing,
+            scenarios,
+            True,
+            assumptions,
+            "explicit_fixture_exit_cost_v0.1",
+            CALCULATED_AT + datetime.timedelta(seconds=10),
+        )
+        self.assertEqual(len(result.records), 28)
+        with self.assertRaises(ValueError):
+            transform_scenario_valuation(
+                "scenario-valuation-incomplete-grid",
+                costs,
+                tail,
+                rebuild_scenario_pricing_scenarios(
+                    base_pricing, scenarios[:-1]
+                ),
+                scenarios[:-1],
+                True,
+                assumptions[:-1],
+                "explicit_fixture_exit_cost_v0.1",
+                CALCULATED_AT + datetime.timedelta(seconds=10),
+            )
+        subset = make_scenario_valuation_result(
+            include_expiration=False,
+            scenario_grid_complete=False,
+        )
+        self.assertEqual(len(subset.records), 3)
+
+    def test_scenario_and_exit_cost_contract_mutation_matrix(self):
+        expiration = SESSION_DATE + datetime.timedelta(days=60)
+        structure = OptionStructure(
+            (OptionLeg("SPY", "call", 100.0, expiration, 1, 100),),
+            100000.0,
+            14,
+        )
+        costs = transform_costs(
+            structure,
+            make_cost_selection(structure)[0],
+            calculation_id="scenario-valuation-costs",
+        )
+        tail = make_tail_result()
+        pricing = make_scenario_pricing_result(("call",), structure)
+        scenarios = tuple(record.scenario for record in pricing.records)
+        assumptions = tuple(
+            (scenario, decimal.Decimal("0")) for scenario in scenarios
+        )
+
+        def invoke(declared=scenarios, exits=assumptions, complete=False):
+            return transform_scenario_valuation(
+                "scenario-valuation-mutation",
+                costs,
+                tail,
+                pricing,
+                declared,
+                complete,
+                exits,
+                "explicit_fixture_exit_cost_v0.1",
+                CALCULATED_AT + datetime.timedelta(seconds=10),
+            )
+
+        wrong_scenario_cases = (
+            (),
+            scenarios + (scenarios[0],),
+            tuple(reversed(scenarios)),
+            (Scenario(0.0, 0.0, "expiration"),),
+        )
+        for declared in wrong_scenario_cases:
+            with self.subTest(declared=declared):
+                with self.assertRaises(ValueError):
+                    invoke(
+                        declared=declared,
+                        exits=tuple(
+                            (scenario, decimal.Decimal("0"))
+                            for scenario in declared
+                        ),
+                    )
+        with self.assertRaises(ValueError):
+            invoke(complete=True)
+
+        exit_cases = (
+            assumptions[:-1],
+            assumptions + ((scenarios[-1], decimal.Decimal("0")),),
+            tuple(reversed(assumptions)),
+            tuple((dataclasses.replace(scenario), cost)
+                  for scenario, cost in assumptions),
+            tuple((scenario, decimal.Decimal("-0.01"))
+                  for scenario in scenarios),
+            tuple((scenario, decimal.Decimal("NaN"))
+                  for scenario in scenarios),
+        )
+        for exits in exit_cases:
+            with self.subTest(exits=exits):
+                with self.assertRaises(ValueError):
+                    invoke(exits=exits)
+        wrong_inner = ((scenarios[0], decimal.Decimal("0"), "extra"),) + (
+            assumptions[1:]
+        )
+        with self.assertRaises(ValueError):
+            invoke(exits=wrong_inner)
+        wrong_decimal = ((scenarios[0], 0.0),) + assumptions[1:]
+        with self.assertRaises(TypeError):
+            invoke(exits=wrong_decimal)
+
+    def test_lineage_exact_overlap_deduplication_and_conflict(self):
+        expiration = SESSION_DATE + datetime.timedelta(days=60)
+        structure = OptionStructure(
+            (OptionLeg("SPY", "call", 100.0, expiration, 1, 100),),
+            100000.0,
+            14,
+        )
+        costs = transform_costs(
+            structure,
+            make_cost_selection(structure)[0],
+            calculation_id="scenario-valuation-costs",
+        )
+        tail = make_tail_result()
+        base = make_scenario_pricing_result(("call",), structure)
+        scenarios = tuple(record.scenario for record in base.records)
+        assumptions = tuple(
+            (scenario, decimal.Decimal("0")) for scenario in scenarios
+        )
+
+        def invoke(pricing, calculation_id):
+            return transform_scenario_valuation(
+                calculation_id,
+                costs,
+                tail,
+                pricing,
+                scenarios,
+                False,
+                assumptions,
+                "explicit_fixture_exit_cost_v0.1",
+                CALCULATED_AT + datetime.timedelta(seconds=10),
+            )
+
+        one_overlap = reidentify_scenario_pricing(
+            base,
+            underlying_record_id="cost-underlying-quote",
+            reference_overrides={
+                item.record_id: (item.normalized_at, item.source_ids)
+                for item in costs.lineage.inputs
+            },
+        )
+        self.assertEqual(
+            len(invoke(one_overlap, "scenario-valuation-one-overlap").lineage.inputs),
+            208,
+        )
+        multiple_overlaps = reidentify_scenario_pricing(
+            base,
+            underlying_record_id="cost-underlying-quote",
+            reference_record_ids=("cost-call-contract-reference",),
+            reference_overrides={
+                item.record_id: (item.normalized_at, item.source_ids)
+                for item in costs.lineage.inputs
+            },
+        )
+        self.assertEqual(
+            len(invoke(
+                multiple_overlaps,
+                "scenario-valuation-multiple-overlaps",
+            ).lineage.inputs),
+            207,
+        )
+        conflicting = reidentify_scenario_pricing(
+            base,
+            underlying_record_id="cost-underlying-quote",
+            reference_overrides={
+                "cost-underlying-quote": (
+                    next(
+                        item.normalized_at for item in costs.lineage.inputs
+                        if item.record_id == "cost-underlying-quote"
+                    ) + datetime.timedelta(microseconds=1),
+                    next(
+                        item.source_ids for item in costs.lineage.inputs
+                        if item.record_id == "cost-underlying-quote"
+                    ),
+                ),
+            },
+        )
+        with self.assertRaises(ValueError):
+            invoke(conflicting, "scenario-valuation-conflicting-overlap")
+
+    def test_direct_wrapper_rejects_record_lineage_and_quality_forgery(self):
+        result = make_scenario_valuation_result()
+        ScenarioValuationTransformationResult(
+            result.records, result.lineage
+        )
+        with self.assertRaises(TypeError):
+            ScenarioValuationTransformationResult(list(result.records),
+                                                  result.lineage)
+        with self.assertRaises(ValueError):
+            ScenarioValuationTransformationResult(
+                result.records,
+                dataclasses.replace(
+                    result.lineage,
+                    calculation_type="forged",
+                ),
+            )
+        with self.assertRaises(ValueError):
+            ScenarioValuationTransformationResult(
+                result.records,
+                dataclasses.replace(
+                    result.lineage,
+                    quality_flags=(
+                        CalculationQualityFlag.ANNUALIZED,
+                    ),
+                ),
+            )
+
+    def test_review_public_base_iv_and_cross_leg_forgery_reject(self):
+        call = make_scenario_valuation_result(("call",))
+        forged_input = dataclasses.replace(
+            call.records[0].leg_volatility_inputs[0],
+            base_iv=0.91,
+        )
+        forged_call_record = dataclasses.replace(
+            call.records[0],
+            leg_volatility_inputs=(forged_input,),
+        )
+        with self.assertRaises(ValueError):
+            ScenarioValuationTransformationResult(
+                (forged_call_record,) + call.records[1:],
+                call.lineage,
+            )
+
+        straddle = make_scenario_valuation_result(("call", "put"))
+        first = straddle.records[0]
+        swapped_inputs = (
+            dataclasses.replace(
+                first.leg_volatility_inputs[0],
+                base_iv=first.leg_volatility_inputs[1].base_iv,
+            ),
+            dataclasses.replace(
+                first.leg_volatility_inputs[1],
+                base_iv=first.leg_volatility_inputs[0].base_iv,
+            ),
+        )
+        forged_straddle_record = dataclasses.replace(
+            first, leg_volatility_inputs=swapped_inputs
+        )
+        with self.assertRaises(ValueError):
+            ScenarioValuationTransformationResult(
+                (forged_straddle_record,) + straddle.records[1:],
+                straddle.lineage,
+            )
+
+    def test_review_dependency_identity_and_nested_schema_mutations_reject(self):
+        result = make_scenario_valuation_result()
+        dependency_mutations = (
+            lambda value: value["structure_costs_dependency"].__setitem__(
+                "methodology_version", "v0.1"
+            ),
+            lambda value: value["tail_pricing_dependency"].__setitem__(
+                "methodology_version", "v9.9"
+            ),
+            lambda value: value["scenario_pricing_dependency"].__setitem__(
+                "methodology_id", "forged-scenario-pricing-methodology"
+            ),
+        )
+        for mutate in dependency_mutations:
+            with self.subTest(mutate=mutate):
+                lineage = mutate_scenario_valuation_lineage(result, mutate)
+                with self.assertRaises(ValueError):
+                    ScenarioValuationTransformationResult(
+                        result.records, lineage
+                    )
+
+        nested_mutations = (
+            lambda value: value["calculation_values"][0].pop(
+                "base_leg_ivs_exact"
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "extra", "forged"
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "shocked_leg_ivs_exact", (decimal.Decimal("0.91"),)
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "scenario_identity",
+                {
+                    **value["calculation_values"][0]["scenario_identity"],
+                    "iv_change": decimal.Decimal("0.91"),
+                },
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "valuation_source", "terminal_intrinsic_expiration"
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "stable_gross_value_repr", "999.0"
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "pricing_methodology", "forged"
+            ),
+            lambda value: value["structure_costs_dependency"].pop("selected"),
+            lambda value: value["tail_pricing_dependency"].__setitem__(
+                "extra", "forged"
+            ),
+        )
+        for mutate in nested_mutations:
+            with self.subTest(mutate=mutate):
+                lineage = mutate_scenario_valuation_lineage(result, mutate)
+                with self.assertRaises(ValueError):
+                    ScenarioValuationTransformationResult(
+                        result.records, lineage
+                    )
+
+    def test_review_record_methodology_mutations_reject(self):
+        result = make_scenario_valuation_result()
+        methodology = transformations._decode_strict_tagged_parameters(
+            result.records[0].pricing_methodology,
+            transformations._SCENARIO_METHODOLOGY_KEYS,
+            "test",
+        )
+        mutations = (
+            lambda value: value.pop("schema_version"),
+            lambda value: value.__setitem__("extra", "forged"),
+            lambda value: value["scenario_pricing_dependency"].__setitem__(
+                "identity",
+                (
+                    "nonexpiration_scenario_pricing",
+                    "forged-methodology",
+                    "v0.1",
+                ),
+            ),
+            lambda value: value["expiration_rule"].__setitem__(
+                "active", True
+            ),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                forged_methodology = copy.deepcopy(methodology)
+                mutate(forged_methodology)
+                forged_string = market_data.canonicalize_lineage_parameters(
+                    forged_methodology
+                )
+                forged_record = dataclasses.replace(
+                    result.records[0],
+                    pricing_methodology=forged_string,
+                )
+
+                def mutate_lineage(value):
+                    value["calculation_values"][0][
+                        "pricing_methodology"
+                    ] = forged_string
+
+                lineage = mutate_scenario_valuation_lineage(
+                    result, mutate_lineage
+                )
+                with self.assertRaises(ValueError):
+                    ScenarioValuationTransformationResult(
+                        (forged_record,) + result.records[1:],
+                        lineage,
+                    )
+
+    def test_final_review_current_tail_nested_schema_mutations_reject(self):
+        result = make_scenario_valuation_result()
+        ScenarioValuationTransformationResult(
+            result.records, result.lineage
+        )
+        mutations = (
+            (
+                "missing_selected_put",
+                lambda value: value[
+                    "current_expiration_observations"
+                ][0]["selected_put_25"].pop("target_delta"),
+            ),
+            (
+                "extra_selected_put",
+                lambda value: value[
+                    "current_expiration_observations"
+                ][0]["selected_put_25"].__setitem__("extra", "forged"),
+            ),
+            (
+                "missing_selected_call",
+                lambda value: value[
+                    "current_expiration_observations"
+                ][0]["selected_call_25"].pop("distance"),
+            ),
+            (
+                "missing_current_candidate",
+                lambda value: value[
+                    "current_expiration_observations"
+                ][0]["candidate_contracts"][0].pop("signed_delta"),
+            ),
+            (
+                "extra_current_candidate",
+                lambda value: value[
+                    "current_expiration_observations"
+                ][0]["candidate_contracts"][0].__setitem__(
+                    "extra", "forged"
+                ),
+            ),
+            (
+                "wrong_selected_container",
+                lambda value: value[
+                    "current_expiration_observations"
+                ][0].__setitem__("selected_put_25", ()),
+            ),
+            (
+                "reordered_current_candidates",
+                lambda value: value[
+                    "current_expiration_observations"
+                ][0].__setitem__(
+                    "candidate_contracts",
+                    tuple(reversed(value[
+                        "current_expiration_observations"
+                    ][0]["candidate_contracts"])),
+                ),
+            ),
+            (
+                "decimal_replaced_by_string",
+                lambda value: value[
+                    "current_expiration_observations"
+                ][0]["candidate_contracts"][0].__setitem__(
+                    "implied_volatility", "0.30"
+                ),
+            ),
+        )
+        for name, mutate in mutations:
+            with self.subTest(name=name):
+                lineage = mutate_embedded_tail_pricing_parameters(
+                    result, mutate
+                )
+                with self.assertRaises(ValueError):
+                    ScenarioValuationTransformationResult(
+                        result.records, lineage
+                    )
+
+    def test_final_review_historical_tail_nested_schema_mutations_reject(self):
+        result = make_scenario_valuation_result()
+        mutations = (
+            (
+                "missing_historical_field",
+                lambda value: value[
+                    "historical_observations_by_tenor"
+                ][0]["historical_observations"][0].pop("atm_iv"),
+            ),
+            (
+                "extra_historical_field",
+                lambda value: value[
+                    "historical_observations_by_tenor"
+                ][0]["historical_observations"][0].__setitem__(
+                    "extra", "forged"
+                ),
+            ),
+            (
+                "missing_historical_selected_option_field",
+                lambda value: value[
+                    "historical_observations_by_tenor"
+                ][0]["historical_observations"][0][
+                    "selected_call_25"
+                ].pop("contract_reference_record_id"),
+            ),
+            (
+                "wrong_historical_collection_container",
+                lambda value: value[
+                    "historical_observations_by_tenor"
+                ][0].__setitem__("historical_observations", {}),
+            ),
+            (
+                "reordered_historical_observations",
+                lambda value: value[
+                    "historical_observations_by_tenor"
+                ][0].__setitem__(
+                    "historical_observations",
+                    tuple(reversed(value[
+                        "historical_observations_by_tenor"
+                    ][0]["historical_observations"])),
+                ),
+            ),
+            (
+                "date_replaced_by_datetime",
+                lambda value: value[
+                    "historical_observations_by_tenor"
+                ][0]["historical_observations"][0].__setitem__(
+                    "session_date", CALCULATED_AT
+                ),
+            ),
+            (
+                "missing_historical_candidate_field",
+                lambda value: value[
+                    "historical_observations_by_tenor"
+                ][0]["historical_observations"][0][
+                    "candidate_contracts"
+                ][0].pop("contract_multiplier"),
+            ),
+            (
+                "extra_historical_atm_pair_field",
+                lambda value: value[
+                    "historical_observations_by_tenor"
+                ][0]["historical_observations"][0][
+                    "selected_paired_atm_evidence"
+                ]["candidate_pairs"][0].__setitem__("extra", "forged"),
+            ),
+        )
+        for name, mutate in mutations:
+            with self.subTest(name=name):
+                lineage = mutate_embedded_tail_pricing_parameters(
+                    result, mutate
+                )
+                with self.assertRaises(ValueError):
+                    ScenarioValuationTransformationResult(
+                        result.records, lineage
+                    )
+
+    def test_final_review_tail_schema_decimal_context_is_preserved(self):
+        result = make_scenario_valuation_result()
+        mutations = (
+            lambda value: value[
+                "current_expiration_observations"
+            ][0]["selected_put_25"].pop("target_delta"),
+            lambda value: value[
+                "current_expiration_observations"
+            ][0]["selected_put_25"].__setitem__("extra", "forged"),
+            lambda value: value[
+                "historical_observations_by_tenor"
+            ][0]["historical_observations"][0].pop("atm_iv"),
+            lambda value: value[
+                "historical_observations_by_tenor"
+            ][0]["historical_observations"][0].__setitem__(
+                "extra", "forged"
+            ),
+            lambda value: value[
+                "current_expiration_observations"
+            ][0].__setitem__("selected_put_25", ()),
+        )
+        lineages = tuple(
+            mutate_embedded_tail_pricing_parameters(result, mutate)
+            for mutate in mutations
+        )
+        context = decimal.getcontext()
+        original = context.copy()
+        context.prec = 11
+        context.rounding = decimal.ROUND_CEILING
+        context.clear_flags()
+        configured = decimal_context_state()
+        try:
+            for index, lineage in enumerate(lineages):
+                with self.subTest(index=index):
+                    with self.assertRaises(ValueError):
+                        ScenarioValuationTransformationResult(
+                            result.records, lineage
+                        )
+                    self.assertEqual(decimal_context_state(), configured)
+        finally:
+            decimal.setcontext(original)
+
+    def test_review_tail_scenario_matching_evidence_ids(self):
+        expiration = SESSION_DATE + datetime.timedelta(days=60)
+        structure = OptionStructure(
+            (OptionLeg("SPY", "call", 100.0, expiration, 1, 100),),
+            100000.0,
+            14,
+        )
+        costs = transform_costs(
+            structure,
+            make_cost_selection(structure)[0],
+            calculation_id="scenario-valuation-costs",
+        )
+        tail = make_tail_result()
+
+        def pricing(iv_id, reference_id):
+            result = make_scenario_pricing_result(
+                ("call",),
+                structure,
+                deliverable_id=None,
+                base_iv_values=("0.40",),
+                iv_record_ids=(iv_id,),
+                reference_record_ids=(reference_id,),
+            )
+            return reidentify_scenario_pricing(
+                result,
+                underlying_record_id=(
+                    result.records[0].underlying_quote_record_id
+                ),
+                iv_record_ids=(iv_id,),
+                reference_record_ids=(reference_id,),
+                reference_overrides={
+                    item.record_id: (item.normalized_at, item.source_ids)
+                    for item in tail.lineage.inputs
+                    if item.record_id in {iv_id, reference_id}
+                },
+            )
+
+        def invoke(pricing_result, calculation_id):
+            scenarios = tuple(
+                record.scenario for record in pricing_result.records
+            )
+            return transform_scenario_valuation(
+                calculation_id,
+                costs,
+                tail,
+                pricing_result,
+                scenarios,
+                False,
+                tuple(
+                    (scenario, decimal.Decimal("0"))
+                    for scenario in scenarios
+                ),
+                "explicit_fixture_exit_cost_v0.1",
+                CALCULATED_AT + datetime.timedelta(seconds=10),
+            )
+
+        matching = pricing(
+            "ve-current-1-call-iv",
+            "ve-current-1-call-reference",
+        )
+        self.assertEqual(
+            len(invoke(matching, "matching-evidence-ids").records), 3
+        )
+        mismatches = (
+            pricing(
+                "scenario-iv-0",
+                "ve-current-1-call-reference",
+            ),
+            pricing(
+                "ve-current-1-call-iv",
+                "scenario-reference-0",
+            ),
+        )
+        for index, mismatch in enumerate(mismatches):
+            with self.subTest(index=index):
+                with ExitStack() as stack:
+                    for name in (
+                        "LegVolatilityInput",
+                        "ScenarioResult",
+                        "_construct_scenario_valuation_lineage",
+                        "ScenarioValuationTransformationResult",
+                    ):
+                        stack.enter_context(mock.patch.object(
+                            transformations,
+                            name,
+                            side_effect=AssertionError(f"{name} called"),
+                        ))
+                    with self.assertRaises(ValueError):
+                        invoke(mismatch, f"mismatched-evidence-{index}")
+
+    def test_review_failures_preserve_complete_decimal_context(self):
+        call = make_scenario_valuation_result(("call",))
+        forged_call_record = dataclasses.replace(
+            call.records[0],
+            leg_volatility_inputs=(
+                dataclasses.replace(
+                    call.records[0].leg_volatility_inputs[0],
+                    base_iv=0.91,
+                ),
+            ),
+        )
+        straddle = make_scenario_valuation_result(("call", "put"))
+        first = straddle.records[0]
+        forged_straddle_record = dataclasses.replace(
+            first,
+            leg_volatility_inputs=(
+                dataclasses.replace(
+                    first.leg_volatility_inputs[0],
+                    base_iv=first.leg_volatility_inputs[1].base_iv,
+                ),
+                dataclasses.replace(
+                    first.leg_volatility_inputs[1],
+                    base_iv=first.leg_volatility_inputs[0].base_iv,
+                ),
+            ),
+        )
+        dependency_lineage = mutate_scenario_valuation_lineage(
+            call,
+            lambda value: value[
+                "structure_costs_dependency"
+            ].__setitem__("methodology_version", "v0.1"),
+        )
+        nested_lineage = mutate_scenario_valuation_lineage(
+            call,
+            lambda value: value["calculation_values"][0].pop(
+                "base_leg_ivs_exact"
+            ),
+        )
+        tail_mismatch_arguments = (
+            make_tail_matching_scenario_valuation_arguments(
+                "scenario-iv-0",
+                "ve-current-1-call-reference",
+            ),
+            make_tail_matching_scenario_valuation_arguments(
+                "ve-current-1-call-iv",
+                "scenario-reference-0",
+            ),
+        )
+        failures = (
+            lambda: ScenarioValuationTransformationResult(
+                (forged_call_record,) + call.records[1:], call.lineage
+            ),
+            lambda: ScenarioValuationTransformationResult(
+                (forged_straddle_record,) + straddle.records[1:],
+                straddle.lineage,
+            ),
+            lambda: ScenarioValuationTransformationResult(
+                call.records, dependency_lineage
+            ),
+            lambda: ScenarioValuationTransformationResult(
+                call.records, nested_lineage
+            ),
+        ) + tuple(
+            (
+                lambda arguments=arguments: transform_scenario_valuation(
+                    "decimal-context-tail-mismatch",
+                    arguments[0],
+                    arguments[1],
+                    arguments[2],
+                    arguments[3],
+                    False,
+                    arguments[4],
+                    "explicit_fixture_exit_cost_v0.1",
+                    CALCULATED_AT + datetime.timedelta(seconds=10),
+                )
+            )
+            for arguments in tail_mismatch_arguments
+        )
+        context = decimal.getcontext()
+        original = context.copy()
+        context.prec = 11
+        context.rounding = decimal.ROUND_CEILING
+        context.clear_flags()
+        configured = decimal_context_state()
+        try:
+            for index, failure in enumerate(failures):
+                with self.subTest(index=index):
+                    with self.assertRaises(ValueError):
+                        failure()
+                    self.assertEqual(decimal_context_state(), configured)
+        finally:
+            decimal.setcontext(original)
+
+    def test_dependency_and_exit_cost_mutations_reject(self):
+        expiration = SESSION_DATE + datetime.timedelta(days=60)
+        structure = OptionStructure(
+            (OptionLeg("SPY", "call", 100.0, expiration, 1, 100),),
+            100000.0,
+            14,
+        )
+        costs = transform_costs(
+            structure,
+            make_cost_selection(structure)[0],
+            calculation_id="scenario-valuation-costs",
+        )
+        tail = make_tail_result()
+        pricing = make_scenario_pricing_result(("call",), structure)
+        scenarios = tuple(record.scenario for record in pricing.records)
+        assumptions = tuple(
+            (scenario, decimal.Decimal("0")) for scenario in scenarios
+        )
+        arguments = (
+            "scenario-valuation-calculation-001",
+            costs,
+            tail,
+            pricing,
+            scenarios,
+            False,
+            assumptions,
+            "explicit_fixture_exit_cost_v0.1",
+            CALCULATED_AT + datetime.timedelta(seconds=10),
+        )
+        with self.assertRaises(TypeError):
+            transform_scenario_valuation(*arguments[:4], list(scenarios),
+                                         *arguments[5:])
+        with self.assertRaises(ValueError):
+            transform_scenario_valuation(
+                *arguments[:6],
+                tuple((scenario, decimal.Decimal("-1"))
+                      for scenario in scenarios),
+                *arguments[7:],
+            )
+        with self.assertRaises(ValueError):
+            transform_scenario_valuation(
+                *arguments[:7],
+                " noncanonical ",
+                arguments[8],
+            )
+        forged_tail = TailPricingTransformationResult(
+            tail.records,
+            dataclasses.replace(
+                tail.lineage, methodology_version="v9"
+            ),
+        )
+        with self.assertRaises(ValueError):
+            transform_scenario_valuation(
+                arguments[0],
+                costs,
+                forged_tail,
+                *arguments[3:],
+            )
+
+    def test_dependency_failures_precede_downstream_constructors(self):
+        expiration = SESSION_DATE + datetime.timedelta(days=60)
+        structure = OptionStructure(
+            (OptionLeg("SPY", "call", 100.0, expiration, 1, 100),),
+            100000.0,
+            14,
+        )
+        costs = transform_costs(
+            structure,
+            make_cost_selection(structure)[0],
+            calculation_id="scenario-valuation-costs",
+        )
+        tail = make_tail_result()
+        pricing = make_scenario_pricing_result(("call",), structure)
+        scenarios = tuple(record.scenario for record in pricing.records)
+        assumptions = tuple(
+            (scenario, decimal.Decimal("0")) for scenario in scenarios
+        )
+        forged_costs = object.__new__(StructureCostsTransformationResult)
+        object.__setattr__(forged_costs, "record", costs.record)
+        object.__setattr__(
+            forged_costs,
+            "lineage",
+            dataclasses.replace(costs.lineage, methodology_version="v0.1"),
+        )
+        forged_tail = TailPricingTransformationResult(
+            tail.records,
+            dataclasses.replace(tail.lineage, methodology_version="v9"),
+        )
+        forged_pricing = object.__new__(ScenarioPricingCalculationResult)
+        object.__setattr__(forged_pricing, "records", pricing.records)
+        object.__setattr__(
+            forged_pricing,
+            "lineage",
+            dataclasses.replace(pricing.lineage, methodology_version="v9"),
+        )
+        for dependency_index, forged in (
+            (1, forged_costs),
+            (2, forged_tail),
+            (3, forged_pricing),
+        ):
+            arguments = [
+                "scenario-valuation-calculation-001",
+                costs,
+                tail,
+                pricing,
+                scenarios,
+                False,
+                assumptions,
+                "explicit_fixture_exit_cost_v0.1",
+                CALCULATED_AT + datetime.timedelta(seconds=10),
+            ]
+            arguments[dependency_index] = forged
+            with self.subTest(dependency_index=dependency_index):
+                with ExitStack() as stack:
+                    for name in (
+                        "LegVolatilityInput",
+                        "ScenarioResult",
+                        "ScenarioValuationTransformationResult",
+                    ):
+                        stack.enter_context(mock.patch.object(
+                            transformations,
+                            name,
+                            side_effect=AssertionError(f"{name} called"),
+                        ))
+                    with self.assertRaises(ValueError):
+                        transform_scenario_valuation(*arguments)
+
+    def test_decimal_context_preserved_and_scope_sentinels(self):
+        context = decimal.getcontext()
+        original = context.copy()
+        context.prec = 9
+        context.rounding = decimal.ROUND_FLOOR
+        context.clear_flags()
+        configured = (
+            context.prec,
+            context.rounding,
+            tuple(context.traps.items()),
+            tuple(context.flags.items()),
+            context.Emin,
+            context.Emax,
+            context.capitals,
+            context.clamp,
+        )
+        try:
+            result = make_scenario_valuation_result()
+            self.assertEqual(
+                (
+                    context.prec,
+                    context.rounding,
+                    tuple(context.traps.items()),
+                    tuple(context.flags.items()),
+                    context.Emin,
+                    context.Emax,
+                    context.capitals,
+                    context.clamp,
+                ),
+                configured,
+            )
+            self.assertTrue(result.records)
+        finally:
+            decimal.setcontext(original)
+
+        blocked = (
+            "transform_structure_costs",
+            "transform_tail_pricing",
+            "transform_volatility_environment",
+            "black_scholes",
+            "binomial",
+            "CandidateResearchRecord",
+            "screening",
+            "recommendation",
+            "position_sizing",
+            "execution",
+        )
+        result = make_scenario_valuation_result()
+        with ExitStack() as stack:
+            for name in blocked:
+                stack.enter_context(mock.patch.object(
+                    transformations,
+                    name,
+                    side_effect=AssertionError(f"{name} called"),
+                    create=True,
+                ))
+            ScenarioValuationTransformationResult(
+                result.records, result.lineage
+            )
 
 
 if __name__ == "__main__":

@@ -61,7 +61,7 @@ from .evidence import (
     TermVolatilityPoint,
     VolatilityEnvironment,
 )
-from .report import StructureLiquidity
+from .report import LegVolatilityInput, ScenarioResult, StructureLiquidity
 
 
 __all__ = (
@@ -81,6 +81,8 @@ __all__ = (
     "ScenarioPricingLegCalculation",
     "NonExpirationScenarioPricingCalculation",
     "ScenarioPricingCalculationResult",
+    "ScenarioValuationTransformationResult",
+    "transform_scenario_valuation",
 )
 
 
@@ -7275,3 +7277,3179 @@ class ScenarioPricingCalculationResult:
             raise ValueError(
                 "lineage quality flags must equal the complete expected set"
             )
+
+
+_TAIL_PRICING_PARAMETER_KEYS = {
+    "tail_output_architecture",
+    "candidate_universe",
+    "delta_convention",
+    "target_deltas",
+    "delta_point_selection_rule",
+    "interpolation_rule",
+    "delta_tie_rule",
+    "same_contract_reuse_rule",
+    "atm_dependency",
+    "current_expiration_observations",
+    "historical_expected_session_dates",
+    "historical_eod_semantics",
+    "historical_matched_tenor_rule",
+    "historical_observations_by_tenor",
+    "current_skew_formula",
+    "skew_percentile_formula",
+    "skew_term_structure_ordering",
+    "analytics_methodology",
+    "float_conversion_rule",
+    "volatility_unit",
+}
+_TAIL_CANDIDATE_PARAMETER_KEYS = {
+    "option_type",
+    "strike",
+    "contract_multiplier",
+    "currency",
+    "deliverable_id",
+    "quote_record_id",
+    "iv_record_id",
+    "greeks_record_id",
+    "contract_reference_record_id",
+    "implied_volatility",
+    "signed_delta",
+    "distance_to_25_target",
+    "distance_to_10_target",
+}
+_TAIL_SELECTED_OPTION_PARAMETER_KEYS = {
+    "target_delta",
+    "selected_delta",
+    "distance",
+    "option_type",
+    "strike",
+    "contract_multiplier",
+    "currency",
+    "deliverable_id",
+    "quote_record_id",
+    "iv_record_id",
+    "greeks_record_id",
+    "contract_reference_record_id",
+    "implied_volatility",
+}
+_TAIL_CURRENT_OBSERVATION_PARAMETER_KEYS = {
+    "session_date",
+    "expiration",
+    "tenor_days",
+    "underlying_quote_record_id",
+    "atm_iv",
+    "atm_dependency_selected_call_iv_record_id",
+    "atm_dependency_selected_put_iv_record_id",
+    "candidate_contracts",
+    "selected_put_25",
+    "selected_call_25",
+    "selected_put_10",
+    "selected_call_10",
+    "downside_25_delta_skew",
+    "upside_25_delta_skew",
+    "downside_wing_curvature",
+    "upside_wing_curvature",
+    "skew_percentile",
+    "historical_observation_count",
+}
+_TAIL_HISTORICAL_OBSERVATION_PARAMETER_KEYS = {
+    "session_date",
+    "expiration",
+    "underlying_quote_record_id",
+    "candidate_contracts",
+    "selected_paired_atm_evidence",
+    "atm_iv",
+    "selected_put_25",
+    "selected_call_25",
+    "selected_put_10",
+    "selected_call_10",
+    "put_25_delta_iv",
+    "call_25_delta_iv",
+    "put_10_delta_iv",
+    "call_10_delta_iv",
+    "downside_25_delta_skew",
+    "upside_25_delta_skew",
+    "downside_wing_curvature",
+    "upside_wing_curvature",
+}
+_TAIL_ATM_OBSERVATION_PARAMETER_KEYS = {
+    "candidate_pairs",
+    "expiration",
+    "selected_atm_iv",
+    "selected_call_iv_record_id",
+    "selected_put_iv_record_id",
+    "selected_strike",
+    "session_date",
+    "tenor_days",
+    "underlying_midpoint",
+    "underlying_quote_record_id",
+}
+_TAIL_ATM_CANDIDATE_PAIR_PARAMETER_KEYS = {
+    "strike",
+    "contract_multiplier",
+    "currency",
+    "deliverable_id",
+    "call_quote_record_id",
+    "call_iv_record_id",
+    "call_contract_reference_record_id",
+    "put_quote_record_id",
+    "put_iv_record_id",
+    "put_contract_reference_record_id",
+    "call_implied_volatility",
+    "put_implied_volatility",
+    "paired_implied_volatility",
+    "distance_to_underlying_midpoint",
+}
+_TAIL_SELECTED_ATM_PARAMETER_KEYS = {
+    "underlying_midpoint",
+    "candidate_pairs",
+    "selected_strike",
+    "selected_call_iv_record_id",
+    "selected_put_iv_record_id",
+    "selected_atm_iv",
+}
+_TAIL_ATM_DEPENDENCY_PARAMETER_KEYS = {
+    "calculation_id",
+    "calculation_type",
+    "methodology_id",
+    "methodology_version",
+    "calculated_at",
+    "parameters_json",
+    "quality_flags",
+    "input_record_ids",
+    "underlying",
+    "as_of_date",
+    "reference_tenor_days",
+    "historical_observation_count",
+    "term_points",
+    "current_atm_observations",
+    "historical_atm_observations",
+}
+_SCENARIO_VALUATION_PARAMETER_KEYS = {
+    "output_architecture",
+    "supported_structure_scope",
+    "scenario_declaration",
+    "scenario_grid_semantics",
+    "scenario_ordering",
+    "valuation_date_rules",
+    "underlying_shock_rule",
+    "iv_shock_rule",
+    "structure_costs_dependency",
+    "tail_pricing_dependency",
+    "scenario_pricing_dependency",
+    "cross_dependency_consistency",
+    "base_underlying_rule",
+    "base_iv_rule",
+    "nonexpiration_valuation_rule",
+    "expiration_payoff_rule",
+    "entry_cost_rule",
+    "exit_cost_assumptions",
+    "net_liquidation_rule",
+    "bounded_loss_rule",
+    "record_methodology_disclosure",
+    "calculation_values",
+    "lineage_union_rule",
+    "float_conversion_rule",
+    "limitations",
+}
+_SCENARIO_METHODOLOGY_KEYS = {
+    "schema_version",
+    "valuation_source",
+    "scenario_identity",
+    "structure_costs_dependency",
+    "tail_pricing_dependency",
+    "scenario_pricing_dependency",
+    "provider_disclosure",
+    "nonexpiration_rule",
+    "expiration_rule",
+    "base_underlying_source",
+    "base_iv_source",
+    "entry_cost_rule",
+    "exit_cost_rule",
+    "float_conversion_rule",
+    "limitations",
+}
+_SCENARIO_GRID_MOVES = tuple(
+    decimal.Decimal(value)
+    for value in ("-0.20", "-0.10", "-0.05", "0", "0.05", "0.10", "0.20")
+)
+_SCENARIO_GRID_IV_CHANGES = tuple(
+    decimal.Decimal(value) for value in ("-0.20", "0", "0.20", "0.50")
+)
+_SCENARIO_TIME_RANK = {
+    "immediate": 0,
+    "days_forward": 1,
+    "holding_horizon": 2,
+    "expiration": 3,
+}
+_SCENARIO_VALUATION_PROPAGATED_FLAGS = {
+    CalculationQualityFlag.INTERPOLATED,
+    CalculationQualityFlag.ADJUSTED_INPUT_USED,
+    CalculationQualityFlag.CORRECTION_SELECTED,
+    CalculationQualityFlag.COMPOSITE_INPUT_USED,
+}
+
+
+def _decode_strict_tagged_parameters(
+    parameters_json: object, expected_keys: set, label: str
+) -> dict:
+    if type(parameters_json) is not str:
+        raise TypeError(f"{label} parameters_json must have exact type str")
+
+    def reject_float(_value: str) -> object:
+        raise ValueError(f"{label} parameters must not contain JSON floats")
+
+    def reject_constant(_value: str) -> object:
+        raise ValueError(f"{label} parameters contain a nonfinite constant")
+
+    def unique_object(pairs: list) -> dict:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"{label} parameters contain a duplicate key")
+            result[key] = value
+        return result
+
+    try:
+        raw = json.loads(
+            parameters_json,
+            parse_float=reject_float,
+            parse_constant=reject_constant,
+            object_pairs_hook=unique_object,
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as error:
+        raise ValueError(f"{label} parameters_json is invalid") from error
+
+    def decode(value: object) -> object:
+        if value is None or type(value) in (bool, int, str):
+            return value
+        if type(value) is list:
+            return tuple(decode(item) for item in value)
+        if type(value) is not dict or len(value) != 1:
+            raise ValueError(f"{label} parameters use unsupported JSON")
+        tag, payload = next(iter(value.items()))
+        if tag == "$map":
+            if type(payload) is not list:
+                raise ValueError("$map payload must be a list")
+            result = {}
+            for pair in payload:
+                if (
+                    type(pair) is not list
+                    or len(pair) != 2
+                    or type(pair[0]) is not str
+                    or pair[0] in result
+                ):
+                    raise ValueError("$map entries must have unique string keys")
+                result[pair[0]] = decode(pair[1])
+            return result
+        if tag == "$list":
+            if type(payload) is not list:
+                raise ValueError("$list payload must be a list")
+            return tuple(decode(item) for item in payload)
+        if tag == "$decimal":
+            if type(payload) is not str:
+                raise ValueError("$decimal payload must be a string")
+            try:
+                result = decimal.Decimal(payload)
+            except decimal.InvalidOperation as error:
+                raise ValueError("$decimal payload is invalid") from error
+            if not result.is_finite():
+                raise ValueError("$decimal payload must be finite")
+            return result
+        if tag == "$date":
+            if type(payload) is not str:
+                raise ValueError("$date payload must be a string")
+            try:
+                result = datetime.date.fromisoformat(payload)
+            except ValueError as error:
+                raise ValueError("$date payload is invalid") from error
+            if result.isoformat() != payload:
+                raise ValueError("$date payload is noncanonical")
+            return result
+        if tag == "$datetime":
+            if type(payload) is not str or not payload.endswith("Z"):
+                raise ValueError("$datetime payload must be canonical UTC")
+            try:
+                result = datetime.datetime.fromisoformat(
+                    payload[:-1] + "+00:00"
+                )
+            except ValueError as error:
+                raise ValueError("$datetime payload is invalid") from error
+            return result
+        raise ValueError(f"{label} parameters contain an unknown tag")
+
+    decoded = decode(raw)
+    if type(decoded) is not dict:
+        raise ValueError(f"{label} parameters root must be a tagged map")
+    if set(decoded) != expected_keys:
+        raise ValueError(f"{label} parameters have the wrong exact schema")
+    try:
+        if canonicalize_lineage_parameters(decoded) != parameters_json:
+            raise ValueError(f"{label} parameters are not byte-canonical")
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{label} parameters are not canonical") from error
+    return decoded
+
+
+def _tail_schema_map(
+    value: object, keys: set, label: str
+) -> dict:
+    if type(value) is not dict or set(value) != keys:
+        raise ValueError(f"{label} has the wrong exact schema")
+    return value
+
+
+def _tail_schema_tuple(value: object, label: str) -> tuple:
+    if type(value) is not tuple:
+        raise ValueError(f"{label} must have exact type tuple")
+    return value
+
+
+def _tail_schema_string(value: object, label: str) -> str:
+    if (
+        type(value) is not str
+        or not value
+        or value != value.strip()
+    ):
+        raise ValueError(f"{label} must be a canonical nonempty string")
+    return value
+
+
+def _tail_schema_decimal(
+    value: object, label: str, *, positive: bool = False
+) -> decimal.Decimal:
+    if (
+        type(value) is not decimal.Decimal
+        or not value.is_finite()
+        or (positive and value <= 0)
+    ):
+        raise ValueError(f"{label} must be an exact finite Decimal")
+    return value
+
+
+def _tail_schema_candidate_order_key(candidate: dict) -> tuple:
+    return (
+        candidate["option_type"],
+        candidate["strike"],
+        candidate["contract_multiplier"],
+        candidate["currency"],
+        (
+            (0, "")
+            if candidate["deliverable_id"] is None
+            else (1, candidate["deliverable_id"])
+        ),
+    )
+
+
+def _validate_tail_candidate_parameter(
+    value: object, label: str
+) -> dict:
+    candidate = _tail_schema_map(
+        value, _TAIL_CANDIDATE_PARAMETER_KEYS, label
+    )
+    if candidate["option_type"] not in {"call", "put"}:
+        raise ValueError(f"{label} option_type is invalid")
+    _tail_schema_decimal(candidate["strike"], f"{label} strike", positive=True)
+    if (
+        type(candidate["contract_multiplier"]) is not int
+        or candidate["contract_multiplier"] <= 0
+    ):
+        raise ValueError(f"{label} contract_multiplier is invalid")
+    _tail_schema_string(candidate["currency"], f"{label} currency")
+    if (
+        candidate["deliverable_id"] is not None
+        and type(candidate["deliverable_id"]) is not str
+    ):
+        raise ValueError(f"{label} deliverable_id is invalid")
+    for key in (
+        "quote_record_id",
+        "iv_record_id",
+        "greeks_record_id",
+        "contract_reference_record_id",
+    ):
+        _tail_schema_string(candidate[key], f"{label} {key}")
+    _tail_schema_decimal(
+        candidate["implied_volatility"],
+        f"{label} implied_volatility",
+        positive=True,
+    )
+    signed_delta = _tail_schema_decimal(
+        candidate["signed_delta"], f"{label} signed_delta"
+    )
+    if (
+        candidate["option_type"] == "call"
+        and not decimal.Decimal("0") < signed_delta < decimal.Decimal("1")
+    ) or (
+        candidate["option_type"] == "put"
+        and not decimal.Decimal("-1") < signed_delta < decimal.Decimal("0")
+    ):
+        raise ValueError(f"{label} signed_delta has the wrong sign")
+    for key in ("distance_to_25_target", "distance_to_10_target"):
+        distance = _tail_schema_decimal(candidate[key], f"{label} {key}")
+        if distance < 0:
+            raise ValueError(f"{label} {key} must be nonnegative")
+    return candidate
+
+
+def _validate_tail_selected_option_parameter(
+    value: object,
+    candidates: tuple,
+    name: str,
+    label: str,
+) -> dict:
+    selected = _tail_schema_map(
+        value, _TAIL_SELECTED_OPTION_PARAMETER_KEYS, label
+    )
+    expected_side = "call" if name.startswith("call") else "put"
+    expected_target = _TAIL_TARGETS[name]
+    if (
+        selected["option_type"] != expected_side
+        or selected["target_delta"] != expected_target
+    ):
+        raise ValueError(f"{label} target identity is invalid")
+    _tail_schema_decimal(selected["strike"], f"{label} strike", positive=True)
+    if (
+        type(selected["contract_multiplier"]) is not int
+        or selected["contract_multiplier"] <= 0
+    ):
+        raise ValueError(f"{label} contract_multiplier is invalid")
+    _tail_schema_string(selected["currency"], f"{label} currency")
+    if (
+        selected["deliverable_id"] is not None
+        and type(selected["deliverable_id"]) is not str
+    ):
+        raise ValueError(f"{label} deliverable_id is invalid")
+    for key in (
+        "quote_record_id",
+        "iv_record_id",
+        "greeks_record_id",
+        "contract_reference_record_id",
+    ):
+        _tail_schema_string(selected[key], f"{label} {key}")
+    selected_delta = _tail_schema_decimal(
+        selected["selected_delta"], f"{label} selected_delta"
+    )
+    _tail_schema_decimal(
+        selected["implied_volatility"],
+        f"{label} implied_volatility",
+        positive=True,
+    )
+    distance = _tail_schema_decimal(
+        selected["distance"], f"{label} distance"
+    )
+    if distance != (selected_delta - expected_target).copy_abs():
+        raise ValueError(f"{label} distance is inconsistent")
+    candidate_matches = tuple(
+        candidate
+        for candidate in candidates
+        if all(
+            candidate[candidate_key] == selected[selected_key]
+            for candidate_key, selected_key in (
+                ("option_type", "option_type"),
+                ("strike", "strike"),
+                ("contract_multiplier", "contract_multiplier"),
+                ("currency", "currency"),
+                ("deliverable_id", "deliverable_id"),
+                ("quote_record_id", "quote_record_id"),
+                ("iv_record_id", "iv_record_id"),
+                ("greeks_record_id", "greeks_record_id"),
+                (
+                    "contract_reference_record_id",
+                    "contract_reference_record_id",
+                ),
+                ("implied_volatility", "implied_volatility"),
+                ("signed_delta", "selected_delta"),
+            )
+        )
+    )
+    if len(candidate_matches) != 1:
+        raise ValueError(f"{label} must match exactly one candidate")
+    distance_key = (
+        "distance_to_25_target"
+        if name.endswith("_25")
+        else "distance_to_10_target"
+    )
+    if candidate_matches[0][distance_key] != distance:
+        raise ValueError(f"{label} candidate distance is inconsistent")
+    return selected
+
+
+def _validate_tail_atm_candidate_pair(
+    value: object, label: str
+) -> dict:
+    pair = _tail_schema_map(
+        value, _TAIL_ATM_CANDIDATE_PAIR_PARAMETER_KEYS, label
+    )
+    _tail_schema_decimal(pair["strike"], f"{label} strike", positive=True)
+    if (
+        type(pair["contract_multiplier"]) is not int
+        or pair["contract_multiplier"] <= 0
+    ):
+        raise ValueError(f"{label} contract_multiplier is invalid")
+    _tail_schema_string(pair["currency"], f"{label} currency")
+    if (
+        pair["deliverable_id"] is not None
+        and type(pair["deliverable_id"]) is not str
+    ):
+        raise ValueError(f"{label} deliverable_id is invalid")
+    for key in (
+        "call_quote_record_id",
+        "call_iv_record_id",
+        "call_contract_reference_record_id",
+        "put_quote_record_id",
+        "put_iv_record_id",
+        "put_contract_reference_record_id",
+    ):
+        _tail_schema_string(pair[key], f"{label} {key}")
+    call_iv = _tail_schema_decimal(
+        pair["call_implied_volatility"],
+        f"{label} call_implied_volatility",
+        positive=True,
+    )
+    put_iv = _tail_schema_decimal(
+        pair["put_implied_volatility"],
+        f"{label} put_implied_volatility",
+        positive=True,
+    )
+    paired_iv = _tail_schema_decimal(
+        pair["paired_implied_volatility"],
+        f"{label} paired_implied_volatility",
+        positive=True,
+    )
+    distance = _tail_schema_decimal(
+        pair["distance_to_underlying_midpoint"],
+        f"{label} distance_to_underlying_midpoint",
+    )
+    if distance < 0 or paired_iv != _exact_two_value_mean(call_iv, put_iv):
+        raise ValueError(f"{label} calculated values are inconsistent")
+    return pair
+
+
+def _tail_atm_pair_order_key(pair: dict) -> tuple:
+    return (
+        pair["strike"],
+        pair["contract_multiplier"],
+        pair["currency"],
+        (
+            (0, "")
+            if pair["deliverable_id"] is None
+            else (1, pair["deliverable_id"])
+        ),
+        pair["call_iv_record_id"],
+        pair["put_iv_record_id"],
+    )
+
+
+def _validate_tail_selected_atm_parameter(
+    value: object, label: str
+) -> dict:
+    selected = _tail_schema_map(
+        value, _TAIL_SELECTED_ATM_PARAMETER_KEYS, label
+    )
+    midpoint = _tail_schema_decimal(
+        selected["underlying_midpoint"],
+        f"{label} underlying_midpoint",
+        positive=True,
+    )
+    pairs = _tail_schema_tuple(
+        selected["candidate_pairs"], f"{label} candidate_pairs"
+    )
+    if not pairs:
+        raise ValueError(f"{label} candidate_pairs must not be empty")
+    verified_pairs = tuple(
+        _validate_tail_atm_candidate_pair(
+            pair, f"{label} candidate_pairs[{index}]"
+        )
+        for index, pair in enumerate(pairs)
+    )
+    ordering = tuple(
+        _tail_atm_pair_order_key(pair) for pair in verified_pairs
+    )
+    if any(
+        current <= previous
+        for previous, current in zip(ordering, ordering[1:])
+    ):
+        raise ValueError(f"{label} candidate_pairs ordering is invalid")
+    selected_strike = _tail_schema_decimal(
+        selected["selected_strike"],
+        f"{label} selected_strike",
+        positive=True,
+    )
+    selected_atm_iv = _tail_schema_decimal(
+        selected["selected_atm_iv"],
+        f"{label} selected_atm_iv",
+        positive=True,
+    )
+    call_id = _tail_schema_string(
+        selected["selected_call_iv_record_id"],
+        f"{label} selected_call_iv_record_id",
+    )
+    put_id = _tail_schema_string(
+        selected["selected_put_iv_record_id"],
+        f"{label} selected_put_iv_record_id",
+    )
+    matches = tuple(
+        pair for pair in verified_pairs
+        if (
+            pair["strike"] == selected_strike
+            and pair["call_iv_record_id"] == call_id
+            and pair["put_iv_record_id"] == put_id
+            and pair["paired_implied_volatility"] == selected_atm_iv
+            and pair["distance_to_underlying_midpoint"]
+            == (pair["strike"] - midpoint).copy_abs()
+        )
+    )
+    if len(matches) != 1:
+        raise ValueError(f"{label} selection does not match one candidate pair")
+    return selected
+
+
+def _validate_tail_atm_observation_parameter(
+    value: object, label: str
+) -> dict:
+    observation = _tail_schema_map(
+        value, _TAIL_ATM_OBSERVATION_PARAMETER_KEYS, label
+    )
+    session_date = observation["session_date"]
+    expiration = observation["expiration"]
+    if (
+        type(session_date) is not datetime.date
+        or type(expiration) is not datetime.date
+        or type(observation["tenor_days"]) is not int
+        or observation["tenor_days"] <= 0
+        or (expiration - session_date).days != observation["tenor_days"]
+    ):
+        raise ValueError(f"{label} date and tenor fields are invalid")
+    _tail_schema_string(
+        observation["underlying_quote_record_id"],
+        f"{label} underlying_quote_record_id",
+    )
+    selected = _validate_tail_selected_atm_parameter(
+        {
+            key: observation[key]
+            for key in _TAIL_SELECTED_ATM_PARAMETER_KEYS
+        },
+        label,
+    )
+    if (
+        selected["selected_strike"] != observation["selected_strike"]
+        or selected["selected_atm_iv"] != observation["selected_atm_iv"]
+    ):
+        raise ValueError(f"{label} ATM selection is inconsistent")
+    return observation
+
+
+def _validate_tail_candidate_collection(
+    value: object, label: str
+) -> tuple:
+    candidates = _tail_schema_tuple(value, label)
+    if not candidates:
+        raise ValueError(f"{label} must not be empty")
+    verified = tuple(
+        _validate_tail_candidate_parameter(
+            candidate, f"{label}[{index}]"
+        )
+        for index, candidate in enumerate(candidates)
+    )
+    ordering = tuple(
+        _tail_schema_candidate_order_key(candidate)
+        for candidate in verified
+    )
+    if any(
+        current <= previous
+        for previous, current in zip(ordering, ordering[1:])
+    ):
+        raise ValueError(f"{label} ordering is invalid")
+    return verified
+
+
+def _validate_tail_wing_selections(
+    observation: dict, candidates: tuple, label: str
+) -> dict:
+    selections = {
+        name: _validate_tail_selected_option_parameter(
+            observation[f"selected_{name}"],
+            candidates,
+            name,
+            f"{label} selected_{name}",
+        )
+        for name in ("put_25", "call_25", "put_10", "call_10")
+    }
+    for side in ("put", "call"):
+        selected_25 = selections[f"{side}_25"]
+        selected_10 = selections[f"{side}_10"]
+        if (
+            selected_25["iv_record_id"] == selected_10["iv_record_id"]
+            or not (
+                selected_10["selected_delta"].copy_abs()
+                < selected_25["selected_delta"].copy_abs()
+            )
+        ):
+            raise ValueError(
+                f"{label} same-side selections are inconsistent"
+            )
+    return selections
+
+
+def _validate_tail_pricing_parameter_schema(decoded: dict) -> None:
+    candidate_universe = _tail_schema_map(
+        decoded["candidate_universe"],
+        {
+            "declared_complete",
+            "scope",
+            "current_semantics",
+            "historical_semantics",
+        },
+        "TailPricing candidate_universe",
+    )
+    if candidate_universe != {
+        "declared_complete": True,
+        "scope": (
+            "current_delta_and_historical_atm_and_delta_candidate_universes"
+        ),
+        "current_semantics": (
+            "no_eligible_nearest_signed_delta_candidate_omitted"
+        ),
+        "historical_semantics": (
+            "no_eligible_paired_atm_or_nearest_signed_delta_candidate_omitted"
+        ),
+    }:
+        raise ValueError("TailPricing candidate_universe is invalid")
+
+    _validate_delta_methodology(decoded["delta_convention"])
+    if decoded["target_deltas"] != dict(_TAIL_TARGETS):
+        raise ValueError("TailPricing target_deltas are invalid")
+    fixed_values = {
+        "tail_output_architecture": "ordered_tail_pricing_slice_tuple",
+        "delta_point_selection_rule": "nearest_observed_signed_delta",
+        "interpolation_rule": "none",
+        "delta_tie_rule": (
+            "reject_equal_distance_or_remaining_economic_ambiguity"
+        ),
+        "same_contract_reuse_rule": (
+            "reject_same_economic_contract_across_10_and_25_same_side"
+        ),
+        "historical_matched_tenor_rule": (
+            "expiration_minus_session_date_calendar_days_equals_current_tenor"
+        ),
+        "current_skew_formula": "put_25_delta_iv_minus_atm_iv",
+        "skew_percentile_formula": (
+            "inclusive_count_historical_downside_25_skew_lte_current_"
+            "divided_by_count"
+        ),
+        "skew_term_structure_ordering": (
+            "ascending_days_to_expiration_then_expiration"
+        ),
+        "float_conversion_rule": (
+            "convert_only_final_tail_pricing_record_values_to_finite_float"
+        ),
+        "volatility_unit": "annualized_decimal_ratio",
+    }
+    if any(decoded[key] != value for key, value in fixed_values.items()):
+        raise ValueError("TailPricing fixed methodology is invalid")
+
+    eod = _tail_schema_map(
+        decoded["historical_eod_semantics"],
+        {"declared", "methodology", "sample_semantics", "scope"},
+        "TailPricing historical_eod_semantics",
+    )
+    if (
+        eod["declared"] is not True
+        or eod["sample_semantics"]
+        != "caller_declared_daily_eod_observation_sample"
+        or eod["scope"]
+        != "every_historical_session_and_tenor_selection"
+    ):
+        raise ValueError("TailPricing historical EOD semantics are invalid")
+    _tail_schema_string(
+        eod["methodology"], "TailPricing historical EOD methodology"
+    )
+
+    analytics = _tail_schema_map(
+        decoded["analytics_methodology"],
+        {
+            "iv_model_name",
+            "iv_model_version",
+            "iv_rate_input_description",
+            "iv_dividend_input_description",
+            "iv_unit_convention",
+            "greeks_model_name",
+            "greeks_model_version",
+            "greeks_rate_input_description",
+            "greeks_dividend_input_description",
+            "greeks_unit_convention",
+        },
+        "TailPricing analytics_methodology",
+    )
+    for key, value in analytics.items():
+        _tail_schema_string(
+            value, f"TailPricing analytics_methodology {key}"
+        )
+    if analytics["iv_unit_convention"] != "annualized_decimal_ratio":
+        raise ValueError("TailPricing IV unit convention is invalid")
+
+    expected_dates = _tail_schema_tuple(
+        decoded["historical_expected_session_dates"],
+        "TailPricing historical_expected_session_dates",
+    )
+    if (
+        not expected_dates
+        or any(type(item) is not datetime.date for item in expected_dates)
+        or tuple(sorted(set(expected_dates))) != expected_dates
+    ):
+        raise ValueError(
+            "TailPricing historical expected dates are not canonical"
+        )
+
+    atm_dependency = _tail_schema_map(
+        decoded["atm_dependency"],
+        _TAIL_ATM_DEPENDENCY_PARAMETER_KEYS,
+        "TailPricing atm_dependency",
+    )
+    for key in (
+        "calculation_id",
+        "parameters_json",
+        "underlying",
+    ):
+        _tail_schema_string(
+            atm_dependency[key], f"TailPricing atm_dependency {key}"
+        )
+    if (
+        atm_dependency["calculation_type"] != "volatility_environment"
+        or atm_dependency["methodology_id"]
+        != "paired-atm-volatility-environment"
+        or atm_dependency["methodology_version"] != "v0.1"
+        or type(atm_dependency["calculated_at"]) is not datetime.datetime
+        or atm_dependency["calculated_at"].utcoffset()
+        != datetime.timedelta(0)
+        or type(atm_dependency["as_of_date"]) is not datetime.date
+        or type(atm_dependency["reference_tenor_days"]) is not int
+        or atm_dependency["reference_tenor_days"] <= 0
+        or type(atm_dependency["historical_observation_count"]) is not int
+        or atm_dependency["historical_observation_count"] <= 0
+    ):
+        raise ValueError("TailPricing atm_dependency fields are invalid")
+    _validate_volatility_fixed_methodology(
+        _decode_volatility_parameters(atm_dependency["parameters_json"])
+    )
+    input_ids = _tail_schema_tuple(
+        atm_dependency["input_record_ids"],
+        "TailPricing atm_dependency input_record_ids",
+    )
+    flags = _tail_schema_tuple(
+        atm_dependency["quality_flags"],
+        "TailPricing atm_dependency quality_flags",
+    )
+    if (
+        not input_ids
+        or any(type(item) is not str or not item for item in input_ids)
+        or len(set(input_ids)) != len(input_ids)
+        or any(type(item) is not str or not item for item in flags)
+        or len(set(flags)) != len(flags)
+    ):
+        raise ValueError("TailPricing atm_dependency IDs or flags are invalid")
+    term_points = _tail_schema_tuple(
+        atm_dependency["term_points"],
+        "TailPricing atm_dependency term_points",
+    )
+    term_tenors = []
+    for index, point_value in enumerate(term_points):
+        point = _tail_schema_map(
+            point_value,
+            {"tenor_days", "atm_iv_float_repr"},
+            f"TailPricing atm_dependency term_points[{index}]",
+        )
+        if (
+            type(point["tenor_days"]) is not int
+            or point["tenor_days"] <= 0
+        ):
+            raise ValueError("TailPricing term-point tenor is invalid")
+        _tail_schema_string(
+            point["atm_iv_float_repr"],
+            "TailPricing term-point ATM IV representation",
+        )
+        term_tenors.append(point["tenor_days"])
+    if tuple(sorted(set(term_tenors))) != tuple(term_tenors):
+        raise ValueError("TailPricing term-point ordering is invalid")
+
+    current_atm = _tail_schema_tuple(
+        atm_dependency["current_atm_observations"],
+        "TailPricing atm_dependency current_atm_observations",
+    )
+    current_atm = tuple(
+        _validate_tail_atm_observation_parameter(
+            item, f"TailPricing current ATM observation[{index}]"
+        )
+        for index, item in enumerate(current_atm)
+    )
+    if tuple(item["tenor_days"] for item in current_atm) != tuple(term_tenors):
+        raise ValueError("TailPricing current ATM ordering is invalid")
+    historical_atm = _tail_schema_tuple(
+        atm_dependency["historical_atm_observations"],
+        "TailPricing atm_dependency historical_atm_observations",
+    )
+    historical_atm = tuple(
+        _validate_tail_atm_observation_parameter(
+            item, f"TailPricing historical ATM observation[{index}]"
+        )
+        for index, item in enumerate(historical_atm)
+    )
+    if (
+        len(historical_atm)
+        != atm_dependency["historical_observation_count"]
+        or tuple(item["session_date"] for item in historical_atm)
+        != expected_dates
+        or any(
+            item["tenor_days"]
+            != atm_dependency["reference_tenor_days"]
+            for item in historical_atm
+        )
+    ):
+        raise ValueError("TailPricing historical ATM observations are invalid")
+
+    current = _tail_schema_tuple(
+        decoded["current_expiration_observations"],
+        "TailPricing current_expiration_observations",
+    )
+    if not current:
+        raise ValueError(
+            "TailPricing current_expiration_observations must not be empty"
+        )
+    current_order = []
+    current_by_tenor = {}
+    for index, item_value in enumerate(current):
+        label = f"TailPricing current observation[{index}]"
+        observation = _tail_schema_map(
+            item_value, _TAIL_CURRENT_OBSERVATION_PARAMETER_KEYS, label
+        )
+        if (
+            type(observation["session_date"]) is not datetime.date
+            or type(observation["expiration"]) is not datetime.date
+            or type(observation["tenor_days"]) is not int
+            or observation["tenor_days"] <= 0
+            or (
+                observation["expiration"] - observation["session_date"]
+            ).days != observation["tenor_days"]
+            or type(observation["historical_observation_count"]) is not int
+            or observation["historical_observation_count"]
+            != len(expected_dates)
+        ):
+            raise ValueError(f"{label} date or count fields are invalid")
+        _tail_schema_string(
+            observation["underlying_quote_record_id"],
+            f"{label} underlying_quote_record_id",
+        )
+        candidates = _validate_tail_candidate_collection(
+            observation["candidate_contracts"],
+            f"{label} candidate_contracts",
+        )
+        selections = _validate_tail_wing_selections(
+            observation, candidates, label
+        )
+        for key in (
+            "atm_iv",
+            "downside_25_delta_skew",
+            "upside_25_delta_skew",
+            "downside_wing_curvature",
+            "upside_wing_curvature",
+            "skew_percentile",
+        ):
+            _tail_schema_decimal(observation[key], f"{label} {key}")
+        for key in (
+            "atm_dependency_selected_call_iv_record_id",
+            "atm_dependency_selected_put_iv_record_id",
+        ):
+            _tail_schema_string(observation[key], f"{label} {key}")
+        expected_metrics = _tail_skew_metrics(
+            {
+                name: selections[name]
+                for name in ("put_25", "call_25", "put_10", "call_10")
+            },
+            observation["atm_iv"],
+        )
+        if any(
+            observation[key] != value
+            for key, value in expected_metrics.items()
+        ):
+            raise ValueError(f"{label} tail metrics are inconsistent")
+        current_order.append(
+            (observation["tenor_days"], observation["expiration"])
+        )
+        if observation["tenor_days"] in current_by_tenor:
+            raise ValueError("TailPricing current tenors must be unique")
+        current_by_tenor[observation["tenor_days"]] = observation
+    if tuple(sorted(current_order)) != tuple(current_order):
+        raise ValueError("TailPricing current observation ordering is invalid")
+    if tuple(current_by_tenor) != tuple(term_tenors):
+        raise ValueError("TailPricing current observations differ from ATM term")
+    for atm_item in current_atm:
+        observation = current_by_tenor[atm_item["tenor_days"]]
+        if (
+            observation["session_date"] != atm_item["session_date"]
+            or observation["expiration"] != atm_item["expiration"]
+            or observation["atm_iv"] != atm_item["selected_atm_iv"]
+            or observation["atm_dependency_selected_call_iv_record_id"]
+            != atm_item["selected_call_iv_record_id"]
+            or observation["atm_dependency_selected_put_iv_record_id"]
+            != atm_item["selected_put_iv_record_id"]
+        ):
+            raise ValueError(
+                "TailPricing current observations differ from ATM dependency"
+            )
+
+    historical_groups = _tail_schema_tuple(
+        decoded["historical_observations_by_tenor"],
+        "TailPricing historical_observations_by_tenor",
+    )
+    if len(historical_groups) != len(current):
+        raise ValueError("TailPricing historical tenor cardinality is invalid")
+    historical_atm_by_key = {
+        (item["session_date"], item["tenor_days"]): item
+        for item in historical_atm
+    }
+    group_order = []
+    for group_index, group_value in enumerate(historical_groups):
+        group_label = f"TailPricing historical tenor[{group_index}]"
+        group = _tail_schema_map(
+            group_value,
+            {"current_expiration", "tenor_days", "historical_observations"},
+            group_label,
+        )
+        if (
+            type(group["current_expiration"]) is not datetime.date
+            or type(group["tenor_days"]) is not int
+            or group["tenor_days"] not in current_by_tenor
+            or group["current_expiration"]
+            != current_by_tenor[group["tenor_days"]]["expiration"]
+        ):
+            raise ValueError(f"{group_label} identity is invalid")
+        entries = _tail_schema_tuple(
+            group["historical_observations"],
+            f"{group_label} historical_observations",
+        )
+        if len(entries) != len(expected_dates):
+            raise ValueError(f"{group_label} cardinality is invalid")
+        for entry_index, entry_value in enumerate(entries):
+            label = f"{group_label} observation[{entry_index}]"
+            observation = _tail_schema_map(
+                entry_value,
+                _TAIL_HISTORICAL_OBSERVATION_PARAMETER_KEYS,
+                label,
+            )
+            if (
+                type(observation["session_date"]) is not datetime.date
+                or observation["session_date"] != expected_dates[entry_index]
+                or type(observation["expiration"]) is not datetime.date
+                or (
+                    observation["expiration"] - observation["session_date"]
+                ).days != group["tenor_days"]
+            ):
+                raise ValueError(f"{label} dates are invalid")
+            _tail_schema_string(
+                observation["underlying_quote_record_id"],
+                f"{label} underlying_quote_record_id",
+            )
+            candidates = _validate_tail_candidate_collection(
+                observation["candidate_contracts"],
+                f"{label} candidate_contracts",
+            )
+            selections = _validate_tail_wing_selections(
+                observation, candidates, label
+            )
+            selected_atm = _validate_tail_selected_atm_parameter(
+                observation["selected_paired_atm_evidence"],
+                f"{label} selected_paired_atm_evidence",
+            )
+            atm_item = historical_atm_by_key.get(
+                (observation["session_date"], group["tenor_days"])
+            )
+            if (
+                atm_item is not None
+                and selected_atm
+                != {
+                    key: atm_item[key]
+                    for key in _TAIL_SELECTED_ATM_PARAMETER_KEYS
+                }
+            ):
+                raise ValueError(
+                    f"{label} ATM evidence differs from dependency"
+                )
+            if observation["atm_iv"] != selected_atm["selected_atm_iv"]:
+                raise ValueError(f"{label} ATM IV is inconsistent")
+            for name in ("put_25", "call_25", "put_10", "call_10"):
+                if (
+                    observation[f"{name}_delta_iv"]
+                    != selections[name]["implied_volatility"]
+                ):
+                    raise ValueError(f"{label} selected IV is inconsistent")
+            for key in (
+                "atm_iv",
+                "put_25_delta_iv",
+                "call_25_delta_iv",
+                "put_10_delta_iv",
+                "call_10_delta_iv",
+                "downside_25_delta_skew",
+                "upside_25_delta_skew",
+                "downside_wing_curvature",
+                "upside_wing_curvature",
+            ):
+                _tail_schema_decimal(observation[key], f"{label} {key}")
+            expected_metrics = _tail_skew_metrics(
+                {
+                    name: selections[name]
+                    for name in ("put_25", "call_25", "put_10", "call_10")
+                },
+                observation["atm_iv"],
+            )
+            if any(
+                observation[key] != value
+                for key, value in expected_metrics.items()
+            ):
+                raise ValueError(f"{label} tail metrics are inconsistent")
+        group_order.append(
+            (group["tenor_days"], group["current_expiration"])
+        )
+    if tuple(sorted(group_order)) != tuple(group_order):
+        raise ValueError("TailPricing historical tenor ordering is invalid")
+
+
+def _decode_tail_pricing_parameters(parameters_json: object) -> dict:
+    decoded = _decode_strict_tagged_parameters(
+        parameters_json, _TAIL_PRICING_PARAMETER_KEYS, "3C.7e"
+    )
+    _validate_tail_pricing_parameter_schema(decoded)
+    return decoded
+
+
+def _decode_scenario_valuation_parameters(parameters_json: object) -> dict:
+    return _decode_strict_tagged_parameters(
+        parameters_json, _SCENARIO_VALUATION_PARAMETER_KEYS, "3C.7f2"
+    )
+
+
+def _scenario_identity(scenario: Scenario) -> dict:
+    return {
+        "valuation_time": scenario.valuation_time,
+        "days_forward": scenario.days_forward,
+        "underlying_move": decimal.Decimal(str(scenario.underlying_move)),
+        "iv_change": decimal.Decimal(str(scenario.iv_change)),
+    }
+
+
+def _scenario_identity_tuple(scenario: Scenario) -> tuple:
+    identity = _scenario_identity(scenario)
+    return (
+        identity["valuation_time"],
+        identity["days_forward"],
+        identity["underlying_move"],
+        identity["iv_change"],
+    )
+
+
+def _scenario_valuation_date(
+    structure: OptionStructure,
+    as_of_date: datetime.date,
+    scenario: Scenario,
+) -> datetime.date:
+    try:
+        if scenario.valuation_time == "immediate":
+            return as_of_date
+        if scenario.valuation_time == "days_forward":
+            return as_of_date + datetime.timedelta(days=scenario.days_forward)
+        if scenario.valuation_time == "holding_horizon":
+            return as_of_date + datetime.timedelta(
+                days=structure.expected_holding_days
+            )
+        if scenario.valuation_time == "expiration":
+            return structure.legs[0].expiration
+    except OverflowError as error:
+        raise ValueError("scenario valuation date is outside the date range") from error
+    raise ValueError("scenario valuation_time is unsupported")
+
+
+def _scenario_order_key(
+    structure: OptionStructure,
+    as_of_date: datetime.date,
+    scenario: Scenario,
+) -> tuple:
+    return (
+        _scenario_valuation_date(structure, as_of_date, scenario),
+        _SCENARIO_TIME_RANK[scenario.valuation_time],
+        scenario.days_forward,
+        decimal.Decimal(str(scenario.underlying_move)),
+        decimal.Decimal(str(scenario.iv_change)),
+    )
+
+
+def _finite_float_from_decimal(name: str, value: decimal.Decimal) -> float:
+    try:
+        converted = float(value)
+    except (OverflowError, ValueError) as error:
+        raise ValueError(f"{name} cannot be converted to finite float") from error
+    if not math.isfinite(converted):
+        raise ValueError(f"{name} cannot be converted to finite float")
+    return converted
+
+
+def _calculated_dependency_disclosure(
+    lineage: CalculationLineage, selected: dict
+) -> dict:
+    return {
+        "calculation_id": lineage.calculation_id,
+        "calculation_type": lineage.calculation_type,
+        "methodology_id": lineage.methodology_id,
+        "methodology_version": lineage.methodology_version,
+        "calculated_at": lineage.calculated_at,
+        "parameters_json": lineage.parameters_json,
+        "quality_flags": tuple(flag.value for flag in lineage.quality_flags),
+        "selected": selected,
+    }
+
+
+def _validate_tail_pricing_dependency(
+    value: object,
+) -> Tuple[
+    TailPricingTransformationResult,
+    dict,
+    Tuple[dict, ...],
+]:
+    if type(value) is not TailPricingTransformationResult:
+        raise TypeError(
+            "tail_pricing_result must have exact type "
+            "TailPricingTransformationResult"
+        )
+    verified = TailPricingTransformationResult(value.records, value.lineage)
+    lineage = verified.lineage
+    if (
+        lineage.calculation_type != "tail_pricing"
+        or lineage.methodology_id
+        != "nearest-observed-delta-wing-tail-relative-pricing"
+        or lineage.methodology_version != "v0.1"
+    ):
+        raise ValueError("tail-pricing dependency identity is invalid")
+    if CalculationQualityFlag.INCOMPLETE_INPUT_USED in lineage.quality_flags:
+        raise ValueError("tail-pricing dependency must not use incomplete inputs")
+    decoded = _decode_tail_pricing_parameters(lineage.parameters_json)
+    observations = decoded["current_expiration_observations"]
+    if type(observations) is not tuple:
+        raise TypeError(
+            "current_expiration_observations must have exact type tuple"
+        )
+    if len(observations) != len(verified.records):
+        raise ValueError("tail records and parameters have different counts")
+    if (
+        decoded["volatility_unit"] != "annualized_decimal_ratio"
+        or decoded["interpolation_rule"] != "none"
+        or decoded["skew_term_structure_ordering"]
+        != "ascending_days_to_expiration_then_expiration"
+    ):
+        raise ValueError("tail-pricing fixed methodology is invalid")
+    delta_methodology = canonicalize_lineage_parameters(
+        decoded["delta_convention"]
+    )
+    input_ids = set()
+    for record, observation in zip(verified.records, observations):
+        if type(observation) is not dict:
+            raise TypeError("every current tail observation must be a dict")
+        expected = {
+            "session_date": record.as_of_date,
+            "expiration": record.expiration,
+            "tenor_days": record.days_to_expiration,
+            "atm_iv": record.atm_iv,
+            "selected_put_25": record.put_25_delta_iv,
+            "selected_call_25": record.call_25_delta_iv,
+            "selected_put_10": record.put_10_delta_iv,
+            "selected_call_10": record.call_10_delta_iv,
+            "skew_percentile": record.skew_percentile,
+            "historical_observation_count": (
+                record.skew_history_lookback_observations
+            ),
+        }
+        for key, expected_value in expected.items():
+            actual = observation.get(key)
+            if key.startswith("selected_"):
+                actual = (
+                    actual.get("implied_volatility")
+                    if type(actual) is dict else None
+                )
+            if type(expected_value) is float:
+                actual = (
+                    float(actual)
+                    if type(actual) is decimal.Decimal else actual
+                )
+            if key not in observation or actual != expected_value:
+                raise ValueError(
+                    f"tail record does not correspond to parameter {key}"
+                )
+        if record.delta_methodology != delta_methodology:
+            raise ValueError("tail delta methodology is inconsistent")
+        candidates = observation.get("candidate_contracts")
+        if type(candidates) is not tuple:
+            raise TypeError("candidate_contracts must have exact type tuple")
+        for candidate in candidates:
+            if type(candidate) is not dict:
+                raise TypeError("every tail candidate must have exact type dict")
+            for key in (
+                "quote_record_id",
+                "iv_record_id",
+                "greeks_record_id",
+                "contract_reference_record_id",
+            ):
+                if type(candidate.get(key)) is not str:
+                    raise TypeError("tail candidate record IDs must be strings")
+                input_ids.add(candidate[key])
+        underlying_id = observation.get("underlying_quote_record_id")
+        if type(underlying_id) is not str:
+            raise TypeError("tail underlying record ID must be a string")
+        input_ids.add(underlying_id)
+    historical = decoded["historical_observations_by_tenor"]
+    if type(historical) is not tuple:
+        raise TypeError("historical_observations_by_tenor must be a tuple")
+    for tenor in historical:
+        if type(tenor) is not dict:
+            raise TypeError("historical tenor must be a dict")
+        entries = tenor.get("historical_observations")
+        if type(entries) is not tuple:
+            raise TypeError("historical_observations must be a tuple")
+        for observation in entries:
+            if type(observation) is not dict:
+                raise TypeError("historical observation must be a dict")
+            underlying_id = observation.get("underlying_quote_record_id")
+            if type(underlying_id) is not str:
+                raise TypeError("historical underlying ID must be a string")
+            input_ids.add(underlying_id)
+            candidates = observation.get("candidate_contracts")
+            if type(candidates) is not tuple:
+                raise TypeError("historical candidates must be a tuple")
+            for candidate in candidates:
+                if type(candidate) is not dict:
+                    raise TypeError("historical candidate must be a dict")
+                for key in (
+                    "quote_record_id",
+                    "iv_record_id",
+                    "greeks_record_id",
+                    "contract_reference_record_id",
+                ):
+                    if type(candidate.get(key)) is not str:
+                        raise TypeError("historical candidate ID must be a string")
+                    input_ids.add(candidate[key])
+    atm_dependency = decoded["atm_dependency"]
+    if type(atm_dependency) is not dict:
+        raise TypeError("atm_dependency must have exact type dict")
+    if (
+        atm_dependency.get("underlying") != verified.records[0].underlying
+        or atm_dependency.get("as_of_date") != verified.records[0].as_of_date
+    ):
+        raise ValueError(
+            "tail records do not correspond to dependency underlying and date"
+        )
+    atm_ids = atm_dependency.get("input_record_ids")
+    if type(atm_ids) is not tuple or any(type(item) is not str for item in atm_ids):
+        raise TypeError("atm_dependency input IDs must be a tuple of strings")
+    input_ids.update(atm_ids)
+    if set(item.record_id for item in lineage.inputs) != input_ids:
+        raise ValueError("tail parameter input IDs do not match lineage inputs")
+    expected_flags = {
+        CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+        CalculationQualityFlag.ANNUALIZED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    expected_flags.update(
+        flag
+        for flag in lineage.quality_flags
+        if flag in _SCENARIO_VALUATION_PROPAGATED_FLAGS
+    )
+    if lineage.quality_flags != tuple(
+        flag for flag in CalculationQualityFlag if flag in expected_flags
+    ):
+        raise ValueError("tail-pricing quality flags are invalid")
+    return verified, decoded, observations
+
+
+_SCENARIO_VALUATION_DEPENDENCY_KEYS = {
+    "calculation_id",
+    "calculation_type",
+    "methodology_id",
+    "methodology_version",
+    "calculated_at",
+    "parameters_json",
+    "quality_flags",
+    "selected",
+}
+_SCENARIO_VALUATION_CALCULATION_VALUE_KEYS = {
+    "scenario_identity",
+    "valuation_date",
+    "valuation_source",
+    "base_underlying_exact",
+    "shocked_underlying_exact",
+    "base_leg_ivs_exact",
+    "shocked_leg_ivs_exact",
+    "remaining_calendar_days",
+    "gross_position_value_exact",
+    "exit_cost_assumption_exact",
+    "expiration_per_leg_payoffs_exact",
+    "stable_gross_value_repr",
+    "stable_exit_cost_repr",
+    "stable_base_underlying_repr",
+    "stable_entry_cost_repr",
+    "stable_net_liquidation_repr",
+    "stable_after_cost_pnl_repr",
+    "stable_return_on_entry_cost_repr",
+    "loss_is_within_entry_cost",
+    "pricing_methodology",
+}
+
+
+def _scenario_valuation_exact_dict(
+    value: object, keys: set, label: str
+) -> dict:
+    if type(value) is not dict:
+        raise TypeError(f"{label} must have exact type dict")
+    if set(value) != keys:
+        raise ValueError(f"{label} has the wrong exact schema")
+    return value
+
+
+def _scenario_valuation_exact_tuple(value: object, label: str) -> tuple:
+    if type(value) is not tuple:
+        raise TypeError(f"{label} must have exact type tuple")
+    return value
+
+
+def _scenario_valuation_dependency(
+    value: object,
+    identity: tuple,
+    selected_keys: set,
+    decoder: object,
+    lineage: CalculationLineage,
+    label: str,
+) -> Tuple[dict, dict, dict, set]:
+    dependency = _scenario_valuation_exact_dict(
+        value, _SCENARIO_VALUATION_DEPENDENCY_KEYS, label
+    )
+    for key in (
+        "calculation_id",
+        "calculation_type",
+        "methodology_id",
+        "methodology_version",
+        "parameters_json",
+    ):
+        _scenario_pricing_string(f"{label}.{key}", dependency[key])
+    if tuple(
+        dependency[key]
+        for key in (
+            "calculation_type",
+            "methodology_id",
+            "methodology_version",
+        )
+    ) != identity:
+        raise ValueError(f"{label} has the wrong exact dependency identity")
+    calculated_at = _scenario_pricing_datetime(
+        f"{label}.calculated_at", dependency["calculated_at"]
+    )
+    if calculated_at > lineage.calculated_at:
+        raise ValueError(f"{label} chronology is invalid")
+    flags = _scenario_valuation_exact_tuple(
+        dependency["quality_flags"], f"{label}.quality_flags"
+    )
+    if any(type(item) is not str for item in flags):
+        raise TypeError(f"{label} quality flag values must be exact strings")
+    try:
+        flag_values = tuple(CalculationQualityFlag(item) for item in flags)
+    except ValueError as error:
+        raise ValueError(f"{label} contains an unknown quality flag") from error
+    if (
+        len(set(flag_values)) != len(flag_values)
+        or flag_values != tuple(
+            flag for flag in CalculationQualityFlag if flag in set(flag_values)
+        )
+        or CalculationQualityFlag.INCOMPLETE_INPUT_USED in flag_values
+    ):
+        raise ValueError(f"{label} quality flags are invalid")
+    selected = _scenario_valuation_exact_dict(
+        dependency["selected"], selected_keys, f"{label}.selected"
+    )
+    parameters = decoder(dependency["parameters_json"])
+    return dependency, selected, parameters, set(flag_values)
+
+
+def _scenario_valuation_cost_structure_identity(
+    structure: OptionStructure,
+) -> dict:
+    return {
+        "structure_type": structure.structure_type,
+        "underlying": structure.underlying,
+        "assumed_portfolio_value_repr": repr(
+            structure.assumed_portfolio_value
+        ),
+        "expected_holding_days": structure.expected_holding_days,
+        "legs": tuple({
+            "underlying": leg.underlying,
+            "option_type": leg.option_type,
+            "strike_float_repr": repr(leg.strike),
+            "expiration": leg.expiration,
+            "quantity": leg.quantity,
+            "contract_multiplier": leg.contract_multiplier,
+        } for leg in structure.legs),
+    }
+
+
+def _scenario_valuation_pricing_structure_identity(
+    structure: OptionStructure, as_of_date: datetime.date
+) -> dict:
+    return {
+        "structure_type": structure.structure_type,
+        "legs": tuple(
+            _scenario_pricing_leg_identity(leg) for leg in structure.legs
+        ),
+        "assumed_portfolio_value": decimal.Decimal(
+            str(structure.assumed_portfolio_value)
+        ),
+        "expected_holding_days": structure.expected_holding_days,
+        "as_of_date": as_of_date,
+        "shared_expiration": structure.legs[0].expiration,
+    }
+
+
+def _scenario_valuation_methodology(
+    record: ScenarioResult,
+    values: dict,
+    decoded: dict,
+    scenario_parameters: dict,
+) -> dict:
+    methodology = _decode_strict_tagged_parameters(
+        record.pricing_methodology,
+        _SCENARIO_METHODOLOGY_KEYS,
+        "ScenarioResult methodology",
+    )
+    valuation_source = values["valuation_source"]
+    if valuation_source not in {
+        "authoritative_provider_nonexpiration",
+        "terminal_intrinsic_expiration",
+    }:
+        raise ValueError("record methodology valuation source is invalid")
+    costs = decoded["structure_costs_dependency"]
+    tail = decoded["tail_pricing_dependency"]
+    pricing = decoded["scenario_pricing_dependency"]
+    exit_section = decoded["exit_cost_assumptions"]
+    producer = pricing["selected"]["producer_identity"]
+    if valuation_source == "authoritative_provider_nonexpiration":
+        provider_disclosure = {
+            "status": "active_authoritative_provider_calculated",
+            "calculation_id": pricing["calculation_id"],
+            "producer_name": producer["producer_name"],
+            "producer_version": producer["producer_version"],
+            "request_id": producer["request_id"],
+            "payload_sha256": producer["payload_sha256"],
+            "producer_calculated_at": scenario_parameters[
+                "producer_provenance"
+            ]["producer_calculated_at"],
+            "pricing_model_name": producer["pricing_model_name"],
+            "pricing_model_version": producer["pricing_model_version"],
+            "rate_methodology": scenario_parameters["rate_methodology"],
+            "dividend_methodology": scenario_parameters[
+                "dividend_methodology"
+            ],
+            "surface_treatment": scenario_parameters[
+                "pricing_methodology"
+            ]["volatility_surface_treatment"],
+            "skew_treatment": scenario_parameters["pricing_methodology"][
+                "skew_treatment"
+            ],
+            "term_treatment": scenario_parameters["pricing_methodology"][
+                "term_treatment"
+            ],
+            "interpolation_treatment": scenario_parameters[
+                "pricing_methodology"
+            ]["volatility_interpolation"],
+            "settlement_treatment": scenario_parameters[
+                "pricing_methodology"
+            ]["settlement_treatment"],
+            "remaining_time_rule": scenario_parameters[
+                "remaining_time_rule"
+            ],
+            "position_scaling_rule": scenario_parameters[
+                "position_scaling_rule"
+            ],
+            "numerical_boundary": scenario_parameters[
+                "pricing_methodology"
+            ]["numerical_calculation_boundary"],
+        }
+    else:
+        provider_disclosure = {
+            "status": "inactive_for_expiration",
+            "external_expiration_value": "prohibited",
+        }
+    expected = {
+        "schema_version": "v0.1",
+        "valuation_source": valuation_source,
+        "scenario_identity": _scenario_identity(record.scenario),
+        "structure_costs_dependency": {
+            "calculation_id": costs["calculation_id"],
+            "identity": (
+                "structure_costs",
+                "exact-structure-costs",
+                "v0.2",
+            ),
+        },
+        "tail_pricing_dependency": {
+            "calculation_id": tail["calculation_id"],
+            "identity": (
+                "tail_pricing",
+                "nearest-observed-delta-wing-tail-relative-pricing",
+                "v0.1",
+            ),
+            "use": "context_only",
+        },
+        "scenario_pricing_dependency": {
+            "calculation_id": pricing["calculation_id"],
+            "identity": (
+                "nonexpiration_scenario_pricing",
+                "authoritative-provider-option-scenario-pricing-evidence",
+                "v0.1",
+            ),
+        },
+        "provider_disclosure": provider_disclosure,
+        "nonexpiration_rule": {
+            "active": record.scenario.valuation_time != "expiration",
+            "rule": "consume_authoritative_gross_value_without_repricing",
+        },
+        "expiration_rule": {
+            "active": record.scenario.valuation_time == "expiration",
+            "call_formula": (
+                "max(shocked_underlying-strike,0)*quantity*multiplier"
+            ),
+            "put_formula": (
+                "max(strike-shocked_underlying,0)*quantity*multiplier"
+            ),
+            "iv_effect": "none_base_leg_ivs_retained_for_audit",
+            "external_expiration_value": "prohibited",
+        },
+        "base_underlying_source": (
+            "StructureCosts_v0.2_underlying_price_exact"
+        ),
+        "base_iv_source": (
+            "ScenarioPricing_v0.1_actual_structure_leg_iv_evidence"
+        ),
+        "entry_cost_rule": (
+            "StructureCosts_v0.2_stable_total_entry_cost_float"
+        ),
+        "exit_cost_rule": {
+            "methodology": exit_section["methodology"],
+            "source": "explicit_scenario_specific_decimal_assumption",
+        },
+        "float_conversion_rule": (
+            "convert_base_iv_gross_and_exit_cost_once_to_finite_float"
+        ),
+        "limitations": (
+            "Internal consistency is validated; self-consistent fabricated "
+            "dependency artifacts are not cryptographically authenticated."
+        ),
+    }
+    _scenario_pricing_require_correspondence(
+        "ScenarioResult methodology", methodology, expected
+    )
+    return methodology
+
+
+def _validate_scenario_valuation_records(
+    records: Tuple[ScenarioResult, ...],
+    lineage: CalculationLineage,
+) -> None:
+    if (
+        lineage.calculation_type != "scenario_valuation"
+        or lineage.methodology_id
+        != "hybrid-authoritative-nonexpiration-terminal-intrinsic-after-costs"
+        or lineage.methodology_version != "v0.1"
+    ):
+        raise ValueError("scenario-valuation lineage identity is invalid")
+    decoded = _decode_scenario_valuation_parameters(lineage.parameters_json)
+    first = records[0]
+    structure = first.structure
+    as_of_date = first.as_of_date
+    expiration = structure.legs[0].expiration
+
+    cost_dependency, cost_selected, cost_parameters, cost_flags = (
+        _scenario_valuation_dependency(
+            decoded["structure_costs_dependency"],
+            ("structure_costs", "exact-structure-costs", "v0.2"),
+            {
+                "structure_identity",
+                "as_of_date",
+                "underlying_price_exact",
+                "underlying_price_repr",
+                "quoted_mid_premium_exact",
+                "estimated_spread_cost_exact",
+                "commissions_and_fees_exact",
+                "total_entry_cost_exact",
+                "maximum_loss_exact",
+                "total_entry_cost_repr",
+            },
+            _decode_cost_parameters,
+            lineage,
+            "structure_costs_dependency",
+        )
+    )
+    tail_dependency, tail_selected, tail_parameters, tail_flags = (
+        _scenario_valuation_dependency(
+            decoded["tail_pricing_dependency"],
+            (
+                "tail_pricing",
+                "nearest-observed-delta-wing-tail-relative-pricing",
+                "v0.1",
+            ),
+            {
+                "underlying",
+                "as_of_date",
+                "ordered_expirations",
+                "structure_expiration_match",
+                "matching_candidate_details",
+            },
+            _decode_tail_pricing_parameters,
+            lineage,
+            "tail_pricing_dependency",
+        )
+    )
+    pricing_dependency, pricing_selected, scenario_parameters, pricing_flags = (
+        _scenario_valuation_dependency(
+            decoded["scenario_pricing_dependency"],
+            (
+                "nonexpiration_scenario_pricing",
+                "authoritative-provider-option-scenario-pricing-evidence",
+                "v0.1",
+            ),
+            {
+                "structure_identity",
+                "as_of_date",
+                "base_underlying_price",
+                "actual_leg_iv_tuple",
+                "declared_nonexpiration_scenarios",
+                "producer_identity",
+            },
+            _decode_scenario_pricing_parameters,
+            lineage,
+            "scenario_pricing_dependency",
+        )
+    )
+
+    cost_values = _scenario_valuation_exact_dict(
+        cost_parameters["calculation_values"],
+        _COST_CALCULATION_VALUE_KEYS,
+        "StructureCosts calculation_values",
+    )
+    stable_cost_values = _scenario_valuation_exact_dict(
+        cost_values["stable_record_values"],
+        _COST_STABLE_VALUE_KEYS,
+        "StructureCosts stable_record_values",
+    )
+    expected_cost_selected = {
+        "structure_identity": cost_parameters["structure_identity"],
+        "as_of_date": as_of_date,
+        "underlying_price_exact": cost_values["underlying_price_exact"],
+        "underlying_price_repr": stable_cost_values[
+            "underlying_price_repr"
+        ],
+        "quoted_mid_premium_exact": cost_values[
+            "quoted_mid_premium_exact"
+        ],
+        "estimated_spread_cost_exact": cost_values[
+            "estimated_spread_cost_exact"
+        ],
+        "commissions_and_fees_exact": cost_values[
+            "commissions_and_fees_exact"
+        ],
+        "total_entry_cost_exact": cost_values["total_entry_cost_exact"],
+        "maximum_loss_exact": cost_values["maximum_loss_exact"],
+        "total_entry_cost_repr": stable_cost_values[
+            "total_entry_cost_repr"
+        ],
+    }
+    _scenario_pricing_require_correspondence(
+        "structure_costs_dependency.selected",
+        cost_selected,
+        expected_cost_selected,
+    )
+    _scenario_pricing_require_correspondence(
+        "StructureCosts structure identity",
+        cost_selected["structure_identity"],
+        _scenario_valuation_cost_structure_identity(structure),
+    )
+    if (
+        cost_selected["as_of_date"] != as_of_date
+        or float(cost_selected["underlying_price_exact"])
+        != first.base_underlying_price
+        or cost_selected["underlying_price_repr"]
+        != repr(first.base_underlying_price)
+        or float(cost_selected["total_entry_cost_exact"])
+        != first.entry_cost_basis
+        or cost_selected["total_entry_cost_repr"]
+        != repr(first.entry_cost_basis)
+        or cost_selected["maximum_loss_exact"]
+        != cost_selected["total_entry_cost_exact"]
+    ):
+        raise ValueError("StructureCosts disclosure differs from public records")
+
+    current_tail = _scenario_valuation_exact_tuple(
+        tail_parameters["current_expiration_observations"],
+        "TailPricing current_expiration_observations",
+    )
+    tail_observation_keys = {
+        "session_date",
+        "expiration",
+        "tenor_days",
+        "underlying_quote_record_id",
+        "atm_iv",
+        "atm_dependency_selected_call_iv_record_id",
+        "atm_dependency_selected_put_iv_record_id",
+        "candidate_contracts",
+        "selected_put_25",
+        "selected_call_25",
+        "selected_put_10",
+        "selected_call_10",
+        "downside_25_delta_skew",
+        "upside_25_delta_skew",
+        "downside_wing_curvature",
+        "upside_wing_curvature",
+        "skew_percentile",
+        "historical_observation_count",
+    }
+    tail_candidate_keys = {
+        "option_type",
+        "strike",
+        "contract_multiplier",
+        "currency",
+        "deliverable_id",
+        "quote_record_id",
+        "iv_record_id",
+        "greeks_record_id",
+        "contract_reference_record_id",
+        "implied_volatility",
+        "signed_delta",
+        "distance_to_25_target",
+        "distance_to_10_target",
+    }
+    for observation in current_tail:
+        observation = _scenario_valuation_exact_dict(
+            observation,
+            tail_observation_keys,
+            "TailPricing current observation",
+        )
+        candidates = _scenario_valuation_exact_tuple(
+            observation["candidate_contracts"],
+            "TailPricing candidate_contracts",
+        )
+        for candidate in candidates:
+            _scenario_valuation_exact_dict(
+                candidate,
+                tail_candidate_keys,
+                "TailPricing candidate",
+            )
+    tail_expirations = tuple(
+        item["expiration"]
+        for item in current_tail
+    )
+    atm_dependency = tail_parameters["atm_dependency"]
+    expected_tail_selected = {
+        "underlying": atm_dependency["underlying"],
+        "as_of_date": atm_dependency["as_of_date"],
+        "ordered_expirations": tail_expirations,
+        "structure_expiration_match": expiration,
+        "matching_candidate_details": tail_selected[
+            "matching_candidate_details"
+        ],
+    }
+    _scenario_pricing_require_correspondence(
+        "tail_pricing_dependency.selected",
+        tail_selected,
+        expected_tail_selected,
+    )
+    if (
+        tail_selected["underlying"] != structure.underlying
+        or tail_selected["as_of_date"] != as_of_date
+        or tail_expirations.count(expiration) != 1
+    ):
+        raise ValueError("TailPricing disclosure differs from public records")
+
+    _scenario_pricing_require_correspondence(
+        "scenario_pricing structure identity",
+        pricing_selected["structure_identity"],
+        scenario_parameters["structure_identity"],
+    )
+    _scenario_pricing_require_correspondence(
+        "scenario_pricing actual leg IV tuple",
+        pricing_selected["actual_leg_iv_tuple"],
+        scenario_parameters["leg_correspondence"],
+    )
+    _scenario_pricing_require_correspondence(
+        "scenario_pricing declared scenarios",
+        pricing_selected["declared_nonexpiration_scenarios"],
+        scenario_parameters["scenario_definitions"],
+    )
+    producer_identity = _scenario_valuation_exact_dict(
+        pricing_selected["producer_identity"],
+        {
+            "producer_name",
+            "producer_version",
+            "request_id",
+            "payload_sha256",
+            "pricing_model_name",
+            "pricing_model_version",
+        },
+        "scenario_pricing producer_identity",
+    )
+    expected_producer = {
+        "producer_name": scenario_parameters["producer_identity"][
+            "producer_name"
+        ],
+        "producer_version": scenario_parameters["producer_identity"][
+            "producer_version"
+        ],
+        "request_id": scenario_parameters["producer_provenance"][
+            "pricing_request_id"
+        ],
+        "payload_sha256": scenario_parameters["producer_provenance"][
+            "pricing_payload_sha256"
+        ],
+        "pricing_model_name": scenario_parameters["pricing_methodology"][
+            "pricing_model_name"
+        ],
+        "pricing_model_version": scenario_parameters["pricing_methodology"][
+            "pricing_model_version"
+        ],
+    }
+    _scenario_pricing_require_correspondence(
+        "scenario_pricing producer identity",
+        producer_identity,
+        expected_producer,
+    )
+    expected_pricing_structure = (
+        _scenario_valuation_pricing_structure_identity(structure, as_of_date)
+    )
+    if (
+        pricing_selected["structure_identity"] != expected_pricing_structure
+        or pricing_selected["as_of_date"] != as_of_date
+        or pricing_selected["base_underlying_price"]
+        != cost_selected["underlying_price_exact"]
+        or scenario_parameters["base_underlying_evidence"][
+            "base_underlying_price"
+        ] != pricing_selected["base_underlying_price"]
+    ):
+        raise ValueError(
+            "ScenarioPricing disclosure differs from public records"
+        )
+
+    actual_leg_tuple = _scenario_valuation_exact_tuple(
+        pricing_selected["actual_leg_iv_tuple"],
+        "actual_leg_iv_tuple",
+    )
+    if len(actual_leg_tuple) != len(structure.legs):
+        raise ValueError("actual leg IV tuple has the wrong cardinality")
+    base_ivs_exact = tuple(item["base_iv"] for item in actual_leg_tuple)
+    for leg, item in zip(structure.legs, actual_leg_tuple):
+        _scenario_pricing_require_correspondence(
+            "actual leg identity",
+            item["leg"],
+            _scenario_pricing_leg_identity(leg),
+        )
+
+    structure_tail_observation = next(
+        item for item in current_tail if item["expiration"] == expiration
+    )
+    candidates = _scenario_valuation_exact_tuple(
+        structure_tail_observation["candidate_contracts"],
+        "matching TailPricing candidates",
+    )
+    matching_candidates = tuple(
+        candidate
+        for candidate in candidates
+        if any(
+            candidate["option_type"] == leg_item["contract_key"]["option_type"]
+            and candidate["strike"] == leg_item["contract_key"]["strike"]
+            and candidate["contract_multiplier"]
+            == leg_item["contract_key"]["contract_multiplier"]
+            and candidate["currency"] == leg_item["contract_key"]["currency"]
+            and candidate["deliverable_id"]
+            == leg_item["contract_key"]["deliverable_id"]
+            for leg_item in actual_leg_tuple
+        )
+    )
+    _scenario_pricing_require_correspondence(
+        "matching TailPricing candidate disclosure",
+        tail_selected["matching_candidate_details"],
+        matching_candidates,
+    )
+    for candidate in matching_candidates:
+        leg_item = next(
+            item for item in actual_leg_tuple
+            if (
+                candidate["option_type"] == item["contract_key"]["option_type"]
+                and candidate["strike"] == item["contract_key"]["strike"]
+                and candidate["contract_multiplier"]
+                == item["contract_key"]["contract_multiplier"]
+                and candidate["currency"] == item["contract_key"]["currency"]
+                and candidate["deliverable_id"]
+                == item["contract_key"]["deliverable_id"]
+            )
+        )
+        if (
+            candidate["implied_volatility"] != leg_item["base_iv"]
+            or candidate["iv_record_id"]
+            != leg_item["implied_volatility_record_id"]
+            or candidate["contract_reference_record_id"]
+            != leg_item["contract_reference_record_id"]
+        ):
+            raise ValueError(
+                "matching tail candidate differs from actual leg evidence"
+            )
+
+    fixed_sections = {
+        "output_architecture": {
+            "result_type": "ScenarioValuationTransformationResult",
+            "records": "ordered_ScenarioResult_tuple",
+            "lineage": "one_shared_CalculationLineage",
+        },
+        "supported_structure_scope": {
+            "included": (
+                "one_long_call",
+                "one_long_put",
+                "one_long_straddle",
+                "positive_long_quantities",
+                "one_common_underlying",
+                "one_common_expiration",
+            ),
+            "excluded": ("shorts", "spreads", "exotics"),
+        },
+        "scenario_grid_semantics": {
+            "underlying_moves": _SCENARIO_GRID_MOVES,
+            "relative_iv_changes": _SCENARIO_GRID_IV_CHANGES,
+            "complete_rule": "exact_cartesian_product_per_time_group",
+            "false_rule": "explicitly_disclosed_subset",
+        },
+        "scenario_ordering": {
+            "keys": (
+                "valuation_date",
+                "valuation_time_rank",
+                "days_forward",
+                "underlying_move_decimal",
+                "iv_change_decimal",
+            ),
+            "valuation_time_rank": dict(_SCENARIO_TIME_RANK),
+        },
+        "valuation_date_rules": {
+            "immediate": "as_of_date",
+            "days_forward": "as_of_date_plus_days_forward_calendar_days",
+            "holding_horizon": "as_of_date_plus_expected_holding_days",
+            "expiration": "common_expiration",
+        },
+        "underlying_shock_rule": (
+            "exact_base_underlying_times_one_plus_decimal_string_move"
+        ),
+        "iv_shock_rule": (
+            "actual_leg_base_iv_times_one_plus_decimal_string_iv_change"
+        ),
+        "cross_dependency_consistency": {
+            "structure": "exact_equal",
+            "underlying": "exact_equal",
+            "as_of_date": "exact_equal",
+            "expiration": "exactly_one_tail_match",
+            "leg_identity_and_multiplier": "exact_equal",
+        },
+        "base_underlying_rule": {
+            "exact_source": "StructureCosts_v0.2_calculation_values",
+            "scenario_result_source": "StructureCosts_stable_float",
+        },
+        "base_iv_rule": (
+            "ScenarioPricing_v0.1_actual_leg_evidence_in_public_leg_order"
+        ),
+        "nonexpiration_valuation_rule": (
+            "consume_authoritative_provider_gross_value_without_repricing"
+        ),
+        "expiration_payoff_rule": {
+            "arithmetic": "Decimal_precision_34_ROUND_HALF_EVEN",
+            "call": "max(shocked_underlying-strike,0)*quantity*multiplier",
+            "put": "max(strike-shocked_underlying,0)*quantity*multiplier",
+            "iv_independent": True,
+            "external_value": "prohibited",
+        },
+        "entry_cost_rule": (
+            "StructureCosts_v0.2_stable_total_entry_cost_float"
+        ),
+        "net_liquidation_rule": "max(gross_position_value-exit_cost,0.0)",
+        "bounded_loss_rule": (
+            "pnl_after_costs_not_less_than_negative_entry_cost"
+        ),
+        "record_methodology_disclosure": {
+            "schema_keys": tuple(sorted(_SCENARIO_METHODOLOGY_KEYS)),
+            "serializer": "canonicalize_lineage_parameters",
+        },
+        "lineage_union_rule": {
+            "exact_overlap": "deduplicate",
+            "conflicting_overlap": "reject",
+            "calculated_dependencies_are_not_inputs": True,
+        },
+        "float_conversion_rule": {
+            "decimal_context": "precision_34_ROUND_HALF_EVEN",
+            "converted": ("base_leg_iv", "gross_position_value", "exit_cost"),
+            "stable_cost_floats": (
+                "base_underlying_price",
+                "entry_cost_basis",
+            ),
+            "finite_required": True,
+        },
+        "limitations": (
+            "Validates internal consistency, not cryptographic authenticity; "
+            "probabilities, expected returns, screening, recommendations, "
+            "sizing, and execution are outside scope."
+        ),
+    }
+    for name, expected in fixed_sections.items():
+        _scenario_pricing_require_correspondence(
+            name, decoded[name], expected
+        )
+
+    declaration = _scenario_valuation_exact_dict(
+        decoded["scenario_declaration"],
+        {"ordered_scenarios", "scenario_grid_complete"},
+        "scenario_declaration",
+    )
+    if type(declaration["scenario_grid_complete"]) is not bool:
+        raise TypeError("scenario_grid_complete must have exact type bool")
+    expected_scenarios = tuple(
+        _scenario_identity(record.scenario) for record in records
+    )
+    if declaration["ordered_scenarios"] != expected_scenarios:
+        raise ValueError("records do not correspond to scenario declaration")
+    if declaration["scenario_grid_complete"]:
+        groups = {}
+        for record in records:
+            scenario = record.scenario
+            groups.setdefault(
+                (scenario.valuation_time, scenario.days_forward), set()
+            ).add((
+                decimal.Decimal(str(scenario.underlying_move)),
+                decimal.Decimal(str(scenario.iv_change)),
+            ))
+        expected_grid = {
+            (move, iv_change)
+            for move in _SCENARIO_GRID_MOVES
+            for iv_change in _SCENARIO_GRID_IV_CHANGES
+        }
+        if any(values != expected_grid for values in groups.values()):
+            raise ValueError("scenario declaration is not a complete grid")
+
+    exit_section = _scenario_valuation_exact_dict(
+        decoded["exit_cost_assumptions"],
+        {"methodology", "ordered_values"},
+        "exit_cost_assumptions",
+    )
+    _scenario_pricing_string(
+        "exit_cost_assumptions.methodology", exit_section["methodology"]
+    )
+    exit_values = _scenario_valuation_exact_tuple(
+        exit_section["ordered_values"], "exit_cost_assumptions.ordered_values"
+    )
+    if len(exit_values) != len(records):
+        raise ValueError("exit-cost assumption count is inconsistent")
+
+    calculation_values = _scenario_valuation_exact_tuple(
+        decoded["calculation_values"], "calculation_values"
+    )
+    if len(calculation_values) != len(records):
+        raise ValueError("record and calculation-value counts differ")
+    scenario_parameter_values = _scenario_valuation_exact_tuple(
+        scenario_parameters["calculation_values"],
+        "ScenarioPricing calculation_values",
+    )
+    scenario_calculation_keys = {
+        "scenario",
+        "valuation_date",
+        "base_underlying_price",
+        "shocked_underlying_price",
+        "underlying_quote_record_id",
+        "leg_values",
+        "estimated_gross_position_value",
+    }
+    scenario_leg_value_keys = {
+        "leg",
+        "contract_key",
+        "base_iv",
+        "shocked_iv",
+        "remaining_calendar_days",
+        "per_underlying_unit_option_value",
+        "total_leg_value",
+    }
+    for item in scenario_parameter_values:
+        item = _scenario_valuation_exact_dict(
+            item,
+            scenario_calculation_keys,
+            "ScenarioPricing calculation value",
+        )
+        leg_values = _scenario_valuation_exact_tuple(
+            item["leg_values"], "ScenarioPricing leg_values"
+        )
+        if len(leg_values) != len(structure.legs):
+            raise ValueError("ScenarioPricing leg-value count is invalid")
+        for leg_value in leg_values:
+            _scenario_valuation_exact_dict(
+                leg_value,
+                scenario_leg_value_keys,
+                "ScenarioPricing leg value",
+            )
+    parameter_scenario_identities = tuple(
+        item["scenario"] for item in scenario_parameter_values
+    )
+    if (
+        parameter_scenario_identities
+        != pricing_selected["declared_nonexpiration_scenarios"]
+        or len(set(
+            (
+                item["valuation_time"],
+                item["days_forward"],
+                item["underlying_move"],
+                item["iv_change"],
+            )
+            for item in parameter_scenario_identities
+        )) != len(parameter_scenario_identities)
+    ):
+        raise ValueError(
+            "ScenarioPricing calculation-value scenarios are inconsistent"
+        )
+    scenario_values = {
+        (
+            item["scenario"]["valuation_time"],
+            item["scenario"]["days_forward"],
+            item["scenario"]["underlying_move"],
+            item["scenario"]["iv_change"],
+        ): item
+        for item in scenario_parameter_values
+    }
+    arithmetic_context = decimal.Context(
+        prec=34, rounding=decimal.ROUND_HALF_EVEN
+    )
+    for index, (record, values, exit_value) in enumerate(
+        zip(records, calculation_values, exit_values)
+    ):
+        values = _scenario_valuation_exact_dict(
+            values,
+            _SCENARIO_VALUATION_CALCULATION_VALUE_KEYS,
+            f"calculation_values[{index}]",
+        )
+        exit_value = _scenario_valuation_exact_dict(
+            exit_value,
+            {"scenario_identity", "exit_cost"},
+            f"exit_cost_assumptions.ordered_values[{index}]",
+        )
+        identity = _scenario_identity(record.scenario)
+        if (
+            values["scenario_identity"] != identity
+            or exit_value["scenario_identity"] != identity
+        ):
+            raise ValueError("scenario identity correspondence is invalid")
+        valuation_date = _scenario_valuation_date(
+            structure, as_of_date, record.scenario
+        )
+        try:
+            shocked_underlying = arithmetic_context.multiply(
+                cost_selected["underlying_price_exact"],
+                arithmetic_context.add(
+                    decimal.Decimal(1), identity["underlying_move"]
+                ),
+            )
+        except decimal.DecimalException as error:
+            raise ValueError("scenario underlying shock failed") from error
+        shocked_ivs_exact = tuple(
+            _scenario_pricing_shock(value, record.scenario.iv_change)
+            for value in base_ivs_exact
+        )
+        if record.scenario.valuation_time == "expiration":
+            valuation_source = "terminal_intrinsic_expiration"
+            remaining_days = 0
+            try:
+                payoffs = []
+                for leg in structure.legs:
+                    strike = decimal.Decimal(str(leg.strike))
+                    intrinsic = (
+                        arithmetic_context.subtract(shocked_underlying, strike)
+                        if leg.option_type == "call"
+                        else arithmetic_context.subtract(strike, shocked_underlying)
+                    )
+                    intrinsic = max(intrinsic, decimal.Decimal(0))
+                    payoffs.append(arithmetic_context.multiply(
+                        intrinsic,
+                        arithmetic_context.multiply(
+                            decimal.Decimal(leg.quantity),
+                            decimal.Decimal(leg.contract_multiplier),
+                        ),
+                    ))
+                payoffs = tuple(payoffs)
+                gross = decimal.Decimal(0)
+                for payoff in payoffs:
+                    gross = arithmetic_context.add(gross, payoff)
+            except decimal.DecimalException as error:
+                raise ValueError("expiration payoff calculation failed") from error
+        else:
+            valuation_source = "authoritative_provider_nonexpiration"
+            provider = scenario_values.get(_scenario_identity_tuple(record.scenario))
+            if provider is None:
+                raise ValueError("ScenarioPricing calculation value is missing")
+            gross = provider["estimated_gross_position_value"]
+            remaining_days = (expiration - valuation_date).days
+            payoffs = ()
+            if (
+                provider["valuation_date"] != valuation_date
+                or provider["base_underlying_price"]
+                != cost_selected["underlying_price_exact"]
+                or provider["shocked_underlying_price"] != shocked_underlying
+                or tuple(
+                    item["base_iv"] for item in provider["leg_values"]
+                ) != base_ivs_exact
+                or tuple(
+                    item["shocked_iv"] for item in provider["leg_values"]
+                ) != shocked_ivs_exact
+            ):
+                raise ValueError(
+                    "ScenarioPricing calculation values are inconsistent"
+                )
+        expected_exact = {
+            "scenario_identity": identity,
+            "valuation_date": valuation_date,
+            "valuation_source": valuation_source,
+            "base_underlying_exact": cost_selected[
+                "underlying_price_exact"
+            ],
+            "shocked_underlying_exact": shocked_underlying,
+            "base_leg_ivs_exact": base_ivs_exact,
+            "shocked_leg_ivs_exact": shocked_ivs_exact,
+            "remaining_calendar_days": remaining_days,
+            "gross_position_value_exact": gross,
+            "exit_cost_assumption_exact": exit_value["exit_cost"],
+            "expiration_per_leg_payoffs_exact": payoffs,
+        }
+        for key, expected in expected_exact.items():
+            _scenario_pricing_require_correspondence(
+                f"calculation_values[{index}].{key}",
+                values[key],
+                expected,
+            )
+        if len(record.leg_volatility_inputs) != len(structure.legs):
+            raise ValueError("public leg volatility input count is invalid")
+        for leg_index, (public_input, leg, exact_iv) in enumerate(zip(
+            record.leg_volatility_inputs, structure.legs, base_ivs_exact
+        )):
+            if (
+                public_input.leg != leg
+                or public_input.base_iv
+                != _finite_float_from_decimal("base IV", exact_iv)
+            ):
+                raise ValueError(
+                    f"public base IV correspondence failed at leg {leg_index}"
+                )
+        expected_public_shocked_ivs = tuple(
+            item.base_iv * (1 + record.scenario.iv_change)
+            for item in record.leg_volatility_inputs
+        )
+        if record.shocked_ivs != expected_public_shocked_ivs:
+            raise ValueError("public shocked IV correspondence failed")
+        public_expected = {
+            "valuation_date": record.valuation_date,
+            "stable_gross_value_repr": repr(record.estimated_position_value),
+            "stable_exit_cost_repr": repr(record.estimated_exit_cost),
+            "stable_base_underlying_repr": repr(record.base_underlying_price),
+            "stable_entry_cost_repr": repr(record.entry_cost_basis),
+            "stable_net_liquidation_repr": repr(record.net_liquidation_value),
+            "stable_after_cost_pnl_repr": repr(record.pnl_after_costs),
+            "stable_return_on_entry_cost_repr": repr(
+                record.return_on_entry_cost
+            ),
+            "loss_is_within_entry_cost": record.loss_is_within_entry_cost,
+            "pricing_methodology": record.pricing_methodology,
+        }
+        if (
+            record.structure is not structure
+            or record.as_of_date != as_of_date
+            or record.valuation_date != valuation_date
+            or record.base_underlying_price
+            != float(cost_selected["underlying_price_exact"])
+            or record.entry_cost_basis
+            != float(cost_selected["total_entry_cost_exact"])
+            or record.estimated_position_value != float(gross)
+            or record.estimated_exit_cost != float(exit_value["exit_cost"])
+        ):
+            raise ValueError("public ScenarioResult fields are inconsistent")
+        for key, expected in public_expected.items():
+            if values[key] != expected:
+                raise ValueError(
+                    f"ScenarioResult does not correspond to {key}"
+                )
+        _scenario_valuation_methodology(
+            record, values, decoded, scenario_parameters
+        )
+
+    dependency_flags = cost_flags | tail_flags | pricing_flags
+    expected_flags = {
+        CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+        CalculationQualityFlag.ANNUALIZED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    expected_flags.update(
+        dependency_flags & _SCENARIO_VALUATION_PROPAGATED_FLAGS
+    )
+    if lineage.quality_flags != tuple(
+        flag for flag in CalculationQualityFlag if flag in expected_flags
+    ):
+        raise ValueError("scenario-valuation quality flags are inconsistent")
+    if CalculationQualityFlag.INCOMPLETE_INPUT_USED in lineage.quality_flags:
+        raise ValueError("scenario valuation must not use incomplete inputs")
+
+
+@dataclass(frozen=True)
+class ScenarioValuationTransformationResult:
+    records: Tuple[ScenarioResult, ...]
+    lineage: CalculationLineage
+
+    def __post_init__(self) -> None:
+        if type(self.records) is not tuple:
+            raise TypeError("records must have exact type tuple")
+        if not self.records:
+            raise ValueError("records must not be empty")
+        if any(type(record) is not ScenarioResult for record in self.records):
+            raise TypeError("every record must have exact type ScenarioResult")
+        if type(self.lineage) is not CalculationLineage:
+            raise TypeError("lineage must have exact type CalculationLineage")
+        first = self.records[0]
+        if type(first.structure) is not OptionStructure:
+            raise TypeError("record structure must have exact type OptionStructure")
+        if type(first.as_of_date) is not datetime.date:
+            raise TypeError("record as_of_date must have exact type date")
+        if any(
+            record.structure is not first.structure
+            or record.as_of_date != first.as_of_date
+            for record in self.records[1:]
+        ):
+            raise ValueError("records must share one structure and as_of_date")
+        identities = tuple(
+            _scenario_identity_tuple(record.scenario) for record in self.records
+        )
+        if len(set(identities)) != len(identities):
+            raise ValueError("scenario identities must be unique")
+        ordering = tuple(
+            _scenario_order_key(
+                first.structure, first.as_of_date, record.scenario
+            )
+            for record in self.records
+        )
+        if ordering != tuple(sorted(ordering)):
+            raise ValueError("records must already be in canonical order")
+        with decimal.localcontext():
+            _validate_scenario_valuation_records(self.records, self.lineage)
+
+
+def _construct_scenario_valuation_lineage(
+    calculation_id: str,
+    calculated_at: datetime.datetime,
+    inputs: tuple,
+    parameters_json: str,
+    quality_flags: tuple,
+) -> CalculationLineage:
+    return CalculationLineage(
+        calculation_id=calculation_id,
+        calculation_type="scenario_valuation",
+        methodology_id=(
+            "hybrid-authoritative-nonexpiration-terminal-intrinsic-after-costs"
+        ),
+        methodology_version="v0.1",
+        calculated_at=calculated_at,
+        inputs=inputs,
+        parameters_json=parameters_json,
+        quality_flags=quality_flags,
+    )
+
+
+def transform_scenario_valuation(
+    calculation_id: object,
+    structure_costs_result: object,
+    tail_pricing_result: object,
+    scenario_pricing_result: object,
+    scenarios: object,
+    scenario_grid_complete: object,
+    exit_cost_assumptions: object,
+    exit_cost_methodology: object,
+    calculated_at: object,
+) -> ScenarioValuationTransformationResult:
+    """Construct hybrid provider/non-provider scenario results after costs."""
+
+    if type(calculation_id) is not str:
+        raise TypeError("calculation_id must have exact type str")
+    if type(scenarios) is not tuple:
+        raise TypeError("scenarios must have exact type tuple")
+    if any(type(item) is not Scenario for item in scenarios):
+        raise TypeError("every scenarios item must have exact type Scenario")
+    if type(scenario_grid_complete) is not bool:
+        raise TypeError("scenario_grid_complete must have exact type bool")
+    if type(exit_cost_assumptions) is not tuple:
+        raise TypeError("exit_cost_assumptions must have exact type tuple")
+    if type(exit_cost_methodology) is not str:
+        raise TypeError("exit_cost_methodology must have exact type str")
+    if type(calculated_at) is not datetime.datetime:
+        raise TypeError("calculated_at must have exact type datetime")
+    normalized_id = _validate_calculation_id(calculation_id)
+    normalized_at = _normalize_calculated_at(calculated_at)
+
+    if type(structure_costs_result) is not StructureCostsTransformationResult:
+        raise TypeError(
+            "structure_costs_result must have exact type "
+            "StructureCostsTransformationResult"
+        )
+    with decimal.localcontext():
+        costs = StructureCostsTransformationResult(
+            structure_costs_result.record, structure_costs_result.lineage
+        )
+        cost_decoded = _decode_cost_parameters(costs.lineage.parameters_json)
+    if CalculationQualityFlag.INCOMPLETE_INPUT_USED in costs.lineage.quality_flags:
+        raise ValueError("structure-costs dependency is incomplete")
+
+    with decimal.localcontext():
+        tail, tail_decoded, tail_observations = (
+            _validate_tail_pricing_dependency(tail_pricing_result)
+        )
+
+    if type(scenario_pricing_result) is not ScenarioPricingCalculationResult:
+        raise TypeError(
+            "scenario_pricing_result must have exact type "
+            "ScenarioPricingCalculationResult"
+        )
+    with decimal.localcontext():
+        pricing = ScenarioPricingCalculationResult(
+            scenario_pricing_result.records,
+            scenario_pricing_result.lineage,
+        )
+        pricing_decoded = _decode_scenario_pricing_parameters(
+            pricing.lineage.parameters_json
+        )
+    if (
+        CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED
+        in pricing.lineage.quality_flags
+        or CalculationQualityFlag.INCOMPLETE_INPUT_USED
+        in pricing.lineage.quality_flags
+    ):
+        raise ValueError("scenario-pricing dependency flags are invalid")
+
+    dependency_lineages = (
+        costs.lineage,
+        tail.lineage,
+        pricing.lineage,
+    )
+    calculation_ids = (normalized_id,) + tuple(
+        lineage.calculation_id for lineage in dependency_lineages
+    )
+    if len(set(calculation_ids)) != 4:
+        raise ValueError("all four calculation IDs must be mutually distinct")
+    if any(lineage.calculated_at > normalized_at for lineage in dependency_lineages):
+        raise ValueError("dependency calculation follows scenario valuation")
+
+    structure = costs.record.structure
+    as_of_date = costs.record.as_of_date
+    pricing_common = pricing.records[0]
+    if structure != pricing_common.structure:
+        raise ValueError("StructureCosts and ScenarioPricing structures differ")
+    if as_of_date != pricing_common.as_of_date:
+        raise ValueError("dependency as_of_date values differ")
+    if tail.records[0].underlying != structure.underlying:
+        raise ValueError("tail underlying differs from structure underlying")
+    if tail.records[0].as_of_date != as_of_date:
+        raise ValueError("tail as_of_date differs from common as_of_date")
+    expiration = structure.legs[0].expiration
+    matching_tail = tuple(
+        (record, observation)
+        for record, observation in zip(tail.records, tail_observations)
+        if record.expiration == expiration
+    )
+    if len(matching_tail) != 1:
+        raise ValueError("tail pricing must contain structure expiration once")
+    cost_values = cost_decoded["calculation_values"]
+    base_underlying_exact = cost_values["underlying_price_exact"]
+    if base_underlying_exact != pricing_common.base_underlying_price:
+        raise ValueError("exact base-underlying dependencies differ")
+    if float(base_underlying_exact) != costs.record.underlying_price:
+        raise ValueError("stable base-underlying float is inconsistent")
+    if (
+        cost_values["maximum_loss_exact"]
+        != cost_values["total_entry_cost_exact"]
+        or costs.record.maximum_loss != costs.record.total_entry_cost
+    ):
+        raise ValueError("long-only maximum loss must equal total entry cost")
+
+    base_leg_calculations = pricing_common.leg_calculations
+    if tuple(item.leg for item in base_leg_calculations) != structure.legs:
+        raise ValueError("actual leg-IV evidence is not in structure-leg order")
+    tail_candidates = matching_tail[0][1]["candidate_contracts"]
+    for calculation in base_leg_calculations:
+        contract = calculation.contract_key
+        candidate_matches = tuple(
+            candidate
+            for candidate in tail_candidates
+            if (
+                candidate["option_type"] == contract.option_type
+                and candidate["strike"] == contract.strike
+                and candidate["contract_multiplier"]
+                == contract.contract_multiplier
+                and candidate["currency"] == contract.currency
+                and candidate["deliverable_id"] == contract.deliverable_id
+            )
+        )
+        for candidate in candidate_matches:
+            if (
+                candidate["implied_volatility"] != calculation.base_iv
+                or candidate["iv_record_id"]
+                != calculation.implied_volatility_record_id
+                or candidate["contract_reference_record_id"]
+                != calculation.contract_reference_record_id
+            ):
+                raise ValueError(
+                    "matching tail candidate differs from actual leg evidence"
+                )
+
+    if not scenarios:
+        raise ValueError("scenarios must not be empty")
+    if not any(item.valuation_time != "expiration" for item in scenarios):
+        raise ValueError("at least one non-expiration scenario is required")
+    identities = tuple(_scenario_identity_tuple(item) for item in scenarios)
+    if len(set(identities)) != len(identities):
+        raise ValueError("declared scenario identities must be unique")
+    ordering = tuple(
+        _scenario_order_key(structure, as_of_date, item) for item in scenarios
+    )
+    if ordering != tuple(sorted(ordering)):
+        raise ValueError("declared scenarios must already be canonical")
+    if any(
+        _scenario_valuation_date(structure, as_of_date, item) > expiration
+        for item in scenarios
+    ):
+        raise ValueError("declared scenario resolves after expiration")
+    if scenario_grid_complete:
+        groups = {}
+        for scenario in scenarios:
+            groups.setdefault(
+                (scenario.valuation_time, scenario.days_forward), set()
+            ).add((
+                decimal.Decimal(str(scenario.underlying_move)),
+                decimal.Decimal(str(scenario.iv_change)),
+            ))
+        expected_grid = {
+            (move, iv_change)
+            for move in _SCENARIO_GRID_MOVES
+            for iv_change in _SCENARIO_GRID_IV_CHANGES
+        }
+        if any(values != expected_grid for values in groups.values()):
+            raise ValueError(
+                "complete scenario groups must equal the frozen 7 by 4 grid"
+            )
+
+    if len(exit_cost_assumptions) != len(scenarios):
+        raise ValueError("one exit-cost assumption is required per scenario")
+    exit_costs = []
+    for declared, assumption in zip(scenarios, exit_cost_assumptions):
+        if type(assumption) is not tuple:
+            raise TypeError("every exit-cost assumption must be an exact tuple")
+        if len(assumption) != 2:
+            raise ValueError("every exit-cost assumption must contain two items")
+        if type(assumption[0]) is not Scenario:
+            raise TypeError("exit-cost scenario must have exact type Scenario")
+        if assumption[0] is not declared:
+            raise ValueError("exit-cost scenario must be the declared object")
+        if type(assumption[1]) is not decimal.Decimal:
+            raise TypeError("exit cost must have exact type Decimal")
+        if not assumption[1].is_finite() or assumption[1] < 0:
+            raise ValueError("exit cost must be finite and nonnegative")
+        exit_costs.append(assumption[1])
+    exit_cost_methodology = _scenario_pricing_string(
+        "exit_cost_methodology", exit_cost_methodology
+    )
+
+    provider_by_identity = {
+        _scenario_identity_tuple(record.scenario): record
+        for record in pricing.records
+    }
+    nonexpiration = tuple(
+        scenario for scenario in scenarios
+        if scenario.valuation_time != "expiration"
+    )
+    if set(provider_by_identity) != {
+        _scenario_identity_tuple(scenario) for scenario in nonexpiration
+    }:
+        raise ValueError(
+            "provider records must equal declared non-expiration scenarios"
+        )
+
+    arithmetic_context = decimal.Context(
+        prec=34, rounding=decimal.ROUND_HALF_EVEN
+    )
+    prepared_values = []
+    for scenario in scenarios:
+        identity = _scenario_identity(scenario)
+        valuation_date = _scenario_valuation_date(
+            structure, as_of_date, scenario
+        )
+        try:
+            shocked_underlying = arithmetic_context.multiply(
+                base_underlying_exact,
+                arithmetic_context.add(
+                    decimal.Decimal(1), identity["underlying_move"]
+                ),
+            )
+        except decimal.DecimalException as error:
+            raise ValueError("scenario underlying shock failed") from error
+        shocked_ivs = tuple(
+            _scenario_pricing_shock(item.base_iv, scenario.iv_change)
+            for item in base_leg_calculations
+        )
+        if scenario.valuation_time == "expiration":
+            try:
+                per_leg_payoffs = []
+                for leg in structure.legs:
+                    strike = decimal.Decimal(str(leg.strike))
+                    intrinsic = (
+                        arithmetic_context.subtract(shocked_underlying, strike)
+                        if leg.option_type == "call"
+                        else arithmetic_context.subtract(strike, shocked_underlying)
+                    )
+                    intrinsic = max(intrinsic, decimal.Decimal(0))
+                    per_leg_payoffs.append(arithmetic_context.multiply(
+                        intrinsic,
+                        arithmetic_context.multiply(
+                            decimal.Decimal(leg.quantity),
+                            decimal.Decimal(leg.contract_multiplier),
+                        ),
+                    ))
+                per_leg_payoffs = tuple(per_leg_payoffs)
+                gross = decimal.Decimal(0)
+                for payoff in per_leg_payoffs:
+                    gross = arithmetic_context.add(gross, payoff)
+            except decimal.DecimalException as error:
+                raise ValueError("expiration payoff calculation failed") from error
+            remaining_days = 0
+            valuation_source = "terminal_intrinsic_expiration"
+        else:
+            provider = provider_by_identity[_scenario_identity_tuple(scenario)]
+            if (
+                provider.scenario is not scenario
+                or provider.structure != structure
+                or provider.as_of_date != as_of_date
+                or provider.valuation_date != valuation_date
+                or provider.base_underlying_price != base_underlying_exact
+                or provider.shocked_underlying_price != shocked_underlying
+                or tuple(
+                    item.base_iv for item in provider.leg_calculations
+                ) != tuple(item.base_iv for item in base_leg_calculations)
+                or tuple(
+                    item.shocked_iv for item in provider.leg_calculations
+                ) != shocked_ivs
+            ):
+                raise ValueError(
+                    "provider scenario does not exactly match declaration"
+                )
+            gross = provider.estimated_gross_position_value
+            remaining_days = (
+                expiration - provider.valuation_date
+            ).days
+            per_leg_payoffs = ()
+            valuation_source = "authoritative_provider_nonexpiration"
+        prepared_values.append((
+            identity,
+            valuation_date,
+            shocked_underlying,
+            shocked_ivs,
+            gross,
+            remaining_days,
+            per_leg_payoffs,
+            valuation_source,
+        ))
+
+    leg_volatility_inputs = tuple(
+        LegVolatilityInput(
+            item.leg, _finite_float_from_decimal("base IV", item.base_iv)
+        )
+        for item in base_leg_calculations
+    )
+    records = []
+    calculation_values = []
+    cost_dependency = _calculated_dependency_disclosure(
+        costs.lineage,
+        {
+            "structure_identity": cost_decoded["structure_identity"],
+            "as_of_date": as_of_date,
+            "underlying_price_exact": base_underlying_exact,
+            "underlying_price_repr": cost_values["stable_record_values"][
+                "underlying_price_repr"
+            ],
+            "quoted_mid_premium_exact": cost_values[
+                "quoted_mid_premium_exact"
+            ],
+            "estimated_spread_cost_exact": cost_values[
+                "estimated_spread_cost_exact"
+            ],
+            "commissions_and_fees_exact": cost_values[
+                "commissions_and_fees_exact"
+            ],
+            "total_entry_cost_exact": cost_values["total_entry_cost_exact"],
+            "maximum_loss_exact": cost_values["maximum_loss_exact"],
+            "total_entry_cost_repr": cost_values["stable_record_values"][
+                "total_entry_cost_repr"
+            ],
+        },
+    )
+    tail_dependency = _calculated_dependency_disclosure(
+        tail.lineage,
+        {
+            "underlying": tail.records[0].underlying,
+            "as_of_date": tail.records[0].as_of_date,
+            "ordered_expirations": tuple(
+                record.expiration for record in tail.records
+            ),
+            "structure_expiration_match": expiration,
+            "matching_candidate_details": tuple(
+                candidate
+                for candidate in tail_candidates
+                if any(
+                    candidate["option_type"] == item.contract_key.option_type
+                    and candidate["strike"] == item.contract_key.strike
+                    and candidate["contract_multiplier"]
+                    == item.contract_key.contract_multiplier
+                    and candidate["currency"] == item.contract_key.currency
+                    and candidate["deliverable_id"]
+                    == item.contract_key.deliverable_id
+                    for item in base_leg_calculations
+                )
+            ),
+        },
+    )
+    methodology = pricing_common.pricing_methodology
+    pricing_dependency = _calculated_dependency_disclosure(
+        pricing.lineage,
+        {
+            "structure_identity": _scenario_pricing_structure_identity(
+                pricing_common
+            ),
+            "as_of_date": as_of_date,
+            "base_underlying_price": pricing_common.base_underlying_price,
+            "actual_leg_iv_tuple": _scenario_pricing_leg_correspondence(
+                pricing_common
+            ),
+            "declared_nonexpiration_scenarios": tuple(
+                _scenario_identity(record.scenario)
+                for record in pricing.records
+            ),
+            "producer_identity": {
+                "producer_name": methodology.producer_name,
+                "producer_version": methodology.producer_version,
+                "request_id": methodology.pricing_request_id,
+                "payload_sha256": methodology.pricing_payload_sha256,
+                "pricing_model_name": methodology.pricing_model_name,
+                "pricing_model_version": methodology.pricing_model_version,
+            },
+        },
+    )
+
+    for scenario, exit_cost, prepared in zip(
+        scenarios, exit_costs, prepared_values
+    ):
+        (
+            identity,
+            valuation_date,
+            shocked_underlying,
+            shocked_ivs,
+            gross,
+            remaining_days,
+            per_leg_payoffs,
+            valuation_source,
+        ) = prepared
+        if scenario.valuation_time == "expiration":
+            provider_disclosure = {
+                "status": "inactive_for_expiration",
+                "external_expiration_value": "prohibited",
+            }
+        else:
+            provider_disclosure = {
+                "status": "active_authoritative_provider_calculated",
+                "calculation_id": pricing.lineage.calculation_id,
+                "producer_name": methodology.producer_name,
+                "producer_version": methodology.producer_version,
+                "request_id": methodology.pricing_request_id,
+                "payload_sha256": methodology.pricing_payload_sha256,
+                "producer_calculated_at": methodology.producer_calculated_at,
+                "pricing_model_name": methodology.pricing_model_name,
+                "pricing_model_version": methodology.pricing_model_version,
+                "rate_methodology": _scenario_pricing_methodology_sections(
+                    methodology
+                )[3],
+                "dividend_methodology": _scenario_pricing_methodology_sections(
+                    methodology
+                )[4],
+                "surface_treatment": methodology.volatility_surface_treatment,
+                "skew_treatment": methodology.skew_treatment,
+                "term_treatment": methodology.term_treatment,
+                "interpolation_treatment": methodology.volatility_interpolation,
+                "settlement_treatment": methodology.settlement_treatment,
+                "remaining_time_rule": methodology.remaining_time_rule,
+                "position_scaling_rule": methodology.position_scaling_rule,
+                "numerical_boundary": (
+                    methodology.numerical_calculation_boundary
+                ),
+            }
+        record_methodology = canonicalize_lineage_parameters({
+            "schema_version": "v0.1",
+            "valuation_source": valuation_source,
+            "scenario_identity": identity,
+            "structure_costs_dependency": {
+                "calculation_id": costs.lineage.calculation_id,
+                "identity": ("structure_costs", "exact-structure-costs", "v0.2"),
+            },
+            "tail_pricing_dependency": {
+                "calculation_id": tail.lineage.calculation_id,
+                "identity": (
+                    "tail_pricing",
+                    "nearest-observed-delta-wing-tail-relative-pricing",
+                    "v0.1",
+                ),
+                "use": "context_only",
+            },
+            "scenario_pricing_dependency": {
+                "calculation_id": pricing.lineage.calculation_id,
+                "identity": (
+                    "nonexpiration_scenario_pricing",
+                    "authoritative-provider-option-scenario-pricing-evidence",
+                    "v0.1",
+                ),
+            },
+            "provider_disclosure": provider_disclosure,
+            "nonexpiration_rule": {
+                "active": scenario.valuation_time != "expiration",
+                "rule": "consume_authoritative_gross_value_without_repricing",
+            },
+            "expiration_rule": {
+                "active": scenario.valuation_time == "expiration",
+                "call_formula": "max(shocked_underlying-strike,0)*quantity*multiplier",
+                "put_formula": "max(strike-shocked_underlying,0)*quantity*multiplier",
+                "iv_effect": "none_base_leg_ivs_retained_for_audit",
+                "external_expiration_value": "prohibited",
+            },
+            "base_underlying_source": (
+                "StructureCosts_v0.2_underlying_price_exact"
+            ),
+            "base_iv_source": (
+                "ScenarioPricing_v0.1_actual_structure_leg_iv_evidence"
+            ),
+            "entry_cost_rule": (
+                "StructureCosts_v0.2_stable_total_entry_cost_float"
+            ),
+            "exit_cost_rule": {
+                "methodology": exit_cost_methodology,
+                "source": "explicit_scenario_specific_decimal_assumption",
+            },
+            "float_conversion_rule": (
+                "convert_base_iv_gross_and_exit_cost_once_to_finite_float"
+            ),
+            "limitations": (
+                "Internal consistency is validated; self-consistent fabricated "
+                "dependency artifacts are not cryptographically authenticated."
+            ),
+        })
+        record = ScenarioResult(
+            structure=structure,
+            as_of_date=as_of_date,
+            scenario=scenario,
+            valuation_date=valuation_date,
+            base_underlying_price=costs.record.underlying_price,
+            leg_volatility_inputs=leg_volatility_inputs,
+            estimated_position_value=_finite_float_from_decimal(
+                "gross position value", gross
+            ),
+            entry_cost_basis=costs.record.total_entry_cost,
+            estimated_exit_cost=_finite_float_from_decimal(
+                "exit cost", exit_cost
+            ),
+            pricing_methodology=record_methodology,
+        )
+        if (
+            not record.loss_is_within_entry_cost
+            or record.pnl_after_costs < -record.entry_cost_basis
+        ):
+            raise ValueError("ScenarioResult violates bounded-loss behavior")
+        records.append(record)
+        calculation_values.append({
+            "scenario_identity": identity,
+            "valuation_date": valuation_date,
+            "valuation_source": valuation_source,
+            "base_underlying_exact": base_underlying_exact,
+            "shocked_underlying_exact": shocked_underlying,
+            "base_leg_ivs_exact": tuple(
+                item.base_iv for item in base_leg_calculations
+            ),
+            "shocked_leg_ivs_exact": shocked_ivs,
+            "remaining_calendar_days": remaining_days,
+            "gross_position_value_exact": gross,
+            "exit_cost_assumption_exact": exit_cost,
+            "expiration_per_leg_payoffs_exact": per_leg_payoffs,
+            "stable_gross_value_repr": repr(record.estimated_position_value),
+            "stable_exit_cost_repr": repr(record.estimated_exit_cost),
+            "stable_base_underlying_repr": repr(record.base_underlying_price),
+            "stable_entry_cost_repr": repr(record.entry_cost_basis),
+            "stable_net_liquidation_repr": repr(
+                record.net_liquidation_value
+            ),
+            "stable_after_cost_pnl_repr": repr(record.pnl_after_costs),
+            "stable_return_on_entry_cost_repr": repr(
+                record.return_on_entry_cost
+            ),
+            "loss_is_within_entry_cost": record.loss_is_within_entry_cost,
+            "pricing_methodology": record.pricing_methodology,
+        })
+
+    input_by_id = {}
+    for lineage in dependency_lineages:
+        for item in lineage.inputs:
+            existing = input_by_id.get(item.record_id)
+            if existing is not None and existing != item:
+                raise ValueError(
+                    "overlapping lineage references must be exactly equal"
+                )
+            input_by_id[item.record_id] = item
+    inputs = tuple(input_by_id.values())
+    parameters = {
+        "output_architecture": {
+            "result_type": "ScenarioValuationTransformationResult",
+            "records": "ordered_ScenarioResult_tuple",
+            "lineage": "one_shared_CalculationLineage",
+        },
+        "supported_structure_scope": {
+            "included": (
+                "one_long_call",
+                "one_long_put",
+                "one_long_straddle",
+                "positive_long_quantities",
+                "one_common_underlying",
+                "one_common_expiration",
+            ),
+            "excluded": ("shorts", "spreads", "exotics"),
+        },
+        "scenario_declaration": {
+            "ordered_scenarios": tuple(
+                _scenario_identity(item) for item in scenarios
+            ),
+            "scenario_grid_complete": scenario_grid_complete,
+        },
+        "scenario_grid_semantics": {
+            "underlying_moves": _SCENARIO_GRID_MOVES,
+            "relative_iv_changes": _SCENARIO_GRID_IV_CHANGES,
+            "complete_rule": "exact_cartesian_product_per_time_group",
+            "false_rule": "explicitly_disclosed_subset",
+        },
+        "scenario_ordering": {
+            "keys": (
+                "valuation_date",
+                "valuation_time_rank",
+                "days_forward",
+                "underlying_move_decimal",
+                "iv_change_decimal",
+            ),
+            "valuation_time_rank": dict(_SCENARIO_TIME_RANK),
+        },
+        "valuation_date_rules": {
+            "immediate": "as_of_date",
+            "days_forward": "as_of_date_plus_days_forward_calendar_days",
+            "holding_horizon": "as_of_date_plus_expected_holding_days",
+            "expiration": "common_expiration",
+        },
+        "underlying_shock_rule": (
+            "exact_base_underlying_times_one_plus_decimal_string_move"
+        ),
+        "iv_shock_rule": (
+            "actual_leg_base_iv_times_one_plus_decimal_string_iv_change"
+        ),
+        "structure_costs_dependency": cost_dependency,
+        "tail_pricing_dependency": tail_dependency,
+        "scenario_pricing_dependency": pricing_dependency,
+        "cross_dependency_consistency": {
+            "structure": "exact_equal",
+            "underlying": "exact_equal",
+            "as_of_date": "exact_equal",
+            "expiration": "exactly_one_tail_match",
+            "leg_identity_and_multiplier": "exact_equal",
+        },
+        "base_underlying_rule": {
+            "exact_source": "StructureCosts_v0.2_calculation_values",
+            "scenario_result_source": "StructureCosts_stable_float",
+        },
+        "base_iv_rule": (
+            "ScenarioPricing_v0.1_actual_leg_evidence_in_public_leg_order"
+        ),
+        "nonexpiration_valuation_rule": (
+            "consume_authoritative_provider_gross_value_without_repricing"
+        ),
+        "expiration_payoff_rule": {
+            "arithmetic": "Decimal_precision_34_ROUND_HALF_EVEN",
+            "call": "max(shocked_underlying-strike,0)*quantity*multiplier",
+            "put": "max(strike-shocked_underlying,0)*quantity*multiplier",
+            "iv_independent": True,
+            "external_value": "prohibited",
+        },
+        "entry_cost_rule": (
+            "StructureCosts_v0.2_stable_total_entry_cost_float"
+        ),
+        "exit_cost_assumptions": {
+            "methodology": exit_cost_methodology,
+            "ordered_values": tuple({
+                "scenario_identity": _scenario_identity(scenario),
+                "exit_cost": value,
+            } for scenario, value in zip(scenarios, exit_costs)),
+        },
+        "net_liquidation_rule": "max(gross_position_value-exit_cost,0.0)",
+        "bounded_loss_rule": (
+            "pnl_after_costs_not_less_than_negative_entry_cost"
+        ),
+        "record_methodology_disclosure": {
+            "schema_keys": tuple(sorted(_SCENARIO_METHODOLOGY_KEYS)),
+            "serializer": "canonicalize_lineage_parameters",
+        },
+        "calculation_values": tuple(calculation_values),
+        "lineage_union_rule": {
+            "exact_overlap": "deduplicate",
+            "conflicting_overlap": "reject",
+            "calculated_dependencies_are_not_inputs": True,
+        },
+        "float_conversion_rule": {
+            "decimal_context": "precision_34_ROUND_HALF_EVEN",
+            "converted": ("base_leg_iv", "gross_position_value", "exit_cost"),
+            "stable_cost_floats": (
+                "base_underlying_price",
+                "entry_cost_basis",
+            ),
+            "finite_required": True,
+        },
+        "limitations": (
+            "Validates internal consistency, not cryptographic authenticity; "
+            "probabilities, expected returns, screening, recommendations, "
+            "sizing, and execution are outside scope."
+        ),
+    }
+    parameters_json = canonicalize_lineage_parameters(parameters)
+    flags = {
+        CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+        CalculationQualityFlag.ANNUALIZED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    for lineage in dependency_lineages:
+        flags.update(
+            flag
+            for flag in lineage.quality_flags
+            if flag in _SCENARIO_VALUATION_PROPAGATED_FLAGS
+        )
+    lineage = _construct_scenario_valuation_lineage(
+        normalized_id,
+        normalized_at,
+        inputs,
+        parameters_json,
+        tuple(
+            flag for flag in CalculationQualityFlag if flag in flags
+        ),
+    )
+    return ScenarioValuationTransformationResult(tuple(records), lineage)

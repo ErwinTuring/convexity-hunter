@@ -6036,6 +6036,206 @@ provider payload or a provider signature. Milestone 3C.7f1 performs no network
 verification, payload retrieval, provider authentication, or signature
 verification.
 
+## 13.22 Milestone 3C.7f2 hybrid scenario valuation
+
+Milestone 3C.7f2 constructs the existing `ScenarioResult` record through one
+deterministic hybrid transformation. Non-expiration scenarios consume
+reviewed 3C.7f1 provider-calculated gross values unchanged and are never
+repriced. Expiration scenarios calculate terminal intrinsic payoff internally.
+Every scenario consumes reviewed `StructureCosts` v0.2, contextual
+`TailPricing` v0.1, an explicit scenario-specific exit-cost Decimal, and the
+actual 3C.7f1 structure-leg IV evidence. The output is
+`ScenarioValuationTransformationResult(records, lineage)`, and the public
+function is `transform_scenario_valuation(calculation_id,
+structure_costs_result, tail_pricing_result, scenario_pricing_result,
+scenarios, scenario_grid_complete, exit_cost_assumptions,
+exit_cost_methodology, calculated_at)`. The package root remains unchanged.
+
+The three exact dependency identities are `structure_costs`,
+`exact-structure-costs`, `v0.2`; `tail_pricing`,
+`nearest-observed-delta-wing-tail-relative-pricing`, `v0.1`; and
+`nonexpiration_scenario_pricing`,
+`authoritative-provider-option-scenario-pricing-evidence`, `v0.1`.
+`StructureCosts` v0.2 closes the prior downstream-verifiability blocker: its
+completed wrapper is intrinsically revalidated and its strict 20-key decoder
+supplies exact underlying, premium, spread, fee, entry-cost, maximum-loss,
+stable-repr, evidence, and structure facts. Tail pricing receives the smallest
+strict private 20-key decoder and record/input/order/flag/chronology
+correspondence check. The completed 3C.7f1 wrapper and strict 23-key decoder
+validate provider records, methodology, evidence, lineage, flags, and
+chronology before any downstream arithmetic or constructor is reached.
+
+The dependencies must share the exact structure, underlying, as-of date,
+expiration, public leg order, contract identities, and multipliers.
+`StructureCosts` exact `underlying_price_exact` must equal the 3C.7f1 common
+base-underlying Decimal, while its stable public underlying float is retained
+directly in `ScenarioResult`. Tail pricing must contain the structure
+expiration exactly once. A structure leg that is also the exact disclosed
+current tail candidate must agree on contract, IV, IV-record, and
+contract-reference identities; arbitrary structure legs need not be selected
+tail points and tail ATM or wing IV never substitutes for actual leg IV.
+
+`scenarios` is a nonempty exact tuple of exact `Scenario` records with at least
+one non-expiration scenario. Identity is valuation time, days forward,
+`Decimal(str(underlying_move))`, and `Decimal(str(iv_change))`. Identities are
+unique and already ordered by valuation date, valuation-time rank
+(`immediate`, `days_forward`, `holding_horizon`, `expiration`), days forward,
+underlying move, and IV change. Immediate resolves to as-of date; days-forward
+to as-of plus declared calendar days; holding horizon to as-of plus the
+structure holding days; expiration to the common expiration. The
+transformation never silently reorders.
+
+When `scenario_grid_complete` is false, the ordered scenarios are an explicit
+subset. When true, every valuation-time/days-forward group must equal the
+Cartesian product of moves `-0.20`, `-0.10`, `-0.05`, `0`, `0.05`, `0.10`,
+`0.20` and relative IV changes `-0.20`, `0`, `0.20`, `0.50`. Distinct IV
+changes remain distinct expiration identities even though expiration payoff
+is IV-independent. The complete set of 3C.7f1 records must equal the declared
+non-expiration set, and each exact match must reproduce scenario identity,
+valuation date, structure, as-of date, exact base and shocked underlying, and
+exact base and shocked leg-IV tuples before its authoritative gross Decimal is
+consumed unchanged.
+
+Expiration uses isolated precision-34, `ROUND_HALF_EVEN` Decimal arithmetic.
+Shocked underlying is exact base underlying times one plus the Decimal-string
+move. A long call pays `max(shocked underlying - strike, 0) * quantity *
+multiplier`; a long put pays `max(strike - shocked underlying, 0) * quantity *
+multiplier`; the structure value is the exact leg sum. Remaining days is zero,
+valuation date is expiration, external expiration values are prohibited, and
+the actual base-IV tuple remains in the public result solely for audit.
+
+Exit-cost assumptions are an exact ordered tuple of exact two-item tuples.
+Each first item is the same declared `Scenario` object at that position and
+each second item is a finite nonnegative exact Decimal. There is exactly one
+assumption per scenario; missing, extra, duplicate, or reordered assumptions
+reject. One trimmed, nonempty, surrogate-free canonical methodology string
+applies to every scenario. Zero, including zero at expiration, is valid only
+when explicitly supplied. Entry cost is never inferred: every
+`ScenarioResult.entry_cost_basis` is the reviewed stable
+`StructureCosts.total_entry_cost`.
+
+Each public result stores the exact common structure and as-of date, exact
+caller scenario object and resolved valuation date, reviewed stable
+base-underlying float, one existing `LegVolatilityInput` per public leg using
+the actual 3C.7f1 base IV, authoritative or intrinsic gross value converted
+once to a finite float, stable entry-cost float, explicit exit-cost Decimal
+converted once to a finite float, and a canonical methodology string. Net
+liquidation remains `max(gross - exit cost, 0.0)`, after-cost P&L remains net
+liquidation less entry cost, and return remains P&L divided by entry cost.
+Every constructed record must prove loss no worse than negative entry cost,
+while the cost dependency proves maximum loss equals total entry cost.
+
+Every record methodology is serialized only by
+`canonicalize_lineage_parameters`, contains no JSON float, and has exactly 15
+keys: `schema_version`, `valuation_source`, `scenario_identity`,
+`structure_costs_dependency`, `tail_pricing_dependency`,
+`scenario_pricing_dependency`, `provider_disclosure`,
+`nonexpiration_rule`, `expiration_rule`, `base_underlying_source`,
+`base_iv_source`, `entry_cost_rule`, `exit_cost_rule`,
+`float_conversion_rule`, and `limitations`. The valuation-source discriminator
+is `authoritative_provider_nonexpiration` or
+`terminal_intrinsic_expiration`. Both variants retain fixed active/inactive
+branch declarations, dependency identities, provider or formula disclosure,
+actual-leg-IV source, exact underlying source, entry/exit rules, conversion
+boundary, limitations, and the no-repricing or no-external-expiration rule.
+
+Direct `ScenarioValuationTransformationResult` construction applies the same
+complete intrinsic verifier as the generated transformation. It validates
+every public `ScenarioResult` field and derived property against the matching
+ordered calculation-value entry, including exact base and shocked underlying,
+actual base-leg IVs in public leg order, exact shocked IVs, remaining days,
+gross value, exit assumption, expiration leg payoffs, every stable public
+float representation, bounded-loss state, and the exact pricing-methodology
+string. Public leg IV floats must be the finite conversions of the common
+actual-leg IV Decimal tuple retained by the ScenarioPricing dependency; a
+changed or cross-leg-substituted public IV cannot be paired with untouched
+lineage.
+
+The intrinsic verifier enforces the complete calculation-value nested schema,
+all three complete calculated-dependency disclosure schemas and exact
+identities, and the complete nested 15-key record-methodology schema. The
+record methodology must correspond exactly to its calculation-value entry and
+the top-level methodology disclosure. Missing or extra nested keys, wrong
+dependency identities, fixed rules, active/inactive branch declarations,
+scenario identities, valuation sources, provider disclosures, expiration
+formulas, exit methodology, exact Decimals, stable representations, or
+cardinality and ordering reject even when the mutated JSON remains canonical.
+
+The retained TailPricing v0.1 `parameters_json` is validated as one complete
+frozen dependency tree, not as only the subset consumed directly by scenario
+valuation. The shared private TailPricing decoder enforces the exact current
+expiration-observation schema; every selected put and call schema; every
+current candidate schema; every historical tenor, observation, selected-option
+and paired-ATM schema; the embedded volatility-environment disclosure; and all
+exact nested containers, keys, canonical Decimal/date/datetime tags,
+cardinalities, uniqueness, ordering, selection-to-candidate correspondence,
+tail metrics, and record IDs. A byte-canonical document with any missing,
+extra, mistyped, or reordered nested value rejects during intrinsic direct
+wrapper construction.
+
+The shared downstream lineage identity is `scenario_valuation`,
+`hybrid-authoritative-nonexpiration-terminal-intrinsic-after-costs`, `v0.1`.
+Its canonical parameters have exactly 25 keys: `output_architecture`,
+`supported_structure_scope`, `scenario_declaration`,
+`scenario_grid_semantics`, `scenario_ordering`, `valuation_date_rules`,
+`underlying_shock_rule`, `iv_shock_rule`, `structure_costs_dependency`,
+`tail_pricing_dependency`, `scenario_pricing_dependency`,
+`cross_dependency_consistency`, `base_underlying_rule`, `base_iv_rule`,
+`nonexpiration_valuation_rule`, `expiration_payoff_rule`, `entry_cost_rule`,
+`exit_cost_assumptions`, `net_liquidation_rule`, `bounded_loss_rule`,
+`record_methodology_disclosure`, `calculation_values`,
+`lineage_union_rule`, `float_conversion_rule`, and `limitations`.
+Dependency disclosures retain full parameters JSON and selected decoded facts.
+Per-scenario calculation values retain exact shocks, IVs, gross values,
+exit-cost assumptions and expiration leg payoffs, plus stable public float
+repr strings and the exact public methodology.
+
+Normalized inputs are the deterministic union of the three dependency
+lineages. An identical record ID, normalization time, and source-ID tuple is
+retained once; any conflicting overlap rejects. Dependencies, scenarios,
+assumptions, payoff calculations, and public results are not fabricated as
+normalized inputs. Ordinary no-overlap counts are 209 for a one-leg structure
+and 214 for a straddle, independent of scenario count.
+
+Downstream flags always contain `DECIMAL_TO_FLOAT_CONVERTED`, `ANNUALIZED`,
+and `ASSUMPTION_APPLIED`. `INTERPOLATED`, `ADJUSTED_INPUT_USED`,
+`CORRECTION_SELECTED`, and `COMPOSITE_INPUT_USED` propagate if and only if a
+dependency contains them; `INCOMPLETE_INPUT_USED` is prohibited. Enum order is
+canonical. Decimal values remain exact through identities, shocks, expiration
+payoff, provider gross values, IVs, assumptions, and canonical parameters.
+Only base IV, gross value, and exit cost cross to finite float; reviewed stable
+cost floats are reused directly. Caller Decimal precision, rounding, traps,
+flags, exponent limits, capitals, and clamp remain unchanged on success and
+ordinary failure.
+
+Wrong exact Python, container, or item types raise `TypeError`; invalid
+identity, schema, semantics, arithmetic, matching, chronology, ordering,
+lineage, quality, bounded loss, or canonical state raises `ValueError`.
+Dependency validation precedes expiration arithmetic and all downstream
+constructors. The MVP-focused review standard covers calls, puts, straddles,
+complete grids and explicit subsets, provider matching/no repricing,
+expiration payoff and scaling, exit costs, canonical methodologies and
+lineage, input union, flags, Decimal context, constructor precedence, and scope
+sentinels. Black-Scholes, trees, provider APIs, probabilities, expected
+returns, screening, candidate construction, recommendations, sizing,
+execution, shorts, spreads, multiple expirations, and exotics remain outside
+scope.
+
+The trust boundary validates the internal consistency of all three reviewed
+dependencies, declarations, assumptions, arithmetic, public records,
+parameters, lineage, flags, and chronology. It does not cryptographically
+authenticate a fully self-consistent fabrication of every dependency
+artifact. Signatures, provider authentication, immutable payload stores, and
+generic artifact registries are intentionally not added.
+
+When a structure leg is also an exact current TailPricing candidate at the
+structure expiration, four facts must all equal the corresponding
+ScenarioPricing leg evidence: economic contract identity, implied-volatility
+value, IV record ID, and contract-reference record ID. Arbitrary structure
+legs still need not be selected tail candidates. A matching contract and IV
+with either evidence ID changed is inconsistent and rejects before any
+downstream result constructor.
+
 The following questions remain open:
 
 - Which MIC or listing registry should supply `listing_mic`?
