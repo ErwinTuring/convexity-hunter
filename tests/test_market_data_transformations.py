@@ -74,6 +74,12 @@ from convexity_hunter.market_data import (
     select_market_data_relationship_assessment,
 )
 from convexity_hunter.market_data_transformations import (
+    ExactRational,
+    ExpirationPayoffThreshold,
+    ExpirationPayoffThresholdEvidence,
+    ExpirationPayoffThresholdSide,
+    ExpirationPayoffThresholdStatus,
+    ExpirationPayoffThresholdTransformationResult,
     HistoricalRealizedVolatility,
     HistoricalRealizedVolatilityTransformationResult,
     HistoricalReturnPriceBasis,
@@ -87,6 +93,7 @@ from convexity_hunter.market_data_transformations import (
     TailPricingTransformationResult,
     VolatilityEnvironmentTransformationResult,
     transform_historical_realized_volatility,
+    transform_expiration_payoff_thresholds,
     transform_structure_costs,
     transform_structure_liquidity,
     transform_tail_pricing,
@@ -1047,6 +1054,13 @@ class PublicSurfaceTests(unittest.TestCase):
                 "ScenarioPricingCalculationResult",
                 "ScenarioValuationTransformationResult",
                 "transform_scenario_valuation",
+                "ExactRational",
+                "ExpirationPayoffThresholdSide",
+                "ExpirationPayoffThresholdStatus",
+                "ExpirationPayoffThreshold",
+                "ExpirationPayoffThresholdEvidence",
+                "ExpirationPayoffThresholdTransformationResult",
+                "transform_expiration_payoff_thresholds",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -3117,6 +3131,13 @@ class StructureCostsPublicSurfaceTests(unittest.TestCase):
                 "ScenarioPricingCalculationResult",
                 "ScenarioValuationTransformationResult",
                 "transform_scenario_valuation",
+                "ExactRational",
+                "ExpirationPayoffThresholdSide",
+                "ExpirationPayoffThresholdStatus",
+                "ExpirationPayoffThreshold",
+                "ExpirationPayoffThresholdEvidence",
+                "ExpirationPayoffThresholdTransformationResult",
+                "transform_expiration_payoff_thresholds",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -4219,6 +4240,13 @@ class HistoricalRealizedVolatilityPublicContractTests(unittest.TestCase):
                 "ScenarioPricingCalculationResult",
                 "ScenarioValuationTransformationResult",
                 "transform_scenario_valuation",
+                "ExactRational",
+                "ExpirationPayoffThresholdSide",
+                "ExpirationPayoffThresholdStatus",
+                "ExpirationPayoffThreshold",
+                "ExpirationPayoffThresholdEvidence",
+                "ExpirationPayoffThresholdTransformationResult",
+                "transform_expiration_payoff_thresholds",
             ),
         )
         self.assertEqual(
@@ -4941,6 +4969,13 @@ class VolatilityEnvironmentTransformationTests(unittest.TestCase):
                 "ScenarioPricingCalculationResult",
                 "ScenarioValuationTransformationResult",
                 "transform_scenario_valuation",
+                "ExactRational",
+                "ExpirationPayoffThresholdSide",
+                "ExpirationPayoffThresholdStatus",
+                "ExpirationPayoffThreshold",
+                "ExpirationPayoffThresholdEvidence",
+                "ExpirationPayoffThresholdTransformationResult",
+                "transform_expiration_payoff_thresholds",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -5403,6 +5438,13 @@ class TailPricingTransformationTests(unittest.TestCase):
                 "ScenarioPricingCalculationResult",
                 "ScenarioValuationTransformationResult",
                 "transform_scenario_valuation",
+                "ExactRational",
+                "ExpirationPayoffThresholdSide",
+                "ExpirationPayoffThresholdStatus",
+                "ExpirationPayoffThreshold",
+                "ExpirationPayoffThresholdEvidence",
+                "ExpirationPayoffThresholdTransformationResult",
+                "transform_expiration_payoff_thresholds",
             ),
         )
         self.assertEqual(
@@ -6328,8 +6370,8 @@ def rebuild_scenario_pricing_result(
 
 class ScenarioPricingCalculationContractTests(unittest.TestCase):
     def test_exact_public_api_fields_and_root_exclusions(self):
-        self.assertEqual(len(transformations.__all__), 18)
-        self.assertEqual(transformations.__all__[-6:], (
+        self.assertEqual(len(transformations.__all__), 25)
+        self.assertEqual(transformations.__all__[12:18], (
             "ScenarioPricingMethodology",
             "ScenarioPricingLegCalculation",
             "NonExpirationScenarioPricingCalculation",
@@ -6380,7 +6422,7 @@ class ScenarioPricingCalculationContractTests(unittest.TestCase):
                 tuple(field.name for field in dataclasses.fields(record_type)),
                 expected,
             )
-        for name in transformations.__all__[-4:]:
+        for name in transformations.__all__[14:18]:
             self.assertFalse(hasattr(convexity_hunter, name))
         public_functions = tuple(
             name for name in transformations.__all__
@@ -6393,6 +6435,7 @@ class ScenarioPricingCalculationContractTests(unittest.TestCase):
             "transform_volatility_environment",
             "transform_tail_pricing",
             "transform_scenario_valuation",
+            "transform_expiration_payoff_thresholds",
         ))
 
     def test_call_put_and_straddle_direct_construction(self):
@@ -7336,8 +7379,8 @@ def make_tail_matching_scenario_valuation_arguments(iv_id, reference_id):
 
 class ScenarioValuationTransformationTests(unittest.TestCase):
     def test_exact_public_surface_fields_signature_and_package_boundary(self):
-        self.assertEqual(len(transformations.__all__), 18)
-        self.assertEqual(transformations.__all__[-2:], (
+        self.assertEqual(len(transformations.__all__), 25)
+        self.assertEqual(transformations.__all__[16:18], (
             "ScenarioValuationTransformationResult",
             "transform_scenario_valuation",
         ))
@@ -8422,6 +8465,889 @@ class ScenarioValuationTransformationTests(unittest.TestCase):
                 ))
             ScenarioValuationTransformationResult(
                 result.records, result.lineage
+            )
+
+
+def make_expiration_threshold_result(
+    option_types=("call",),
+    *,
+    quantity=1,
+    multiplier=100,
+    commissions_and_fees=decimal.Decimal("1.25"),
+):
+    structure = make_structure(
+        option_types, quantity=quantity, multiplier=multiplier
+    )
+    selection, _, _, _ = make_cost_selection(structure)
+    costs = transform_costs(
+        structure,
+        selection,
+        commissions_and_fees=commissions_and_fees,
+    )
+    return transform_expiration_payoff_thresholds(
+        " expiration-thresholds ",
+        costs,
+        CALCULATED_AT + datetime.timedelta(seconds=1),
+    )
+
+
+def mutate_expiration_threshold_parameters(result, mutate):
+    parameters = copy.deepcopy(
+        transformations._decode_expiration_threshold_parameters(
+            result.lineage.parameters_json
+        )
+    )
+    mutate(parameters)
+    return dataclasses.replace(
+        result.lineage,
+        parameters_json=market_data.canonicalize_lineage_parameters(
+            parameters
+        ),
+    )
+
+
+def bypass_frozen_dataclass(value, **changes):
+    forged = object.__new__(type(value))
+    for field in dataclasses.fields(value):
+        object.__setattr__(
+            forged,
+            field.name,
+            changes.get(field.name, getattr(value, field.name)),
+        )
+    return forged
+
+
+class ExpirationPayoffThresholdPublicContractTests(unittest.TestCase):
+    def test_exact_public_api_signature_fields_and_boundaries(self):
+        self.assertEqual(len(transformations.__all__), 25)
+        self.assertEqual(transformations.__all__[-7:], (
+            "ExactRational",
+            "ExpirationPayoffThresholdSide",
+            "ExpirationPayoffThresholdStatus",
+            "ExpirationPayoffThreshold",
+            "ExpirationPayoffThresholdEvidence",
+            "ExpirationPayoffThresholdTransformationResult",
+            "transform_expiration_payoff_thresholds",
+        ))
+        self.assertEqual(len(market_data.__all__), 64)
+        self.assertEqual(
+            tuple(item.value for item in ExpirationPayoffThresholdSide),
+            ("downside", "upside"),
+        )
+        self.assertEqual(
+            tuple(item.value for item in ExpirationPayoffThresholdStatus),
+            ("available", "unavailable_negative_underlying_price"),
+        )
+        self.assertEqual(
+            tuple(inspect.signature(
+                transform_expiration_payoff_thresholds
+            ).parameters),
+            ("calculation_id", "structure_costs_result", "calculated_at"),
+        )
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(ExactRational)),
+            ("numerator", "denominator"),
+        )
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(
+                ExpirationPayoffThreshold
+            )),
+            (
+                "position_value_multiple",
+                "side",
+                "status",
+                "target_position_value",
+                "threshold_underlying_price",
+                "absolute_move_from_base",
+                "relative_move_from_base",
+            ),
+        )
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(
+                ExpirationPayoffThresholdEvidence
+            )),
+            (
+                "structure",
+                "as_of_date",
+                "base_underlying_price",
+                "total_entry_cost",
+                "thresholds",
+            ),
+        )
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(
+                ExpirationPayoffThresholdTransformationResult
+            )),
+            ("record", "lineage"),
+        )
+        for name in transformations.__all__[-7:]:
+            self.assertFalse(hasattr(convexity_hunter, name))
+
+    def test_direct_imports_are_the_module_objects(self):
+        self.assertIs(ExactRational, transformations.ExactRational)
+        self.assertIs(
+            ExpirationPayoffThresholdEvidence,
+            transformations.ExpirationPayoffThresholdEvidence,
+        )
+        self.assertIs(
+            transform_expiration_payoff_thresholds,
+            transformations.transform_expiration_payoff_thresholds,
+        )
+
+
+class ExactRationalContractTests(unittest.TestCase):
+    def test_reduction_zero_sign_equality_hashing_and_freezing(self):
+        self.assertEqual(ExactRational(6, 8), ExactRational(3, 4))
+        self.assertEqual(hash(ExactRational(6, 8)), hash(ExactRational(3, 4)))
+        self.assertEqual(ExactRational(-6, 8), ExactRational(-3, 4))
+        self.assertEqual(ExactRational(0, 999), ExactRational(0, 1))
+        with self.assertRaises(FrozenInstanceError):
+            ExactRational(1, 2).numerator = 2
+
+    def test_exact_field_and_denominator_rejections(self):
+        for numerator, denominator, error in (
+            (True, 1, TypeError),
+            (1, True, TypeError),
+            (1.0, 1, TypeError),
+            (1, 1.0, TypeError),
+            (1, 0, ValueError),
+            (1, -2, ValueError),
+        ):
+            with self.subTest(
+                numerator=numerator, denominator=denominator
+            ), self.assertRaises(error):
+                ExactRational(numerator, denominator)
+
+    def test_exact_finite_decimal_conversion_literals(self):
+        cases = (
+            ("123.4500", ExactRational(2469, 20)),
+            ("-0.00000125", ExactRational(-1, 800000)),
+            ("0E+100", ExactRational(0, 1)),
+            ("1E-1000", ExactRational(1, 10 ** 1000)),
+            ("9.99E+1000", ExactRational(999 * 10 ** 998, 1)),
+        )
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(
+                    transformations._exact_rational_from_decimal(
+                        decimal.Decimal(text)
+                    ),
+                    expected,
+                )
+        with self.assertRaises(TypeError):
+            transformations._exact_rational_from_decimal(1.25)
+        for text in ("NaN", "Infinity", "-Infinity"):
+            with self.assertRaises(ValueError):
+                transformations._exact_rational_from_decimal(
+                    decimal.Decimal(text)
+                )
+
+    def test_extreme_exponents_are_accepted_exactly_without_context_change(self):
+        before = decimal_context_state()
+        positive = transformations._exact_rational_from_decimal(
+            decimal.Decimal("1E+100001")
+        )
+        negative = transformations._exact_rational_from_decimal(
+            decimal.Decimal("1E-100001")
+        )
+        self.assertEqual(positive, ExactRational(10 ** 100001, 1))
+        self.assertEqual(negative, ExactRational(1, 10 ** 100001))
+        self.assertEqual(
+            transformations._exact_rational_from_decimal(
+                decimal.Decimal("-123456789012345678901234567890E+250")
+            ),
+            ExactRational(
+                -123456789012345678901234567890 * 10 ** 250,
+                1,
+            ),
+        )
+        self.assertEqual(hash(positive), hash(ExactRational(10 ** 100001, 1)))
+        self.assertEqual(decimal_context_state(), before)
+
+
+class ExpirationPayoffThresholdLiteralEconomicsTests(unittest.TestCase):
+    def test_long_call_literal_1x_2x_5x_10x_values_and_moves(self):
+        result = make_expiration_threshold_result(("call",))
+        self.assertEqual(result.record.base_underlying_price, decimal.Decimal("100"))
+        self.assertEqual(result.record.total_entry_cost, decimal.Decimal("141.250"))
+        self.assertEqual(
+            tuple(
+                (
+                    item.position_value_multiple,
+                    item.side,
+                    item.target_position_value,
+                    item.threshold_underlying_price,
+                    item.absolute_move_from_base,
+                    item.relative_move_from_base,
+                )
+                for item in result.record.thresholds
+            ),
+            (
+                (1, ExpirationPayoffThresholdSide.UPSIDE,
+                 ExactRational(565, 4), ExactRational(8113, 80),
+                 ExactRational(113, 80), ExactRational(113, 8000)),
+                (2, ExpirationPayoffThresholdSide.UPSIDE,
+                 ExactRational(565, 2), ExactRational(4113, 40),
+                 ExactRational(113, 40), ExactRational(113, 4000)),
+                (5, ExpirationPayoffThresholdSide.UPSIDE,
+                 ExactRational(2825, 4), ExactRational(1713, 16),
+                 ExactRational(113, 16), ExactRational(113, 1600)),
+                (10, ExpirationPayoffThresholdSide.UPSIDE,
+                 ExactRational(2825, 2), ExactRational(913, 8),
+                 ExactRational(113, 8), ExactRational(113, 800)),
+            ),
+        )
+
+    def test_long_put_literal_values_and_signed_moves(self):
+        result = make_expiration_threshold_result(("put",))
+        self.assertEqual(
+            tuple(
+                (
+                    item.position_value_multiple,
+                    item.side,
+                    item.threshold_underlying_price,
+                    item.absolute_move_from_base,
+                    item.relative_move_from_base,
+                )
+                for item in result.record.thresholds
+            ),
+            (
+                (1, ExpirationPayoffThresholdSide.DOWNSIDE,
+                 ExactRational(7887, 80), ExactRational(-113, 80),
+                 ExactRational(-113, 8000)),
+                (2, ExpirationPayoffThresholdSide.DOWNSIDE,
+                 ExactRational(3887, 40), ExactRational(-113, 40),
+                 ExactRational(-113, 4000)),
+                (5, ExpirationPayoffThresholdSide.DOWNSIDE,
+                 ExactRational(1487, 16), ExactRational(-113, 16),
+                 ExactRational(-113, 1600)),
+                (10, ExpirationPayoffThresholdSide.DOWNSIDE,
+                 ExactRational(687, 8), ExactRational(-113, 8),
+                 ExactRational(-113, 800)),
+            ),
+        )
+
+    def test_straddle_literal_order_and_both_branches(self):
+        result = make_expiration_threshold_result(("put", "call"))
+        self.assertEqual(len(result.record.thresholds), 8)
+        self.assertEqual(
+            tuple(
+                (item.position_value_multiple, item.side)
+                for item in result.record.thresholds
+            ),
+            (
+                (1, ExpirationPayoffThresholdSide.DOWNSIDE),
+                (1, ExpirationPayoffThresholdSide.UPSIDE),
+                (2, ExpirationPayoffThresholdSide.DOWNSIDE),
+                (2, ExpirationPayoffThresholdSide.UPSIDE),
+                (5, ExpirationPayoffThresholdSide.DOWNSIDE),
+                (5, ExpirationPayoffThresholdSide.UPSIDE),
+                (10, ExpirationPayoffThresholdSide.DOWNSIDE),
+                (10, ExpirationPayoffThresholdSide.UPSIDE),
+            ),
+        )
+        self.assertEqual(
+            tuple(item.threshold_underlying_price
+                  for item in result.record.thresholds[:2]),
+            (ExactRational(7679, 80), ExactRational(8321, 80)),
+        )
+
+    def test_quantity_three_nonterminating_distance_and_scaling(self):
+        quantity_three = make_expiration_threshold_result(
+            ("call",), quantity=3
+        )
+        multiplier_twenty_five = make_expiration_threshold_result(
+            ("call",), multiplier=25
+        )
+        self.assertEqual(
+            quantity_three.record.thresholds[0].threshold_underlying_price,
+            ExactRational(24337, 240),
+        )
+        self.assertEqual(
+            multiplier_twenty_five.record.thresholds[0]
+            .threshold_underlying_price,
+            ExactRational(2029, 20),
+        )
+
+    def test_total_entry_cost_includes_spread_commissions_and_fees(self):
+        no_fee = make_expiration_threshold_result(
+            ("call",), commissions_and_fees=decimal.Decimal("0")
+        )
+        with_fee = make_expiration_threshold_result(
+            ("call",), commissions_and_fees=decimal.Decimal("7.50")
+        )
+        self.assertEqual(no_fee.record.total_entry_cost, decimal.Decimal("140.00"))
+        self.assertEqual(
+            with_fee.record.total_entry_cost, decimal.Decimal("147.500")
+        )
+        self.assertEqual(
+            no_fee.record.thresholds[0].threshold_underlying_price,
+            ExactRational(507, 5),
+        )
+        self.assertEqual(
+            with_fee.record.thresholds[0].threshold_underlying_price,
+            ExactRational(4059, 40),
+        )
+
+    def test_side_is_not_the_move_sign(self):
+        structure = make_structure(("call",))
+        selection, _, _, _ = make_cost_selection(
+            structure, underlying_bid="119", underlying_ask="121"
+        )
+        costs = transform_costs(
+            structure, selection, commissions_and_fees=decimal.Decimal("0")
+        )
+        result = transform_expiration_payoff_thresholds(
+            "threshold-opposite-move",
+            costs,
+            CALCULATED_AT + datetime.timedelta(seconds=1),
+        )
+        first = result.record.thresholds[0]
+        self.assertIs(first.side, ExpirationPayoffThresholdSide.UPSIDE)
+        self.assertEqual(first.absolute_move_from_base, ExactRational(-93, 5))
+        self.assertEqual(first.relative_move_from_base, ExactRational(-31, 200))
+
+
+class ExpirationPayoffThresholdDomainAndRecordTests(unittest.TestCase):
+    def test_zero_lower_root_is_available_and_negative_roots_are_explicit(self):
+        put = make_expiration_threshold_result(
+            ("put",), commissions_and_fees=decimal.Decimal("9860")
+        )
+        self.assertEqual(
+            put.record.thresholds[0].threshold_underlying_price,
+            ExactRational(0, 1),
+        )
+        self.assertIs(
+            put.record.thresholds[0].status,
+            ExpirationPayoffThresholdStatus.AVAILABLE,
+        )
+        for item in put.record.thresholds[1:]:
+            self.assertIs(
+                item.status,
+                ExpirationPayoffThresholdStatus
+                .UNAVAILABLE_NEGATIVE_UNDERLYING_PRICE,
+            )
+            self.assertIsNone(item.threshold_underlying_price)
+            self.assertIsNone(item.absolute_move_from_base)
+            self.assertIsNone(item.relative_move_from_base)
+        decoded = transformations._decode_expiration_threshold_parameters(
+            put.lineage.parameters_json
+        )
+        self.assertEqual(
+            decoded["calculation_values"][1]
+            ["unconstrained_threshold_underlying_price"],
+            {"numerator": -100, "denominator": 1},
+        )
+
+    def test_straddle_retains_unavailable_downside_in_canonical_position(self):
+        result = make_expiration_threshold_result(
+            ("call", "put"),
+            commissions_and_fees=decimal.Decimal("19860"),
+        )
+        for index in range(0, 8, 2):
+            self.assertIs(
+                result.record.thresholds[index].status,
+                ExpirationPayoffThresholdStatus
+                .UNAVAILABLE_NEGATIVE_UNDERLYING_PRICE,
+            )
+            self.assertIs(
+                result.record.thresholds[index + 1].status,
+                ExpirationPayoffThresholdStatus.AVAILABLE,
+            )
+
+    def test_threshold_record_status_type_and_optional_invariants(self):
+        available = make_expiration_threshold_result(
+            ("call",)
+        ).record.thresholds[0]
+        mutations = (
+            ({"position_value_multiple": True}, TypeError),
+            ({"position_value_multiple": 3}, ValueError),
+            ({"side": "upside"}, TypeError),
+            ({"status": "available"}, TypeError),
+            ({"target_position_value": ExactRational(0, 1)}, ValueError),
+            ({"threshold_underlying_price": None}, TypeError),
+            ({"threshold_underlying_price": ExactRational(-1, 1)}, ValueError),
+        )
+        for changes, error in mutations:
+            with self.subTest(changes=changes), self.assertRaises(error):
+                dataclasses.replace(available, **changes)
+        with self.assertRaises(ValueError):
+            ExpirationPayoffThreshold(
+                1,
+                ExpirationPayoffThresholdSide.UPSIDE,
+                ExpirationPayoffThresholdStatus
+                .UNAVAILABLE_NEGATIVE_UNDERLYING_PRICE,
+                ExactRational(1, 1),
+                None,
+                None,
+                None,
+            )
+
+    def test_evidence_rejects_wrong_types_order_cardinality_and_formulas(self):
+        result = make_expiration_threshold_result(("call",))
+        record = result.record
+        cases = (
+            ({"as_of_date": datetime.datetime.combine(
+                record.as_of_date, datetime.time()
+            )}, TypeError),
+            ({"base_underlying_price": 100}, TypeError),
+            ({"total_entry_cost": decimal.Decimal("0")}, ValueError),
+            ({"thresholds": list(record.thresholds)}, TypeError),
+            ({"thresholds": record.thresholds[:-1]}, ValueError),
+            ({"thresholds": tuple(reversed(record.thresholds))}, ValueError),
+            ({"thresholds": (
+                dataclasses.replace(
+                    record.thresholds[0],
+                    absolute_move_from_base=ExactRational(999, 1),
+                ),
+            ) + record.thresholds[1:]}, ValueError),
+        )
+        for changes, error in cases:
+            with self.subTest(changes=tuple(changes)), self.assertRaises(error):
+                dataclasses.replace(record, **changes)
+        with self.assertRaises(FrozenInstanceError):
+            record.total_entry_cost = decimal.Decimal("1")
+
+    def assert_forged_nested_value_rejects(self, result, **record_changes):
+        with self.assertRaises((TypeError, ValueError)):
+            dataclasses.replace(result.record, **record_changes)
+        forged_record = bypass_frozen_dataclass(
+            result.record, **record_changes
+        )
+        with self.assertRaises((TypeError, ValueError)):
+            ExpirationPayoffThresholdTransformationResult(
+                forged_record, result.lineage
+            )
+
+    def test_bypassed_threshold_and_rational_objects_reject_strictly(self):
+        result = make_expiration_threshold_result(("call",))
+        first = result.record.thresholds[0]
+        forged_multiple = bypass_frozen_dataclass(
+            first, position_value_multiple=True
+        )
+        self.assert_forged_nested_value_rejects(
+            result,
+            thresholds=(forged_multiple,) + result.record.thresholds[1:],
+        )
+
+        class IntSubclass(int):
+            pass
+
+        forged_rational = bypass_frozen_dataclass(
+            first.target_position_value,
+            numerator=IntSubclass(first.target_position_value.numerator),
+        )
+        forged_target = bypass_frozen_dataclass(
+            first, target_position_value=forged_rational
+        )
+        with self.assertRaises(TypeError):
+            ExpirationPayoffThreshold(
+                first.position_value_multiple,
+                first.side,
+                first.status,
+                forged_rational,
+                first.threshold_underlying_price,
+                first.absolute_move_from_base,
+                first.relative_move_from_base,
+            )
+        self.assert_forged_nested_value_rejects(
+            result,
+            thresholds=(forged_target,) + result.record.thresholds[1:],
+        )
+
+    def test_bypassed_structure_and_leg_objects_reject_strictly(self):
+        result = make_expiration_threshold_result(("call",))
+        structure = result.record.structure
+        structure_mutations = (
+            {"assumed_portfolio_value": math.nan},
+            {"expected_holding_days": -1},
+        )
+        for changes in structure_mutations:
+            forged = bypass_frozen_dataclass(structure, **changes)
+            with self.subTest(changes=changes):
+                self.assert_forged_nested_value_rejects(
+                    result, structure=forged
+                )
+
+        leg = structure.legs[0]
+        for underlying in ("", " spy ", "spy"):
+            forged_leg = bypass_frozen_dataclass(
+                leg, underlying=underlying
+            )
+            forged_structure = bypass_frozen_dataclass(
+                structure, legs=(forged_leg,)
+            )
+            with self.subTest(underlying=underlying):
+                self.assert_forged_nested_value_rejects(
+                    result, structure=forged_structure
+                )
+        forged_quantity = bypass_frozen_dataclass(leg, quantity=True)
+        forged_structure = bypass_frozen_dataclass(
+            structure, legs=(forged_quantity,)
+        )
+        self.assert_forged_nested_value_rejects(
+            result, structure=forged_structure
+        )
+
+
+class ExpirationPayoffThresholdLineageTrustTests(unittest.TestCase):
+    def test_authentic_wrapper_reconstruction_and_identity(self):
+        result = make_expiration_threshold_result(("call",))
+        rebuilt = ExpirationPayoffThresholdTransformationResult(
+            result.record, result.lineage
+        )
+        self.assertIs(rebuilt.record, result.record)
+        self.assertEqual(
+            (
+                result.lineage.calculation_type,
+                result.lineage.methodology_id,
+                result.lineage.methodology_version,
+            ),
+            (
+                "expiration_payoff_thresholds",
+                "closed-form-terminal-intrinsic-position-value-multiples",
+                "v0.1",
+            ),
+        )
+        self.assertEqual(
+            result.lineage.quality_flags,
+            (CalculationQualityFlag.ASSUMPTION_APPLIED,),
+        )
+
+    def test_canonical_top_nested_and_calculation_mutations_reject(self):
+        result = make_expiration_threshold_result(("call",))
+        mutations = (
+            lambda value: value.pop("limitations"),
+            lambda value: value.__setitem__("extra", True),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "position_value_multiple", True
+            ),
+            lambda value: value.__setitem__(
+                "target_multiples", (True, 2, 5, 10)
+            ),
+            lambda value: value["numeric_representation"].__setitem__(
+                "reduced", 1
+            ),
+            lambda value: value["calculation_values"][0][
+                "position_scale"
+            ].__setitem__("quantity", True),
+            lambda value: value["solution_domain"].__setitem__(
+                "zero_lower_threshold", False
+            ),
+            lambda value: value["structure_costs_dependency"].pop(
+                "input_rule"
+            ),
+            lambda value: value["structure_costs_dependency"].__setitem__(
+                "input_rule", "forged"
+            ),
+            lambda value: value["calculation_values"][0].pop("payoff_distance"),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "extra", 1
+            ),
+            lambda value: value["calculation_values"][0]
+            ["threshold_underlying_price"].__setitem__("denominator", 160),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "target_position_value",
+                {"numerator": 1130, "denominator": 8},
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "target_position_value",
+                {"numerator": 565, "denominator": 0},
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "target_position_value",
+                {"numerator": 565, "denominator": -4},
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "target_position_value",
+                {"numerator": True, "denominator": 4},
+            ),
+            lambda value: value["calculation_values"][0].__setitem__(
+                "side", "downside"
+            ),
+            lambda value: value["structure_costs_dependency"].__setitem__(
+                "methodology_version", "v9"
+            ),
+            lambda value: value["structure_costs_dependency"].__setitem__(
+                "calculated_at",
+                result.lineage.calculated_at + datetime.timedelta(seconds=1),
+            ),
+            lambda value: value.__setitem__(
+                "target_multiples", (1, 2, 10, 5)
+            ),
+            lambda value: value.__setitem__(
+                "calculation_values",
+                tuple(reversed(value["calculation_values"])),
+            ),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate), self.assertRaises(
+                (TypeError, ValueError)
+            ):
+                ExpirationPayoffThresholdTransformationResult(
+                    result.record,
+                    mutate_expiration_threshold_parameters(result, mutate),
+                )
+
+    def test_forged_retained_cost_parameters_and_public_record_reject(self):
+        result = make_expiration_threshold_result(("call",))
+
+        def forge_dependency(parameters):
+            dependency = parameters["structure_costs_dependency"]
+            decoded = transformations._decode_cost_parameters(
+                dependency["parameters_json"]
+            )
+            decoded["calculation_values"]["total_entry_cost_exact"] = (
+                decimal.Decimal("999")
+            )
+            dependency["parameters_json"] = (
+                market_data.canonicalize_lineage_parameters(decoded)
+            )
+
+        with self.assertRaises(ValueError):
+            ExpirationPayoffThresholdTransformationResult(
+                result.record,
+                mutate_expiration_threshold_parameters(
+                    result, forge_dependency
+                ),
+            )
+        forged_record = object.__new__(ExpirationPayoffThresholdEvidence)
+        for field in dataclasses.fields(result.record):
+            object.__setattr__(
+                forged_record, field.name, getattr(result.record, field.name)
+            )
+        object.__setattr__(
+            forged_record,
+            "total_entry_cost",
+            decimal.Decimal("999"),
+        )
+        with self.assertRaises(ValueError):
+            ExpirationPayoffThresholdTransformationResult(
+                forged_record, result.lineage
+            )
+
+    def test_wrong_identity_chronology_inputs_and_quality_flags_reject(self):
+        result = make_expiration_threshold_result(("call",))
+        cases = (
+            {"methodology_version": "v9"},
+            {"calculation_id": "calculation-3c7b"},
+            {"calculated_at": CALCULATED_AT - datetime.timedelta(seconds=1)},
+            {"quality_flags": ()},
+            {"quality_flags": (
+                CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                CalculationQualityFlag.ASSUMPTION_APPLIED,
+            )},
+        )
+        for changes in cases:
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                ExpirationPayoffThresholdTransformationResult(
+                    result.record, dataclasses.replace(result.lineage, **changes)
+                )
+        extra_input = CalculationInputReference(
+            "extra-input",
+            CALCULATED_AT - datetime.timedelta(days=1),
+            ("extra-source",),
+        )
+        with self.assertRaises(ValueError):
+            ExpirationPayoffThresholdTransformationResult(
+                result.record,
+                dataclasses.replace(
+                    result.lineage,
+                    inputs=result.lineage.inputs + (extra_input,),
+                ),
+            )
+
+    def test_quality_flag_propagation_is_exact_and_excludes_cost_float_flag(self):
+        structure = make_structure(("call",))
+        selection, _, _, _ = make_cost_selection(structure)
+        original = transform_costs(structure, selection)
+        cases = (
+            ("interpolated", CalculationQualityFlag.INTERPOLATED),
+            ("correction_selected", CalculationQualityFlag.CORRECTION_SELECTED),
+            (
+                "composite_input_used",
+                CalculationQualityFlag.COMPOSITE_INPUT_USED,
+            ),
+        )
+        for disclosed, flag in cases:
+            decoded = transformations._decode_cost_parameters(
+                original.lineage.parameters_json
+            )
+            decoded["normalized_evidence"]["underlying_quote"][
+                "propagated_quality_flags"
+            ] = (disclosed,)
+            dependency_lineage = dataclasses.replace(
+                original.lineage,
+                parameters_json=market_data.canonicalize_lineage_parameters(
+                    decoded
+                ),
+                quality_flags=(
+                    CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                    flag,
+                    CalculationQualityFlag.ASSUMPTION_APPLIED,
+                ),
+            )
+            dependency = StructureCostsTransformationResult(
+                original.record, dependency_lineage
+            )
+            result = transform_expiration_payoff_thresholds(
+                f"threshold-{disclosed}",
+                dependency,
+                CALCULATED_AT + datetime.timedelta(seconds=1),
+            )
+            with self.subTest(flag=flag):
+                self.assertEqual(
+                    result.lineage.quality_flags,
+                    tuple(
+                        item
+                        for item in CalculationQualityFlag
+                        if item in {
+                            flag,
+                            CalculationQualityFlag.ASSUMPTION_APPLIED,
+                        }
+                    ),
+                )
+                self.assertNotIn(
+                    CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+                    result.lineage.quality_flags,
+                )
+
+    def test_duplicate_float_and_malformed_tag_json_reject(self):
+        result = make_expiration_threshold_result(("call",))
+        malformed = (
+            '{"$map":[],"$map":[]}',
+            '{"$map":[["x",1.5]]}',
+            '{"$map":[["x",{"$rational":"1/2"}]]}',
+            '{"$map":[["x",{"$decimal":"NaN"}]]}',
+            '{"$map":[["x",{"$datetime":"2026-01-01"}]]}',
+        )
+        for text in malformed:
+            forged = object.__new__(CalculationLineage)
+            for field in dataclasses.fields(result.lineage):
+                object.__setattr__(
+                    forged, field.name, getattr(result.lineage, field.name)
+                )
+            object.__setattr__(forged, "parameters_json", text)
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                ExpirationPayoffThresholdTransformationResult(
+                    result.record, forged
+                )
+
+
+class ExpirationPayoffThresholdExecutionPropertiesTests(unittest.TestCase):
+    def test_exact_argument_types_ids_and_chronology(self):
+        result = make_expiration_threshold_result(("call",))
+        structure = make_structure(("call",))
+        selection, _, _, _ = make_cost_selection(structure)
+        costs = transform_costs(structure, selection)
+        cases = (
+            ((1, costs, CALCULATED_AT), TypeError),
+            (("x", object(), CALCULATED_AT), TypeError),
+            (("x", costs, SESSION_DATE), TypeError),
+            ((" ", costs, CALCULATED_AT), ValueError),
+            (("calculation-3c7b", costs, CALCULATED_AT), ValueError),
+            (("cost-underlying-quote", costs, CALCULATED_AT), ValueError),
+            (("x", costs, CALCULATED_AT - datetime.timedelta(days=1)),
+             ValueError),
+        )
+        for arguments, error in cases:
+            with self.subTest(arguments=arguments), self.assertRaises(error):
+                transform_expiration_payoff_thresholds(*arguments)
+        self.assertTrue(result.record.thresholds)
+
+    def test_dependency_validation_precedes_arithmetic_and_new_constructors(self):
+        valid = make_expiration_threshold_result(("call",))
+        dependency = transformations._expiration_threshold_dependency_from_disclosure(
+            valid.record,
+            valid.lineage,
+            transformations._decode_expiration_threshold_parameters(
+                valid.lineage.parameters_json
+            )["structure_costs_dependency"],
+        )
+        invalid_lineage = dataclasses.replace(
+            dependency.lineage, methodology_version="v9"
+        )
+        invalid_dependency = object.__new__(StructureCostsTransformationResult)
+        object.__setattr__(
+            invalid_dependency, "record", dependency.record
+        )
+        object.__setattr__(invalid_dependency, "lineage", invalid_lineage)
+        with mock.patch.object(
+            transformations,
+            "_expected_expiration_thresholds",
+            side_effect=AssertionError("arithmetic reached"),
+        ), mock.patch.object(
+            transformations,
+            "ExpirationPayoffThresholdEvidence",
+            side_effect=AssertionError("evidence constructor reached"),
+        ), mock.patch.object(
+            transformations,
+            "_construct_expiration_threshold_lineage",
+            side_effect=AssertionError("new lineage constructor reached"),
+        ):
+            with self.assertRaises((TypeError, ValueError)):
+                transform_expiration_payoff_thresholds(
+                    "new-thresholds",
+                    invalid_dependency,
+                    CALCULATED_AT + datetime.timedelta(seconds=1),
+                )
+
+    def test_determinism_isolation_and_decimal_context_preservation(self):
+        structure = make_structure(("call", "put"))
+        selection, _, _, _ = make_cost_selection(structure)
+        costs = transform_costs(structure, selection)
+        arguments = (
+            "threshold-determinism",
+            costs,
+            CALCULATED_AT + datetime.timedelta(seconds=1),
+        )
+        original = decimal.getcontext().copy()
+        configured = decimal.Context(
+            prec=7,
+            rounding=decimal.ROUND_UP,
+            Emin=-17,
+            Emax=19,
+            capitals=0,
+            clamp=1,
+        )
+        configured.traps[decimal.Inexact] = True
+        configured.flags[decimal.Rounded] = True
+        try:
+            decimal.setcontext(configured)
+            before = decimal_context_state()
+            first = transform_expiration_payoff_thresholds(*arguments)
+            second = transform_expiration_payoff_thresholds(*arguments)
+            self.assertEqual(first, second)
+            self.assertEqual(decimal_context_state(), before)
+            with self.assertRaises(ValueError):
+                transform_expiration_payoff_thresholds(
+                    " ",
+                    costs,
+                    arguments[2],
+                )
+            self.assertEqual(decimal_context_state(), before)
+        finally:
+            decimal.setcontext(original)
+
+        blocked = (
+            "transform_scenario_valuation",
+            "transform_tail_pricing",
+            "transform_volatility_environment",
+            "black_scholes",
+            "provider",
+            "network",
+        )
+        with ExitStack() as stack:
+            for name in blocked:
+                stack.enter_context(mock.patch.object(
+                    transformations,
+                    name,
+                    side_effect=AssertionError(f"{name} called"),
+                    create=True,
+                ))
+            self.assertTrue(
+                transform_expiration_payoff_thresholds(*arguments)
+                .record.thresholds
             )
 
 

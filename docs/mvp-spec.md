@@ -242,7 +242,7 @@ evidence but do not themselves impose sufficiency thresholds.
 
 ## 6. Expiration payoff-threshold evidence
 
-The future deterministic transformation must use:
+The implemented deterministic transformation uses:
 
 ```text
 expiration position-value multiple =
@@ -251,8 +251,8 @@ expiration position-value multiple =
 
 The exact ordered target set is 1x, 2x, 5x, and 10x. For Long Call, Long Put,
 and the current same-strike, same-expiration, same-quantity, same-multiplier
-Long Straddle, it must determine the exact expiration underlying price or
-prices required for:
+Long Straddle, it determines the exact expiration underlying price or prices
+required for:
 
 - 1x: expiration gross position value equals total entry cost, or break-even
   before any
@@ -274,11 +274,11 @@ price; a percentage is a later presentation derivation from the relative
 move. Side identifies the payoff branch and does not necessarily equal the
 sign of the move from the current base price.
 
-This milestone produces evidence only. It calculates no probability, expected
-return, direction forecast, recommendation, position sizing, automatic exit
-advice, or screening or report consequence. Candidate assembly, screening and
-report integration, position-management integration, and services remain
-later work. The complete technical contract is
+The implemented transformation produces evidence only. It calculates no
+probability, expected return, direction forecast, recommendation, position
+sizing, automatic exit advice, or screening or report consequence. Candidate
+assembly, screening and report integration, position-management integration,
+and services remain later work. The complete technical contract is
 [Milestone 4 deterministic expiration payoff-threshold evidence](market-data-contracts.md#1323-milestone-4-deterministic-expiration-payoff-threshold-evidence).
 
 ## 7. Non-expiration scenario framework

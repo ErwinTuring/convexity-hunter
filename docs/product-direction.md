@@ -2,7 +2,7 @@
 
 This document is the canonical product direction after Milestone 3. It defines
 the active product objective and roadmap without changing the completed
-Milestone 1–3 implementation or preflighting Milestone 4.
+Milestone 1–4 implementation.
 
 ## 1. Product objective
 
@@ -256,7 +256,7 @@ decision rules in [the screening policy](screening-policy.md).
 
 ## 9. Expiration payoff-threshold evidence
 
-The future expiration transformation uses:
+The implemented deterministic expiration transformation uses:
 
 ```text
 expiration position-value multiple =
@@ -282,7 +282,8 @@ payoff branch and does not necessarily equal the sign of the move from the
 current base price. “Exact” means mathematically exact rational evidence, not
 a rounded `Decimal` or float approximation.
 
-This milestone produces expiration payoff-threshold evidence only. It
+The implemented transformation produces expiration payoff-threshold evidence
+only. It
 calculates no probability, expected return, direction forecast,
 recommendation, position sizing, automatic exit advice, or screening or
 report consequence. Candidate assembly, screening and reporting integration,
@@ -444,9 +445,10 @@ scenario valuation.
 Convexity Hunter has largely completed the auditable numerical and evidence
 foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
-generation, expiration 1x/2x/5x/10x threshold evidence, production candidate
-assembly, position-management-plan integration, non-expiration pricing
-production, or the complete application flow.
+generation, production candidate assembly, position-management-plan
+integration, non-expiration pricing production, or the complete application
+flow. Milestone 4 implements deterministic exact-rational expiration
+1x/2x/5x/10x payoff-threshold evidence.
 
 Project claims must distinguish implemented capability, implemented record or
 contract, transformation requiring caller orchestration, synthetic-only
@@ -457,14 +459,13 @@ complete application workflow.
 
 1. Documentation alignment: persist this post-Milestone-3 consensus without a
    new numerical capability.
-2. Re-preflight Milestone 4: replace the stale break-even-only contract with
-   Deterministic Expiration Payoff-Threshold Evidence for exact 1x, 2x, 5x,
-   and 10x thresholds. Do not assume the previous record architecture.
+2. Completed Milestone 4: deterministic exact-rational Expiration
+   Payoff-Threshold Evidence for exact 1x, 2x, 5x, and 10x thresholds.
 3. Complete the single-structure research engine, subject to separate
-   preflights: expiration threshold evidence; explicit risk-budget and
-   affordability contract; reviewed-artifact-to-`CandidateResearchRecord`
-   assembly; position-management-plan contract; screening and Chinese-report
-   integration; and one deterministic offline single-structure service.
+   preflights: explicit risk-budget and affordability contract;
+   reviewed-artifact-to-`CandidateResearchRecord` assembly;
+   position-management-plan contract; screening and Chinese-report integration;
+   and one deterministic offline single-structure service.
 4. Produce non-expiration scenario pricing using a disclosed provider,
    internal model, or both.
 5. Research mature Skill capabilities, native interfaces, direct reuse,
@@ -500,7 +501,7 @@ complete application workflow.
 - The product reports research dispositions and future human-judgment
   conditions; it does not monitor, recommend, or execute.
 - Completed Milestone 1–3 history remains unchanged.
-- Milestone 4 requires a fresh read-only preflight before BUILD.
+- Milestone 4 is implemented and complete.
 
 ## 18. Future design questions
 

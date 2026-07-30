@@ -14,12 +14,9 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current milestone
 
-Milestones 1–3 remain complete. The revised Milestone 4 formal preflight
-returned `BLOCKED` on unresolved public numeric representation and evidence
-architecture. ChatGPT evaluated that report and froze the accepted
-exact-rational contract. The current documentation clarification persists that
-contract before implementation. Development is resumed; Milestone 4
-implementation is not complete.
+Milestones 1–4 are complete. Milestone 4 implements deterministic
+exact-rational expiration payoff-threshold evidence for the supported Long
+Call, Long Put, and Long Straddle grammar.
 
 ## Decisions locked
 
@@ -739,35 +736,44 @@ implementation is not complete.
   expansion modes; direct-entry flexibility; mode-appropriate future
   scenarios; and explicit cheapness and risk-budget boundaries. This is a
   completed documentation decision, not an implemented generation component.
-- The revised Milestone 4 formal preflight returned `BLOCKED` because public
-  numeric representation and evidence architecture were unresolved.
-- ChatGPT evaluated the report and froze the accepted exact-rational public
-  artifact, dependency, mathematics, lineage, ordering, and exclusion
-  contract. This documentation clarification persists that contract.
-- Milestone 4 remains unimplemented. Its next gate is BUILD of deterministic
-  expiration payoff-threshold evidence against the committed contract.
+- The revised Milestone 4 formal preflight initially returned `BLOCKED`
+  because public numeric representation and evidence architecture were
+  unresolved.
+- The accepted exact-rational artifact, dependency, mathematics, lineage,
+  ordering, and exclusion clarification was frozen and committed before
+  BUILD.
+- BUILD implemented the frozen contract. Broad independent review found three
+  MAJOR issues: Boolean/integer canonical substitutions, forged nested public
+  objects, and an arbitrary Decimal exponent cap.
+- All three findings were accepted and corrected. Targeted re-review passed
+  with all three resolved and no remaining MAJOR finding.
+- Final validation passes with 174 focused transformation tests, 365
+  market-data tests, 848 full-suite tests, non-writing compilation, both
+  import orders, API checks, and `git diff --check`.
+- Milestone 4 is complete at current HEAD.
 
 ## Current task
 
-Implement deterministic expiration payoff-threshold evidence against the
-committed Milestone 4 contract. Candidate assembly, screening and report
-integration, risk-budget work, position management, services, providers, and
-discovery remain deferred.
+Milestone 4 deterministic expiration payoff-threshold evidence is complete.
+Candidate assembly, screening and report integration, position management,
+services, providers, and discovery remain deferred.
 
 ## Last completed checkpoint
 
-- Commit: `86aee1dfa13cae0c865d8f24aa08754934abd540`
-- Subject: `Implement hybrid scenario valuation transformation`
-- Validation: 147 focused transformation tests, 365 market-data tests, 821
-  full-suite tests, compileall passed, and `git diff --check` passed
-- Status: Milestone 3C.7f2 complete, broad Milestone 3C.7f complete, and broad
-  Milestone 3 complete
+- Commit: current HEAD
+- Subject: `Implement expiration payoff-threshold evidence`
+- Validation: 174 focused transformation tests, 365 market-data tests, 848
+  full-suite tests, non-writing compilation, both import orders, API checks,
+  and `git diff --check` passed
+- Status: Milestone 4 complete after broad independent review, correction of
+  all three accepted MAJOR findings, and passing targeted re-review
+- Transformation-module public API: 25 names
 - Public `market_data` API: 64 names
 
 ### Preserved checkpoint chronology
 
 The entries below preserve earlier checkpoint wording and interim states. They
-do not override the current Milestone 3 completion checkpoint above.
+do not override the current Milestone 4 completion checkpoint above.
 
 - Milestone 3C.1 semantic observation identity complete
 - Milestone 3C.2 per-record selected/fresh binding complete
@@ -990,19 +996,19 @@ do not override the current Milestone 3 completion checkpoint above.
 
 ## Next task
 
-Build deterministic expiration payoff-threshold evidence against the frozen
-Milestone 4 contract. Do not extend the BUILD into candidate assembly,
-screening or report integration, risk-budget work, position management,
-services, providers, or discovery.
+Run a fresh formal preflight for explicit risk-budget and affordability
+evidence. Candidate assembly, screening and report integration, position
+management, services, providers, and discovery remain deferred.
 
 ## Current capability and roadmap
 
 Convexity Hunter has largely completed the auditable numerical and evidence
 foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
-generation, expiration 1x/2x/5x/10x threshold evidence, production candidate
-assembly, position-management-plan integration, non-expiration pricing
-production, or the complete application flow.
+generation, production candidate assembly, position-management-plan
+integration, non-expiration pricing production, or the complete application
+flow. Deterministic exact-rational expiration 1x/2x/5x/10x threshold evidence
+is implemented.
 
 Status claims must distinguish an implemented capability, an implemented
 record or contract, a transformation that requires caller orchestration,
@@ -1012,7 +1018,7 @@ not a complete application workflow.
 The accepted post-Milestone-3 sequence is:
 
 1. persist product direction in documentation;
-2. implement deterministic expiration payoff-threshold evidence against the
+2. completed: deterministic expiration payoff-threshold evidence against the
    frozen contract;
 3. complete the single-structure engine through explicit risk-budget
    contracts, reviewed-artifact assembly, a position-management-plan contract,

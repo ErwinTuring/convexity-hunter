@@ -83,6 +83,13 @@ __all__ = (
     "ScenarioPricingCalculationResult",
     "ScenarioValuationTransformationResult",
     "transform_scenario_valuation",
+    "ExactRational",
+    "ExpirationPayoffThresholdSide",
+    "ExpirationPayoffThresholdStatus",
+    "ExpirationPayoffThreshold",
+    "ExpirationPayoffThresholdEvidence",
+    "ExpirationPayoffThresholdTransformationResult",
+    "transform_expiration_payoff_thresholds",
 )
 
 
@@ -10453,3 +10460,1228 @@ def transform_scenario_valuation(
         ),
     )
     return ScenarioValuationTransformationResult(tuple(records), lineage)
+
+
+_EXPIRATION_THRESHOLD_MULTIPLES = (1, 2, 5, 10)
+_EXPIRATION_THRESHOLD_PARAMETER_KEYS = {
+    "schema_version",
+    "output_architecture",
+    "supported_structure_scope",
+    "target_multiples",
+    "threshold_ordering",
+    "numeric_representation",
+    "payoff_threshold_rules",
+    "move_rules",
+    "solution_domain",
+    "structure_costs_dependency",
+    "calculation_values",
+    "limitations",
+}
+_EXPIRATION_THRESHOLD_DEPENDENCY_KEYS = {
+    "calculation_id",
+    "calculation_type",
+    "methodology_id",
+    "methodology_version",
+    "calculated_at",
+    "parameters_json",
+    "quality_flags",
+    "input_rule",
+}
+_EXPIRATION_THRESHOLD_VALUE_KEYS = {
+    "position_value_multiple",
+    "side",
+    "status",
+    "strike_exact",
+    "position_scale",
+    "target_position_value",
+    "payoff_distance",
+    "unconstrained_threshold_underlying_price",
+    "threshold_underlying_price",
+    "absolute_move_from_base",
+    "relative_move_from_base",
+}
+_EXPIRATION_THRESHOLD_RATIONAL_KEYS = {"numerator", "denominator"}
+_EXPIRATION_THRESHOLD_PROPAGATED_FLAGS = {
+    CalculationQualityFlag.INTERPOLATED,
+    CalculationQualityFlag.CORRECTION_SELECTED,
+    CalculationQualityFlag.COMPOSITE_INPUT_USED,
+}
+_EXPIRATION_THRESHOLD_PROHIBITED_FLAGS = {
+    CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
+    CalculationQualityFlag.ANNUALIZED,
+    CalculationQualityFlag.ADJUSTED_INPUT_USED,
+    CalculationQualityFlag.INCOMPLETE_INPUT_USED,
+}
+
+
+@dataclass(frozen=True)
+class ExactRational:
+    """One canonical, immutable exact rational number."""
+
+    numerator: int
+    denominator: int
+
+    def __post_init__(self) -> None:
+        if type(self.numerator) is not int:
+            raise TypeError("numerator must have exact type int")
+        if type(self.denominator) is not int:
+            raise TypeError("denominator must have exact type int")
+        if self.denominator <= 0:
+            raise ValueError("denominator must be strictly positive")
+        if self.numerator == 0:
+            object.__setattr__(self, "denominator", 1)
+            return
+        divisor = math.gcd(abs(self.numerator), self.denominator)
+        object.__setattr__(self, "numerator", self.numerator // divisor)
+        object.__setattr__(self, "denominator", self.denominator // divisor)
+
+
+def _exact_rational_from_decimal(value: object) -> ExactRational:
+    if type(value) is not decimal.Decimal:
+        raise TypeError("exact rational source must have exact type Decimal")
+    if not value.is_finite():
+        raise ValueError("exact rational source must be finite")
+    sign, digits, exponent = value.as_tuple()
+    coefficient = 0
+    try:
+        for digit in digits:
+            coefficient = coefficient * 10 + digit
+        if exponent >= 0:
+            numerator = coefficient * (10 ** exponent)
+            denominator = 1
+        else:
+            numerator = coefficient
+            denominator = 10 ** (-exponent)
+    except (MemoryError, OverflowError) as error:
+        raise ValueError(
+            "Decimal cannot be represented as an exact rational"
+        ) from error
+    if sign:
+        numerator = -numerator
+    return ExactRational(numerator, denominator)
+
+
+def _rational_add(left: ExactRational, right: ExactRational) -> ExactRational:
+    return ExactRational(
+        left.numerator * right.denominator
+        + right.numerator * left.denominator,
+        left.denominator * right.denominator,
+    )
+
+
+def _rational_subtract(
+    left: ExactRational, right: ExactRational
+) -> ExactRational:
+    return ExactRational(
+        left.numerator * right.denominator
+        - right.numerator * left.denominator,
+        left.denominator * right.denominator,
+    )
+
+
+def _rational_multiply_int(
+    value: ExactRational, multiplier: int
+) -> ExactRational:
+    return ExactRational(value.numerator * multiplier, value.denominator)
+
+
+def _rational_divide_int(
+    value: ExactRational, divisor: int
+) -> ExactRational:
+    if type(divisor) is not int:
+        raise TypeError("rational divisor must have exact type int")
+    if divisor <= 0:
+        raise ValueError("rational divisor must be strictly positive")
+    return ExactRational(value.numerator, value.denominator * divisor)
+
+
+def _rational_divide(
+    numerator: ExactRational, denominator: ExactRational
+) -> ExactRational:
+    if denominator.numerator == 0:
+        raise ValueError("exact rational divisor must be nonzero")
+    sign = -1 if denominator.numerator < 0 else 1
+    return ExactRational(
+        numerator.numerator * denominator.denominator * sign,
+        numerator.denominator * abs(denominator.numerator),
+    )
+
+
+class ExpirationPayoffThresholdSide(str, Enum):
+    DOWNSIDE = "downside"
+    UPSIDE = "upside"
+
+
+class ExpirationPayoffThresholdStatus(str, Enum):
+    AVAILABLE = "available"
+    UNAVAILABLE_NEGATIVE_UNDERLYING_PRICE = (
+        "unavailable_negative_underlying_price"
+    )
+
+
+@dataclass(frozen=True)
+class ExpirationPayoffThreshold:
+    position_value_multiple: int
+    side: ExpirationPayoffThresholdSide
+    status: ExpirationPayoffThresholdStatus
+    target_position_value: ExactRational
+    threshold_underlying_price: Optional[ExactRational]
+    absolute_move_from_base: Optional[ExactRational]
+    relative_move_from_base: Optional[ExactRational]
+
+    def __post_init__(self) -> None:
+        if type(self.position_value_multiple) is not int:
+            raise TypeError("position_value_multiple must have exact type int")
+        if self.position_value_multiple not in _EXPIRATION_THRESHOLD_MULTIPLES:
+            raise ValueError("position_value_multiple is unsupported")
+        if type(self.side) is not ExpirationPayoffThresholdSide:
+            raise TypeError(
+                "side must have exact type ExpirationPayoffThresholdSide"
+            )
+        if type(self.status) is not ExpirationPayoffThresholdStatus:
+            raise TypeError(
+                "status must have exact type ExpirationPayoffThresholdStatus"
+            )
+        if type(self.target_position_value) is not ExactRational:
+            raise TypeError(
+                "target_position_value must have exact type ExactRational"
+            )
+        target_position_value = _strict_expiration_exact_rational(
+            self.target_position_value, "target_position_value"
+        )
+        if target_position_value.numerator <= 0:
+            raise ValueError("target_position_value must be strictly positive")
+        optional_values = (
+            self.threshold_underlying_price,
+            self.absolute_move_from_base,
+            self.relative_move_from_base,
+        )
+        if self.status is ExpirationPayoffThresholdStatus.AVAILABLE:
+            if any(type(value) is not ExactRational for value in optional_values):
+                raise TypeError(
+                    "available threshold values must have exact type ExactRational"
+                )
+            threshold_underlying_price = _strict_expiration_exact_rational(
+                self.threshold_underlying_price,
+                "threshold_underlying_price",
+            )
+            _strict_expiration_exact_rational(
+                self.absolute_move_from_base,
+                "absolute_move_from_base",
+            )
+            _strict_expiration_exact_rational(
+                self.relative_move_from_base,
+                "relative_move_from_base",
+            )
+            if threshold_underlying_price.numerator < 0:
+                raise ValueError(
+                    "available threshold_underlying_price must be nonnegative"
+                )
+        else:
+            if self.side is not ExpirationPayoffThresholdSide.DOWNSIDE:
+                raise ValueError(
+                    "unavailable negative-price status requires downside"
+                )
+            if any(value is not None for value in optional_values):
+                raise ValueError(
+                    "unavailable threshold must publish no threshold or moves"
+                )
+
+
+def _strict_expiration_exact_rational(
+    value: object, label: str
+) -> ExactRational:
+    if type(value) is not ExactRational:
+        raise TypeError(f"{label} must have exact type ExactRational")
+    if type(value.numerator) is not int:
+        raise TypeError(f"{label} numerator must have exact type int")
+    if type(value.denominator) is not int:
+        raise TypeError(f"{label} denominator must have exact type int")
+    rebuilt = ExactRational(value.numerator, value.denominator)
+    if (
+        value.numerator != rebuilt.numerator
+        or value.denominator != rebuilt.denominator
+    ):
+        raise ValueError(f"{label} must be a canonical reduced rational")
+    return rebuilt
+
+
+def _strict_expiration_option_leg(value: object) -> OptionLeg:
+    if type(value) is not OptionLeg:
+        raise TypeError("every structure leg must have exact type OptionLeg")
+    if type(value.underlying) is not str:
+        raise TypeError("leg underlying must have exact type str")
+    if (
+        not value.underlying
+        or value.underlying.strip().upper() != value.underlying
+    ):
+        raise ValueError("leg underlying must be nonempty normalized text")
+    if type(value.option_type) is not str:
+        raise TypeError("leg option_type must have exact type str")
+    if (
+        value.option_type not in ("call", "put")
+        or value.option_type.strip().lower() != value.option_type
+    ):
+        raise ValueError("leg option_type must be canonical")
+    if type(value.strike) not in (int, float):
+        raise TypeError("leg strike must be an exact real scalar")
+    if not math.isfinite(value.strike) or value.strike <= 0:
+        raise ValueError("leg strike must be finite and strictly positive")
+    if type(value.expiration) is not datetime.date:
+        raise TypeError("leg expiration must have exact type date")
+    if type(value.quantity) is not int:
+        raise TypeError("leg quantity must have exact type int")
+    if value.quantity <= 0:
+        raise ValueError("leg quantity must be strictly positive")
+    if type(value.contract_multiplier) is not int:
+        raise TypeError("leg contract_multiplier must have exact type int")
+    if value.contract_multiplier <= 0:
+        raise ValueError("leg contract_multiplier must be strictly positive")
+    rebuilt = OptionLeg(
+        value.underlying,
+        value.option_type,
+        value.strike,
+        value.expiration,
+        value.quantity,
+        value.contract_multiplier,
+    )
+    if (
+        rebuilt.underlying != value.underlying
+        or rebuilt.option_type != value.option_type
+        or type(rebuilt.strike) is not type(value.strike)
+        or rebuilt.strike != value.strike
+        or rebuilt.expiration != value.expiration
+        or rebuilt.quantity != value.quantity
+        or rebuilt.contract_multiplier != value.contract_multiplier
+    ):
+        raise ValueError("leg constructor normalization changed forged input")
+    return rebuilt
+
+
+def _validate_expiration_threshold_structure(
+    structure: object,
+) -> OptionStructure:
+    if type(structure) is not OptionStructure:
+        raise TypeError("structure must have exact type OptionStructure")
+    if type(structure.legs) is not tuple:
+        raise TypeError("structure legs must have exact type tuple")
+    if len(structure.legs) not in (1, 2):
+        raise ValueError("structure must have one or two legs")
+    rebuilt_legs = tuple(
+        _strict_expiration_option_leg(leg) for leg in structure.legs
+    )
+    if type(structure.assumed_portfolio_value) not in (int, float):
+        raise TypeError(
+            "assumed_portfolio_value must be an exact real scalar"
+        )
+    if (
+        not math.isfinite(structure.assumed_portfolio_value)
+        or structure.assumed_portfolio_value <= 0
+    ):
+        raise ValueError(
+            "assumed_portfolio_value must be finite and strictly positive"
+        )
+    if type(structure.expected_holding_days) is not int:
+        raise TypeError("expected_holding_days must have exact type int")
+    if structure.expected_holding_days < 0:
+        raise ValueError("expected_holding_days must be nonnegative")
+    rebuilt = OptionStructure(
+        rebuilt_legs,
+        structure.assumed_portfolio_value,
+        structure.expected_holding_days,
+    )
+    if (
+        type(rebuilt.assumed_portfolio_value)
+        is not type(structure.assumed_portfolio_value)
+        or rebuilt.assumed_portfolio_value
+        != structure.assumed_portfolio_value
+        or rebuilt.expected_holding_days
+        != structure.expected_holding_days
+        or len(rebuilt.legs) != len(structure.legs)
+    ):
+        raise ValueError(
+            "structure constructor normalization changed forged input"
+        )
+    return structure
+
+
+def _strict_expiration_threshold(
+    value: object,
+) -> ExpirationPayoffThreshold:
+    if type(value) is not ExpirationPayoffThreshold:
+        raise TypeError(
+            "every threshold must have exact type ExpirationPayoffThreshold"
+        )
+    if type(value.position_value_multiple) is not int:
+        raise TypeError("position_value_multiple must have exact type int")
+    if type(value.side) is not ExpirationPayoffThresholdSide:
+        raise TypeError(
+            "side must have exact type ExpirationPayoffThresholdSide"
+        )
+    if type(value.status) is not ExpirationPayoffThresholdStatus:
+        raise TypeError(
+            "status must have exact type ExpirationPayoffThresholdStatus"
+        )
+    target = _strict_expiration_exact_rational(
+        value.target_position_value, "target_position_value"
+    )
+
+    def optional_rational(
+        item: object, label: str
+    ) -> Optional[ExactRational]:
+        if item is None:
+            return None
+        return _strict_expiration_exact_rational(item, label)
+
+    threshold = optional_rational(
+        value.threshold_underlying_price, "threshold_underlying_price"
+    )
+    absolute = optional_rational(
+        value.absolute_move_from_base, "absolute_move_from_base"
+    )
+    relative = optional_rational(
+        value.relative_move_from_base, "relative_move_from_base"
+    )
+    return ExpirationPayoffThreshold(
+        value.position_value_multiple,
+        value.side,
+        value.status,
+        target,
+        threshold,
+        absolute,
+        relative,
+    )
+
+
+def _expiration_rationals_match(
+    actual: Optional[ExactRational],
+    expected: Optional[ExactRational],
+) -> bool:
+    if actual is None or expected is None:
+        return actual is None and expected is None
+    return (
+        type(actual) is ExactRational
+        and type(expected) is ExactRational
+        and type(actual.numerator) is int
+        and type(actual.denominator) is int
+        and actual.numerator == expected.numerator
+        and actual.denominator == expected.denominator
+    )
+
+
+def _expiration_thresholds_match(
+    actual: ExpirationPayoffThreshold,
+    expected: ExpirationPayoffThreshold,
+) -> bool:
+    return (
+        type(actual.position_value_multiple) is int
+        and actual.position_value_multiple
+        == expected.position_value_multiple
+        and actual.side is expected.side
+        and actual.status is expected.status
+        and _expiration_rationals_match(
+            actual.target_position_value,
+            expected.target_position_value,
+        )
+        and _expiration_rationals_match(
+            actual.threshold_underlying_price,
+            expected.threshold_underlying_price,
+        )
+        and _expiration_rationals_match(
+            actual.absolute_move_from_base,
+            expected.absolute_move_from_base,
+        )
+        and _expiration_rationals_match(
+            actual.relative_move_from_base,
+            expected.relative_move_from_base,
+        )
+    )
+
+
+def _expected_expiration_thresholds(
+    structure: OptionStructure,
+    base_underlying_price: decimal.Decimal,
+    total_entry_cost: decimal.Decimal,
+) -> Tuple[ExpirationPayoffThreshold, ...]:
+    strike = _exact_rational_from_decimal(
+        decimal.Decimal(str(structure.legs[0].strike))
+    )
+    base = _exact_rational_from_decimal(base_underlying_price)
+    cost = _exact_rational_from_decimal(total_entry_cost)
+    position_scale = (
+        structure.legs[0].quantity
+        * structure.legs[0].contract_multiplier
+    )
+    records = []
+    for multiple in _EXPIRATION_THRESHOLD_MULTIPLES:
+        target = _rational_multiply_int(cost, multiple)
+        distance = _rational_divide_int(target, position_scale)
+        branches = (
+            ((ExpirationPayoffThresholdSide.UPSIDE, _rational_add(strike, distance)),)
+            if structure.structure_type == "long_call"
+            else (
+                (ExpirationPayoffThresholdSide.DOWNSIDE,
+                 _rational_subtract(strike, distance)),
+            )
+            if structure.structure_type == "long_put"
+            else (
+                (ExpirationPayoffThresholdSide.DOWNSIDE,
+                 _rational_subtract(strike, distance)),
+                (ExpirationPayoffThresholdSide.UPSIDE,
+                 _rational_add(strike, distance)),
+            )
+        )
+        for side, unconstrained in branches:
+            if unconstrained.numerator < 0:
+                records.append(ExpirationPayoffThreshold(
+                    multiple,
+                    side,
+                    ExpirationPayoffThresholdStatus
+                    .UNAVAILABLE_NEGATIVE_UNDERLYING_PRICE,
+                    target,
+                    None,
+                    None,
+                    None,
+                ))
+                continue
+            absolute = _rational_subtract(unconstrained, base)
+            relative = _rational_divide(absolute, base)
+            records.append(ExpirationPayoffThreshold(
+                multiple,
+                side,
+                ExpirationPayoffThresholdStatus.AVAILABLE,
+                target,
+                unconstrained,
+                absolute,
+                relative,
+            ))
+    return tuple(records)
+
+
+@dataclass(frozen=True)
+class ExpirationPayoffThresholdEvidence:
+    structure: OptionStructure
+    as_of_date: datetime.date
+    base_underlying_price: decimal.Decimal
+    total_entry_cost: decimal.Decimal
+    thresholds: Tuple[ExpirationPayoffThreshold, ...]
+
+    def __post_init__(self) -> None:
+        with decimal.localcontext():
+            structure = _validate_expiration_threshold_structure(self.structure)
+            if type(self.as_of_date) is not datetime.date:
+                raise TypeError("as_of_date must have exact type date")
+            if type(self.base_underlying_price) is not decimal.Decimal:
+                raise TypeError(
+                    "base_underlying_price must have exact type Decimal"
+                )
+            if type(self.total_entry_cost) is not decimal.Decimal:
+                raise TypeError("total_entry_cost must have exact type Decimal")
+            if (
+                not self.base_underlying_price.is_finite()
+                or self.base_underlying_price <= 0
+                or not self.total_entry_cost.is_finite()
+                or self.total_entry_cost <= 0
+            ):
+                raise ValueError(
+                    "base_underlying_price and total_entry_cost "
+                    "must be finite and strictly positive"
+                )
+            if any(
+                self.as_of_date >= leg.expiration for leg in structure.legs
+            ):
+                raise ValueError("as_of_date must precede every expiration")
+            if type(self.thresholds) is not tuple:
+                raise TypeError("thresholds must have exact type tuple")
+            validated_thresholds = tuple(
+                _strict_expiration_threshold(item)
+                for item in self.thresholds
+            )
+            expected = _expected_expiration_thresholds(
+                structure,
+                self.base_underlying_price,
+                self.total_entry_cost,
+            )
+            if (
+                len(validated_thresholds) != len(expected)
+                or any(
+                    not _expiration_thresholds_match(actual, expected_item)
+                    for actual, expected_item in zip(
+                        validated_thresholds, expected
+                    )
+                )
+            ):
+                raise ValueError(
+                    "thresholds do not match complete canonical mathematics"
+                )
+
+
+def _rational_mapping(value: ExactRational) -> dict:
+    return {
+        "numerator": value.numerator,
+        "denominator": value.denominator,
+    }
+
+
+def _optional_rational_mapping(value: Optional[ExactRational]) -> object:
+    return None if value is None else _rational_mapping(value)
+
+
+def _expiration_threshold_fixed_parameters() -> dict:
+    return {
+        "schema_version": "expiration-payoff-thresholds-v0.1",
+        "output_architecture": (
+            "single_expiration_payoff_threshold_evidence_record"
+        ),
+        "supported_structure_scope": (
+            "long_call",
+            "long_put",
+            "long_straddle_same_strike_expiration_quantity_multiplier",
+        ),
+        "target_multiples": _EXPIRATION_THRESHOLD_MULTIPLES,
+        "threshold_ordering": {
+            "multiple_order": _EXPIRATION_THRESHOLD_MULTIPLES,
+            "straddle_side_order": ("downside", "upside"),
+            "unavailable_records_retain_position": True,
+        },
+        "numeric_representation": {
+            "public_type": "ExactRational",
+            "mapping_keys": ("numerator", "denominator"),
+            "reduced": True,
+            "positive_denominator": True,
+            "decimal_conversion": "exact_coefficient_and_exponent",
+            "float_prohibited": True,
+            "rounding": "none",
+        },
+        "payoff_threshold_rules": {
+            "position_value_multiple": (
+                "expiration_gross_position_value/total_entry_cost"
+            ),
+            "target_position_value": "multiple*total_entry_cost",
+            "payoff_distance": (
+                "target_position_value/(quantity*contract_multiplier)"
+            ),
+            "long_call": "strike+payoff_distance",
+            "long_put": "strike-payoff_distance",
+            "long_straddle_downside": "strike-payoff_distance",
+            "long_straddle_upside": "strike+payoff_distance",
+            "exit_cost": "excluded",
+        },
+        "move_rules": {
+            "absolute": "threshold_underlying_price-base_underlying_price",
+            "relative": "absolute_move_from_base/base_underlying_price",
+            "signed": True,
+        },
+        "solution_domain": {
+            "underlying_price": "nonnegative",
+            "zero_lower_threshold": "available",
+            "negative_lower_threshold": (
+                "unavailable_negative_underlying_price"
+            ),
+            "negative_published_threshold": "prohibited",
+        },
+        "limitations": (
+            "Expiration intrinsic payoff evidence only; no probabilities, "
+            "expected returns, recommendations, screening, position sizing, "
+            "exit-cost adjustment, provider access, or pricing model."
+        ),
+    }
+
+
+def _expiration_threshold_calculation_values(
+    record: ExpirationPayoffThresholdEvidence,
+) -> tuple:
+    strike = _exact_rational_from_decimal(
+        decimal.Decimal(str(record.structure.legs[0].strike))
+    )
+    scale = (
+        record.structure.legs[0].quantity
+        * record.structure.legs[0].contract_multiplier
+    )
+    values = []
+    for threshold in record.thresholds:
+        payoff_distance = _rational_divide_int(
+            threshold.target_position_value, scale
+        )
+        unconstrained = (
+            _rational_subtract(strike, payoff_distance)
+            if threshold.side is ExpirationPayoffThresholdSide.DOWNSIDE
+            else _rational_add(strike, payoff_distance)
+        )
+        values.append({
+            "position_value_multiple": threshold.position_value_multiple,
+            "side": threshold.side.value,
+            "status": threshold.status.value,
+            "strike_exact": _rational_mapping(strike),
+            "position_scale": {
+                "quantity": record.structure.legs[0].quantity,
+                "contract_multiplier": (
+                    record.structure.legs[0].contract_multiplier
+                ),
+                "underlying_units": scale,
+            },
+            "target_position_value": _rational_mapping(
+                threshold.target_position_value
+            ),
+            "payoff_distance": _rational_mapping(payoff_distance),
+            "unconstrained_threshold_underlying_price": (
+                _rational_mapping(unconstrained)
+            ),
+            "threshold_underlying_price": _optional_rational_mapping(
+                threshold.threshold_underlying_price
+            ),
+            "absolute_move_from_base": _optional_rational_mapping(
+                threshold.absolute_move_from_base
+            ),
+            "relative_move_from_base": _optional_rational_mapping(
+                threshold.relative_move_from_base
+            ),
+        })
+    return tuple(values)
+
+
+def _expiration_threshold_dependency_disclosure(
+    lineage: CalculationLineage,
+) -> dict:
+    return {
+        "calculation_id": lineage.calculation_id,
+        "calculation_type": lineage.calculation_type,
+        "methodology_id": lineage.methodology_id,
+        "methodology_version": lineage.methodology_version,
+        "calculated_at": lineage.calculated_at,
+        "parameters_json": lineage.parameters_json,
+        "quality_flags": tuple(flag.value for flag in lineage.quality_flags),
+        "input_rule": "exact_reuse_of_structure_costs_lineage_inputs",
+    }
+
+
+def _expiration_threshold_parameters(
+    record: ExpirationPayoffThresholdEvidence,
+    dependency_lineage: CalculationLineage,
+) -> dict:
+    parameters = _expiration_threshold_fixed_parameters()
+    parameters["structure_costs_dependency"] = (
+        _expiration_threshold_dependency_disclosure(dependency_lineage)
+    )
+    parameters["calculation_values"] = (
+        _expiration_threshold_calculation_values(record)
+    )
+    return parameters
+
+
+def _decode_expiration_threshold_parameters(parameters_json: object) -> dict:
+    if type(parameters_json) is not str:
+        raise TypeError("parameters_json must have exact type str")
+
+    def reject_float(_value: str) -> object:
+        raise ValueError("expiration threshold parameters prohibit JSON floats")
+
+    def reject_constant(_value: str) -> object:
+        raise ValueError(
+            "expiration threshold parameters prohibit nonfinite constants"
+        )
+
+    def unique_object(pairs: list) -> dict:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    "expiration threshold parameters contain duplicate JSON keys"
+                )
+            result[key] = value
+        return result
+
+    try:
+        raw = json.loads(
+            parameters_json,
+            parse_float=reject_float,
+            parse_constant=reject_constant,
+            object_pairs_hook=unique_object,
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as error:
+        raise ValueError(
+            "expiration threshold parameters_json is invalid"
+        ) from error
+
+    def decode(value: object) -> object:
+        if value is None or type(value) in (bool, int, str):
+            return value
+        if type(value) is list:
+            return tuple(decode(item) for item in value)
+        if type(value) is not dict or len(value) != 1:
+            raise ValueError("expiration threshold parameters use invalid JSON")
+        tag, payload = next(iter(value.items()))
+        if tag == "$map":
+            if type(payload) is not list:
+                raise ValueError("$map payload must be a list")
+            result = {}
+            for pair in payload:
+                if (
+                    type(pair) is not list
+                    or len(pair) != 2
+                    or type(pair[0]) is not str
+                    or pair[0] in result
+                ):
+                    raise ValueError("$map entries must have unique string keys")
+                result[pair[0]] = decode(pair[1])
+            return result
+        if tag == "$list":
+            if type(payload) is not list:
+                raise ValueError("$list payload must be a list")
+            return tuple(decode(item) for item in payload)
+        if tag == "$decimal":
+            if type(payload) is not str:
+                raise ValueError("$decimal payload must be a string")
+            try:
+                result = decimal.Decimal(payload)
+            except decimal.InvalidOperation as error:
+                raise ValueError("$decimal payload is invalid") from error
+            if not result.is_finite():
+                raise ValueError("$decimal payload must be finite")
+            return result
+        if tag == "$date":
+            if type(payload) is not str:
+                raise ValueError("$date payload must be a string")
+            try:
+                result = datetime.date.fromisoformat(payload)
+            except ValueError as error:
+                raise ValueError("$date payload is invalid") from error
+            if result.isoformat() != payload:
+                raise ValueError("$date payload is noncanonical")
+            return result
+        if tag == "$datetime":
+            if type(payload) is not str or not payload.endswith("Z"):
+                raise ValueError("$datetime payload must be canonical UTC")
+            try:
+                result = datetime.datetime.fromisoformat(
+                    payload[:-1] + "+00:00"
+                )
+            except ValueError as error:
+                raise ValueError("$datetime payload is invalid") from error
+            if (
+                result.isoformat(timespec="microseconds")
+                .replace("+00:00", "Z") != payload
+            ):
+                raise ValueError("$datetime payload is noncanonical")
+            return result
+        raise ValueError("expiration threshold parameters contain unknown tag")
+
+    decoded = decode(raw)
+    if type(decoded) is not dict:
+        raise ValueError("expiration threshold parameters root must be a map")
+    if set(decoded) != _EXPIRATION_THRESHOLD_PARAMETER_KEYS:
+        raise ValueError(
+            "expiration threshold parameters have wrong exact 12-key schema"
+        )
+    try:
+        if canonicalize_lineage_parameters(decoded) != parameters_json:
+            raise ValueError(
+                "expiration threshold parameters are not byte-canonical"
+            )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "expiration threshold parameters are not canonical"
+        ) from error
+    calculation_values = decoded["calculation_values"]
+    if type(calculation_values) is not tuple:
+        raise TypeError("calculation_values must have exact type tuple")
+    for item in calculation_values:
+        if type(item) is not dict:
+            raise TypeError(
+                "every calculation_values item must have exact type dict"
+            )
+        if set(item) != _EXPIRATION_THRESHOLD_VALUE_KEYS:
+            raise ValueError(
+                "calculation_values item has wrong exact key schema"
+            )
+        if type(item["position_value_multiple"]) is not int:
+            raise TypeError(
+                "position_value_multiple must have exact type int"
+            )
+        if type(item["side"]) is not str:
+            raise TypeError("calculation-value side must have exact type str")
+        if type(item["status"]) is not str:
+            raise TypeError(
+                "calculation-value status must have exact type str"
+            )
+        for key in (
+            "strike_exact",
+            "target_position_value",
+            "payoff_distance",
+            "unconstrained_threshold_underlying_price",
+        ):
+            _validate_expiration_threshold_rational_mapping(item[key], key)
+        for key in (
+            "threshold_underlying_price",
+            "absolute_move_from_base",
+            "relative_move_from_base",
+        ):
+            if item[key] is not None:
+                _validate_expiration_threshold_rational_mapping(
+                    item[key], key
+                )
+        position_scale = item["position_scale"]
+        if type(position_scale) is not dict:
+            raise TypeError("position_scale must have exact type dict")
+        if set(position_scale) != {
+            "quantity",
+            "contract_multiplier",
+            "underlying_units",
+        }:
+            raise ValueError("position_scale has wrong exact key schema")
+        if any(type(value) is not int for value in position_scale.values()):
+            raise TypeError("position_scale values must have exact type int")
+        if (
+            position_scale["quantity"] <= 0
+            or position_scale["contract_multiplier"] <= 0
+            or position_scale["underlying_units"]
+            != position_scale["quantity"]
+            * position_scale["contract_multiplier"]
+        ):
+            raise ValueError("position_scale is invalid")
+    return decoded
+
+
+def _validate_exact_expiration_parameter_tree(
+    actual: object,
+    expected: object,
+    path: str = "parameters",
+) -> None:
+    if type(actual) is not type(expected):
+        raise TypeError(f"{path} has the wrong exact type")
+    if type(expected) is dict:
+        if set(actual) != set(expected):
+            raise ValueError(f"{path} has the wrong exact key schema")
+        for key in expected:
+            _validate_exact_expiration_parameter_tree(
+                actual[key], expected[key], f"{path}.{key}"
+            )
+        return
+    if type(expected) is tuple:
+        if len(actual) != len(expected):
+            raise ValueError(f"{path} has the wrong cardinality")
+        for index, (actual_item, expected_item) in enumerate(
+            zip(actual, expected)
+        ):
+            _validate_exact_expiration_parameter_tree(
+                actual_item, expected_item, f"{path}[{index}]"
+            )
+        return
+    if actual != expected:
+        raise ValueError(f"{path} has the wrong frozen value")
+
+
+def _validate_expiration_threshold_rational_mapping(
+    value: object, label: str
+) -> None:
+    if type(value) is not dict:
+        raise TypeError(f"{label} must have exact type dict")
+    if set(value) != _EXPIRATION_THRESHOLD_RATIONAL_KEYS:
+        raise ValueError(f"{label} has wrong exact rational key schema")
+    if (
+        type(value["numerator"]) is not int
+        or type(value["denominator"]) is not int
+    ):
+        raise TypeError(f"{label} rational fields must have exact type int")
+    canonical = ExactRational(value["numerator"], value["denominator"])
+    if _rational_mapping(canonical) != value:
+        raise ValueError(f"{label} must be a reduced canonical rational")
+
+
+def _expiration_threshold_dependency_from_disclosure(
+    record: ExpirationPayoffThresholdEvidence,
+    lineage: CalculationLineage,
+    disclosure: object,
+) -> StructureCostsTransformationResult:
+    if type(disclosure) is not dict:
+        raise TypeError("structure_costs_dependency must have exact type dict")
+    if set(disclosure) != _EXPIRATION_THRESHOLD_DEPENDENCY_KEYS:
+        raise ValueError(
+            "structure_costs_dependency has wrong exact key schema"
+        )
+    if (
+        disclosure["calculation_type"] != "structure_costs"
+        or disclosure["methodology_id"] != "exact-structure-costs"
+        or disclosure["methodology_version"] != "v0.2"
+        or disclosure["input_rule"]
+        != "exact_reuse_of_structure_costs_lineage_inputs"
+    ):
+        raise ValueError("structure_costs_dependency identity is invalid")
+    quality_values = disclosure["quality_flags"]
+    if type(quality_values) is not tuple:
+        raise TypeError("dependency quality_flags must have exact type tuple")
+    if any(type(item) is not str for item in quality_values):
+        raise TypeError("dependency quality flag values must be exact strings")
+    try:
+        flags = tuple(CalculationQualityFlag(item) for item in quality_values)
+    except ValueError as error:
+        raise ValueError("dependency quality flag value is invalid") from error
+    if len(set(flags)) != len(flags) or flags != tuple(
+        flag for flag in CalculationQualityFlag if flag in set(flags)
+    ):
+        raise ValueError("dependency quality flags are not canonical")
+    dependency_lineage = CalculationLineage(
+        calculation_id=disclosure["calculation_id"],
+        calculation_type=disclosure["calculation_type"],
+        methodology_id=disclosure["methodology_id"],
+        methodology_version=disclosure["methodology_version"],
+        calculated_at=disclosure["calculated_at"],
+        inputs=lineage.inputs,
+        parameters_json=disclosure["parameters_json"],
+        quality_flags=flags,
+    )
+    decoded_cost = _decode_cost_parameters(dependency_lineage.parameters_json)
+    values = decoded_cost["calculation_values"]
+    stable = values["stable_record_values"]
+    methodology = decoded_cost["greeks_methodology"]
+    cost_record = StructureCosts(
+        structure=record.structure,
+        as_of_date=record.as_of_date,
+        quoted_mid_premium=_cost_stable_float_repr(
+            stable["quoted_mid_premium_repr"], "quoted_mid_premium_repr"
+        ),
+        estimated_spread_cost=_cost_stable_float_repr(
+            stable["estimated_spread_cost_repr"],
+            "estimated_spread_cost_repr",
+        ),
+        commissions_and_fees=_cost_stable_float_repr(
+            stable["commissions_and_fees_repr"],
+            "commissions_and_fees_repr",
+        ),
+        theta_per_day=_cost_stable_float_repr(
+            stable["theta_per_day_repr"], "theta_per_day_repr"
+        ),
+        gamma=_cost_stable_float_repr(
+            stable["gamma_repr"], "gamma_repr"
+        ),
+        underlying_price=_cost_stable_float_repr(
+            stable["underlying_price_repr"], "underlying_price_repr"
+        ),
+        greeks_methodology=_greeks_methodology_disclosure((
+            methodology["model_name"],
+            methodology["model_version"],
+            methodology["rate_input_description"],
+            methodology["dividend_input_description"],
+            methodology["theta_day_basis"],
+            methodology["unit_convention"],
+        )),
+        repeated_bet_count=decoded_cost["repeated_bet_count"],
+    )
+    return StructureCostsTransformationResult(cost_record, dependency_lineage)
+
+
+def _validate_expiration_threshold_result(
+    record: ExpirationPayoffThresholdEvidence,
+    lineage: CalculationLineage,
+) -> None:
+    if (
+        lineage.calculation_type != "expiration_payoff_thresholds"
+        or lineage.methodology_id
+        != "closed-form-terminal-intrinsic-position-value-multiples"
+        or lineage.methodology_version != "v0.1"
+    ):
+        raise ValueError("expiration threshold lineage identity is invalid")
+    decoded = _decode_expiration_threshold_parameters(
+        lineage.parameters_json
+    )
+    dependency = _expiration_threshold_dependency_from_disclosure(
+        record,
+        lineage,
+        decoded["structure_costs_dependency"],
+    )
+    dependency_values = _decode_cost_parameters(
+        dependency.lineage.parameters_json
+    )["calculation_values"]
+    if (
+        dependency_values["underlying_price_exact"]
+        != record.base_underlying_price
+        or dependency_values["total_entry_cost_exact"]
+        != record.total_entry_cost
+    ):
+        raise ValueError(
+            "public exact values differ from StructureCosts dependency"
+        )
+    if lineage.inputs != dependency.lineage.inputs:
+        raise ValueError("lineage inputs must exactly reuse dependency inputs")
+    if lineage.calculation_id == dependency.lineage.calculation_id:
+        raise ValueError("calculation ID must differ from dependency")
+    if lineage.calculated_at < dependency.lineage.calculated_at:
+        raise ValueError("calculation precedes StructureCosts dependency")
+    expected_flags = {
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    expected_flags.update(
+        set(dependency.lineage.quality_flags)
+        & _EXPIRATION_THRESHOLD_PROPAGATED_FLAGS
+    )
+    canonical_flags = tuple(
+        flag for flag in CalculationQualityFlag if flag in expected_flags
+    )
+    if (
+        lineage.quality_flags != canonical_flags
+        or set(lineage.quality_flags) & _EXPIRATION_THRESHOLD_PROHIBITED_FLAGS
+    ):
+        raise ValueError("expiration threshold quality flags are invalid")
+    expected_parameters = _expiration_threshold_parameters(
+        record, dependency.lineage
+    )
+    _validate_exact_expiration_parameter_tree(
+        decoded, expected_parameters
+    )
+    expected_parameters_json = canonicalize_lineage_parameters(
+        expected_parameters
+    )
+    if lineage.parameters_json != expected_parameters_json:
+        raise ValueError(
+            "expiration threshold parameters are not the independently "
+            "reconstructed canonical serialization"
+        )
+
+
+@dataclass(frozen=True)
+class ExpirationPayoffThresholdTransformationResult:
+    record: ExpirationPayoffThresholdEvidence
+    lineage: CalculationLineage
+
+    def __post_init__(self) -> None:
+        if type(self.record) is not ExpirationPayoffThresholdEvidence:
+            raise TypeError(
+                "record must have exact type ExpirationPayoffThresholdEvidence"
+            )
+        if type(self.lineage) is not CalculationLineage:
+            raise TypeError("lineage must have exact type CalculationLineage")
+        with decimal.localcontext():
+            verified_lineage = CalculationLineage(
+                calculation_id=self.lineage.calculation_id,
+                calculation_type=self.lineage.calculation_type,
+                methodology_id=self.lineage.methodology_id,
+                methodology_version=self.lineage.methodology_version,
+                calculated_at=self.lineage.calculated_at,
+                inputs=self.lineage.inputs,
+                parameters_json=self.lineage.parameters_json,
+                quality_flags=self.lineage.quality_flags,
+            )
+            verified_record = ExpirationPayoffThresholdEvidence(
+                structure=self.record.structure,
+                as_of_date=self.record.as_of_date,
+                base_underlying_price=self.record.base_underlying_price,
+                total_entry_cost=self.record.total_entry_cost,
+                thresholds=self.record.thresholds,
+            )
+            _validate_expiration_threshold_result(
+                verified_record, verified_lineage
+            )
+
+
+def _construct_expiration_threshold_lineage(
+    calculation_id: str,
+    calculated_at: datetime.datetime,
+    inputs: tuple,
+    parameters_json: str,
+    quality_flags: tuple,
+) -> CalculationLineage:
+    return CalculationLineage(
+        calculation_id=calculation_id,
+        calculation_type="expiration_payoff_thresholds",
+        methodology_id=(
+            "closed-form-terminal-intrinsic-position-value-multiples"
+        ),
+        methodology_version="v0.1",
+        calculated_at=calculated_at,
+        inputs=inputs,
+        parameters_json=parameters_json,
+        quality_flags=quality_flags,
+    )
+
+
+def transform_expiration_payoff_thresholds(
+    calculation_id,
+    structure_costs_result,
+    calculated_at,
+):
+    """Build exact expiration payoff-threshold evidence from reviewed costs."""
+
+    if type(calculation_id) is not str:
+        raise TypeError("calculation_id must have exact type str")
+    if type(structure_costs_result) is not StructureCostsTransformationResult:
+        raise TypeError(
+            "structure_costs_result must have exact type "
+            "StructureCostsTransformationResult"
+        )
+    if type(calculated_at) is not datetime.datetime:
+        raise TypeError("calculated_at must have exact type datetime")
+    normalized_id = _validate_calculation_id(calculation_id)
+    normalized_at = _normalize_calculated_at(calculated_at)
+
+    with decimal.localcontext():
+        dependency = StructureCostsTransformationResult(
+            structure_costs_result.record,
+            structure_costs_result.lineage,
+        )
+        dependency_decoded = _decode_cost_parameters(
+            dependency.lineage.parameters_json
+        )
+        if (
+            CalculationQualityFlag.INCOMPLETE_INPUT_USED
+            in dependency.lineage.quality_flags
+        ):
+            raise ValueError("StructureCosts dependency must be complete")
+        if normalized_id == dependency.lineage.calculation_id:
+            raise ValueError("calculation ID must differ from dependency")
+        if normalized_id in {
+            item.record_id for item in dependency.lineage.inputs
+        }:
+            raise ValueError("calculation ID must differ from every input ID")
+        if normalized_at < dependency.lineage.calculated_at:
+            raise ValueError("calculation precedes StructureCosts dependency")
+        if any(
+            normalized_at < item.normalized_at
+            for item in dependency.lineage.inputs
+        ):
+            raise ValueError("calculation precedes a normalized input")
+        prohibited_dependency_flags = {
+            CalculationQualityFlag.ANNUALIZED,
+            CalculationQualityFlag.ADJUSTED_INPUT_USED,
+            CalculationQualityFlag.INCOMPLETE_INPUT_USED,
+        }
+        if (
+            set(dependency.lineage.quality_flags)
+            & prohibited_dependency_flags
+        ):
+            raise ValueError("StructureCosts dependency flags are prohibited")
+        values = dependency_decoded["calculation_values"]
+        structure = _validate_expiration_threshold_structure(
+            dependency.record.structure
+        )
+        base = values["underlying_price_exact"]
+        cost = values["total_entry_cost_exact"]
+        thresholds = _expected_expiration_thresholds(structure, base, cost)
+        record = ExpirationPayoffThresholdEvidence(
+            structure=structure,
+            as_of_date=dependency.record.as_of_date,
+            base_underlying_price=base,
+            total_entry_cost=cost,
+            thresholds=thresholds,
+        )
+        parameters_json = canonicalize_lineage_parameters(
+            _expiration_threshold_parameters(record, dependency.lineage)
+        )
+        selected_flags = {
+            CalculationQualityFlag.ASSUMPTION_APPLIED,
+        }
+        selected_flags.update(
+            set(dependency.lineage.quality_flags)
+            & _EXPIRATION_THRESHOLD_PROPAGATED_FLAGS
+        )
+        quality_flags = tuple(
+            flag for flag in CalculationQualityFlag
+            if flag in selected_flags
+        )
+        lineage = _construct_expiration_threshold_lineage(
+            normalized_id,
+            normalized_at,
+            dependency.lineage.inputs,
+            parameters_json,
+            quality_flags,
+        )
+        return ExpirationPayoffThresholdTransformationResult(record, lineage)

@@ -10,21 +10,21 @@ Product-direction baseline:
 direction.
 
 Last completed implementation checkpoint:
-`86aee1dfa13cae0c865d8f24aa08754934abd540` — Implement hybrid scenario
-valuation transformation.
+current HEAD — `Implement expiration payoff-threshold evidence`.
 
-Completed: Milestones 1–3; post-Milestone-3 product-direction alignment;
+Completed: Milestones 1–4; post-Milestone-3 product-direction alignment;
 context-governance baseline; mode-based Strike / Delta discovery-generation
 policy documentation.
 
 Accepted product refinement: mode-based Strike / Delta discovery generation
 is documented; implementation remains future work.
 
-Current status: Development resumed. The revised Milestone 4 contract is
-frozen by the current documentation clarification commit.
+Current status: Milestone 4 deterministic exact-rational expiration
+payoff-threshold evidence is complete after broad independent review and
+targeted re-review.
 
-Next development gate: Milestone 4 BUILD of deterministic expiration
-payoff-threshold evidence against the committed contract.
+Next development gate: fresh formal preflight for the explicit risk-budget and
+affordability contract.
 
 Read first: `docs/current-checkpoint.md`, `docs/product-direction.md`,
 `docs/project-state.md`, and `docs/mvp-spec.md`.
@@ -32,11 +32,10 @@ Read first: `docs/current-checkpoint.md`, `docs/product-direction.md`,
 Exact contracts: read only the task-relevant contract, source, and tests from
 the current HEAD.
 
-Validation baseline: 821 full-suite tests; 365 market-data tests; 147 focused
-transformation tests.
+Validation baseline: 848 full-suite tests; 365 market-data tests; 174 focused
+transformation tests; 25 transformation exports; 64 `market_data` exports.
 
-Do not implement outside the accepted Milestone 4 scope. Provider integration,
-Event Intelligence implementation, real option-chain integration, position
-monitoring, and automatic trading remain prohibited.
+Candidate assembly, screening and report integration, position management,
+services, providers, Event Intelligence, and discovery remain deferred.
 
 This file is a navigation map, not a complete specification or history.

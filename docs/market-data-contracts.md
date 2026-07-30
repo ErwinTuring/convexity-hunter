@@ -6582,7 +6582,7 @@ float boundary.
 
 ### 13.23.9 Public export boundary
 
-The future implementation appends these names to
+The implementation appends these names to
 `market_data_transformations.__all__` in this exact order:
 
 ```text
@@ -6595,12 +6595,10 @@ ExpirationPayoffThresholdTransformationResult
 transform_expiration_payoff_thresholds
 ```
 
-After implementation, transformation exports are exactly 25. The existing
+Transformation exports are currently exactly 25. The existing
 first 18 names and their order remain unchanged. `market_data.__all__` remains
 exactly 64, package-root exports remain unchanged, and direct import is from
 `convexity_hunter.market_data_transformations`.
-
-This documentation clarification does not modify exports.
 
 ### 13.23.10 Explicit exclusions
 
