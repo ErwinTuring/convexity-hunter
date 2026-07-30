@@ -32,6 +32,10 @@ part of the active product flow.
 - [Product direction](docs/product-direction.md)
 - [MVP specification](docs/mvp-spec.md)
 - [Project state](docs/project-state.md)
+- [Context governance](docs/context-governance.md)
+- [Current checkpoint](docs/current-checkpoint.md)
+- [Architecture decisions](docs/decisions/README.md)
+- [Development workflow](docs/development-workflow.md)
 
 ## Development
 

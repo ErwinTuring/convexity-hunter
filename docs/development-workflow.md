@@ -89,6 +89,23 @@ Independent REVIEW is optional unless scope or risk grows. If a task initially c
 5. Machine-check invariants with tests whenever practical instead of repeatedly restating them in prompts.
 6. Optimize for minimum total cost, including errors and rework, not simply minimum token count.
 
+## Repository grounding and token discipline
+
+- All code-related Codex prompts begin from the current repository state, and
+  exact contracts are reread from current files.
+- Grounding depth is lightweight, standard, or high-risk as defined in
+  `context-governance.md`; no task is high-risk without a material reason.
+- Read only task-relevant sections, source files, direct dependencies, and
+  tests.
+- Prompts reference repository contracts instead of copying them
+  unnecessarily.
+- Exact current facts never rely on conversation memory.
+- `current-checkpoint.md` is navigation only, not a contract or full history.
+- One broad independent review is the default for implementation work that
+  requires review.
+- Targeted re-review occurs only after correction of an accepted realistic
+  blocker or major defect and cannot introduce unrelated requirements.
+
 ## Commit discipline
 
 - One logical approved work unit produces one implementation commit unless a separate contract-clarification commit is intentionally required first.

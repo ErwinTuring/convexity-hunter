@@ -14,9 +14,8 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current milestone
 
-Post-Milestone-3 product direction is aligned and persisted. The next gate is a
-fresh read-only preflight for Milestone 4 deterministic expiration
-payoff-threshold evidence.
+Post-Milestone-3 product direction and the context-governance baseline are
+persisted. Development remains paused.
 
 ## Decisions locked
 
@@ -54,11 +53,20 @@ payoff-threshold evidence.
 - Candidate states are Reject, Watch, Investigate, and Data insufficient.
 - LLMs may interpret evidence but may not generate numerical market data.
 - The repository documentation is the source of truth.
+- Repository truth and grounded planning are mandatory for implementation work.
+- Grounding is task-scoped and risk-proportional.
+- Dynamic checkpoint content remains minimal.
+- Conversation history is background, not an exact contract.
+- Durable cross-cutting rationale is recorded through selective ADRs.
+- Token minimization must not reduce factual grounding, but repeated irrelevant
+  context is avoided.
 - [Product direction](product-direction.md) is the canonical
   post-Milestone-3 product statement.
 
 ## Completed
 
+- The context-governance baseline, current checkpoint, ADR policy, and ADR-001
+  through ADR-006 are documented.
 - Repository initialized and pushed to GitHub.
 - Minimal Python package structure created.
 - Project philosophy approved.
@@ -710,8 +718,9 @@ payoff-threshold evidence.
 
 ## Current task
 
-After this documentation commit, preflight the revised Milestone 4 expiration
-1x/2x/5x/10x payoff-threshold contract.
+No implementation task is active. When development resumes, perform a fresh
+read-only preflight of revised Milestone 4 deterministic expiration
+1x/2x/5x/10x payoff-threshold evidence.
 
 ## Last completed checkpoint
 
