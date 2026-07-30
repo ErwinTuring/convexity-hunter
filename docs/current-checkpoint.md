@@ -14,7 +14,11 @@ Last completed implementation checkpoint:
 valuation transformation.
 
 Completed: Milestones 1–3; post-Milestone-3 product-direction alignment;
-context-governance baseline.
+context-governance baseline; mode-based Strike / Delta discovery-generation
+policy documentation.
+
+Accepted product refinement: mode-based Strike / Delta discovery generation
+is documented; implementation remains future work.
 
 Current status: Development paused.
 

@@ -117,6 +117,60 @@ assumptions, not fixed universal Taleb rules. They may be revised through
 evidence and backtesting. The future structure-generation contract must freeze
 the exact definition of “standard monthly option.”
 
+### 4.1 Mode-based Strike and Delta generation
+
+Discovery-generated candidates use the declared distribution-change mode:
+
+1. **Extreme-tail mode:** for a specific one-sided extreme downside or upside
+   hypothesis, preserve signed Delta as evidence and qualify by absolute
+   Delta. The primary tier is `0.05 <= abs(delta) <= 0.10`. The fallback tier
+   is `0.10 < abs(delta) <= 0.15` and is used only when the primary tier cannot
+   provide an eligible real listed contract with sufficient required market
+   evidence. The non-default exploratory far-tail tier is
+   `0.02 <= abs(delta) < 0.05` and requires a real listed contract, valid
+   two-sided quote, usable liquidity evidence, available IV and reference
+   evidence, calculable total entry cost, and responsible scenario valuation.
+   Absolute Delta above 0.15 is outside the default extreme-tail grammar, not
+   globally rejected.
+2. **Event-directional convexity mode:** for a meaningful directional event
+   tail that is not necessarily systemic or extreme-market, retain
+   representative targets near 10 Delta and 25 Delta without ranking them.
+   The farther 10 Delta region generally has lower absolute premium, may offer
+   a higher value multiple, and requires a larger move. The less remote 25
+   Delta region usually costs more and may respond earlier to a material event
+   move. A 25 Delta structure remains an eligible research candidate,
+   tail-pricing comparison point, and wing-curvature evidence anchor.
+3. **Bidirectional distribution-expansion mode:** when direction is unresolved
+   but the future return distribution may widen, use an ATM or near-ATM Long
+   Straddle. Long Strangle is outside the active MVP.
+
+The future deterministic generation contract must define Delta convention,
+nearest-eligible-Delta resolution, tie handling, expiration interaction,
+mode-specific quote and liquidity qualification, and the exact ATM reference.
+These implementation details are not frozen here, and structure generation is
+not yet implemented.
+
+This policy controls discovery-generated candidate eligibility. A supported
+real structure supplied directly by the user is not rejected solely because
+it lies outside default discovery-mode Delta ranges. Direct entry still must
+pass real-contract verification, supported grammar, DTE policy, quote and
+reference validation, provenance, calculation lineage, liquidity and cost
+analysis, and Convexity Engine research. Its report may disclose that the
+structure does not correspond to a default discovery mode.
+
+Delta does not equal a fixed percentage distance from spot. It depends on
+underlying price, strike, remaining maturity, implied volatility, rates,
+dividends, surface shape, and pricing convention. Generated structures must
+separately disclose actual strike distance.
+
+Low dollar premium does not establish relatively cheap convexity. Deep OTM
+options may have expensive tail IV, wide spreads, weak liquidity, or
+model-sensitive values. Initial far-OTM Gamma is commonly low and may increase
+as the option moves toward ATM; tail-event value can reflect price movement,
+IV repricing, skew or surface repricing, and changing Greeks. There is no
+universal claim of high initial Gamma or maximum Vega, and Vanna or Volga do
+not become required MVP fields.
+
 ## 5. Three-layer screening model
 
 ### Layer 1: Volatility pricing environment
@@ -246,6 +300,21 @@ For supported long-only structures, net liquidation value is floored at zero:
 if exit cost exceeds position value, rational abandonment is assumed.
 Scenario P&L therefore cannot be worse than negative entry cost.
 
+This general grid remains the current implemented baseline. Future
+extreme-tail generation requires directionally aligned event-level, severe,
+and extreme-tail stress rather than only ordinary ±5% or ±10% moves. Exact
+shock levels must be versioned and may vary by index, ETF, lower- or
+higher-volatility equity, or event type; no universal ±30% shock is frozen.
+
+IV shocks must disclose base and shocked values and whether the change is a
+relative percentage or an absolute volatility-point change. The v0.1
+proportional IV semantics remain current. Future mode-specific contracts may
+add surface and skew shocks with disclosed methodology.
+
+A large scenario value multiple is evidence, not a sole state rule. No 50x
+requirement or any other single scenario multiple automatically determines
+`Investigate`; the complete three-layer evidence boundary continues to apply.
+
 ## 8. Risk-budget and affordability behavior
 
 Discovery and generation do not require portfolio value or a risk budget.
@@ -269,6 +338,12 @@ It imposes no universal portfolio-risk percentage. If portfolio value or risk
 budget is absent, report absolute entry cost, maximum loss, and
 repeated-failure costs; do not claim the loss is bearable; and mark
 affordability `Data insufficient`.
+
+Single-structure maximum-loss fraction, repeated-failure cost, and a possible
+future annual convexity budget are distinct concepts. The MVP imposes no
+universal 1%–1.5% annual tail-protection cost. Any annual budget value must be
+explicitly supplied by the caller or user. Its contract remains a future
+risk-contract decision, not a concrete field or public API.
 
 ## 9. Candidate states
 

@@ -39,6 +39,21 @@ persisted. Development remains paused.
 - Standard monthly options use an initial versioned 30–150 calendar DTE policy,
   with 60–120 as the core range and expiration at least 30 calendar days after
   the expected event-window end. 0DTE and Weeklies are excluded.
+- Strike and Delta discovery generation is mode-based, not universal.
+- Extreme-tail mode uses 5–10 absolute Delta as primary, greater than 10
+  through 15 as fallback, and 2–5 only as a qualified exploratory far-tail
+  tier.
+- Event-directional mode retains representative 10 and 25 Delta candidates
+  without ranking.
+- Bidirectional distribution expansion uses an ATM or near-ATM Long Straddle.
+- 25 Delta is not globally rejected.
+- Direct user entry is not rejected solely for being outside discovery-mode
+  Delta defaults.
+- Low premium does not establish cheap tail pricing.
+- Extreme-tail scenarios require future mode-specific event-level, severe,
+  and extreme coverage, but no single return multiple determines
+  `Investigate`.
+- No universal annual tail-protection budget is imposed.
 - Candidate inclusion follows eligibility and layered user selection, not
   arbitrary absolute caps or automatic investment-attractiveness ranking.
 - Expiration evidence must cover exact 1x, 2x, 5x, and 10x position-value
@@ -712,6 +727,12 @@ persisted. Development remains paused.
   conditions without monitoring or automatic trading; mature Skill reuse with
   explicit native-output and adapter risk; and eligibility plus layered
   selection instead of arbitrary candidate caps.
+- The mode-based Strike and Delta discovery-generation policy is accepted and
+  documented in ADR-007, product direction, and the MVP specification. It
+  preserves distinct extreme-tail, event-directional, and bidirectional
+  expansion modes; direct-entry flexibility; mode-appropriate future
+  scenarios; and explicit cheapness and risk-budget boundaries. This is a
+  completed documentation decision, not an implemented generation component.
 - The former break-even-only Milestone 4 preflight is superseded by this
   accepted direction and must be rerun before BUILD. Milestone 4 is neither
   implemented nor fully frozen.
@@ -991,7 +1012,8 @@ The accepted post-Milestone-3 sequence is:
 5. research mature Skill capabilities and adapter/composition gaps;
 6. implement Event Intelligence;
 7. implement the Skill-led event-to-underlying accepted mapping contract;
-8. implement real option-chain access and supported structure generation; and
+8. implement real option-chain access and supported structure generation under
+   the accepted mode-based Strike and Delta policy; and
 9. connect discovery and direct entry to the complete Chinese-report flow.
 
 ## Deferred
@@ -1003,7 +1025,8 @@ The accepted post-Milestone-3 sequence is:
 - Serenity Alpha investigation
 - Event Intelligence and event-to-underlying mapping
 - option-chain access, contract validation, and supported structure generation
-- exact standard-monthly-option and strike-or-Delta policies
+- exact standard-monthly-option definition and deterministic Delta/ATM
+  resolution contracts
 - non-expiration scenario-pricing production
 - production `CandidateResearchRecord` assembly
 - final risk-budget and position-management-plan contracts
@@ -1024,8 +1047,14 @@ Deferred does not mean rejected. These items remain outside the current mileston
 - What exact historical lookback should be used for IV percentile and skew percentile?
 - How should liquidity thresholds vary by asset class?
 - Which world-event and narrative Skills are sufficiently reliable and auditable?
-- What are the exact standard-monthly, event-window, strike-or-Delta, and
-  optional 10-delta far-tail contracts?
+- What are the exact standard-monthly and event-window contracts?
+- What exact Delta convention, nearest-eligible-Delta and tie rules, expiration
+  interaction, ATM reference, and mode-specific quote/liquidity rules should
+  generation use?
+- How should asset-class and event-specific extreme-tail stresses be
+  calibrated?
+- What contract should accept an optional caller-supplied annual convexity
+  budget?
 - What final record should hold portfolio value, single-loss and repeated-loss
   boundaries, and methodology?
 - How should monetization, reassessment, and exit thresholds be derived and
