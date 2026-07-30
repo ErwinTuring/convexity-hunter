@@ -754,9 +754,12 @@ Call, Long Put, and Long Straddle grammar.
 
 ## Current task
 
-Milestone 4 deterministic expiration payoff-threshold evidence is complete.
-Candidate assembly, screening and report integration, position management,
-services, providers, and discovery remain deferred.
+The formal risk-budget and affordability preflight returned `BLOCKED`.
+Authoritative cost dependency and exact arithmetic questions were already
+resolved by reviewed `StructureCosts` v0.2. The externally visible product,
+numeric, provenance, API, and architecture questions are resolved by the
+documentation-only contract clarification. The risk-budget affordability
+contract is frozen and remains unimplemented.
 
 ## Last completed checkpoint
 
@@ -996,9 +999,10 @@ do not override the current Milestone 4 completion checkpoint above.
 
 ## Next task
 
-Run a fresh formal preflight for explicit risk-budget and affordability
-evidence. Candidate assembly, screening and report integration, position
-management, services, providers, and discovery remain deferred.
+Run the separate BUILD for standalone structure-affordability evidence against
+the frozen `docs/risk-assessment-contracts.md` contract. Later candidate
+assembly, screening and report integration, position management, application
+services, providers, and discovery remain deferred.
 
 ## Current capability and roadmap
 
@@ -1020,18 +1024,19 @@ The accepted post-Milestone-3 sequence is:
 1. persist product direction in documentation;
 2. completed: deterministic expiration payoff-threshold evidence against the
    frozen contract;
-3. complete the single-structure engine through explicit risk-budget
-   contracts, reviewed-artifact assembly, a position-management-plan contract,
-   screening and Chinese-report integration, and an offline application
-   service;
-4. choose and disclose a provider, internal model, or both for producing
+3. frozen but not implemented: standalone structure-affordability evidence
+   against the explicit risk-budget contract;
+4. complete the remaining single-structure engine through reviewed-artifact
+   assembly, a position-management-plan contract, screening and Chinese-report
+   integration, and an offline application service;
+5. choose and disclose a provider, internal model, or both for producing
    non-expiration scenario prices;
-5. research mature Skill capabilities and adapter/composition gaps;
-6. implement Event Intelligence;
-7. implement the Skill-led event-to-underlying accepted mapping contract;
-8. implement real option-chain access and supported structure generation under
+6. research mature Skill capabilities and adapter/composition gaps;
+7. implement Event Intelligence;
+8. implement the Skill-led event-to-underlying accepted mapping contract;
+9. implement real option-chain access and supported structure generation under
    the accepted mode-based Strike and Delta policy; and
-9. connect discovery and direct entry to the complete Chinese-report flow.
+10. connect discovery and direct entry to the complete Chinese-report flow.
 
 ## Deferred
 

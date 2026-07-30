@@ -13,15 +13,18 @@ execute trades, or monitor positions.
 
 ## Current status
 
-Milestones 1–3 are complete. The repository contains domain records,
+Milestones 1–4 are complete. The repository contains domain records,
 deterministic screening and reporting, provider-neutral market-data contracts,
 provenance, freshness and lineage controls, and reviewed market-data
-transformations for researching an already-specified option structure.
+transformations for researching an already-specified option structure,
+including deterministic expiration payoff-threshold evidence.
 
 Active discovery, Skill integration, real option-chain candidate generation,
-the revised expiration 1x/2x/5x/10x payoff-threshold evidence, production
-candidate assembly, non-expiration pricing production, position-management
-plan integration, and the complete application flow remain future work.
+risk-budget affordability evidence, production candidate assembly,
+non-expiration pricing production, position-management plan integration, and
+the complete application flow remain future work. The risk-budget
+affordability contract is frozen, but its standalone evidence implementation
+is not complete.
 
 The active product output is Chinese only. An English renderer remains
 implemented for compatibility and possible future reuse, but English is not
@@ -31,6 +34,7 @@ part of the active product flow.
 
 - [Product direction](docs/product-direction.md)
 - [MVP specification](docs/mvp-spec.md)
+- [Risk-assessment contracts](docs/risk-assessment-contracts.md)
 - [Project state](docs/project-state.md)
 - [Context governance](docs/context-governance.md)
 - [Current checkpoint](docs/current-checkpoint.md)

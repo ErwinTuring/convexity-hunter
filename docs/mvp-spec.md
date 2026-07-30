@@ -334,32 +334,40 @@ requirement or any other single scenario multiple automatically determines
 ## 8. Risk-budget and affordability behavior
 
 Discovery and generation do not require portfolio value or a risk budget.
-Full research after selection may accept caller assumptions equivalent to:
+The frozen, not-yet-implemented v0.1 assessment produces standalone,
+auditable affordability evidence for one already-specified supported long
+option structure. A conclusive result requires an exact caller portfolio-value
+assumption, a maximum single-structure loss fraction, a maximum repeated-loss
+fraction, and a risk-budget methodology. Both boundaries are fractions in the
+inclusive range `[0, 1]`.
 
-- assumed portfolio value;
-- maximum single-structure loss fraction;
-- repeated-bet count;
-- maximum repeated-loss fraction; and
-- risk-budget methodology.
+The repeated-bet count is not a caller risk assumption. It comes only from the
+reviewed `StructureCosts` v0.2 dependency and represents equal repeated
+attempts, not concurrent exposure, annual frequency, expected occurrence
+count, an annual budget, or portfolio holdings.
 
-The system may calculate:
+Using the dependency's exact maximum loss rather than its public floats, the
+assessment calculates:
 
 ```text
-single-loss fraction = total entry cost / assumed portfolio value
+single-loss fraction = exact maximum loss / exact portfolio value
 repeated-loss fraction =
-    total entry cost * repeated-bet count / assumed portfolio value
+    exact maximum loss * repeated-bet count / exact portfolio value
 ```
 
-It imposes no universal portfolio-risk percentage. If portfolio value or risk
-budget is absent, report absolute entry cost, maximum loss, and
-repeated-failure costs; do not claim the loss is bearable; and mark
-affordability `Data insufficient`.
+The outcome is `affordable` only when both actual fractions are less than or
+equal to their boundaries, `not_affordable` when either complete comparison
+exceeds its boundary, and `data_insufficient` when any required assumption is
+missing. Missing-assumption reasons take precedence over breach evaluation.
+If portfolio value is present, actual fractions remain available even for an
+incomplete result; otherwise they are absent.
 
-Single-structure maximum-loss fraction, repeated-failure cost, and a possible
-future annual convexity budget are distinct concepts. The MVP imposes no
-universal 1%–1.5% annual tail-protection cost. Any annual budget value must be
-explicitly supplied by the caller or user. Its contract remains a future
-risk-contract decision, not a concrete field or public API.
+v0.1 imposes no universal portfolio-risk percentage and has no annual or
+absolute USD budget, budget utilization, remaining budget, quantity or
+maximum-affordable-quantity calculation, holdings or committed-exposure
+model, trade recommendation, screening state, candidate assembly, or report
+integration. Candidate-state and screening semantics are unchanged. See the
+canonical [Risk-Assessment Contracts](risk-assessment-contracts.md).
 
 ## 9. Candidate states
 

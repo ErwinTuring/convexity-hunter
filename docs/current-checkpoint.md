@@ -23,8 +23,11 @@ Current status: Milestone 4 deterministic exact-rational expiration
 payoff-threshold evidence is complete after broad independent review and
 targeted re-review.
 
-Next development gate: fresh formal preflight for the explicit risk-budget and
-affordability contract.
+Risk-budget and affordability status: the standalone contract is frozen by the
+current clarification commit; implementation is not complete.
+
+Next development gate: BUILD standalone structure-affordability evidence
+against `docs/risk-assessment-contracts.md`.
 
 Read first: `docs/current-checkpoint.md`, `docs/product-direction.md`,
 `docs/project-state.md`, and `docs/mvp-spec.md`.
@@ -37,5 +40,7 @@ transformation tests; 25 transformation exports; 64 `market_data` exports.
 
 Candidate assembly, screening and report integration, position management,
 services, providers, Event Intelligence, and discovery remain deferred.
+
+Existing validation and export baselines remain unchanged.
 
 This file is a navigation map, not a complete specification or history.
