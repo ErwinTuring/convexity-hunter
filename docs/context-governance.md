@@ -23,6 +23,108 @@ repository provides authoritative project facts.
 ChatGPT is an intentionally non-authoritative and potentially incomplete
 planning node.
 
+## ChatGPT and Codex execution-role boundaries
+
+This section is the canonical definition of the roles used by the manual
+ChatGPT/Codex workflow.
+
+### ChatGPT main conversation
+
+The ChatGPT main conversation is the grounded planning and prompt-authoring
+layer. It:
+
+- verifies and reads the current repository through available repository
+  tools;
+- interprets product decisions and current contracts;
+- identifies the next formal workflow gate;
+- writes the complete prompt for the appropriate separate Codex session;
+- evaluates Codex PREFLIGHT, BUILD, and REVIEW reports returned by the user;
+- resolves or surfaces remaining product decisions;
+- freezes the accepted implementation contract after the formal preflight
+  report has been evaluated and accepted; and
+- writes later BUILD, REVIEW, correction, re-review, commit, and documentation
+  prompts as applicable.
+
+The ChatGPT main conversation is not the formal Codex preflight executor. When
+the next gate is a formal Codex preflight, it must not:
+
+- return its own formal `READY` or `BLOCKED` result;
+- present its own analysis as the completed repository preflight;
+- freeze exact implementation fields, enums, APIs, file scope, fingerprints,
+  or test counts before the formal Codex preflight report; or
+- skip directly to BUILD.
+
+ChatGPT may perform Repository Grounding and planning analysis sufficient to
+write a precise preflight prompt. That Grounding is not the formal workflow
+gate.
+
+### Codex PREFLIGHT session
+
+The Codex PREFLIGHT session:
+
+- is a separate manually created Codex session;
+- performs the formal read-only repository preflight;
+- independently verifies repository state, contracts, source, tests,
+  numerical boundaries, provenance, lineage, API impact, file scope, and
+  validation scope;
+- makes no repository modifications; and
+- returns a structured report ending in `READY` or `BLOCKED`.
+
+Only that returned formal report satisfies the preflight-execution step.
+ChatGPT subsequently evaluates the report; it does not retroactively replace
+the Codex preflight with its own analysis.
+
+### Codex BUILD session
+
+The Codex BUILD session:
+
+- is a separate manually created Codex session;
+- implements only the accepted and frozen contract;
+- does not begin while the required formal preflight remains unresolved;
+- runs the required validation;
+- keeps implementation uncommitted until the required review gate passes;
+- applies accepted corrections in the same BUILD session; and
+- performs the final commit and push when instructed.
+
+### Codex REVIEW session
+
+The Codex REVIEW session:
+
+- is separate from BUILD;
+- reads repository contracts and the actual diff independently;
+- performs one broad review by default;
+- does not implement fixes;
+- uses targeted re-review only for accepted realistic blockers or major
+  defects; and
+- does not introduce unrelated or newly invented requirements during targeted
+  re-review.
+
+### Formal-gate language
+
+A checkpoint or handoff statement such as “Next gate: formal Codex preflight”
+identifies the next repository workflow gate. It does not instruct the ChatGPT
+main conversation to execute that gate itself. The ChatGPT main conversation's
+immediate task is instead:
+
+```text
+Repository Grounding
+→ author the formal Codex PREFLIGHT prompt
+```
+
+### Terminology
+
+**Repository Grounding** means ChatGPT or Codex reads the current repository
+facts needed for its role.
+
+**Formal preflight** means the read-only gate executed in the separate Codex
+PREFLIGHT session.
+
+**Contract freeze** means ChatGPT converts the accepted formal preflight
+outcome and resolved product decisions into the exact implementation boundary
+used by BUILD.
+
+Do not use “ChatGPT preflight” as a synonym for Repository Grounding.
+
 ## Source-of-truth responsibility matrix
 
 | Question | Authoritative source |
@@ -177,6 +279,28 @@ At a switch, use a short handoff containing only the repository, current HEAD
 resolved from Git, current status, next gate, read-first files, and the rule
 that the repository is the source of truth. Do not migrate the full previous
 conversation. It becomes historical background, not an active contract.
+
+When the next gate is a formal Codex preflight, the handoff must also state
+that the ChatGPT conversation is the grounded planning and prompt-authoring
+layer, must not perform the formal preflight itself, and must first deliver
+the separate Codex PREFLIGHT session name and one complete preflight prompt.
+It must not generate a BUILD prompt before the Codex preflight report is
+returned and accepted.
+
+The required startup workflow is:
+
+```text
+new ChatGPT main conversation
+→ Repository Grounding
+→ complete Codex PREFLIGHT prompt
+→ user manually runs that prompt in a separate Codex PREFLIGHT session
+→ user returns the Codex report
+→ ChatGPT evaluates and freezes the accepted contract
+→ ChatGPT writes the later BUILD prompt
+```
+
+Keep the handoff short and repository-grounded. Do not add complete product or
+technical contracts to it.
 
 ## ADR rules
 

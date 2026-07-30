@@ -18,6 +18,21 @@ Before generating or executing work that changes specifications, architecture, o
 
 Do not reread the whole repository by default. Verify exact fields, enum order, formulas, reason codes, thresholds, API counts, commit state, and milestone state from the repository rather than memory.
 
+## Execution roles
+
+The ChatGPT main conversation performs Repository Grounding, plans the work,
+authors prompts for separate Codex sessions, evaluates their returned reports,
+and freezes an accepted contract after formal preflight. It does not execute
+the formal preflight or return its `READY` or `BLOCKED` result.
+
+Codex PREFLIGHT executes the formal read-only preflight in a separate session.
+Codex BUILD implements the accepted contract, validates it, applies accepted
+corrections, and performs the final commit and push when instructed. Codex
+REVIEW independently reads the contracts and actual diff, reports findings,
+and never implements fixes. See
+[`context-governance.md`](context-governance.md#chatgpt-and-codex-execution-role-boundaries)
+for the canonical detailed definitions.
+
 ## Risk tiers
 
 ### A — Core contract / architecture / high-risk logic
@@ -27,19 +42,27 @@ Examples include public contracts, market-data identity and provenance, freshnes
 Required workflow:
 
 ```text
-Repository grounding
-→ fresh BUILD specification preflight
-→ resolve specification blockers
-→ commit contract clarification first when needed
-→ BUILD implementation without commit
-→ fresh independent REVIEW
-→ BUILD fixes for concrete findings
-→ targeted REVIEW only for those findings
-→ final validation
-→ one commit and push
+ChatGPT Repository Grounding
+→ ChatGPT authors Codex PREFLIGHT prompt
+→ Codex PREFLIGHT performs formal read-only preflight
+→ ChatGPT evaluates the report and resolves specification blockers
+→ contract clarification is committed first when required
+→ ChatGPT authors Codex BUILD prompt
+→ Codex BUILD implements without commit
+→ ChatGPT authors independent REVIEW prompt
+→ Codex REVIEW performs one broad independent review
+→ Codex BUILD fixes accepted concrete findings
+→ Codex REVIEW performs targeted re-review only for those findings
+→ Codex BUILD runs final validation
+→ Codex BUILD creates one commit and pushes
 ```
 
-Implementation does not start while preflight has unresolved blockers. REVIEW must not rely on BUILD's summary: it reads the authoritative repository contracts and actual diff. After a targeted fix, re-review only the original finding unless the fix creates a concrete new concern.
+Implementation does not start while formal preflight has unresolved blockers.
+The `READY` or `BLOCKED` decision belongs to the Codex PREFLIGHT report, which
+ChatGPT evaluates before any contract freeze or BUILD prompt. REVIEW must not
+rely on BUILD's summary: it reads the authoritative repository contracts and
+actual diff. After a targeted fix, re-review only the original finding unless
+the fix creates a concrete new concern.
 
 ### B — Ordinary implementation against an already locked contract
 
@@ -48,14 +71,16 @@ Examples include renderer integration, CLI wiring, known-schema serialization, s
 Required workflow:
 
 ```text
-Repository grounding
-→ BUILD implementation without commit
-→ independent REVIEW
-→ targeted fixes/re-review if needed
-→ one commit and push
+ChatGPT Repository Grounding and Codex BUILD prompt
+→ Codex BUILD implements without commit
+→ Codex REVIEW performs independent review
+→ Codex BUILD applies accepted fixes
+→ Codex REVIEW performs targeted re-review if needed
+→ Codex BUILD validates, creates one commit, and pushes
 ```
 
-No separate specification preflight is required unless implementation reveals a genuine ambiguity.
+No separate formal preflight is required unless implementation reveals a
+genuine contract ambiguity, which escalates the task to Tier A.
 
 ### C — Low-risk, behavior-preserving work
 
@@ -64,21 +89,31 @@ Examples include documentation, copy, comments, test names, typos, checkpoint up
 Required workflow:
 
 ```text
-BUILD
+lightweight ChatGPT Repository Grounding
+→ direct Codex BUILD or documentation session
 → appropriate tests/diff validation
 → one commit and push
 ```
 
-Independent REVIEW is optional unless scope or risk grows. If a task initially classified B or C reveals contract ambiguity, architecture impact, or meaningful behavioral risk, escalate it to A.
+No formal preflight or independent review is required unless scope or risk
+grows. If a task initially classified B or C reveals contract ambiguity,
+architecture impact, or meaningful behavioral risk, escalate it to A.
 
-## BUILD and REVIEW session rules
+## Codex session naming and separation
 
+- Use a separate formal preflight session named
+  `PREFLIGHT｜<milestone-or-task>`.
 - Use a fresh BUILD session for each new sub-milestone or independent work unit, named `BUILD｜<milestone-or-task>`.
 - Use a separate fresh REVIEW session for A/B independent review, named `REVIEW｜<milestone-or-task>`.
 - Continue the same BUILD session for fixes arising from that work unit.
 - Continue the same REVIEW session for targeted re-review of its original findings.
 - Do not use REVIEW to implement fixes.
 - Do not commit implementation before required review passes.
+- ChatGPT main conversations are not Codex sessions.
+- A ChatGPT conversation must not describe itself as already inside a Codex
+  PREFLIGHT, BUILD, or REVIEW task.
+- Every Codex prompt must identify the separate existing Codex session into
+  which the user will paste it.
 
 ## Token and context cost control
 
@@ -118,3 +153,8 @@ Independent REVIEW is optional unless scope or risk grows. If a task initially c
 ## Milestone checkpoints
 
 At meaningful milestone boundaries, `docs/project-state.md` should retain compact navigation facts: milestone status, checkpoint commit, test count, public API count when relevant, current task, and next task. Do not duplicate full contracts in checkpoint state.
+
+At a broad milestone boundary, a new ChatGPT main conversation reconstructs
+state from the repository and authors the next Codex prompt. When the next
+gate is formal preflight, its first artifact is the Codex PREFLIGHT prompt, not
+a self-authored preflight report.
