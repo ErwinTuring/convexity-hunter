@@ -2,28 +2,60 @@
 
 ## Project objective
 
-Convexity Hunter is an investigation assistant for identifying concrete long-option structures that may offer cheap positive convexity.
+Convexity Hunter starts from changes in the world, identifies events that may
+alter future return distributions and potentially affected underlyings,
+constructs actual supported Long Option Position candidates from real option
+chains, lets the user select one exact structure, and uses auditable evidence
+to investigate whether its positive convexity may be insufficiently priced and
+whether maximum loss fits explicitly declared risk assumptions. A direct user
+entry path converges on the same verified exact structure and Convexity Engine.
+The system identifies structures worthy of further investigation; it does not
+prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current milestone
 
-Milestone 3 complete: auditable, provider-neutral external market-data
-contracts are defined before connecting live data sources. The next milestone
-has not yet been selected from the accepted MVP specification.
+Post-Milestone-3 product direction is aligned and persisted. The next gate is a
+fresh read-only preflight for Milestone 4 deterministic expiration
+payoff-threshold evidence.
 
 ## Decisions locked
 
 - The system searches for cheap positive convexity, not direction.
-- The final candidate is an option structure, not merely an asset.
+- The final research unit is one exact verified option structure, not merely an
+  asset or a multi-position optimized portfolio.
+- Discovery entry and direct user entry are equal first-class paths and
+  converge on the same Convexity Engine.
 - Events and narratives create hypotheses; market data supplies evidence.
+- Event-to-underlying mapping is Skill-led; Convexity Hunter owns the accepted
+  input and audit boundary, not a competing mapping algorithm.
+- Mature Skills should be reused where suitable, but native outputs, thin
+  adapters or compositions, and the product's standard accepted input remain
+  distinct because available Skills may satisfy only part of the contract.
 - The MVP uses three screening layers:
   1. volatility pricing environment,
   2. tail relative pricing,
   3. concrete structure validation.
-- MVP instruments are long calls, long puts, and long straddles.
+- MVP Long Option Positions are Long Call, Long Put, and Long Straddle.
+- “Long” is position direction, not maturity; “长期权” is not a synonym.
+- Standard monthly options use an initial versioned 30–150 calendar DTE policy,
+  with 60–120 as the core range and expiration at least 30 calendar days after
+  the expected event-window end. 0DTE and Weeklies are excluded.
+- Candidate inclusion follows eligibility and layered user selection, not
+  arbitrary absolute caps or automatic investment-attractiveness ranking.
+- Expiration evidence must cover exact 1x, 2x, 5x, and 10x position-value
+  multiples, superseding the stale break-even-only direction.
+- Bearability depends on explicit caller risk assumptions; without them,
+  absolute loss is reported and affordability is Data insufficient.
+- The first report states monetization, reassessment, and exit conditions for
+  later human judgment. The product does not monitor, alert, or automate exits.
+- The active report is Chinese only and begins with a short beginner-facing
+  overview. Implemented English rendering is retained but inactive.
 - No unsupported numerical Convexity Score.
 - Candidate states are Reject, Watch, Investigate, and Data insufficient.
 - LLMs may interpret evidence but may not generate numerical market data.
 - The repository documentation is the source of truth.
+- [Product direction](product-direction.md) is the canonical
+  post-Milestone-3 product statement.
 
 ## Completed
 
@@ -662,21 +694,40 @@ has not yet been selected from the accepted MVP specification.
   Milestone 3C.7f2 is complete, broad Milestone 3C.7f is complete, and because
   3C.7f2 was the final explicitly defined Milestone 3 gate, broad Milestone 3
   is complete.
+- Milestone 3 is complete at
+  `86aee1dfa13cae0c865d8f24aa08754934abd540`
+  (`Implement hybrid scenario valuation transformation`).
+- The post-Milestone-3 product-direction alignment is complete. It accepts two
+  entry modes; Chinese-only active reporting with a simplified beginner
+  overview; exact expiration 1x/2x/5x/10x threshold evidence; explicit
+  risk-budget boundaries; first-report monetization, reassessment, and exit
+  conditions without monitoring or automatic trading; mature Skill reuse with
+  explicit native-output and adapter risk; and eligibility plus layered
+  selection instead of arbitrary candidate caps.
+- The former break-even-only Milestone 4 preflight is superseded by this
+  accepted direction and must be rerun before BUILD. Milestone 4 is neither
+  implemented nor fully frozen.
 
 ## Current task
 
-Finalize, commit, and push the reviewed Milestone 3C.7f2 hybrid
-scenario-valuation transformation.
+After this documentation commit, preflight the revised Milestone 4 expiration
+1x/2x/5x/10x payoff-threshold contract.
 
 ## Last completed checkpoint
 
-- Checkpoint: Milestone 3C.7a implemented, independently reviewed, and
-  validated; final targeted re-review passed
-- Base commit: `b2259a8859672da209c715bba83418dd428081fc`
-  (`Implement historical market data series assessment`)
-- Base checkpoint: Milestone 3C.4e complete at `6c7566167af503c260f8df67095810002dd12604`
-- Milestone 3C.5 validation: 29 focused, 340 market-data, 649 full-suite
+- Commit: `86aee1dfa13cae0c865d8f24aa08754934abd540`
+- Subject: `Implement hybrid scenario valuation transformation`
+- Validation: 147 focused transformation tests, 365 market-data tests, 821
+  full-suite tests, compileall passed, and `git diff --check` passed
+- Status: Milestone 3C.7f2 complete, broad Milestone 3C.7f complete, and broad
+  Milestone 3 complete
 - Public `market_data` API: 64 names
+
+### Preserved checkpoint chronology
+
+The entries below preserve earlier checkpoint wording and interim states. They
+do not override the current Milestone 3 completion checkpoint above.
+
 - Milestone 3C.1 semantic observation identity complete
 - Milestone 3C.2 per-record selected/fresh binding complete
 - Milestone 3C.3 binding-set temporal coherence complete
@@ -898,20 +949,60 @@ scenario-valuation transformation.
 
 ## Next task
 
-Determine and preflight the next milestone from the accepted MVP
-specification.
+Preflight the revised Milestone 4 deterministic expiration 1x/2x/5x/10x
+payoff-threshold evidence contract. The preflight must be fresh and read-only,
+must replace the superseded break-even-only direction, and must not assume the
+previous record architecture remains correct.
+
+## Current capability and roadmap
+
+Convexity Hunter has largely completed the auditable numerical and evidence
+foundation for researching one already-specified option structure. It has not
+yet completed the active-discovery front end, real option-structure
+generation, expiration 1x/2x/5x/10x threshold evidence, production candidate
+assembly, position-management-plan integration, non-expiration pricing
+production, or the complete application flow.
+
+Status claims must distinguish an implemented capability, an implemented
+record or contract, a transformation that requires caller orchestration,
+synthetic-only integration, and work not yet implemented. A domain record is
+not a complete application workflow.
+
+The accepted post-Milestone-3 sequence is:
+
+1. persist product direction in documentation;
+2. re-preflight and implement deterministic expiration payoff-threshold
+   evidence;
+3. complete the single-structure engine through explicit risk-budget
+   contracts, reviewed-artifact assembly, a position-management-plan contract,
+   screening and Chinese-report integration, and an offline application
+   service;
+4. choose and disclose a provider, internal model, or both for producing
+   non-expiration scenario prices;
+5. research mature Skill capabilities and adapter/composition gaps;
+6. implement Event Intelligence;
+7. implement the Skill-led event-to-underlying accepted mapping contract;
+8. implement real option-chain access and supported structure generation; and
+9. connect discovery and direct entry to the complete Chinese-report flow.
 
 ## Deferred
 
 - real-time market-data providers
-- news and world-event Skills
+- mature news, search, knowledge, and world-event Skill capability research
+- Skill adapters and multi-Skill composition
 - last30days-skill or similar narrative integrations
 - Serenity Alpha investigation
-- option-chain scanning
+- Event Intelligence and event-to-underlying mapping
+- option-chain access, contract validation, and supported structure generation
+- exact standard-monthly-option and strike-or-Delta policies
+- non-expiration scenario-pricing production
+- production `CandidateResearchRecord` assembly
+- final risk-budget and position-management-plan contracts
+- Chinese beginner-overview renderer changes
 - LLM integration
 - user interface
 - automatic execution
-- portfolio-level barbell monitoring
+- monitoring, alerts, notifications, scheduled tasks, and automated exits
 - Markdown escaping before untrusted external narrative text is rendered
 - global custom-policy registration or fingerprinting
 
@@ -920,7 +1011,17 @@ Deferred does not mean rejected. These items remain outside the current mileston
 ## Open questions
 
 - Which options data provider can supply reliable historical volatility surfaces?
+- Should non-expiration pricing use an external provider, internal model, or both?
 - What exact historical lookback should be used for IV percentile and skew percentile?
 - How should liquidity thresholds vary by asset class?
 - Which world-event and narrative Skills are sufficiently reliable and auditable?
-- How should repeated-bet affordability be defined at portfolio level?
+- What are the exact standard-monthly, event-window, strike-or-Delta, and
+  optional 10-delta far-tail contracts?
+- What final record should hold portfolio value, single-loss and repeated-loss
+  boundaries, and methodology?
+- How should monetization, reassessment, and exit thresholds be derived and
+  disclosed?
+- What is the final position-management-plan architecture and integration?
+- What is the final accepted event-to-underlying contract?
+- How may incomplete direct-entry descriptions be resolved without inventing
+  contracts?

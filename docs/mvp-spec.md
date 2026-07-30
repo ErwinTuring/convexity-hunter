@@ -1,253 +1,405 @@
 # MVP Specification
 
-Convexity Hunter v0.1 identifies option structures that deserve further investigation as potential cheap positive-convexity opportunities. It does not predict market direction or issue trade recommendations.
+Convexity Hunter v0.1 identifies exact Long Option Position structures that
+deserve further investigation as potentially underpriced positive-convexity
+opportunities. It does not prove an opportunity exists, predict market
+direction, issue trade recommendations, monitor positions, or execute trades.
+The canonical post-Milestone-3 direction is in
+[product-direction.md](product-direction.md).
 
-## 1. MVP research question
+## 1. MVP research question and entry modes
 
 The system must answer:
 
-> Which concrete option structures currently deserve further investigation because their downside is bounded and bearable, their payoff is positively convex, and the market may be underpricing that convexity?
+> Which exact supported option structures deserve further investigation
+> because their downside is bounded, their positive convexity may be
+> insufficiently priced, and their maximum loss fits the user's explicitly
+> declared risk assumptions?
 
-The output is not merely a list of assets. Each final candidate must identify a concrete option structure with enough detail to evaluate its payoff, costs, and total-position risk.
+The final research unit is one verified exact `OptionStructure`, not a generic
+asset or a multi-position portfolio.
 
-## 2. Scope
+The MVP has two equal first-class entry modes:
+
+1. **Discovery entry:** world events flow through Event Intelligence,
+   potentially affected underlyings and distribution-change hypotheses, real
+   option-chain retrieval and eligible structure generation; the user then
+   selects one exact structure for Convexity Engine research.
+2. **Direct user entry:** the user supplies a structure to investigate; the
+   system resolves and validates the real listed contract and applies the same
+   eligibility, market-data, and evidence checks before Convexity Engine
+   research.
+
+Direct entry does not require an Event Intelligence hypothesis. It does not
+bypass contract existence, option-chain verification, supported grammar, DTE
+policy, quote and reference-data validation, provenance, or calculation
+lineage. An incomplete description may be resolved against the real chain but
+must never result in an invented contract.
+
+## 2. Supported scope and terminology
+
+`Long Option Position`, `option long position`, `期权多头仓位`, and
+`买入期权结构` refer to position direction. Do not use “长期权” as a synonym,
+because it can mean a Long-Term Option or LEAPS.
 
 MVP v0.1 is limited to:
 
-- US-listed equities and ETFs
-- long options only
-- long calls, long puts, and long straddles
-- one strategy position at a time, containing one or two long-option legs
-- no option selling
-- no spreads
-- no automatic execution
-- no portfolio optimization
-- no precise probability forecasts
-- no LLM-generated numerical market data
+- US-listed equities and ETFs;
+- Long Call;
+- Long Put;
+- Long Straddle;
+- one exact structure at a time with one or two long-option legs; and
+- one standard structure unit unless the user explicitly supplies another
+  quantity.
 
-A long call or long put contains one leg. A long straddle contains one long call and one long put with the same underlying, strike, and expiration. No other multi-leg structures are included in MVP v0.1.
+A Long Call or Long Put contains one leg. A Long Straddle contains one long
+call and one long put with the same underlying, strike, and expiration.
 
-Limiting the MVP to long-option structures makes maximum loss explicitly bounded by the premium and associated costs. The system must still determine whether that loss is bearable relative to the assumed portfolio value and repeated-bet costs.
+The MVP excludes:
 
-## 3. Three-layer screening model
+- short options and option selling;
+- spreads, multi-expiration structures, and exotics;
+- 0DTE and Weeklies;
+- portfolio optimization and optimal-contract-count calculation;
+- automatic discovery claims, monitoring, scheduled tasks, alerts,
+  notifications, automatic exits, and execution;
+- precise probability forecasts, expected-return forecasts, and trade
+  recommendations; and
+- LLM-generated numerical market data.
+
+Positive convexity bounds maximum loss for the supported structures but does
+not prove cheapness or bearability.
+
+## 3. Candidate qualification and user selection
+
+Candidate inclusion is determined by business and technical eligibility, not
+an arbitrary maximum number of underlyings or structures.
+
+For discovery entry, an underlying may enter generation only when the future
+accepted contract establishes a supported security identity, specific
+source-backed event-impact path, specific distribution-change hypothesis,
+usable event window, eligible listed option market, and resolvable identity
+and chronology.
+
+A structure may enter only when the listed contract exists, its grammar and
+maturity are supported, required quote and reference evidence is available,
+and it is compatible with the declared distribution hypothesis.
+
+The interaction is layered:
+
+```text
+event
+    -> eligible affected underlyings
+    -> user opens or selects one underlying
+    -> eligible exact option structures
+    -> user selects one exact structure
+```
+
+The selected object includes underlying, structure type, side of each leg,
+strike, expiration, quantity, and contract multiplier. The system does not
+rank structures by investment attractiveness. Stable presentation ordering is
+allowed but is not a recommendation.
+
+## 4. Initial maturity policy
+
+The initial versioned policy accepts standard monthly options only:
+
+- 30 calendar DTE hard lower bound;
+- 30–59 calendar DTE non-core short range;
+- 60–120 calendar DTE core hunting range;
+- 121–150 calendar DTE non-core long range;
+- 150 calendar DTE hard upper bound; and
+- expiration date at least the expected event-window end date plus 30 calendar
+  days.
+
+The event buffer and DTE ranges are initial Convexity Hunter product-policy
+assumptions, not fixed universal Taleb rules. They may be revised through
+evidence and backtesting. The future structure-generation contract must freeze
+the exact definition of “standard monthly option.”
+
+## 5. Three-layer screening model
 
 ### Layer 1: Volatility pricing environment
 
-**Purpose:** Determine whether the overall option-pricing environment is relatively quiet or expensive.
+**Question:** Is the overall option-pricing environment relatively quiet or
+expensive?
 
-**Required evidence:**
+Required evidence:
 
-- ATM implied volatility
-- ATM IV percentile
-- ATM IV relative to its historical median
-- implied-volatility term structure
-- matched-horizon implied-versus-realized volatility gap
+- ATM implied-volatility percentile;
+- ATM IV relative to its historical median;
+- implied-volatility term structure; and
+- matched-horizon implied-versus-realized volatility gap.
 
-**Matched-horizon comparison:** A 30-day IV must be compared with realized volatility over a comparable horizon using a consistent annualization method.
-
-Low IV percentile is only an investigation signal. It is not proof that options are cheap.
-
-IV percentile and historical median ATM IV must disclose the number of historical observations used to calculate them.
+A 30-day IV must be compared with realized volatility over a comparable
+horizon using a consistent annualization method. Low IV percentile is only an
+investigation signal. Percentile and median calculations disclose observation
+counts.
 
 ### Layer 2: Tail relative pricing
 
-**Purpose:** Determine whether either tail is relatively cheap or expensive compared with ATM options and with its own history.
+**Question:** Which tail, if any, appears relatively cheap against ATM and its
+own history?
 
-**Required evidence:**
+Required evidence:
 
-- 25-delta put IV minus ATM IV
-- 25-delta call IV minus ATM IV
-- 10-delta versus 25-delta wing curvature
-- current skew percentile relative to the asset’s own history
-- skew term structure across expirations
+- 25-delta put IV minus ATM IV;
+- 25-delta call IV minus ATM IV;
+- 10-delta versus 25-delta wing curvature;
+- current skew percentile; and
+- skew term structure.
 
-Steep put skew often means downside protection is relatively expensive. Flat skew may indicate cheaper downside protection, but it is not proof of mispricing. Skew is a relative-price measure, not a complete measure of absolute cheapness.
-
-Skew percentile must disclose its number of historical observations. The 10-delta and 25-delta measurements must disclose their delta convention and interpolation methodology.
-
-For MVP v0.1, one historical observation means one valid US market trading session using one end-of-day observation per session. Intraday, weekly, calendar-day, and mixed-frequency percentile histories are outside scope.
+Skew is a relative-price measure, not proof of absolute cheapness. Percentiles
+disclose observation counts; 10- and 25-delta measurements disclose delta and
+interpolation methodology. One historical observation is one valid US market
+trading session using one end-of-day observation per session; intraday,
+weekly, calendar-day, and mixed-frequency histories are outside scope.
 
 ### Layer 3: Concrete structure validation
 
-**Purpose:** Determine whether a specific long-option structure provides attractive and bearable convexity after costs.
+**Question:** Is this exact structure a bearable and sufficiently nonlinear
+way to own the hypothesized convexity after costs?
 
-Each candidate must include:
+Each candidate includes, where applicable:
 
-- underlying symbol
-- option type or structure
-- direction
-- strike or strikes
-- expiration
-- contract multiplier
-- assumed position size
-- quoted midpoint premium
-- estimated spread cost
-- commissions and fees
-- total estimated entry cost
-- maximum loss
-- maximum loss as a percentage of assumed portfolio value
-- bid-ask spread
-- theta
-- raw total-position gamma
-- local Gamma P&L approximation for a 1% underlying move
-- local Gamma-cost ratio for a 1% underlying move
-- break-even point or points
-- scenario P&L for defined underlying moves
-- scenario P&L for defined volatility changes
-- expected holding horizon
-- cumulative cost if the same type of bet fails repeatedly
+- exact structure identity and leg sides, strikes, expiration, quantities, and
+  multipliers;
+- real option price, total-position quoted midpoint, spread, commissions,
+  fees, total entry cost, and maximum loss;
+- total-position bid and ask, relative spread, weakest-leg open interest and
+  volume, and quote methodology;
+- total-position Theta and raw Gamma;
+- local Gamma P&L approximation and Gamma-cost relationship for a 1%
+  underlying move;
+- repeated-failure cost;
+- non-expiration scenario values and expiration 1x/2x/5x/10x value
+  thresholds; and
+- portfolio-relative loss and explicit risk-budget assessment.
 
-The local Gamma approximation is a second-order local measure, not complete scenario P&L. It excludes Delta, Vega, Theta, volatility-surface changes, jumps, and model error, and it must not be presented as expected profit.
+All cost values are total-position USD values. Quoted midpoint excludes spread,
+commissions, and fees. Gamma is total-position `d²V/dS²` in USD of position
+value per USD² of underlying movement and already incorporates every leg,
+quantity, and multiplier. Theta is total-position daily value change under a
+disclosed day-count and pricing methodology.
 
-For MVP v0.1, all monetary values in structure costs are total-position USD values. Quoted midpoint premium is the total option premium for the complete strategy position at quote midpoint and excludes spread cost, commissions, and fees. Estimated spread cost is the estimated execution cost above quote midpoint for the total strategy position. No currency field is required while scope remains limited to US-listed equities and ETFs.
+The local Gamma approximation excludes Delta, Vega, Theta, surface changes,
+jumps, and model error; it is not expected profit. Liquidity records expose
+evidence but do not themselves impose sufficiency thresholds.
 
-Gamma is the total strategy-position second derivative `d²V/dS²`, expressed as USD of position-value change per USD² of underlying-price movement. It must already incorporate every leg, quantity, and contract multiplier. Data adapters must convert provider-specific per-share or per-contract Gamma before constructing structure costs. The local Gamma formulas are valid only under this unit convention.
+## 6. Expiration payoff-threshold evidence
 
-Theta per day is the total strategy-position Theta expressed as USD of position-value change for one day under the declared methodology. The methodology must disclose the source or pricing model, Gamma scaling, Theta day-count convention, and relevant interpolation or calculation assumptions. The numeric field does not impose a 252-day or 365-day convention.
+The future deterministic transformation must use:
 
-Liquidity evidence must include:
+```text
+expiration position-value multiple =
+    expiration position value / total entry cost
+```
 
-- total-position quoted bid value
-- total-position quoted ask value
-- absolute bid-ask spread
-- bid-ask spread relative to quoted midpoint
-- minimum open interest across the structure’s legs
-- minimum daily volume across the structure’s legs
-- disclosed quote aggregation and timestamp methodology
+For Long Call, Long Put, and Long Straddle it must determine the exact
+expiration underlying price or prices required for:
 
-These values expose the weakest-liquidity leg and the total-position execution market. The liquidity record stores evidence only; it does not define or apply sufficiency thresholds.
+- 1x: expiration value equals total entry cost, or break-even before any
+  separately disclosed expiration exit cost;
+- 2x: expiration value equals two times total entry cost;
+- 5x: expiration value equals five times total entry cost; and
+- 10x: expiration value equals ten times total entry cost.
 
-The final candidate is a structure, not an asset.
+It must also report the move from the reviewed base underlying price,
+structure-appropriate single- or double-sided thresholds, and whether a
+nonnegative-price solution is unavailable. It must not calculate threshold
+probabilities, expected return, direction forecasts, or automatic exit advice.
+This requirement supersedes the former break-even-only Milestone 4 direction
+and requires a fresh read-only preflight.
 
-## 4. Scenario framework
+## 7. Non-expiration scenario framework
 
-The system must analyze scenarios rather than predict direction.
+Non-expiration scenario value asks what a structure might be worth at an
+intermediate valuation time after changes in underlying price, implied
+volatility, remaining time, rates, dividends, and the volatility surface. It
+captures price movement, IV repricing, remaining time value, Theta decay,
+IV-collapse risk, and potential pre-expiration liquidation value.
 
-Every scenario P&L result must identify its valuation time. Initial valuation-time scenarios are:
+Expiration thresholds describe terminal payoff shape; non-expiration scenarios
+describe possible value while time and volatility value remain. The repository
+currently validates and consumes authoritative non-expiration scenario-pricing
+evidence but does not produce the prices. A future milestone must choose and
+disclose a provider, internal pricing model, or both.
 
-- immediate shock, with no passage of time
-- 7 calendar days later
-- at the declared expected holding horizon
-- at expiration
+Every scenario result identifies valuation time. Initial valuation-time
+scenarios are immediate shock, 7 calendar days later, the declared expected
+holding horizon, and expiration. A report may use a relevant subset but cannot
+omit valuation time or remaining-time effects.
 
-A candidate report may use a relevant subset, but it must never present scenario P&L without stating the valuation time. Scenario valuation must account for remaining time to expiration.
+Initial price shocks are -20%, -10%, -5%, 0%, +5%, +10%, and +20%. Initial IV
+shocks are -20%, unchanged, +20%, and +50%, interpreted as relative changes to
+each leg's actual base IV. This parallel proportional shock does not model
+skew, smile-curvature, or term-structure-shape changes.
 
-**Minimum price scenarios:**
+Each scenario records base and shocked underlying price, leg-level base and
+shocked IV, valuation date, total-position value, entry-cost basis, exit cost,
+after-cost P&L, and pricing methodology. Methodology discloses provider or
+model, rates, dividends, surface construction, interpolation, and limitations.
+At expiration, IV inputs remain for auditability even though terminal payoff
+does not depend on them.
 
-- underlying move of -20%
-- -10%
-- -5%
-- 0%
-- +5%
-- +10%
-- +20%
+For supported long-only structures, net liquidation value is floored at zero:
+if exit cost exceeds position value, rational abandonment is assumed.
+Scenario P&L therefore cannot be worse than negative entry cost.
 
-**Minimum volatility scenarios:**
+## 8. Risk-budget and affordability behavior
 
-- IV change of -20%
-- unchanged
-- +20%
-- +50%
+Discovery and generation do not require portfolio value or a risk budget.
+Full research after selection may accept caller assumptions equivalent to:
 
-The MVP default IV shocks are relative changes from current IV:
+- assumed portfolio value;
+- maximum single-structure loss fraction;
+- repeated-bet count;
+- maximum repeated-loss fraction; and
+- risk-budget methodology.
 
-`shocked IV = current IV × (1 + IV shock)`
+The system may calculate:
 
-For example, a +20% IV shock changes an IV of 20% to 24%, not 40%. Absolute percentage-point shocks may be added later, but they must be explicitly labeled.
+```text
+single-loss fraction = total entry cost / assumed portfolio value
+repeated-loss fraction =
+    total entry cost * repeated-bet count / assumed portfolio value
+```
 
-Each scenario result must record:
+It imposes no universal portfolio-risk percentage. If portfolio value or risk
+budget is absent, report absolute entry cost, maximum loss, and
+repeated-failure costs; do not claim the loss is bearable; and mark
+affordability `Data insufficient`.
 
-- base underlying price
-- one base IV input for each declared option leg
-- shocked underlying price
-- one shocked IV for each declared option leg
-- valuation date
-- estimated total-position value
-- entry cost basis
-- estimated exit cost
-- P&L after declared costs
-- pricing methodology
+## 9. Candidate states
 
-The starting IVs must be the actual leg-level volatility inputs used by the pricing calculation; they are not automatically ATM IV. The default scenario applies the same relative IV shock to every leg’s own base IV, preserving existing differences across legs. This is a parallel proportional shock and does not model changes in skew, smile curvature, or term-structure shape. Richer volatility-surface shocks are deferred beyond MVP v0.1.
+The MVP uses no unsupported numerical Convexity Score. It uses four research
+states:
 
-At expiration, leg-level IV inputs remain in the scenario result for auditability even when terminal payoff no longer depends on volatility. A scenario result stores a supplied pricing result and does not itself calculate option value, expected return, or probability-weighted forecasts. Its pricing methodology must describe the model or provider, rates, dividends, volatility-surface construction, interpolation, and limitations.
+- **Reject:** the structure fails a required bounded-loss, affordability,
+  liquidity, convexity, or cost test;
+- **Watch:** some evidence is interesting, but the structure is not currently
+  attractive or evidence is incomplete;
+- **Investigate:** the structure passes the initial three-layer screen and
+  deserves deeper human research; and
+- **Data insufficient:** required evidence is unavailable or unreliable, so
+  responsible screening is impossible.
 
-For MVP long-only structures, net liquidation value is floored at zero. When estimated exit cost exceeds estimated position value, the scenario assumes rational abandonment rather than paying to close. Scenario P&L therefore cannot be worse than negative entry cost. This bounded-loss treatment does not apply to future short-option structures, which are outside MVP v0.1.
+These are research dispositions, not investment recommendations.
 
-Scenario ranges may later be adapted to each asset. These values are the initial MVP defaults.
+## 10. Evidence and falsification
 
-## 5. Candidate states
+Every output separates:
 
-The MVP must not create an unsupported numerical Convexity Score. It uses four states:
+- **Observed fact:** sourced market or reference data;
+- **Calculated metric:** reproducible output derived from observations;
+- **Assumption:** a declared non-observed input; and
+- **AI interpretation:** explanation, critique, or hypothesis.
 
-- **Reject:** The structure fails bounded-loss, affordability, liquidity, convexity, or cost tests.
-- **Watch:** Some evidence is interesting, but the structure is not currently attractive or the evidence is incomplete.
-- **Investigate:** The structure passes the initial three-layer screen and deserves deeper human research.
-- **Data insufficient:** Required market or historical data is unavailable or unreliable, so the screen cannot be completed responsibly.
+AI may explain and critique evidence but may not invent prices, contracts,
+strikes, expirations, implied volatility, Greeks, historical values, scenario
+values, or probabilities.
 
-## 6. Evidence classification
+Every investigation candidate identifies supporting and weakening evidence,
+falsification conditions, missing data, false-positive reasons, and
+human-review questions.
 
-Every output must clearly separate:
+## 11. CandidateResearchRecord and screening
 
-- **Observed fact:** Market or reference data obtained from an identified source.
-- **Calculated metric:** A reproducible value derived from observed data.
-- **Assumption:** A declared input used where a value or future condition is not observed.
-- **AI interpretation:** An explanation, critique, or hypothesis derived from the evidence.
+`CandidateResearchRecord` is the canonical aggregate for one already-specified
+candidate structure. It stores a supplied `CandidateState` and rationale but
+does not derive the state. It enforces structure, underlying, date,
+expiration, entry-cost, underlying-price, and quoted-midpoint consistency and
+separates evidence by kind and impact.
 
-The LLM may explain and critique evidence, but it must not invent prices, implied volatility, Greeks, probabilities, or historical values.
+Watch, Reject, and Data insufficient records may remain incomplete if missing
+data is disclosed. Investigate requires three-layer completeness and at least
+one supporting observed fact or calculated metric; assumptions and AI
+interpretations cannot provide empirical support alone. A domain record does
+not constitute a complete application workflow.
 
-## 7. Falsification requirements
+A report may receive a separately calculated `ScreeningDecision`. It must keep
+the supplied research-record state separate from the deterministic proposed
+state, preserve policy identity and canonical reason-code order, surface any
+disagreement, and never mutate or silently merge the record. If no decision is
+supplied, the report says so rather than screening automatically.
 
-Every investigation candidate must include:
+## 12. First-report position-management conditions
 
-- what evidence supports the hypothesis
-- what evidence weakens it
-- what market change would invalidate the opportunity
-- what data is missing
-- why the candidate might be a false positive
+The first report states in advance:
 
-## 8. MVP output
+- monetization conditions under which initially underpriced convexity may have
+  repriced;
+- reassessment conditions that require fresh analysis;
+- exit conditions that may invalidate or make the position irresponsible to
+  evaluate; and
+- limitations.
 
-One candidate report must contain:
+Conditions should be quantitative where evidence permits. Examples include
+disclosed executable 2x/5x/10x liquidation multiples; ATM IV and skew
+thresholds; event publication; disappearance of underpricing evidence; a
+disclosed event-window change; loss of the event buffer; DTE reaching 30 days;
+a disclosed spread threshold; stale data or a contract adjustment; event
+cancellation or contrary resolution; invalidated impact path; a user
+risk-budget breach; insufficient liquidity; or loss of required evidence.
 
-- investigation state
-- concrete option structure
-- bounded-downside summary
-- volatility-environment evidence
-- tail-pricing evidence
-- costs and liquidity
-- scenario payoff table
-- supporting evidence
-- contradictory evidence
-- falsification conditions
-- missing data
-- AI interpretation
-- human-review questions
+There is no universal automatic 2x take-profit or option-price drawdown stop.
+A price decline alone does not invalidate a hypothesis when predefined maximum
+loss remains within the user's declared risk budget. The report says “consider
+monetization,” “consider reassessment,” or “consider exit”; it does not issue
+mandatory buy or sell instructions.
 
-### CandidateResearchRecord
+The MVP does not monitor positions, schedule tasks, send alerts or
+notifications, or automate exits. The final position-management record,
+condition ownership, threshold derivation, and report integration require a
+future preflight; this specification does not freeze a class signature.
 
-`CandidateResearchRecord` is the canonical aggregate for one candidate structure. It stores a supplied CandidateState and rationale but does not derive the state. It enforces the same structure, underlying, as-of date, expiration, entry-cost basis, underlying-price basis, and quoted-midpoint consistency where relevant. It separates evidence by kind and impact and requires falsification conditions, false-positive reasons, and human-review questions.
+## 13. Active Chinese report
 
-WATCH, REJECT, and DATA_INSUFFICIENT records may remain incomplete, with missing data disclosed where required. INVESTIGATE records require minimum three-layer completeness. The aggregate does not define attractiveness thresholds or produce a recommendation.
+The active user-facing output is Chinese only. The implemented English
+renderer remains in the repository for compatibility and possible future
+reuse, but it is not part of the active product flow. Reactivation requires a
+separately accepted product decision. Historical bilingual implementation
+remains a completed fact.
 
-INVESTIGATE also requires at least one supporting observed fact or supporting calculated metric. Assumptions and AI interpretations cannot independently satisfy this empirical-support requirement.
+Every active report begins with a short plain-language Chinese overview for a
+user with little option experience:
 
-### User-facing reporting
+1. exact underlying and exact structure in beginner-readable language;
+2. the final research disposition in plain Chinese, explicitly described as
+   research priority rather than a buy/sell recommendation;
+3. a small number of decisive supporting and caution reasons;
+4. the key uncertainty, missing evidence, false-positive risk, or human-review
+   question; and
+5. concise future monetization, reassessment, and exit conditions.
 
-User-facing reports must support separate Chinese and English output built from identical structured facts and numerical values. Every report must place a plain-language overview before the technical analysis. The overview must explain the structure, supplied state, supporting reasons, caution reasons, bounded loss, supplied scenario snapshot, and next human checks.
+The overview uses ordinary Chinese, briefly explains necessary option terms,
+and avoids unexplained jargon, long methodology, complete metric/provenance
+tables, uncalculated probabilities, and trade implications. Detailed
+provenance, lineage, volatility and tail metrics, costs, liquidity, risk
+calculations, expiration thresholds, scenarios, evidence, falsification,
+methodology, limitations, and review questions remain below.
 
-The overview must be derived deterministically from the research record and must not invent evidence, probabilities, prices, or conclusions. Complete auditable technical detail must remain below the overview. Localization is a presentation concern and must not change the candidate’s underlying economics.
+If `CandidateResearchRecord` and `ScreeningDecision` states differ, the
+overview states that difference in one short plain-language sentence; details
+retain both states and exact reason codes.
 
-A report may receive a separate, already-calculated `ScreeningDecision`. When supplied, the report must clearly distinguish the research-record state from the deterministic proposed state and show the policy ID, policy version, and canonical reason-code values in their original order. Localized labels may explain the reason codes, but their canonical values and order must remain visible. The report must not calculate a screening decision or mutate, replace, or silently merge `CandidateResearchRecord`. If no `ScreeningDecision` is supplied, the report must say so explicitly rather than screening automatically. Any disagreement between the two states must remain visible, and neither state is a trade recommendation.
+Permitted terminology includes “最终研究结论”, “是否值得进一步研究”,
+“建议继续调查”, “建议观察”, “建议暂不继续”, and
+“数据不足，无法负责地判断”. It must not say “建议买入”, “建议卖出”,
+“强烈推荐交易”, “胜率”, “必然上涨”, or “必然下跌”. “最终建议” means
+research disposition, not investment advice.
 
-## 9. Explicit non-goals
+## 14. Explicit non-goals
 
-The MVP does not aim to:
+The MVP does not:
 
-- predict whether the underlying will rise or fall
-- detect black swans with a probability score
-- recommend trades
-- execute orders
-- promise positive returns
-- treat low IV or flat skew as sufficient evidence
-- use narratives without market confirmation
+- predict whether the underlying rises or falls;
+- detect black swans with a probability score;
+- recommend or execute trades;
+- monitor positions or automate position management;
+- promise positive returns;
+- treat positive convexity, low IV, or flat skew as sufficient evidence;
+- use narratives without numerical market confirmation;
+- invent listed contracts or numerical evidence;
+- rank candidates by investment attractiveness; or
+- optimize a portfolio or position size.

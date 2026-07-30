@@ -1,43 +1,40 @@
 # Convexity Hunter
 
-Convexity Hunter is an open-source research assistant for finding assets that deserve further investigation as potential positive-convexity opportunities. It combines world events and narratives, market evidence, and bounded-downside/nonlinear-payoff reasoning.
+Convexity Hunter is an investigation assistant for identifying concrete Long
+Option Position structures that may deserve further research as potentially
+underpriced positive-convexity opportunities.
 
-It does not predict market direction or place trades. Narratives generate hypotheses; evidence determines what merits deeper research.
-
-## MVP scope
-
-The first MVP will organize research into five small stages:
-
-1. Observe relevant world events and narratives.
-2. Gather market evidence.
-3. Connect hypotheses to evidence.
-4. Identify candidates with bearable downside and nonlinear payoff potential.
-5. Produce an evidence-based investigation report without unsupported scores.
+It supports two product directions: discovery from world events through
+Event Intelligence and real option-chain candidate generation, and direct user
+entry of a structure to investigate. Both paths converge on one verified exact
+Long Call, Long Put, or Long Straddle selected by the user. The system
+organizes auditable evidence; it does not prove opportunities, recommend or
+execute trades, or monitor positions.
 
 ## Current status
 
-The repository contains only the initial project skeleton and documentation. Market scanning, external APIs, LLMs, MCP, Skills, and trading integrations are not implemented.
+Milestones 1–3 are complete. The repository contains domain records,
+deterministic screening and reporting, provider-neutral market-data contracts,
+provenance, freshness and lineage controls, and reviewed market-data
+transformations for researching an already-specified option structure.
 
-## Run the bilingual synthetic reports
+Active discovery, Skill integration, real option-chain candidate generation,
+the revised expiration 1x/2x/5x/10x payoff-threshold evidence, production
+candidate assembly, non-expiration pricing production, position-management
+plan integration, and the complete application flow remain future work.
 
-Both reports use invented demonstration values. Neither is current market analysis or a trade recommendation. Each begins with a plain-language overview while retaining the complete technical detail below it.
+The active product output is Chinese only. An English renderer remains
+implemented for compatibility and possible future reuse, but English is not
+part of the active product flow.
 
-The sample deliberately displays two separate states: a supplied `WATCH` research-record state and an independently calculated `DATA_INSUFFICIENT` deterministic proposed screening state. The difference is intentional because the synthetic fixture does not include the holding-horizon scenarios required by policy v0.1. `ScreeningDecision` does not overwrite `CandidateResearchRecord`, and neither state is a trade recommendation. Screening thresholds remain synthetic-development assumptions rather than calibrated market rules; real-data scanning and the AI agent are not operational.
+## Documentation
 
-Run the Chinese report with:
-
-```bash
-PYTHONPATH=src python3 examples/sample_candidate_report.py --locale zh-CN
-```
-
-Run the English report with:
-
-```bash
-PYTHONPATH=src python3 examples/sample_candidate_report.py --locale en
-```
-
-The checked-in outputs are `data/samples/sample-candidate-report.zh-CN.md` and `data/samples/sample-candidate-report.en.md`.
+- [Product direction](docs/product-direction.md)
+- [MVP specification](docs/mvp-spec.md)
+- [Project state](docs/project-state.md)
 
 ## Development
 
-Python 3.9 or later is required. Source code will live under `src/convexity_hunter`, with tests under `tests`.
+Python 3.9 or later is required. Source code is under
+`src/convexity_hunter`, with tests under `tests`. Checked-in reports and values
+are synthetic fixtures, not current market analysis or trade recommendations.

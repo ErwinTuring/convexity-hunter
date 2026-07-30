@@ -1,36 +1,80 @@
 # Project Philosophy
 
-Convexity Hunter searches for **cheap positive convexity**, not market direction. It looks for payoff structures where maximum loss is explicitly bounded, quantifiable, and bearable, while gains increase nonlinearly under defined market-move scenarios.
+Convexity Hunter searches for potentially underpriced positive convexity, not
+market direction. It identifies exact Long Option Position structures worthy
+of further investigation; it does not prove an opportunity exists, recommend
+a trade, monitor a position, or execute one.
 
-## Convexity belongs to a structure
+## Events create hypotheses; market data validates pricing
 
-An asset is not automatically convex. Convexity belongs to a specific payoff structure or portfolio. Every candidate must eventually identify a concrete structure: instrument, direction, strike if applicable, expiration if applicable, and position-size assumptions.
+The discovery path begins with changes in the world. Event Intelligence may
+use AI, search, knowledge sources, and mature Skills to form an auditable
+event-to-underlying distribution-change hypothesis. Narratives never become
+proof.
 
-“Bounded downside” must be evaluated for the total position, not for one instrument in isolation. A finite maximum loss is not enough. The loss must also be bearable relative to the assumed portfolio size.
+The direct-user path begins with a structure the user wants to investigate and
+does not require an Event Intelligence hypothesis. Both paths converge on one
+real, verified exact option structure and the same Convexity Engine evidence
+standards.
 
-## Costs determine whether convexity is cheap
+AI explains evidence, structures research, preserves uncertainty, and helps
+form testable hypotheses. It does not invent contracts, prices, volatility,
+Greeks, history, scenarios, or probabilities, and it does not make the trade
+decision. Real option-chain and market data validate numerical facts.
 
-Positive convexity is not automatically attractive. The system must investigate whether it appears underpriced relative to its costs and plausible payoff paths.
+## Convexity belongs to an exact structure
 
-Real costs include option premium, theta decay, bid-ask spreads, commissions, and the accumulated cost of repeated failed bets. These costs belong in the total-position analysis.
+An asset is not automatically convex. Convexity belongs to a specific payoff
+structure. The active MVP supports one exact Long Call, Long Put, or Long
+Straddle at a time. The user chooses the exact verified structure; the system
+does not rank structures by investment attractiveness.
 
-## Narratives create testable hypotheses
+“Long” describes position direction, not maturity. “长期权” is therefore not a
+synonym for Long Option Position because it may be confused with Long-Term
+Options or LEAPS.
 
-Events and narratives generate hypotheses; they never become proof. Market evidence determines whether a hypothesis deserves further investigation.
+## Positive convexity does not establish cheapness
 
-Every hypothesis must state falsification conditions: observations or evidence that would weaken or reject it. A compelling story that cannot be tested is not sufficient.
+Finite maximum loss and nonlinear payoff are necessary but insufficient.
+Premium, Theta decay, spread, commissions, liquidity, IV repricing, and the
+accumulated cost of repeated failures determine whether convexity may be
+underpriced. A positively convex structure may still be expensive, illiquid,
+rapidly decaying, or inconsistent with the hypothesis.
 
-## Reports must show uncertainty honestly
+## Bearability requires declared assumptions
 
-Every report must clearly separate:
+“Bounded downside” is evaluated for the total structure. Whether that loss is
+bearable depends on explicit caller assumptions about portfolio value, single
+loss, repeated losses, and risk-budget methodology. The product imposes no
+universal risk percentage and cannot claim affordability when those
+assumptions are absent.
 
-- observed facts,
-- model estimates,
-- assumptions, and
-- AI interpretations.
+Position sizing and portfolio optimization remain human responsibilities.
 
-The system should prefer ranges, scenarios, and evidence strength over unsupported precise probabilities or scores. It should make downside, costs, uncertainty, and reasons for rejection visible.
+## Scenarios and falsification replace prediction
 
-## Humans make the decisions
+The product uses expiration payoff thresholds and non-expiration scenarios
+rather than directional probability forecasts. Every hypothesis discloses
+supporting and contradictory evidence, uncertainty, missing data,
+false-positive risks, and falsification conditions.
 
-Convexity Hunter is an investigation assistant, not a recommendation engine or autonomous trading bot. It organizes evidence and helps prioritize further research. The human user remains responsible for portfolio-level sizing and all investment or trading decisions.
+Right-tail exposure must not be mechanically truncated by a universal
+price-based stop. A price decline alone does not invalidate a positive-
+convexity hypothesis when maximum loss remains inside the user's declared risk
+boundary. Evidence and the impact path determine whether the thesis survives.
+
+## Reports support later human judgment
+
+The active product report is Chinese only and begins with a short,
+beginner-facing overview before auditable detail. It separates observed facts,
+calculated metrics, assumptions, and AI interpretations and never turns a
+research disposition into a buy or sell recommendation.
+
+The first report includes human-readable, preferably quantitative conditions
+for considering monetization, reassessment, or exit, plus limitations. These
+conditions guide later human judgment. The product does not monitor user
+positions, schedule alerts, send notifications, issue automatic exits, or
+execute trades.
+
+The human user remains responsible for structure selection, portfolio-level
+risk, and every investment or trading decision.
