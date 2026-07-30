@@ -254,27 +254,42 @@ inconsistent with the hypothesis. Detailed numerical contracts live in
 [the market-data specification](market-data-contracts.md) and deterministic
 decision rules in [the screening policy](screening-policy.md).
 
-## 9. Expiration value thresholds
+## 9. Expiration payoff-threshold evidence
 
 The future expiration transformation uses:
 
 ```text
 expiration position-value multiple =
-    expiration position value / total entry cost
+    expiration gross position value / total entry cost
 ```
 
-It must determine the exact expiration underlying price or prices required for
-1x, 2x, 5x, and 10x total entry cost; the move from the reviewed base
-underlying price; structure-appropriate single- or double-sided thresholds;
-and whether a nonnegative-price solution is unavailable.
+The exact ordered target set is 1x, 2x, 5x, and 10x. At 1x, expiration gross
+position value equals total entry cost: break-even before any separately
+disclosed expiration exit cost. Total entry cost includes total-position
+midpoint premium, one-way entry spread cost, commissions, and fees. Exit cost
+is excluded from the threshold equation.
 
-At 1x, expiration value equals total entry cost: break-even before any
-separately disclosed expiration exit cost. The other targets equal two, five,
-and ten times total entry cost. The transformation must support Long Call,
-Long Put, and Long Straddle. It must not calculate probability of reaching a
-threshold, expected return, a direction forecast, or automatic exit advice.
-The previous break-even-only Milestone 4 preflight is superseded and must not
-enter BUILD unchanged.
+The transformation supports Long Call, Long Put, and the current same-strike,
+same-expiration, same-quantity, same-multiplier Long Straddle. It returns the
+structure-appropriate single or double payoff branches and explicitly
+represents a lower-side solution that is unavailable on the nonnegative
+underlying-price domain.
+
+Every available threshold includes a signed absolute USD-per-share move and a
+signed relative move from the reviewed base underlying price. A percentage is
+a later presentation derivation from the relative move. Side identifies the
+payoff branch and does not necessarily equal the sign of the move from the
+current base price. “Exact” means mathematically exact rational evidence, not
+a rounded `Decimal` or float approximation.
+
+This milestone produces expiration payoff-threshold evidence only. It
+calculates no probability, expected return, direction forecast,
+recommendation, position sizing, automatic exit advice, or screening or
+report consequence. Candidate assembly, screening and reporting integration,
+position-management integration, and services remain later work. The complete
+public artifact, exact mathematics, validation, lineage, and export contract
+is frozen in
+[Milestone 4 of the market-data specification](market-data-contracts.md#1323-milestone-4-deterministic-expiration-payoff-threshold-evidence).
 
 ## 10. Non-expiration scenarios
 

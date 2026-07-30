@@ -14,8 +14,12 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current milestone
 
-Post-Milestone-3 product direction and the context-governance baseline are
-persisted. Development remains paused.
+Milestones 1–3 remain complete. The revised Milestone 4 formal preflight
+returned `BLOCKED` on unresolved public numeric representation and evidence
+architecture. ChatGPT evaluated that report and froze the accepted
+exact-rational contract. The current documentation clarification persists that
+contract before implementation. Development is resumed; Milestone 4
+implementation is not complete.
 
 ## Decisions locked
 
@@ -56,8 +60,10 @@ persisted. Development remains paused.
 - No universal annual tail-protection budget is imposed.
 - Candidate inclusion follows eligibility and layered user selection, not
   arbitrary absolute caps or automatic investment-attractiveness ranking.
-- Expiration evidence must cover exact 1x, 2x, 5x, and 10x position-value
-  multiples, superseding the stale break-even-only direction.
+- Expiration payoff-threshold evidence uses the exact ordered 1x, 2x, 5x, and
+  10x multiples of expiration gross position value relative to total entry
+  cost, exact rational threshold and move evidence, and explicit unavailable
+  downside branches on the nonnegative underlying-price domain.
 - Bearability depends on explicit caller risk assumptions; without them,
   absolute loss is reported and affordability is Data insufficient.
 - The first report states monetization, reassessment, and exit conditions for
@@ -733,15 +739,20 @@ persisted. Development remains paused.
   expansion modes; direct-entry flexibility; mode-appropriate future
   scenarios; and explicit cheapness and risk-budget boundaries. This is a
   completed documentation decision, not an implemented generation component.
-- The former break-even-only Milestone 4 preflight is superseded by this
-  accepted direction and must be rerun before BUILD. Milestone 4 is neither
-  implemented nor fully frozen.
+- The revised Milestone 4 formal preflight returned `BLOCKED` because public
+  numeric representation and evidence architecture were unresolved.
+- ChatGPT evaluated the report and froze the accepted exact-rational public
+  artifact, dependency, mathematics, lineage, ordering, and exclusion
+  contract. This documentation clarification persists that contract.
+- Milestone 4 remains unimplemented. Its next gate is BUILD of deterministic
+  expiration payoff-threshold evidence against the committed contract.
 
 ## Current task
 
-No implementation task is active. When development resumes, perform a fresh
-read-only preflight of revised Milestone 4 deterministic expiration
-1x/2x/5x/10x payoff-threshold evidence.
+Implement deterministic expiration payoff-threshold evidence against the
+committed Milestone 4 contract. Candidate assembly, screening and report
+integration, risk-budget work, position management, services, providers, and
+discovery remain deferred.
 
 ## Last completed checkpoint
 
@@ -979,10 +990,10 @@ do not override the current Milestone 3 completion checkpoint above.
 
 ## Next task
 
-Preflight the revised Milestone 4 deterministic expiration 1x/2x/5x/10x
-payoff-threshold evidence contract. The preflight must be fresh and read-only,
-must replace the superseded break-even-only direction, and must not assume the
-previous record architecture remains correct.
+Build deterministic expiration payoff-threshold evidence against the frozen
+Milestone 4 contract. Do not extend the BUILD into candidate assembly,
+screening or report integration, risk-budget work, position management,
+services, providers, or discovery.
 
 ## Current capability and roadmap
 
@@ -1001,8 +1012,8 @@ not a complete application workflow.
 The accepted post-Milestone-3 sequence is:
 
 1. persist product direction in documentation;
-2. re-preflight and implement deterministic expiration payoff-threshold
-   evidence;
+2. implement deterministic expiration payoff-threshold evidence against the
+   frozen contract;
 3. complete the single-structure engine through explicit risk-budget
    contracts, reviewed-artifact assembly, a position-management-plan contract,
    screening and Chinese-report integration, and an offline application

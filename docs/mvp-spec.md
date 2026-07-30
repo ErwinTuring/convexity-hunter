@@ -246,24 +246,40 @@ The future deterministic transformation must use:
 
 ```text
 expiration position-value multiple =
-    expiration position value / total entry cost
+    expiration gross position value / total entry cost
 ```
 
-For Long Call, Long Put, and Long Straddle it must determine the exact
-expiration underlying price or prices required for:
+The exact ordered target set is 1x, 2x, 5x, and 10x. For Long Call, Long Put,
+and the current same-strike, same-expiration, same-quantity, same-multiplier
+Long Straddle, it must determine the exact expiration underlying price or
+prices required for:
 
-- 1x: expiration value equals total entry cost, or break-even before any
+- 1x: expiration gross position value equals total entry cost, or break-even
+  before any
   separately disclosed expiration exit cost;
-- 2x: expiration value equals two times total entry cost;
-- 5x: expiration value equals five times total entry cost; and
-- 10x: expiration value equals ten times total entry cost.
+- 2x: expiration gross position value equals two times total entry cost;
+- 5x: expiration gross position value equals five times total entry cost; and
+- 10x: expiration gross position value equals ten times total entry cost.
 
-It must also report the move from the reviewed base underlying price,
-structure-appropriate single- or double-sided thresholds, and whether a
-nonnegative-price solution is unavailable. It must not calculate threshold
-probabilities, expected return, direction forecasts, or automatic exit advice.
-This requirement supersedes the former break-even-only Milestone 4 direction
-and requires a fresh read-only preflight.
+Total entry cost includes total-position midpoint premium, one-way entry
+spread cost, commissions, and fees. Exit cost is excluded from the threshold
+equation. The transformation returns the structure-appropriate single or
+double payoff branches and explicitly represents a lower-side solution that
+is unavailable on the nonnegative underlying-price domain.
+
+“Exact” means mathematically exact rational evidence, not a rounded `Decimal`
+or float approximation. Every available threshold contains a signed absolute
+USD-per-share move and signed relative move from the reviewed base underlying
+price; a percentage is a later presentation derivation from the relative
+move. Side identifies the payoff branch and does not necessarily equal the
+sign of the move from the current base price.
+
+This milestone produces evidence only. It calculates no probability, expected
+return, direction forecast, recommendation, position sizing, automatic exit
+advice, or screening or report consequence. Candidate assembly, screening and
+report integration, position-management integration, and services remain
+later work. The complete technical contract is
+[Milestone 4 deterministic expiration payoff-threshold evidence](market-data-contracts.md#1323-milestone-4-deterministic-expiration-payoff-threshold-evidence).
 
 ## 7. Non-expiration scenario framework
 

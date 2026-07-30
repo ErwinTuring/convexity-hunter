@@ -6236,6 +6236,397 @@ legs still need not be selected tail candidates. A matching contract and IV
 with either evidence ID changed is inconsistent and rejects before any
 downstream result constructor.
 
+## 13.23 Milestone 4 deterministic expiration payoff-threshold evidence
+
+Milestone 4 adds one deterministic transformation that produces exact
+expiration payoff-threshold evidence for Long Call, Long Put, and the current
+same-strike, same-expiration, same-quantity, same-multiplier Long Straddle.
+The expiration position-value multiple is expiration gross position value
+divided by total entry cost. The exact ordered target set is 1x, 2x, 5x, and
+10x. At 1x, gross position value equals total entry cost: break-even before
+any separately disclosed expiration exit cost.
+
+### 13.23.1 Minimum dependency and validation boundary
+
+The only transformation dependency is the exact, intrinsically revalidated
+`StructureCostsTransformationResult`. From its reviewed v0.2 lineage the
+transformation consumes:
+
+- exact structure and public leg order;
+- exact strike correspondence;
+- exact `total_entry_cost_exact`;
+- exact `underlying_price_exact`;
+- as-of date;
+- dependency calculation identity and time;
+- normalized input references; and
+- dependency quality flags.
+
+The complete dependency is validated before any threshold arithmetic,
+output-record construction, or new-lineage construction. The transformation
+reuses this reviewed cost artifact, including its exact cost-lineage values,
+and does not recompute structure costs. Total entry cost therefore includes
+total-position midpoint premium, one-way entry spread cost, commissions, and
+fees.
+
+The transformation does not depend on
+`ScenarioValuationTransformationResult`,
+`ScenarioPricingCalculationResult`, Tail Pricing, IV, Greeks, rates,
+dividends, volatility-surface values, exit-cost assumptions, raw
+`OptionStructure` plus caller-supplied cost values, provider APIs, or pricing
+models. Exit cost is excluded from the threshold equation. Reusing
+`StructureCostsTransformationResult` does not make its broader cost and
+Greeks evidence a new computational dependency of the threshold formulas.
+
+### 13.23.2 Exact rational representation
+
+The public immutable exact value type is:
+
+```python
+@dataclass(frozen=True)
+class ExactRational:
+    numerator: int
+    denominator: int
+```
+
+Both fields require exact built-in `int`; Boolean is rejected. The denominator
+is strictly positive. Numerator and denominator are reduced by their greatest
+common divisor, zero canonicalizes to exactly `0 / 1`, the denominator is
+always positive, and equivalent constructor inputs canonicalize to identical
+field values.
+
+The value is mathematically exact. It performs no float or rounded `Decimal`
+conversion. A finite `Decimal` is converted exactly according to its
+coefficient and exponent. Canonical lineage represents an exact rational as a
+mapping containing exactly `numerator` and `denominator`. No Python
+`Fraction` object enters public records or canonical parameters; an internal
+standard-library rational representation may be used for arithmetic.
+
+### 13.23.3 Public enums and records
+
+The public enums, in declaration order, are:
+
+```python
+class ExpirationPayoffThresholdSide(str, Enum):
+    DOWNSIDE = "downside"
+    UPSIDE = "upside"
+```
+
+```python
+class ExpirationPayoffThresholdStatus(str, Enum):
+    AVAILABLE = "available"
+    UNAVAILABLE_NEGATIVE_UNDERLYING_PRICE = (
+        "unavailable_negative_underlying_price"
+    )
+```
+
+No additional status or reason-code enum is introduced in v0.1.
+
+The threshold record is:
+
+```python
+@dataclass(frozen=True)
+class ExpirationPayoffThreshold:
+    position_value_multiple: int
+    side: ExpirationPayoffThresholdSide
+    status: ExpirationPayoffThresholdStatus
+    target_position_value: ExactRational
+    threshold_underlying_price: Optional[ExactRational]
+    absolute_move_from_base: Optional[ExactRational]
+    relative_move_from_base: Optional[ExactRational]
+```
+
+`position_value_multiple` is an exact non-Boolean `int` and one of
+`(1, 2, 5, 10)`. Target position value is strictly positive. `AVAILABLE`
+requires all three threshold and move fields to contain exact rational values,
+and its threshold underlying price is nonnegative. The unavailable status is
+permitted only for a downside branch and requires all three threshold and move
+fields to be `None`. No NaN, infinity, negative published price, magic value,
+or unqualified missing value represents unavailability.
+
+The evidence record is:
+
+```python
+@dataclass(frozen=True)
+class ExpirationPayoffThresholdEvidence:
+    structure: OptionStructure
+    as_of_date: datetime.date
+    base_underlying_price: decimal.Decimal
+    total_entry_cost: decimal.Decimal
+    thresholds: Tuple[ExpirationPayoffThreshold, ...]
+```
+
+It validates the exact supported structure grammar; an exact date without
+datetime substitution; finite positive exact `Decimal` values for base price
+and total entry cost; and complete canonical threshold cardinality and
+ordering. Direct validation recomputes the complete mathematical
+relationship. Lists are not silently accepted for `thresholds`, and no public
+float exists in this record.
+
+The transformation wrapper is:
+
+```python
+@dataclass(frozen=True)
+class ExpirationPayoffThresholdTransformationResult:
+    record: ExpirationPayoffThresholdEvidence
+    lineage: CalculationLineage
+```
+
+Direct construction performs the same complete intrinsic record,
+dependency-disclosure, parameter, lineage, ordering, chronology, and quality
+verification as the producer function.
+
+### 13.23.4 Public function
+
+The public producer is:
+
+```python
+transform_expiration_payoff_thresholds(
+    calculation_id,
+    structure_costs_result,
+    calculated_at,
+)
+```
+
+Argument types are exact. The calculation ID is trimmed and nonempty. The
+dependency must have exact type `StructureCostsTransformationResult`.
+Calculated time is an exact timezone-aware `datetime` normalized to UTC; no
+clock is read internally. The new calculation ID differs from the dependency
+calculation ID and every normalized input record ID. The new calculation time
+does not precede the dependency calculation time or any normalized input.
+
+Wrong exact Python, container, or item types raise `TypeError`. Invalid
+identity, dependency, arithmetic, semantics, ordering, chronology, lineage, or
+canonical state raises `ValueError`. Complete dependency validation precedes
+every new constructor and arithmetic operation.
+
+### 13.23.5 Exact mathematics and moves
+
+The exact definitions are:
+
+```text
+K = exact Decimal strike converted to an exact rational
+q = positive leg quantity
+m = positive contract multiplier
+N = q × m
+C = exact total entry cost
+M ∈ {1, 2, 5, 10}
+T = M × C
+d = T / N
+B = exact reviewed base underlying price
+```
+
+Long Call:
+
+```text
+terminal payoff = N × max(S - K, 0)
+threshold S = K + d
+```
+
+Long Put:
+
+```text
+terminal payoff = N × max(K - S, 0)
+unconstrained threshold S = K - d
+```
+
+Long Straddle:
+
+```text
+terminal payoff = N × abs(S - K)
+lower unconstrained threshold = K - d
+upper threshold = K + d
+```
+
+The current straddle grammar guarantees the same `q`, `m`, `K`, and
+expiration for both legs. No numerical root finder, `Decimal` division,
+float, or rounding is used. The caller's complete `Decimal` context is
+unchanged on success and ordinary failure.
+
+An unconstrained lower root below zero produces an explicit unavailable
+downside record. A lower root equal to zero is available. The upper root is
+always available under current validated invariants, and no other no-solution
+condition exists under the supported grammar.
+
+For every available threshold:
+
+```text
+absolute_move_from_base = S - B
+relative_move_from_base = (S - B) / B
+```
+
+Both are signed exact rationals. The absolute move is USD per underlying
+share. A percentage is a later presentation derivation from the relative
+move. Side identifies the payoff branch and does not necessarily equal the
+sign of the move from the reviewed base price.
+
+### 13.23.6 Cardinality and ordering
+
+Canonical multiple order is:
+
+```text
+1, 2, 5, 10
+```
+
+Canonical side order within one multiple is:
+
+```text
+downside, upside
+```
+
+A Long Call has exactly four upside records. A Long Put has exactly four
+downside records. A Long Straddle has exactly eight records, downside then
+upside for each multiple. An unavailable downside solution remains in its
+canonical position. The transformation never silently reorders supplied or
+constructed records.
+
+### 13.23.7 Lineage identity and canonical parameters
+
+The lineage identity is:
+
+```text
+calculation_type = expiration_payoff_thresholds
+methodology_id = closed-form-terminal-intrinsic-position-value-multiples
+methodology_version = v0.1
+```
+
+New lineage inputs equal the exact dependency lineage inputs; none is added or
+removed. The structure, dependency calculation, fixed multiples, formulas,
+exact rational values, unavailable solutions, output records, and methodology
+declarations are not fabricated as normalized market-data inputs.
+
+Canonical parameters contain exactly these 12 top-level keys:
+
+```text
+schema_version
+output_architecture
+supported_structure_scope
+target_multiples
+threshold_ordering
+numeric_representation
+payoff_threshold_rules
+move_rules
+solution_domain
+structure_costs_dependency
+calculation_values
+limitations
+```
+
+`structure_costs_dependency` contains exactly:
+
+```text
+calculation_id
+calculation_type
+methodology_id
+methodology_version
+calculated_at
+parameters_json
+quality_flags
+input_rule
+```
+
+Its exact dependency identity is `structure_costs` /
+`exact-structure-costs` / `v0.2`. The complete retained dependency
+`parameters_json` is preserved unchanged. `input_rule` declares exact reuse of
+dependency lineage inputs. Dependency calculation time and quality flags are
+retained. Before trusting exact cost, base-price, or structure facts, the
+verifier reconstructs and validates the complete retained dependency
+disclosure.
+
+Every `calculation_values` item contains exactly:
+
+```text
+position_value_multiple
+side
+status
+strike_exact
+position_scale
+target_position_value
+payoff_distance
+unconstrained_threshold_underlying_price
+threshold_underlying_price
+absolute_move_from_base
+relative_move_from_base
+```
+
+Every rational value is a mapping containing exactly:
+
+```text
+numerator
+denominator
+```
+
+For an unavailable result,
+`unconstrained_threshold_underlying_price` retains the exact negative
+mathematical root; the published threshold and move values are `None`; and
+status is `unavailable_negative_underlying_price`.
+
+Canonical parameters use only `canonicalize_lineage_parameters` and contain
+no JSON float. Duplicate keys, unknown tags, malformed tagged values, missing
+or extra keys, noncanonical encodings, wrong ordering declarations, and
+record/lineage disagreement reject. Every public evidence field is bound to
+the exact calculation value.
+
+### 13.23.8 Quality flags
+
+The new lineage always includes `ASSUMPTION_APPLIED`, because total entry cost
+incorporates the explicit commission-and-fee assumption retained by
+StructureCosts v0.2. It includes `INTERPOLATED`, `CORRECTION_SELECTED`, and
+`COMPOSITE_INPUT_USED` if and only if present in the dependency lineage. It
+never includes `DECIMAL_TO_FLOAT_CONVERTED`, `ANNUALIZED`,
+`ADJUSTED_INPUT_USED`, or `INCOMPLETE_INPUT_USED`. Flags are stored in
+canonical enum order.
+
+The transformation consumes exact cost-lineage values and creates no public
+float, even though the upstream StructureCosts record also has a stable public
+float boundary.
+
+### 13.23.9 Public export boundary
+
+The future implementation appends these names to
+`market_data_transformations.__all__` in this exact order:
+
+```text
+ExactRational
+ExpirationPayoffThresholdSide
+ExpirationPayoffThresholdStatus
+ExpirationPayoffThreshold
+ExpirationPayoffThresholdEvidence
+ExpirationPayoffThresholdTransformationResult
+transform_expiration_payoff_thresholds
+```
+
+After implementation, transformation exports are exactly 25. The existing
+first 18 names and their order remain unchanged. `market_data.__all__` remains
+exactly 64, package-root exports remain unchanged, and direct import is from
+`convexity_hunter.market_data_transformations`.
+
+This documentation clarification does not modify exports.
+
+### 13.23.10 Explicit exclusions
+
+Milestone 4 creates expiration payoff-threshold evidence only. It contains no:
+
+- `ScenarioResult` creation;
+- non-expiration scenario pricing;
+- exit-cost threshold adjustment;
+- probability or expected-return calculation;
+- direction forecast;
+- trade recommendation;
+- position sizing;
+- screening rule or reason code;
+- candidate assembly;
+- renderer integration;
+- position-management plan;
+- provider access;
+- pricing model;
+- network access;
+- generic artifact registry;
+- new custom exception hierarchy; or
+- generic transformation framework.
+
+Candidate assembly, screening integration, reporting, position-management
+integration, and services remain later work.
+
 The following questions remain open:
 
 - Which MIC or listing registry should supply `listing_mic`?

@@ -20,11 +20,11 @@ policy documentation.
 Accepted product refinement: mode-based Strike / Delta discovery generation
 is documented; implementation remains future work.
 
-Current status: Development paused.
+Current status: Development resumed. The revised Milestone 4 contract is
+frozen by the current documentation clarification commit.
 
-Next development gate when resumed: fresh read-only preflight of revised
-Milestone 4 Deterministic Expiration Payoff-Threshold Evidence for
-1x / 2x / 5x / 10x.
+Next development gate: Milestone 4 BUILD of deterministic expiration
+payoff-threshold evidence against the committed contract.
 
 Read first: `docs/current-checkpoint.md`, `docs/product-direction.md`,
 `docs/project-state.md`, and `docs/mvp-spec.md`.
@@ -35,8 +35,8 @@ the current HEAD.
 Validation baseline: 821 full-suite tests; 365 market-data tests; 147 focused
 transformation tests.
 
-Do not begin without a newly accepted preflight: Milestone 4 BUILD, provider
-integration, Event Intelligence implementation, real option-chain integration,
-position monitoring, or automatic trading.
+Do not implement outside the accepted Milestone 4 scope. Provider integration,
+Event Intelligence implementation, real option-chain integration, position
+monitoring, and automatic trading remain prohibited.
 
 This file is a navigation map, not a complete specification or history.
