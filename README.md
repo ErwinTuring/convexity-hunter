@@ -13,18 +13,20 @@ execute trades, or monitor positions.
 
 ## Current status
 
-Milestones 1–4 are complete. The repository contains domain records,
+Milestones 1–5 are complete. The repository contains domain records,
 deterministic screening and reporting, provider-neutral market-data contracts,
 provenance, freshness and lineage controls, and reviewed market-data
 transformations for researching an already-specified option structure,
-including deterministic expiration payoff-threshold evidence.
+including Milestone 4 deterministic expiration payoff-threshold evidence.
+Milestone 5 implements reviewed standalone structure-affordability evidence
+for one already-specified supported structure. This risk-assessment module is
+a standalone capability, not candidate assembly, screening, or report
+integration.
 
 Active discovery, Skill integration, real option-chain candidate generation,
-risk-budget affordability evidence, production candidate assembly,
-non-expiration pricing production, position-management plan integration, and
-the complete application flow remain future work. The risk-budget
-affordability contract is frozen, but its standalone evidence implementation
-is not complete.
+production candidate assembly, non-expiration pricing production,
+position-management plan integration, and the complete application flow
+remain future work.
 
 The active product output is Chinese only. An English renderer remains
 implemented for compatibility and possible future reuse, but English is not

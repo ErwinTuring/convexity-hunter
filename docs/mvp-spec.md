@@ -334,9 +334,11 @@ requirement or any other single scenario multiple automatically determines
 ## 8. Risk-budget and affordability behavior
 
 Discovery and generation do not require portfolio value or a risk budget.
-The frozen, not-yet-implemented v0.1 assessment produces standalone,
-auditable affordability evidence for one already-specified supported long
-option structure. A conclusive result requires an exact caller portfolio-value
+The implemented v0.1 `convexity_hunter.risk_assessment` module produces
+standalone, auditable affordability evidence for one already-specified
+supported long option structure. This capability remains separate from
+candidate assembly, screening, reporting, and sizing. A conclusive result
+requires an exact caller portfolio-value
 assumption, a maximum single-structure loss fraction, a maximum repeated-loss
 fraction, and a risk-budget methodology. Both boundaries are fractions in the
 inclusive range `[0, 1]`.

@@ -14,9 +14,11 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current milestone
 
-Milestones 1–4 are complete. Milestone 4 implements deterministic
-exact-rational expiration payoff-threshold evidence for the supported Long
-Call, Long Put, and Long Straddle grammar.
+Milestones 1–5 are complete. Milestone 4 — Deterministic Expiration
+Payoff-Threshold Evidence implements exact-rational thresholds for the
+supported Long Call, Long Put, and Long Straddle grammar. Milestone 5 —
+Standalone Structure Affordability Evidence implements reviewed standalone
+affordability evidence for one already-specified supported structure.
 
 ## Decisions locked
 
@@ -751,32 +753,51 @@ Call, Long Put, and Long Straddle grammar.
   market-data tests, 848 full-suite tests, non-writing compilation, both
   import orders, API checks, and `git diff --check`.
 - Milestone 4 is complete at current HEAD.
+- The formal risk-budget and affordability preflight initially returned
+  `BLOCKED`. A documentation-only clarification then froze the standalone
+  v0.1 contract.
+- Milestone 5 BUILD implemented the frozen contract in the seven-name
+  `convexity_hunter.risk_assessment` API without changing package-root,
+  transformation, or `market_data` exports.
+- Broad independent review returned 0 BLOCKER, 2 MAJOR, and 2 MINOR findings.
+  ChatGPT accepted strict normalized-input reconstruction, independent
+  canonical golden serialization, and removal of Milestone 4 private-validator
+  coupling. It rejected proposed raw propagation of resource-exhaustion
+  exceptions because controlled `ValueError` behavior remained part of the
+  accepted BUILD boundary.
+- All three accepted findings were corrected. Targeted re-review resolved 3/3
+  accepted findings with no remaining MAJOR or MINOR finding.
+- Final Milestone 5 validation passes with 32 focused risk-assessment tests,
+  174 focused transformation tests, 365 market-data tests, 880 full-suite
+  tests, non-writing compilation, both import orders, API checks, and
+  `git diff --check`.
+- Milestone 5 is complete at current HEAD. The risk-assessment API contains
+  exactly seven names; transformation and `market_data` exports remain 25 and
+  64.
 
 ## Current task
 
-The formal risk-budget and affordability preflight returned `BLOCKED`.
-Authoritative cost dependency and exact arithmetic questions were already
-resolved by reviewed `StructureCosts` v0.2. The externally visible product,
-numeric, provenance, API, and architecture questions are resolved by the
-documentation-only contract clarification. The risk-budget affordability
-contract is frozen and remains unimplemented.
+Milestone 5 — Standalone Structure Affordability Evidence is complete after
+broad independent review, accepted corrections, targeted re-review, and final
+validation.
 
 ## Last completed checkpoint
 
 - Commit: current HEAD
-- Subject: `Implement expiration payoff-threshold evidence`
-- Validation: 174 focused transformation tests, 365 market-data tests, 848
-  full-suite tests, non-writing compilation, both import orders, API checks,
-  and `git diff --check` passed
-- Status: Milestone 4 complete after broad independent review, correction of
-  all three accepted MAJOR findings, and passing targeted re-review
+- Subject: `Implement structure affordability evidence`
+- Validation: 32 focused risk-assessment tests, 174 focused transformation
+  tests, 365 market-data tests, 880 full-suite tests, non-writing compilation,
+  both import orders, API checks, and `git diff --check` passed
+- Status: Milestone 5 complete after broad independent review, correction of
+  all three accepted findings, and passing targeted re-review
+- Risk-assessment public API: 7 names
 - Transformation-module public API: 25 names
 - Public `market_data` API: 64 names
 
 ### Preserved checkpoint chronology
 
 The entries below preserve earlier checkpoint wording and interim states. They
-do not override the current Milestone 4 completion checkpoint above.
+do not override the current Milestone 5 completion checkpoint above.
 
 - Milestone 3C.1 semantic observation identity complete
 - Milestone 3C.2 per-record selected/fresh binding complete
@@ -999,10 +1020,11 @@ do not override the current Milestone 4 completion checkpoint above.
 
 ## Next task
 
-Run the separate BUILD for standalone structure-affordability evidence against
-the frozen `docs/risk-assessment-contracts.md` contract. Later candidate
-assembly, screening and report integration, position management, application
-services, providers, and discovery remain deferred.
+Run a fresh formal read-only preflight for Milestone 6 — Reviewed-Artifact
+Candidate Assembly. It concerns reviewed-artifact-to-`CandidateResearchRecord`
+assembly only. Screening and report integration, position management,
+application services, providers, Event Intelligence, and discovery remain
+deferred.
 
 ## Current capability and roadmap
 
@@ -1012,7 +1034,7 @@ yet completed the active-discovery front end, real option-structure
 generation, production candidate assembly, position-management-plan
 integration, non-expiration pricing production, or the complete application
 flow. Deterministic exact-rational expiration 1x/2x/5x/10x threshold evidence
-is implemented.
+and reviewed standalone structure-affordability evidence are implemented.
 
 Status claims must distinguish an implemented capability, an implemented
 record or contract, a transformation that requires caller orchestration,
@@ -1021,22 +1043,15 @@ not a complete application workflow.
 
 The accepted post-Milestone-3 sequence is:
 
-1. persist product direction in documentation;
-2. completed: deterministic expiration payoff-threshold evidence against the
-   frozen contract;
-3. frozen but not implemented: standalone structure-affordability evidence
-   against the explicit risk-budget contract;
-4. complete the remaining single-structure engine through reviewed-artifact
-   assembly, a position-management-plan contract, screening and Chinese-report
-   integration, and an offline application service;
-5. choose and disclose a provider, internal model, or both for producing
-   non-expiration scenario prices;
-6. research mature Skill capabilities and adapter/composition gaps;
-7. implement Event Intelligence;
-8. implement the Skill-led event-to-underlying accepted mapping contract;
-9. implement real option-chain access and supported structure generation under
-   the accepted mode-based Strike and Delta policy; and
-10. connect discovery and direct entry to the complete Chinese-report flow.
+1. prior documentation alignment;
+2. completed Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence;
+3. completed Milestone 5 — Standalone Structure Affordability Evidence;
+4. next Milestone 6 — Reviewed-Artifact Candidate Assembly;
+5. later position-management-plan contract;
+6. later screening and Chinese-report integration;
+7. later deterministic offline single-structure service; and
+8. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
+   generation, and complete-flow work.
 
 ## Deferred
 

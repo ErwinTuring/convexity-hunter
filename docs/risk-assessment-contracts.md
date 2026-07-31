@@ -1,8 +1,9 @@
 # Risk-Assessment Contracts
 
-This document freezes the future standalone risk-budget and affordability
-evidence contract. It is a technical specification, not an implementation
-claim.
+This document is the canonical technical specification for the implemented
+v0.1 standalone risk-budget and affordability evidence contract. The
+implementation in `convexity_hunter.risk_assessment` passed broad independent
+review, correction of all accepted findings, and targeted re-review.
 
 ## 1. Purpose and exclusions
 
@@ -70,9 +71,9 @@ read quotes directly. It does not depend on Milestone 4 expiration thresholds,
 Scenario Valuation, Scenario Pricing, Tail Pricing, screening, candidate
 records, reports, or providers.
 
-## 3. Future module and public API
+## 3. Module and public API
 
-The later implementation belongs in the new module
+The implementation belongs in the module
 `convexity_hunter.risk_assessment`. Direct imports use that module. Its
 `__all__` contains exactly these seven names in this order:
 
@@ -86,9 +87,9 @@ StructureAffordabilityAssessmentResult
 assess_structure_affordability
 ```
 
-The implementation must not change package-root exports,
+The implementation does not change package-root exports,
 `market_data.__all__` (64), or `market_data_transformations.__all__` (25).
-This contract clarification creates no runtime module or export.
+Candidate assembly and all downstream integrations remain excluded.
 
 ## 4. Public records and enums
 
@@ -190,7 +191,7 @@ class StructureAffordabilityAssessmentResult:
     lineage: CalculationLineage
 ```
 
-The future producer is:
+The producer is:
 
 ```python
 assess_structure_affordability(
@@ -473,10 +474,11 @@ execution, generic assessment framework, or new exception hierarchy.
 Existing synthetic screening thresholds remain unchanged and explicitly
 non-authoritative for caller affordability.
 
-## 11. Future BUILD scope and required tests
+## 11. Implemented BUILD scope and required tests
 
-The later BUILD is limited to the new `convexity_hunter.risk_assessment`
-module and its focused tests. It must implement exactly the frozen API,
+The completed BUILD is limited to the
+`convexity_hunter.risk_assessment` module and its focused tests. It implements
+exactly the frozen API,
 records, arithmetic, outcome precedence, dependency reconstruction, canonical
 schema, lineage, and quality-flag behavior without changing screening,
 candidate assembly, reporting, package-root exports, or the completed

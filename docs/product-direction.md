@@ -2,7 +2,7 @@
 
 This document is the canonical product direction after Milestone 3. It defines
 the active product objective and roadmap without changing the completed
-Milestone 1–4 implementation.
+Milestone 1–5 implementation.
 
 ## 1. Product objective
 
@@ -329,10 +329,10 @@ thresholds, and evidence quality.
 ## 11. Risk-budget assumptions
 
 Discovery and generation do not require portfolio value or a risk budget.
-For one already-specified supported long option structure, the later
-standalone affordability assessment accepts an exact caller portfolio-value
-assumption and requires two separate fractional boundaries for a conclusive
-result:
+For one already-specified supported long option structure, the implemented
+Milestone 5 standalone affordability assessment accepts an exact caller
+portfolio-value assumption and requires two separate fractional boundaries for
+a conclusive result:
 
 1. maximum loss fraction for the single already-specified structure; and
 2. maximum cumulative loss fraction for the dependency's declared equal
@@ -343,7 +343,7 @@ The reviewed repeated-bet count comes only from the authoritative
 concurrent portfolio exposure, annual trading frequency, an annual
 tail-protection budget, expected occurrence count, or full portfolio holdings.
 
-Using exact lineage values rather than public floats, the future assessment
+Using exact lineage values rather than public floats, the assessment
 calculates:
 
 ```text
@@ -364,7 +364,9 @@ The product imposes no universal risk percentage and v0.1 has no annual
 budget, absolute USD budget, inverse sizing, maximum affordable quantity,
 holdings or committed-exposure model, screening action, candidate assembly, or
 report integration. Existing synthetic screening thresholds are not
-caller-affordability policy. The contract is frozen but unimplemented; see
+caller-affordability policy. Milestone 5 implements this reviewed standalone
+evidence separately from candidate assembly, screening, reporting, sizing,
+holdings, monitoring, and execution; see
 [Risk-Assessment Contracts](risk-assessment-contracts.md).
 
 ## 12. First-report position-management conditions
@@ -461,8 +463,12 @@ foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
 generation, production candidate assembly, position-management-plan
 integration, non-expiration pricing production, or the complete application
-flow. Milestone 4 implements deterministic exact-rational expiration
-1x/2x/5x/10x payoff-threshold evidence.
+flow. Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence
+implements exact-rational expiration 1x/2x/5x/10x thresholds. Milestone 5 —
+Standalone Structure Affordability Evidence implements reviewed standalone
+affordability evidence for one already-specified supported structure. It does
+not integrate candidate assembly, screening, reporting, sizing, holdings,
+monitoring, or execution.
 
 Project claims must distinguish implemented capability, implemented record or
 contract, transformation requiring caller orchestration, synthetic-only
@@ -471,31 +477,16 @@ complete application workflow.
 
 ## 16. Corrected roadmap
 
-1. Documentation alignment: persist this post-Milestone-3 consensus without a
-   new numerical capability.
-2. Completed Milestone 4: deterministic exact-rational Expiration
-   Payoff-Threshold Evidence for exact 1x, 2x, 5x, and 10x thresholds.
-3. Complete the single-structure research engine, subject to separate
-   preflights: explicit risk-budget and affordability contract;
-   reviewed-artifact-to-`CandidateResearchRecord` assembly;
-   position-management-plan contract; screening and Chinese-report integration;
-   and one deterministic offline single-structure service.
-4. Produce non-expiration scenario pricing using a disclosed provider,
-   internal model, or both.
-5. Research mature Skill capabilities, native interfaces, direct reuse,
-   adapter and composition requirements, and narrow internal gaps.
-6. Implement Event Intelligence: retrieval, clustering and deduplication,
-   timing, distribution hypothesis, supporting and contradictory sources,
-   event window, and uncertainty.
-7. Implement the Skill-led event-to-underlying accepted contract and audit
-   boundary.
-8. Implement real option-chain access, contract verification, maturity and the
-   accepted mode-based Strike/Delta policy, supported structure generation,
-   and layered selection.
-9. Connect the complete active-discovery flow from Event Intelligence through
-   exact user selection, Convexity Engine, research record, screening,
-   position-management plan, and Chinese report. Direct entry converges on
-   the same engine.
+1. Prior documentation alignment.
+2. Completed Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence.
+3. Completed Milestone 5 — Standalone Structure Affordability Evidence.
+4. Next Milestone 6 — Reviewed-Artifact Candidate Assembly, beginning only
+   with a fresh formal read-only preflight.
+5. Later position-management-plan contract.
+6. Later screening and Chinese-report integration.
+7. Later deterministic offline single-structure service.
+8. Subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
+   generation, and complete-flow work.
 
 ## 17. Locked principles
 
@@ -515,7 +506,10 @@ complete application workflow.
 - The product reports research dispositions and future human-judgment
   conditions; it does not monitor, recommend, or execute.
 - Completed Milestone 1–3 history remains unchanged.
-- Milestone 4 is implemented and complete.
+- Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence is complete.
+- Milestone 5 — Standalone Structure Affordability Evidence is complete.
+- Milestone 6 — Reviewed-Artifact Candidate Assembly is not implemented; its
+  next gate is a fresh formal read-only preflight.
 
 ## 18. Future design questions
 
@@ -530,7 +524,6 @@ The following are unresolved future contracts, not blockers for this alignment:
 - asset-class and event-specific stress calibration;
 - the annual convexity-budget contract decision;
 - actual mature Skills, their gaps, adapters, and compositions;
-- the final non-annual risk-budget record;
 - quantitative derivation of monetization, reassessment, and exit thresholds;
 - provider versus internal non-expiration pricing;
 - final position-management-plan architecture;
