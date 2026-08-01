@@ -101,15 +101,41 @@ architecture impact, or meaningful behavioral risk, escalate it to A.
 
 ## Codex session naming and separation
 
-- Use a separate formal preflight session named
-  `PREFLIGHT｜<milestone-or-task>`.
-- Use a fresh BUILD session for each new sub-milestone or independent work unit, named `BUILD｜<milestone-or-task>`.
-- Use a separate fresh REVIEW session for A/B independent review, named `REVIEW｜<milestone-or-task>`.
+- When a Codex work unit belongs to a numbered milestone, every PREFLIGHT,
+  BUILD, and REVIEW session name must include that milestone number and a
+  stable task title, using these canonical templates:
+
+  ```text
+  PREFLIGHT｜Milestone <N> — <task-title>
+  BUILD｜Milestone <N> — <task-title>
+  REVIEW｜Milestone <N> — <task-title>
+  ```
+
+  For example:
+
+  ```text
+  PREFLIGHT｜Milestone 6 — Reviewed-Artifact Candidate Assembly
+  BUILD｜Milestone 6 — Reviewed-Artifact Candidate Assembly
+  REVIEW｜Milestone 6 — Reviewed-Artifact Candidate Assembly
+  ```
+
+- A contract-clarification session belonging to a numbered milestone uses
+  `BUILD｜Milestone <N> — Contract Clarification`, or a more specific title
+  that still includes `Milestone <N>`.
+- Use a separate formal PREFLIGHT session, a fresh BUILD session for each new
+  sub-milestone or independent work unit, and a separate fresh REVIEW session
+  for A/B independent review. A new sub-milestone or independent work unit
+  gets a fresh appropriately numbered session.
 - Continue the same BUILD session for fixes arising from that work unit.
 - Continue the same REVIEW session for targeted re-review of its original findings.
 - Do not use REVIEW to implement fixes.
 - Do not commit implementation before required review passes.
-- ChatGPT main conversations are not Codex sessions.
+- Task-only Codex names without a milestone number are permitted only when the
+  work is genuinely outside any numbered milestone, such as repository-wide
+  governance maintenance, emergency repository repair, or exploratory work
+  before milestone assignment.
+- A ChatGPT main conversation is not a Codex session and must not use the
+  `PREFLIGHT｜`, `BUILD｜`, or `REVIEW｜` prefixes.
 - A ChatGPT conversation must not describe itself as already inside a Codex
   PREFLIGHT, BUILD, or REVIEW task.
 - Every Codex prompt must identify the separate existing Codex session into

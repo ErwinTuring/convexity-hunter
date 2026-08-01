@@ -32,6 +32,12 @@ Next development gate: fresh formal preflight for Milestone 6 — Reviewed-
 Artifact Candidate Assembly, covering reviewed-artifact-to-
 `CandidateResearchRecord` assembly only.
 
+Conversation boundary: begin a new ChatGPT main conversation for Milestone 6.
+That conversation performs Repository Grounding and first authors the separate
+Codex PREFLIGHT session name and complete preflight prompt; it does not execute
+the formal preflight itself or produce a BUILD prompt before the returned
+preflight report is evaluated.
+
 Read first: `docs/current-checkpoint.md`, `docs/product-direction.md`,
 `docs/project-state.md`, and `docs/mvp-spec.md`.
 

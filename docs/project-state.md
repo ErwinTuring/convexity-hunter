@@ -1066,7 +1066,7 @@ The accepted post-Milestone-3 sequence is:
   resolution contracts
 - non-expiration scenario-pricing production
 - production `CandidateResearchRecord` assembly
-- final risk-budget and position-management-plan contracts
+- future annual convexity-budget contract and position-management-plan contract
 - Chinese beginner-overview renderer changes
 - LLM integration
 - user interface
