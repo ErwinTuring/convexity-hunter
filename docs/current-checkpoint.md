@@ -3,14 +3,18 @@
 Repository: `ErwinTuring/convexity-hunter`
 
 Current HEAD: resolve with `git rev-parse HEAD`; do not rely on a hard-coded
-value in this file.
+value in this file. It is a documentation-only Milestone 6 contract-
+clarification commit. Its immediate documentation-only base was
+`ca6cd88eeffeab53c728db10989deb5a9eea9b34` — Align milestone session naming
+and handoff.
 
 Product-direction baseline:
 `365dcd5ab7c3661172061c852b26341a98a1fbff` — Align post-Milestone-3 product
 direction.
 
 Last completed implementation checkpoint:
-current HEAD — `Implement structure affordability evidence`.
+`3c37c50923a0e3847730bce8b33a28f7d45af4ea` — Implement structure
+affordability evidence.
 
 Completed: Milestones 1–5; post-Milestone-3 product-direction alignment;
 context-governance baseline; mode-based Strike / Delta discovery-generation
@@ -28,18 +32,23 @@ Risk-budget and affordability status: the frozen v0.1 contract is implemented
 as a reviewed standalone capability. It is not candidate, screening, or report
 integration.
 
-Next development gate: fresh formal preflight for Milestone 6 — Reviewed-
-Artifact Candidate Assembly, covering reviewed-artifact-to-
-`CandidateResearchRecord` assembly only.
+Milestone 6 is now decomposed into Milestone 6A — Reviewed Artifact
+Verifiability and Milestone 6B — Reviewed-Artifact Candidate Assembly. 6A is a
+prerequisite for 6B. The canonical contract is
+[`candidate-assembly-contracts.md`](candidate-assembly-contracts.md).
 
-Conversation boundary: begin a new ChatGPT main conversation for Milestone 6.
+Next development gate: fresh formal read-only preflight for Milestone 6A —
+Reviewed Artifact Verifiability.
+
+Conversation boundary: begin a new ChatGPT main conversation for Milestone 6A.
 That conversation performs Repository Grounding and first authors the separate
 Codex PREFLIGHT session name and complete preflight prompt; it does not execute
 the formal preflight itself or produce a BUILD prompt before the returned
 preflight report is evaluated.
 
 Read first: `docs/current-checkpoint.md`, `docs/product-direction.md`,
-`docs/project-state.md`, and `docs/mvp-spec.md`.
+`docs/project-state.md`, `docs/mvp-spec.md`, and
+`docs/candidate-assembly-contracts.md`.
 
 Exact contracts: read only the task-relevant contract, source, and tests from
 the current HEAD.
@@ -48,8 +57,9 @@ Validation baseline: 32 focused risk-assessment tests; 174 focused
 transformation tests; 365 market-data tests; 880 full-suite tests; 7
 risk-assessment exports; 25 transformation exports; 64 `market_data` exports.
 
-Candidate assembly, screening and report integration, position management,
-services, providers, Event Intelligence, and discovery remain deferred.
+Milestone 6 implementation, screening and report integration, position
+management, services, providers, Event Intelligence, and discovery remain
+deferred.
 
 Existing validation and export baselines remain unchanged.
 

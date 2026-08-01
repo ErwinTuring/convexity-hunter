@@ -19,6 +19,9 @@ Payoff-Threshold Evidence implements exact-rational thresholds for the
 supported Long Call, Long Put, and Long Straddle grammar. Milestone 5 —
 Standalone Structure Affordability Evidence implements reviewed standalone
 affordability evidence for one already-specified supported structure.
+Milestone 6 is contractually decomposed into 6A — Reviewed Artifact
+Verifiability and 6B — Reviewed-Artifact Candidate Assembly. 6A is the active
+next implementation gate and is a prerequisite for 6B.
 
 ## Decisions locked
 
@@ -752,7 +755,8 @@ affordability evidence for one already-specified supported structure.
 - Final validation passes with 174 focused transformation tests, 365
   market-data tests, 848 full-suite tests, non-writing compilation, both
   import orders, API checks, and `git diff --check`.
-- Milestone 4 is complete at current HEAD.
+- Milestone 4 is complete and remains preserved at the last implementation
+  checkpoint.
 - The formal risk-budget and affordability preflight initially returned
   `BLOCKED`. A documentation-only clarification then froze the standalone
   v0.1 contract.
@@ -771,19 +775,22 @@ affordability evidence for one already-specified supported structure.
   174 focused transformation tests, 365 market-data tests, 880 full-suite
   tests, non-writing compilation, both import orders, API checks, and
   `git diff --check`.
-- Milestone 5 is complete at current HEAD. The risk-assessment API contains
+- Milestone 5 is complete at the last implementation checkpoint. The
+  risk-assessment API contains
   exactly seven names; transformation and `market_data` exports remain 25 and
   64.
 
 ## Current task
 
-Milestone 5 — Standalone Structure Affordability Evidence is complete after
-broad independent review, accepted corrections, targeted re-review, and final
-validation.
+The documentation-only Milestone 6 clarification is complete. It freezes the
+6A/6B decomposition, direct reviewed-artifact inventory, completeness and
+dependency rules, verifiability correction, assembly sidecar, provenance,
+qualitative ownership, compatibility boundaries, and exclusions in
+[`candidate-assembly-contracts.md`](candidate-assembly-contracts.md).
 
 ## Last completed checkpoint
 
-- Commit: current HEAD
+- Commit: `3c37c50923a0e3847730bce8b33a28f7d45af4ea`
 - Subject: `Implement structure affordability evidence`
 - Validation: 32 focused risk-assessment tests, 174 focused transformation
   tests, 365 market-data tests, 880 full-suite tests, non-writing compilation,
@@ -1020,21 +1027,27 @@ do not override the current Milestone 5 completion checkpoint above.
 
 ## Next task
 
-Run a fresh formal read-only preflight for Milestone 6 — Reviewed-Artifact
-Candidate Assembly. It concerns reviewed-artifact-to-`CandidateResearchRecord`
-assembly only. Screening and report integration, position management,
-application services, providers, Event Intelligence, and discovery remain
-deferred.
+Run a fresh formal read-only preflight for Milestone 6A — Reviewed Artifact
+Verifiability. It concerns complete intrinsic record-to-lineage verification
+for exactly `VolatilityEnvironmentTransformationResult`,
+`TailPricingTransformationResult`, and
+`StructureLiquidityTransformationResult`. Milestone 6B must not begin until
+6A is implemented, independently reviewed, committed, and pushed.
 
 ## Current capability and roadmap
 
 Convexity Hunter has largely completed the auditable numerical and evidence
 foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
-generation, production candidate assembly, position-management-plan
-integration, non-expiration pricing production, or the complete application
-flow. Deterministic exact-rational expiration 1x/2x/5x/10x threshold evidence
-and reviewed standalone structure-affordability evidence are implemented.
+generation, broader discovery/application-flow candidate production,
+position-management-plan integration, non-expiration pricing production, or
+the complete application flow. Reviewed-artifact candidate assembly is the
+active Milestone 6 contract: 6A first strengthens three existing wrappers,
+then 6B assembles reviewed artifacts into the existing
+`CandidateResearchRecord` plus a provenance-retaining sidecar. Neither work
+unit is implemented. Deterministic exact-rational expiration 1x/2x/5x/10x
+threshold evidence and reviewed standalone structure-affordability evidence
+are implemented.
 
 Status claims must distinguish an implemented capability, an implemented
 record or contract, a transformation that requires caller orchestration,
@@ -1046,11 +1059,12 @@ The accepted post-Milestone-3 sequence is:
 1. prior documentation alignment;
 2. completed Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence;
 3. completed Milestone 5 — Standalone Structure Affordability Evidence;
-4. next Milestone 6 — Reviewed-Artifact Candidate Assembly;
-5. later position-management-plan contract;
-6. later screening and Chinese-report integration;
-7. later deterministic offline single-structure service; and
-8. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
+4. next Milestone 6A — Reviewed Artifact Verifiability;
+5. then Milestone 6B — Reviewed-Artifact Candidate Assembly;
+6. later position-management-plan contract;
+7. later screening and Chinese-report integration;
+8. later deterministic offline single-structure service; and
+9. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
 
 ## Deferred
@@ -1065,7 +1079,8 @@ The accepted post-Milestone-3 sequence is:
 - exact standard-monthly-option definition and deterministic Delta/ATM
   resolution contracts
 - non-expiration scenario-pricing production
-- production `CandidateResearchRecord` assembly
+- broader discovery/application-flow candidate production beyond the active
+  reviewed-artifact assembly contract
 - future annual convexity-budget contract and position-management-plan contract
 - Chinese beginner-overview renderer changes
 - LLM integration

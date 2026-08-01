@@ -461,9 +461,12 @@ scenario valuation.
 Convexity Hunter has largely completed the auditable numerical and evidence
 foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
-generation, production candidate assembly, position-management-plan
-integration, non-expiration pricing production, or the complete application
-flow. Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence
+generation, broader discovery/application-flow candidate production,
+position-management-plan integration, non-expiration pricing production, or
+the complete application flow. Reviewed-artifact candidate assembly is now
+the active Milestone 6 contract, decomposed into prerequisite 6A wrapper
+verifiability and subsequent 6B assembly. Neither work unit is implemented.
+Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence
 implements exact-rational expiration 1x/2x/5x/10x thresholds. Milestone 5 —
 Standalone Structure Affordability Evidence implements reviewed standalone
 affordability evidence for one already-specified supported structure. It does
@@ -480,12 +483,14 @@ complete application workflow.
 1. Prior documentation alignment.
 2. Completed Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence.
 3. Completed Milestone 5 — Standalone Structure Affordability Evidence.
-4. Next Milestone 6 — Reviewed-Artifact Candidate Assembly, beginning only
-   with a fresh formal read-only preflight.
-5. Later position-management-plan contract.
-6. Later screening and Chinese-report integration.
-7. Later deterministic offline single-structure service.
-8. Subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
+4. Next Milestone 6A — Reviewed Artifact Verifiability, beginning only with a
+   fresh formal read-only preflight.
+5. Then Milestone 6B — Reviewed-Artifact Candidate Assembly, only after 6A is
+   implemented, independently reviewed, committed, and pushed.
+6. Later position-management-plan contract.
+7. Later screening and Chinese-report integration.
+8. Later deterministic offline single-structure service.
+9. Subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
 
 ## 17. Locked principles
@@ -508,8 +513,10 @@ complete application workflow.
 - Completed Milestone 1–3 history remains unchanged.
 - Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence is complete.
 - Milestone 5 — Standalone Structure Affordability Evidence is complete.
-- Milestone 6 — Reviewed-Artifact Candidate Assembly is not implemented; its
-  next gate is a fresh formal read-only preflight.
+- Milestone 6A — Reviewed Artifact Verifiability and Milestone 6B —
+  Reviewed-Artifact Candidate Assembly are not implemented; the next gate is
+  a fresh formal read-only 6A preflight. The canonical Milestone 6 contract is
+  [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md).
 
 ## 18. Future design questions
 

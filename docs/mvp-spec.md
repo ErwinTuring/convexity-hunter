@@ -424,6 +424,17 @@ state, preserve policy identity and canonical reason-code order, surface any
 disagreement, and never mutate or silently merge the record. If no decision is
 supplied, the report says so rather than screening automatically.
 
+Milestone 6 preserves this aggregate and its current scanner and renderer
+compatibility boundary. Milestone 6A first strengthens intrinsic
+record-to-lineage verification for the three reviewed wrappers named in the
+canonical [Candidate-Assembly Contracts](candidate-assembly-contracts.md).
+Milestone 6B then retains the constructed `CandidateResearchRecord`, every
+exact supplied direct reviewed wrapper, and assembly-level deterministic
+lineage in a narrow sidecar. Assembly receives caller-supplied state and
+qualitative material; it does not screen, derive state, generate prose, infer
+evidence impact, or flatten reviewed numerical artifacts into qualitative
+evidence.
+
 ## 12. First-report position-management conditions
 
 The first report states in advance:
