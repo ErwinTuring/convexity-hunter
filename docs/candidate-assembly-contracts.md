@@ -19,7 +19,9 @@ Milestone 6A is complete: it has been implemented, independently reviewed,
 corrected for all accepted findings, and passed targeted re-review. The three
 direct wrappers strengthened by 6A now satisfy the intrinsic-verifiability
 prerequisite. Milestone 6B remains unimplemented and is unlocked only for its
-fresh formal read-only preflight.
+formal read-only preflight. Its initial preflight was blocked by the
+zero-artifact lineage contradiction resolved in Section 8.2; the next gate is
+a rerun of that existing preflight task against the clarified contract.
 
 ## 2. Direct reviewed-artifact boundary
 
@@ -172,12 +174,12 @@ failure taxonomy, noncryptographic trust boundary, and exclusions are frozen
 in
 [`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
 
-Milestone 6A is complete. The next gate is
-`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly`, a fresh
-formal read-only preflight. All existing Milestone 6B aggregate, sidecar,
-provenance, completeness, dependency-identity, chronology, quality, and
-exclusion contracts below remain unchanged; this status update does not
-pre-decide the exact 6B public API.
+Milestone 6A is complete. The next gate is a rerun of
+`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly`, the existing
+formal read-only preflight task, against this clarified contract. All existing
+Milestone 6B aggregate, sidecar, provenance, completeness,
+dependency-identity, chronology, quality, and exclusion contracts below remain
+unchanged; this status update does not pre-decide the exact 6B public API.
 
 ## 7. Milestone 6B aggregate architecture
 
@@ -217,14 +219,67 @@ normalized input references. Inputs are deduplicated only when record ID,
 normalized time, and the source-ID tuple are all identical. Any overlap that
 shares an identity but conflicts in normalized time or source IDs rejects.
 
-### 8.2 Identity and chronology
+### 8.2 Zero-artifact lineage
+
+Zero direct artifacts remain valid for `CandidateState.WATCH`,
+`CandidateState.REJECT`, and `CandidateState.DATA_INSUFFICIENT`. They remain
+invalid for `CandidateState.INVESTIGATE`, which requires all seven direct
+artifacts.
+
+For zero direct artifacts, the deterministic normalized-input union and direct
+dependency disclosures are empty. The assembly lineage therefore has exactly:
+
+```text
+inputs = ()
+direct dependency disclosures = none
+quality_flags = (CalculationQualityFlag.INCOMPLETE_INPUT_USED,)
+```
+
+subject to canonical enum ordering. The incomplete-input flag is derived from
+the absence of all seven direct artifacts under the assembly contract, not
+from the generic empty-input tuple. Caller-owned candidate values, explicit
+`OptionStructure`, explicit `as_of_date`, all seven absent artifact-presence
+entries, and the constructed `CandidateResearchRecord` correspondence remain
+canonical assembly parameters. Caller qualitative values are parameters only;
+they are not normalized lineage inputs, and no synthetic, sentinel, fake, or
+empty-ID normalized input is permitted.
+
+The zero-artifact candidate still constructs the existing
+`CandidateResearchRecord` from the caller-supplied candidate ID, state, state
+rationale, as-of date, hypothesis, structure, classified evidence,
+falsification conditions, missing-data descriptions, false-positive reasons,
+optional AI interpretation, and human-review questions. Existing record
+requirements remain unchanged, including nonempty evidence, falsification
+conditions, false-positive reasons, and human-review questions. `missing_data`
+must be nonempty for a zero-artifact `WATCH`, `REJECT`, or
+`DATA_INSUFFICIENT`; assembly does not generate that text.
+
+For one or more direct artifacts, the existing deterministic union,
+deduplication, conflict-rejection, dependency-closure, identity, chronology,
+quality, and completeness rules remain unchanged. This clarification resolves
+the blocked formal-preflight representation conflict, but does not by itself
+freeze the remaining Milestone 6B public API, sidecar, producer, calculation
+identity, or canonical parameter schema.
+
+Rejected alternatives are a second assembly-only lineage type, revoking
+zero-artifact support, and fabricating a normalized input. A second type would
+duplicate the provenance abstraction and complicate cross-artifact tooling;
+the generic lineage model can validly represent deterministic calculations
+with no normalized market-data inputs, while methodology-specific verifiers
+already own stricter completeness. Revocation would narrow an explicit
+state-level workflow decision even though the candidate can retain valid
+caller-owned qualitative research state. Synthetic candidate, structure,
+qualitative, or missing-data records would misclassify canonical parameters as
+normalized market-data observations and corrupt provenance semantics.
+
+### 8.3 Identity and chronology
 
 Assembly calculation time must not precede any retained dependency
 calculation time or normalized-input time. The assembly calculation ID must
 differ from every dependency calculation ID and every normalized-input record
 ID.
 
-### 8.3 Quality flags
+### 8.4 Quality flags
 
 The assembly lineage propagates every present upstream quality flag in
 canonical `CalculationQualityFlag` enum order. It adds
@@ -234,7 +289,7 @@ retains that flag when any present dependency propagates it.
 No quality flag is added merely because caller qualitative text, an
 assumption-classified evidence item, or AI interpretation is present.
 
-### 8.4 Caller qualitative parameters
+### 8.5 Caller qualitative parameters
 
 Caller-supplied qualitative material belongs in canonical assembly parameters.
 It is not fabricated as normalized market-data observations. This

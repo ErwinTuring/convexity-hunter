@@ -4,15 +4,16 @@ Repository: `ErwinTuring/convexity-hunter`
 
 Current HEAD: resolve with `git rev-parse HEAD`; do not rely on a hard-coded
 value in this file. After finalization its subject is
-`Implement reviewed artifact verifiability`.
+`Clarify zero-input assembly lineage`.
 
 Product-direction baseline:
 `365dcd5ab7c3661172061c852b26341a98a1fbff` — Align post-Milestone-3 product
 direction.
 
 Last completed implementation checkpoint:
-resolve the current HEAD after finalization — Implement reviewed artifact
-verifiability.
+`9bf17c789daac33919e033ca08f8f05966bd7868` — Implement reviewed artifact
+verifiability. The current documentation-only checkpoint is the zero-input
+assembly-lineage clarification commit resolved from HEAD after finalization.
 
 Completed: Milestones 1–5 and Milestone 6A; post-Milestone-3 product-direction
 alignment; context-governance baseline; mode-based Strike / Delta discovery-
@@ -24,7 +25,11 @@ is documented; implementation remains future work.
 Current status: Milestones 1–5 and Milestone 6A — Reviewed Artifact
 Verifiability are complete. Milestone 6A passed targeted independent re-review
 after correction of all three accepted MAJOR findings. Milestone 6B —
-Reviewed-Artifact Candidate Assembly remains unimplemented.
+Reviewed-Artifact Candidate Assembly remains unimplemented. Its initial formal
+preflight was blocked by the contradiction between permitted zero-artifact
+candidates and the existing one-or-more generic lineage-input contract. The
+contract now clarifies `CalculationLineage.inputs` as zero-or-more, with `()`
+the canonical empty representation; source and tests remain unchanged.
 
 Risk-budget and affordability status: the frozen v0.1 contract is implemented
 as a reviewed standalone capability. It is not candidate, screening, or report
@@ -50,13 +55,13 @@ and normalized-input closures. The exact contract is
 
 Next development gate:
 `PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly`.
-This is a fresh formal read-only preflight against the existing assembly
-contracts, not an implementation BUILD or a claim that 6B is ready.
+Rerun the existing formal read-only preflight task against the clarified
+contract. This is not an implementation BUILD or a claim that 6B is ready.
 
-Prepare the next formal preflight in the existing PREFLIGHT workflow unless
-its context is no longer reliable; in that case begin a fresh appropriately
-named PREFLIGHT session. Do not produce a 6B BUILD prompt before the returned
-preflight report is evaluated.
+Continue the existing PREFLIGHT task and rerun its formal analysis against the
+clarified contract unless its context is no longer reliable; in that case
+begin a fresh appropriately named PREFLIGHT session. Do not issue a 6B BUILD
+prompt before the returned preflight report is evaluated.
 
 Read first: `docs/current-checkpoint.md`, `docs/product-direction.md`,
 `docs/project-state.md`, `docs/mvp-spec.md`, and

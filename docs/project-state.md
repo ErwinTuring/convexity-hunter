@@ -22,8 +22,16 @@ affordability evidence for one already-specified supported structure.
 Milestone 6 is contractually decomposed into 6A — Reviewed Artifact
 Verifiability and 6B — Reviewed-Artifact Candidate Assembly. Milestone 6A is
 implemented and has passed targeted independent re-review after correction of
-all accepted findings. Milestone 6B remains unimplemented; the active next
-gate is its fresh formal read-only preflight.
+all accepted findings. Milestone 6B remains unimplemented. Its initial formal
+read-only preflight returned `PREFLIGHT RESULT: BLOCKED`: all assembly
+architecture other than zero-artifact lineage was found implementable, but
+valid zero-artifact candidates produced an empty normalized-input union that
+the existing one-or-more `CalculationLineage` contract could not represent.
+The selected documentation-only resolution makes generic lineage inputs
+zero-or-more while preserving methodology-specific exact-input verification.
+Source and tests remain unchanged. The active next gate after this
+clarification commit is a rerun of
+`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly`.
 
 ### Completed Milestone 6A implementation
 
@@ -846,9 +854,11 @@ Milestone 6A — Reviewed Artifact Verifiability is complete. Its clarified v0.2
 contract was implemented in the transformation source and tests, passed broad
 independent review after correction of three accepted MAJOR findings, and
 passed targeted re-review with no remaining finding. Milestone 6B remains
-unimplemented. The current task is to prepare
-`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly` as a fresh
-formal read-only preflight against the unchanged assembly contracts.
+unimplemented. Its initial formal preflight was blocked only by the
+zero-artifact lineage representation conflict. This documentation-only task
+freezes the selected zero-or-more generic `CalculationLineage.inputs`
+resolution; it does not select the final 6B API or canonical schema and does
+not modify source or tests.
 
 ## Last completed checkpoint
 
@@ -1090,10 +1100,12 @@ do not override the current Milestone 6A completion checkpoint above.
 
 ## Next task
 
-Run `PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly` as a fresh
-formal read-only preflight against the existing aggregate, sidecar,
-provenance, completeness, identity, chronology, quality, and exclusion
-contracts. Milestone 6B is not implemented or approved for BUILD.
+Rerun the existing
+`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly` task as a
+formal read-only preflight against the clarified lineage cardinality and the
+existing aggregate, sidecar, provenance, completeness, identity, chronology,
+quality, and exclusion contracts. Milestone 6B is not implemented or approved
+for BUILD.
 
 ## Current capability and roadmap
 

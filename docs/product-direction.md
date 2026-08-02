@@ -483,10 +483,12 @@ complete application workflow.
 1. Prior documentation alignment.
 2. Completed Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence.
 3. Completed Milestone 5 — Standalone Structure Affordability Evidence.
-4. Next Milestone 6A — Reviewed Artifact Verifiability, beginning only with a
-   fresh formal read-only preflight.
-5. Then Milestone 6B — Reviewed-Artifact Candidate Assembly, only after 6A is
-   implemented, independently reviewed, committed, and pushed.
+4. Completed Milestone 6A — Reviewed Artifact Verifiability.
+5. Milestone 6B — Reviewed-Artifact Candidate Assembly, currently in contract
+   clarification after its initial formal preflight was blocked by the
+   zero-artifact lineage contradiction. No 6B implementation has begun; after
+   this clarification commit, the next gate is a rerun of the existing formal
+   Milestone 6B PREFLIGHT task.
 6. Later position-management-plan contract.
 7. Later screening and Chinese-report integration.
 8. Later deterministic offline single-structure service.
@@ -513,9 +515,11 @@ complete application workflow.
 - Completed Milestone 1–3 history remains unchanged.
 - Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence is complete.
 - Milestone 5 — Standalone Structure Affordability Evidence is complete.
-- Milestone 6A — Reviewed Artifact Verifiability and Milestone 6B —
-  Reviewed-Artifact Candidate Assembly are not implemented; the next gate is
-  a fresh formal read-only 6A preflight. The canonical Milestone 6 contract is
+- Milestone 6A — Reviewed Artifact Verifiability is complete. Milestone 6B —
+  Reviewed-Artifact Candidate Assembly remains unimplemented and is in
+  contract clarification after a blocked formal preflight. After the
+  clarification commit, the next gate is a rerun of the existing formal 6B
+  PREFLIGHT task. The canonical Milestone 6 contract is
   [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md).
 
 ## 18. Future design questions

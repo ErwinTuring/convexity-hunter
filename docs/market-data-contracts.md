@@ -5026,17 +5026,54 @@ CalculationLineage
     quality_flags: Tuple[CalculationQualityFlag, ...]
 ```
 
-Required strings are trimmed and non-empty. Calculation time is timezone-aware UTC. At least one `CalculationInputReference` is required; input record IDs are unique, and inputs normalize into ascending record-ID order. `calculation_id` cannot equal an input record ID, and `calculated_at` cannot precede any input normalized time.
+Required strings are trimmed and non-empty. Calculation time is timezone-aware UTC. Zero or more complete `CalculationInputReference` values are permitted; input record IDs are unique, and inputs normalize into ascending record-ID order. `calculation_id` cannot equal an input record ID, and `calculated_at` cannot precede any input normalized time.
 
 `calculated_at` must have exact type `datetime`; datetime subclasses raise `TypeError`. A naive value raises `ValueError`. An aware value is normalized to UTC, and UTC-normalization overflow below year 1 or above year 9999 raises `ValueError` without clamping, wrapping, or silent alteration.
 
-`inputs` accepts only a tuple or list; another container raises `TypeError`. Every element must satisfy `type(item) is CalculationInputReference`; subclasses and all other elements raise `TypeError`. An empty collection, duplicate normalized `record_id`, calculation-ID/input-ID collision, or chronology violation raises `ValueError`. The stored value is a tuple in ascending `record_id` order.
+`inputs` accepts only an exact tuple or exact list; another container or a
+tuple/list subclass raises `TypeError`. Every present element must satisfy
+`type(item) is CalculationInputReference`; subclasses and all other elements
+raise `TypeError`. Duplicate normalized `record_id`, calculation-ID/input-ID
+collision, or chronology violation raises `ValueError`. The stored value is a
+tuple in ascending `record_id` order. For an empty collection, `()` is the sole
+canonical stored representation. `None`, omission, a synthetic or sentinel
+input, qualitative text, an assembly-specific fake normalized record, and an
+empty-string record ID are not alternative empty representations.
+Every present reference remains subject to the complete existing contract:
+nonempty `record_id`, exact aware UTC `normalized_at`, and a nonempty canonical
+source-ID tuple. These per-input validations are unchanged.
+
+An empty `inputs` tuple means only that the deterministic calculation consumed
+no normalized market-data record versions. It does not mean that parameters or
+provenance are absent, that the calculation is incomplete or invalid, or that
+caller text is market data. Calculation identity, methodology identity and
+version, exact calculation time, canonical `parameters_json`, and independently
+derived quality flags remain required. Normalized-input chronology and
+calculation-ID/input-ID collision checks are vacuously satisfied when inputs are
+empty. `calculated_at` remains exact aware UTC. Dependency-calculation chronology
+and dependency-ID collision remain the responsibility of the concrete wrapper
+or sidecar verifier; no dependency-closure rule is weakened.
 
 `parameters_json` is a trimmed, non-empty string whose root is a canonical `$map`. The empty canonical mapping `{"$map":[]}` is valid. The string must be produced by, or be byte-equivalent to, `canonicalize_lineage_parameters`; no untagged mapping is accepted and no JSON float may survive parsing. Validation uses duplicate-key-safe parsing, validates the complete grammar and depth, and requires byte-identical canonical reserialization. Quality flags contain no duplicates and normalize to declaration order. The record is frozen and hashable. No input is hidden. Lineage remains separate from the calculated numeric record and does not calculate the research value itself.
 
 `parameters_json` must have exact type `str`; string subclasses raise `TypeError`. Required-string normalization first trims leading and trailing whitespace, and the normalized string is the value validated and stored. Surrounding whitespace may therefore be removed, but after trimming the stored text must be byte-identical to canonical reserialization. Internal insignificant whitespace, noncanonical escapes, ordering, or number spellings remain invalid and raise `ValueError`.
 
 `quality_flags` accepts only a tuple or list; another container raises `TypeError`. Every element must have exact type `CalculationQualityFlag`; foreign Enum values, subclasses, and all other elements raise `TypeError`. Duplicate flags raise `ValueError`. Empty flags are valid, and the stored tuple follows enum declaration order. Flags are never inferred from calculation behavior.
+
+In particular, generic `CalculationLineage` validation does not infer a quality
+flag merely because `inputs` is empty. Empty inputs neither require nor prohibit
+`INCOMPLETE_INPUT_USED`; the concrete calculation verifier derives the exact
+expected quality-flag tuple from its methodology.
+
+This general zero-or-more cardinality does not reclassify any existing
+transformation or risk-assessment methodology as parameter-only. Every existing
+calculated-artifact wrapper and private verifier continues to require its exact
+complete methodology-specific input set and to reject an empty lineage where
+nonempty inputs are expected, as well as missing, surplus, conflicting, or
+forged inputs. Generic lineage validation supplies structural validation;
+calculation-specific verification supplies input completeness. Source and test
+implementation of the zero-input constructor case is deferred to the Milestone
+6B BUILD, and only after the clarified formal 6B preflight is rerun successfully.
 
 A sidecar is necessary because existing research records mostly use date-only `as_of_date`, while real inputs have intraday timestamps and individual source identities. Existing research records do not receive lineage fields in 3B. Future Milestone 3C.7 transformations will consume temporally coherent, relationship-validated, deterministically selected, and where applicable historically complete inputs; perform deterministic calculations; produce existing research records; and create `CalculationLineage` sidecars.
 
