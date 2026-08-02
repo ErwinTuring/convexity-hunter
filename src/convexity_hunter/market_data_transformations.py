@@ -52,6 +52,7 @@ from .market_data import (
     SourceQualityFlag,
     UnderlyingDailyBarObservation,
     UnderlyingKey,
+    UnderlyingSecurityType,
     UnderlyingQuoteObservation,
     canonicalize_lineage_parameters,
     semantic_observation_key,
@@ -412,6 +413,8 @@ class VolatilityEnvironmentTransformationResult:
             )
         if type(self.lineage) is not CalculationLineage:
             raise TypeError("lineage must have exact type CalculationLineage")
+        with decimal.localcontext():
+            _verify_volatility_environment_result(self.record, self.lineage)
 
 
 @dataclass(frozen=True)
@@ -455,6 +458,8 @@ class TailPricingTransformationResult:
             raise ValueError(
                 "records must already be in strictly ascending tenor order"
             )
+        with decimal.localcontext():
+            _verify_tail_pricing_result(self.records, self.lineage)
 
 
 @dataclass(frozen=True)
@@ -467,6 +472,8 @@ class StructureLiquidityTransformationResult:
             raise TypeError("record must have exact type StructureLiquidity")
         if type(self.lineage) is not CalculationLineage:
             raise TypeError("lineage must have exact type CalculationLineage")
+        with decimal.localcontext():
+            _verify_structure_liquidity_result(self.record, self.lineage)
 
 
 @dataclass(frozen=True)
@@ -1245,9 +1252,271 @@ def _construct_input_references(records: tuple) -> tuple:
     return tuple(_input_reference(record) for record in records)
 
 
-def _construct_parameters(canonical_matched: tuple) -> str:
+def _complete_input_reference(reference: CalculationInputReference) -> dict:
+    return {
+        "record_id": reference.record_id,
+        "normalized_at": reference.normalized_at,
+        "source_ids": reference.source_ids,
+    }
+
+
+def _direct_record_role(record: object) -> str:
+    roles = {
+        UnderlyingQuoteObservation: "underlying_quote",
+        OptionQuoteObservation: "option_quote",
+        OptionImpliedVolatilityObservation: "option_implied_volatility",
+        OptionGreeksObservation: "option_greeks",
+        OptionContractReference: "option_contract_reference",
+    }
+    try:
+        return roles[type(record)]
+    except KeyError as error:
+        raise TypeError("direct normalized evidence has an unsupported type") from error
+
+
+def _direct_propagated_flag_values(record: object, binding: object) -> tuple:
+    selected = set()
+    if binding is not None and binding.correction_selection.reason_codes == (
+        CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,
+    ):
+        selected.add(CalculationQualityFlag.CORRECTION_SELECTED)
+    if record.metadata.record_origin is DataOrigin.SYSTEM_COMPOSITE:
+        selected.add(CalculationQualityFlag.COMPOSITE_INPUT_USED)
+    if NormalizationQualityFlag.INTERPOLATED in record.metadata.quality_flags:
+        selected.add(CalculationQualityFlag.INTERPOLATED)
+    return tuple(
+        flag.value for flag in CalculationQualityFlag if flag in selected
+    )
+
+
+def _direct_normalized_evidence(records: tuple, bindings: tuple) -> tuple:
+    binding_by_id = {
+        binding.selected_record.metadata.record_id: binding
+        for binding in bindings
+    }
+    by_id = {}
+    for record in records:
+        reference = _input_reference(record)
+        item = {
+            **_complete_input_reference(reference),
+            "role": _direct_record_role(record),
+            "propagated_quality_flags": _direct_propagated_flag_values(
+                record, binding_by_id.get(reference.record_id)
+            ),
+        }
+        existing = by_id.get(reference.record_id)
+        if existing is not None and existing != item:
+            raise ValueError("duplicate direct evidence is contradictory")
+        by_id[reference.record_id] = item
+    return tuple(by_id[record_id] for record_id in sorted(by_id))
+
+
+def _underlying_identity(underlying: UnderlyingKey) -> dict:
+    return {
+        "symbol": underlying.symbol,
+        "listing_mic": underlying.listing_mic,
+        "security_type": underlying.security_type.value,
+        "currency": underlying.currency,
+    }
+
+
+def _contract_identity(contract: OptionContractKey) -> dict:
+    return {
+        "underlying": _underlying_identity(contract.underlying_key),
+        "expiration": contract.expiration,
+        "option_type": contract.option_type,
+        "strike": contract.strike,
+        "contract_multiplier": contract.contract_multiplier,
+        "currency": contract.currency,
+        "deliverable_id": contract.deliverable_id,
+    }
+
+
+def _reconstruct_lineage(value: object) -> CalculationLineage:
+    if type(value) is not CalculationLineage:
+        raise TypeError("lineage must have exact type CalculationLineage")
+    for name in (
+        "calculation_id",
+        "calculation_type",
+        "methodology_id",
+        "methodology_version",
+        "parameters_json",
+    ):
+        if type(getattr(value, name)) is not str:
+            raise TypeError(f"lineage {name} must have exact type str")
+    if type(value.calculated_at) is not datetime.datetime:
+        raise TypeError("lineage calculated_at must have exact type datetime")
+    if type(value.inputs) is not tuple:
+        raise TypeError("lineage inputs must have exact type tuple")
+    inputs = []
+    for item in value.inputs:
+        if type(item) is not CalculationInputReference:
+            raise TypeError(
+                "every lineage input must have exact type "
+                "CalculationInputReference"
+            )
+        if type(item.record_id) is not str:
+            raise TypeError("input record_id must have exact type str")
+        if type(item.normalized_at) is not datetime.datetime:
+            raise TypeError("input normalized_at must have exact type datetime")
+        if type(item.source_ids) is not tuple:
+            raise TypeError("input source_ids must have exact type tuple")
+        reconstructed = CalculationInputReference(
+            record_id=item.record_id,
+            normalized_at=item.normalized_at,
+            source_ids=item.source_ids,
+        )
+        if reconstructed != item:
+            raise ValueError("lineage input is noncanonical")
+        inputs.append(reconstructed)
+    if type(value.quality_flags) is not tuple:
+        raise TypeError("lineage quality_flags must have exact type tuple")
+    if any(type(flag) is not CalculationQualityFlag for flag in value.quality_flags):
+        raise TypeError(
+            "every lineage quality flag must have exact type "
+            "CalculationQualityFlag"
+        )
+    reconstructed = CalculationLineage(
+        calculation_id=value.calculation_id,
+        calculation_type=value.calculation_type,
+        methodology_id=value.methodology_id,
+        methodology_version=value.methodology_version,
+        calculated_at=value.calculated_at,
+        inputs=tuple(inputs),
+        parameters_json=value.parameters_json,
+        quality_flags=value.quality_flags,
+    )
+    if reconstructed != value:
+        raise ValueError("lineage is noncanonical or constructor-bypassed")
+    return reconstructed
+
+
+def _stable_float(value: object, label: str) -> float:
+    if type(value) is not float:
+        raise TypeError(f"{label} must have exact type float")
+    if not math.isfinite(value):
+        raise ValueError(f"{label} must be finite")
+    return value
+
+
+def _complete_reference_from_mapping(value: object, label: str) -> dict:
+    if type(value) is not dict:
+        raise TypeError(f"{label} must have exact type dict")
+    if set(value) != {"record_id", "normalized_at", "source_ids"}:
+        raise ValueError(f"{label} has the wrong exact schema")
+    reference = CalculationInputReference(
+        record_id=value["record_id"],
+        normalized_at=value["normalized_at"],
+        source_ids=value["source_ids"],
+    )
+    if _complete_input_reference(reference) != value:
+        raise ValueError(f"{label} is noncanonical")
+    return value
+
+
+def _quality_flag_values(value: object, permitted: set, label: str) -> tuple:
+    if type(value) is not tuple:
+        raise TypeError(f"{label} must have exact type tuple")
+    if any(type(item) is not str for item in value):
+        raise TypeError(f"every {label} item must have exact type str")
+    known = {flag.value: flag for flag in CalculationQualityFlag}
+    if any(item not in known or known[item] not in permitted for item in value):
+        raise ValueError(f"{label} contains a prohibited flag")
+    expected = tuple(
+        flag.value for flag in CalculationQualityFlag if flag.value in value
+    )
+    if value != expected:
+        raise ValueError(f"{label} is duplicated or out of order")
+    return value
+
+
+def _validate_direct_evidence(
+    value: object, allowed_roles: set, label: str
+) -> tuple:
+    if type(value) is not dict or set(value) != {"direct_inputs"}:
+        raise ValueError(f"{label} has the wrong exact schema")
+    direct = value["direct_inputs"]
+    if type(direct) is not tuple:
+        raise TypeError(f"{label} direct_inputs must have exact type tuple")
+    permitted = {
+        CalculationQualityFlag.CORRECTION_SELECTED,
+        CalculationQualityFlag.COMPOSITE_INPUT_USED,
+        CalculationQualityFlag.INTERPOLATED,
+    }
+    record_ids = []
+    for index, item in enumerate(direct):
+        item_label = f"{label} direct_inputs[{index}]"
+        if type(item) is not dict:
+            raise TypeError(f"{item_label} must have exact type dict")
+        if set(item) != {
+            "record_id", "role", "normalized_at", "source_ids",
+            "propagated_quality_flags",
+        }:
+            raise ValueError(f"{item_label} has the wrong exact schema")
+        _complete_reference_from_mapping(
+            {key: item[key] for key in (
+                "record_id", "normalized_at", "source_ids"
+            )},
+            item_label,
+        )
+        if type(item["role"]) is not str:
+            raise TypeError(f"{item_label} role must have exact type str")
+        if item["role"] not in allowed_roles:
+            raise ValueError(f"{item_label} role is invalid")
+        _quality_flag_values(
+            item["propagated_quality_flags"], permitted,
+            f"{item_label} propagated_quality_flags",
+        )
+        record_ids.append(item["record_id"])
+    if tuple(sorted(record_ids)) != tuple(record_ids) or len(set(record_ids)) != len(record_ids):
+        raise ValueError(f"{label} direct inputs must be unique and lexical")
+    return direct
+
+
+def _liquidity_propagated_flags(binding: object, record: object) -> tuple:
+    permitted = {
+        CalculationQualityFlag.INTERPOLATED,
+        CalculationQualityFlag.CORRECTION_SELECTED,
+        CalculationQualityFlag.COMPOSITE_INPUT_USED,
+        CalculationQualityFlag.INCOMPLETE_INPUT_USED,
+    }
+    return tuple(
+        flag.value
+        for flag in _derive_quality_flags((binding,), (record,))
+        if flag in permitted
+    )
+
+
+def _liquidity_evidence_item(
+    leg_index: int, contract: OptionContractKey, binding: object, record: object
+) -> dict:
+    return {
+        "leg_index": leg_index,
+        **_complete_input_reference(_input_reference(record)),
+        "propagated_quality_flags": _liquidity_propagated_flags(
+            binding, record
+        ),
+        "contract": _contract_identity(contract),
+    }
+
+
+def _construct_parameters(
+    public_matched: tuple,
+    structure: OptionStructure,
+    as_of_date: datetime.date,
+    bid_decimal: decimal.Decimal,
+    ask_decimal: decimal.Decimal,
+    minimum_volume: int,
+    minimum_open_interest: int,
+    record: StructureLiquidity,
+) -> str:
     leg_correspondence = []
-    for contract_key, leg, _bindings, records in canonical_matched:
+    quote_evidence = []
+    volume_evidence = []
+    open_interest_evidence = []
+    for leg_index, (contract_key, leg, bindings, records) in enumerate(
+        public_matched
+    ):
         underlying = contract_key.underlying_key
         leg_correspondence.append({
             "underlying": {
@@ -1273,15 +1542,87 @@ def _construct_parameters(canonical_matched: tuple) -> str:
                 MarketDataRelationshipRole.OPTION_OPEN_INTEREST
             ].metadata.record_id,
         })
+        quote = records[MarketDataRelationshipRole.OPTION_QUOTE]
+        volume = records[MarketDataRelationshipRole.OPTION_VOLUME]
+        open_interest = records[
+            MarketDataRelationshipRole.OPTION_OPEN_INTEREST
+        ]
+        quote_evidence.append({
+            **_liquidity_evidence_item(
+                leg_index,
+                contract_key,
+                bindings[MarketDataRelationshipRole.OPTION_QUOTE],
+                quote,
+            ),
+            "session_date": quote.session_date,
+            "bid_premium": quote.bid_premium,
+            "ask_premium": quote.ask_premium,
+        })
+        volume_evidence.append({
+            **_liquidity_evidence_item(
+                leg_index,
+                contract_key,
+                bindings[MarketDataRelationshipRole.OPTION_VOLUME],
+                volume,
+            ),
+            "session_date": volume.session_date,
+            "cumulative_volume": volume.cumulative_volume,
+            "is_session_complete": volume.is_session_complete,
+        })
+        open_interest_evidence.append({
+            **_liquidity_evidence_item(
+                leg_index,
+                contract_key,
+                bindings[MarketDataRelationshipRole.OPTION_OPEN_INTEREST],
+                open_interest,
+            ),
+            "open_interest_session_date": (
+                open_interest.open_interest_session_date
+            ),
+            "open_interest": open_interest.open_interest,
+        })
     return canonicalize_lineage_parameters({
         "activity_count_unit": "contracts",
+        "calculation_values": {
+            "as_of_date": as_of_date,
+            "quoted_bid_value_exact": bid_decimal,
+            "quoted_ask_value_exact": ask_decimal,
+            "minimum_leg_daily_volume": minimum_volume,
+            "minimum_leg_open_interest": minimum_open_interest,
+            "quote_methodology": _QUOTE_METHODOLOGY,
+            "stable_public_values": {
+                "quoted_bid_value_repr": repr(record.quoted_bid_value),
+                "quoted_ask_value_repr": repr(record.quoted_ask_value),
+            },
+        },
         "leg_correspondence": leg_correspondence,
         "minimum_leg_rule": "minimum_unscaled_contract_count_across_legs",
+        "normalized_evidence": {
+            "option_quotes": tuple(quote_evidence),
+            "option_volumes": tuple(volume_evidence),
+            "option_open_interest": tuple(open_interest_evidence),
+        },
         "position_value_rule": (
             "sum(premium_per_underlying_unit*quantity*contract_multiplier)"
         ),
         "position_value_unit": "usd",
         "premium_input_unit": "usd_per_underlying_unit",
+        "structure_identity": {
+            "structure_type": structure.structure_type,
+            "underlying": structure.underlying,
+            "assumed_portfolio_value_repr": repr(
+                structure.assumed_portfolio_value
+            ),
+            "expected_holding_days": structure.expected_holding_days,
+            "legs": tuple({
+                "underlying": leg.underlying,
+                "option_type": leg.option_type,
+                "strike_float_repr": repr(leg.strike),
+                "expiration": leg.expiration,
+                "quantity": leg.quantity,
+                "contract_multiplier": leg.contract_multiplier,
+            } for leg in structure.legs),
+        },
     })
 
 
@@ -1332,7 +1673,7 @@ def _construct_lineage(
         calculation_id=calculation_id,
         calculation_type="structure_liquidity",
         methodology_id="exact-structure-liquidity",
-        methodology_version="v0.1",
+        methodology_version="v0.2",
         calculated_at=calculated_at,
         inputs=inputs,
         parameters_json=parameters_json,
@@ -1380,9 +1721,22 @@ def transform_structure_liquidity(
         minimum_volume,
         minimum_open_interest,
     )
-    canonical_matched, records, consumed_bindings = _canonical_consumed(matched)
+    public_matched = tuple(
+        next(item for item in matched if item[1] is leg)
+        for leg in exact_structure.legs
+    )
+    _canonical_matched, records, consumed_bindings = _canonical_consumed(matched)
     inputs = _construct_input_references(records)
-    parameters_json = _construct_parameters(canonical_matched)
+    parameters_json = _construct_parameters(
+        public_matched,
+        exact_structure,
+        as_of_date,
+        bid_decimal,
+        ask_decimal,
+        minimum_volume,
+        minimum_open_interest,
+        record,
+    )
     quality_flags = _derive_quality_flags(consumed_bindings, records)
     lineage = _construct_lineage(
         normalized_id,
@@ -1392,6 +1746,359 @@ def transform_structure_liquidity(
         quality_flags,
     )
     return _construct_result(record, lineage)
+
+
+_LIQUIDITY_PARAMETER_KEYS = {
+    "activity_count_unit", "calculation_values", "leg_correspondence",
+    "minimum_leg_rule", "normalized_evidence", "position_value_rule",
+    "position_value_unit", "premium_input_unit", "structure_identity",
+}
+_LIQUIDITY_LEG_KEYS = {
+    "underlying", "option_type", "strike_float_repr", "expiration",
+    "quantity", "contract_multiplier",
+}
+_LIQUIDITY_CORRESPONDENCE_KEYS = {
+    "underlying", "option_type", "expiration", "strike", "currency",
+    "deliverable_id", "contract_multiplier", "quantity",
+    "quote_record_id", "volume_record_id", "open_interest_record_id",
+}
+_LIQUIDITY_EVIDENCE_COMMON_KEYS = {
+    "leg_index", "record_id", "normalized_at", "source_ids",
+    "propagated_quality_flags", "contract",
+}
+
+
+def _verify_structure_liquidity_result(
+    record: object, lineage: object
+) -> tuple:
+    if type(record) is not StructureLiquidity:
+        raise TypeError("liquidity record must have exact type StructureLiquidity")
+    if type(record.structure) is not OptionStructure:
+        raise TypeError("liquidity structure must have exact type OptionStructure")
+    structure = record.structure
+    if type(structure.legs) is not tuple:
+        raise TypeError("liquidity structure legs must have exact type tuple")
+    reconstructed_legs = []
+    for leg in structure.legs:
+        if type(leg) is not OptionLeg:
+            raise TypeError("every liquidity leg must have exact type OptionLeg")
+        if type(leg.underlying) is not str or type(leg.option_type) is not str:
+            raise TypeError("liquidity leg strings must have exact type str")
+        _stable_float(leg.strike, "liquidity leg strike")
+        if type(leg.expiration) is not datetime.date:
+            raise TypeError("liquidity leg expiration must have exact type date")
+        if type(leg.quantity) is not int or type(leg.contract_multiplier) is not int:
+            raise TypeError("liquidity leg counts must have exact type int")
+        reconstructed_legs.append(OptionLeg(
+            underlying=leg.underlying,
+            option_type=leg.option_type,
+            strike=leg.strike,
+            expiration=leg.expiration,
+            quantity=leg.quantity,
+            contract_multiplier=leg.contract_multiplier,
+        ))
+    _stable_float(
+        structure.assumed_portfolio_value,
+        "liquidity assumed_portfolio_value",
+    )
+    if type(structure.expected_holding_days) is not int:
+        raise TypeError("expected_holding_days must have exact type int")
+    reconstructed_structure = OptionStructure(
+        legs=tuple(reconstructed_legs),
+        assumed_portfolio_value=structure.assumed_portfolio_value,
+        expected_holding_days=structure.expected_holding_days,
+    )
+    if reconstructed_structure != structure:
+        raise ValueError("liquidity structure is constructor-bypassed")
+    if type(record.as_of_date) is not datetime.date:
+        raise TypeError("liquidity as_of_date must have exact type date")
+    _stable_float(record.quoted_bid_value, "liquidity quoted_bid_value")
+    _stable_float(record.quoted_ask_value, "liquidity quoted_ask_value")
+    for name in ("minimum_leg_open_interest", "minimum_leg_daily_volume"):
+        if type(getattr(record, name)) is not int:
+            raise TypeError(f"liquidity {name} must have exact type int")
+    if type(record.quote_methodology) is not str:
+        raise TypeError("liquidity quote_methodology must have exact type str")
+    reconstructed_record = StructureLiquidity(
+        structure=reconstructed_structure,
+        as_of_date=record.as_of_date,
+        quoted_bid_value=record.quoted_bid_value,
+        quoted_ask_value=record.quoted_ask_value,
+        minimum_leg_open_interest=record.minimum_leg_open_interest,
+        minimum_leg_daily_volume=record.minimum_leg_daily_volume,
+        quote_methodology=record.quote_methodology,
+    )
+    if reconstructed_record != record:
+        raise ValueError("liquidity record is constructor-bypassed")
+    lineage = _reconstruct_lineage(lineage)
+    if (
+        lineage.calculation_type != "structure_liquidity"
+        or lineage.methodology_id != "exact-structure-liquidity"
+        or lineage.methodology_version != "v0.2"
+    ):
+        raise ValueError("liquidity lineage identity is invalid")
+    decoded = _decode_strict_tagged_parameters(
+        lineage.parameters_json, _LIQUIDITY_PARAMETER_KEYS,
+        "StructureLiquidity v0.2",
+    )
+    fixed = {
+        "activity_count_unit": "contracts",
+        "minimum_leg_rule": "minimum_unscaled_contract_count_across_legs",
+        "position_value_rule": (
+            "sum(premium_per_underlying_unit*quantity*contract_multiplier)"
+        ),
+        "position_value_unit": "usd",
+        "premium_input_unit": "usd_per_underlying_unit",
+    }
+    if any(decoded[key] != value for key, value in fixed.items()):
+        raise ValueError("liquidity fixed methodology is invalid")
+    identity = decoded["structure_identity"]
+    if type(identity) is not dict or set(identity) != {
+        "structure_type", "underlying", "assumed_portfolio_value_repr",
+        "expected_holding_days", "legs",
+    }:
+        raise ValueError("liquidity structure identity has the wrong schema")
+    expected_identity = {
+        "structure_type": structure.structure_type,
+        "underlying": structure.underlying,
+        "assumed_portfolio_value_repr": repr(structure.assumed_portfolio_value),
+        "expected_holding_days": structure.expected_holding_days,
+        "legs": tuple({
+            "underlying": leg.underlying,
+            "option_type": leg.option_type,
+            "strike_float_repr": repr(leg.strike),
+            "expiration": leg.expiration,
+            "quantity": leg.quantity,
+            "contract_multiplier": leg.contract_multiplier,
+        } for leg in structure.legs),
+    }
+    if (
+        type(identity["structure_type"]) is not str
+        or type(identity["underlying"]) is not str
+        or type(identity["assumed_portfolio_value_repr"]) is not str
+        or type(identity["expected_holding_days"]) is not int
+        or type(identity["legs"]) is not tuple
+        or any(type(item) is not dict or set(item) != _LIQUIDITY_LEG_KEYS for item in identity["legs"])
+    ):
+        raise TypeError("liquidity structure identity has wrong exact types")
+    for item in identity["legs"]:
+        if (
+            type(item["underlying"]) is not str
+            or type(item["option_type"]) is not str
+            or type(item["strike_float_repr"]) is not str
+            or type(item["expiration"]) is not datetime.date
+            or type(item["quantity"]) is not int
+            or type(item["contract_multiplier"]) is not int
+        ):
+            raise TypeError("liquidity leg identity has wrong exact types")
+    if identity != expected_identity:
+        raise ValueError("liquidity structure identity differs from public record")
+    correspondence = decoded["leg_correspondence"]
+    if type(correspondence) is not tuple or len(correspondence) != len(structure.legs):
+        raise ValueError("liquidity leg correspondence cardinality is invalid")
+    evidence = decoded["normalized_evidence"]
+    if type(evidence) is not dict or set(evidence) != {
+        "option_quotes", "option_volumes", "option_open_interest",
+    }:
+        raise ValueError("liquidity normalized evidence has the wrong schema")
+    roles = (
+        ("option_quotes", {"session_date", "bid_premium", "ask_premium"}),
+        ("option_volumes", {"session_date", "cumulative_volume", "is_session_complete"}),
+        ("option_open_interest", {"open_interest_session_date", "open_interest"}),
+    )
+    evidence_by_role = {}
+    permitted = {
+        CalculationQualityFlag.INTERPOLATED,
+        CalculationQualityFlag.CORRECTION_SELECTED,
+        CalculationQualityFlag.COMPOSITE_INPUT_USED,
+        CalculationQualityFlag.INCOMPLETE_INPUT_USED,
+    }
+    for role, extra_keys in roles:
+        items = evidence[role]
+        if type(items) is not tuple or len(items) != len(structure.legs):
+            raise ValueError(f"liquidity {role} cardinality is invalid")
+        verified_items = []
+        for index, item in enumerate(items):
+            if type(item) is not dict:
+                raise TypeError(f"liquidity {role} item must have exact type dict")
+            if set(item) != _LIQUIDITY_EVIDENCE_COMMON_KEYS | extra_keys:
+                raise ValueError(f"liquidity {role} item has the wrong schema")
+            if type(item["leg_index"]) is not int:
+                raise TypeError("liquidity leg_index must have exact type int")
+            if item["leg_index"] != index:
+                raise ValueError("liquidity evidence leg order is invalid")
+            _complete_reference_from_mapping({
+                key: item[key] for key in (
+                    "record_id", "normalized_at", "source_ids"
+                )
+            }, f"liquidity {role}[{index}]")
+            _quality_flag_values(
+                item["propagated_quality_flags"], permitted,
+                f"liquidity {role}[{index}] flags",
+            )
+            if type(item["contract"]) is not dict or set(item["contract"]) != {
+                "underlying", "expiration", "option_type", "strike",
+                "contract_multiplier", "currency", "deliverable_id",
+            }:
+                raise ValueError("liquidity evidence contract schema is invalid")
+            if type(item["contract"]["underlying"]) is not dict or set(item["contract"]["underlying"]) != {
+                "symbol", "listing_mic", "security_type", "currency",
+            }:
+                raise ValueError("liquidity underlying identity schema is invalid")
+            contract = item["contract"]
+            underlying = contract["underlying"]
+            if (
+                type(underlying["symbol"]) is not str
+                or underlying["listing_mic"] is not None
+                and type(underlying["listing_mic"]) is not str
+                or type(underlying["security_type"]) is not str
+                or type(underlying["currency"]) is not str
+                or type(contract["expiration"]) is not datetime.date
+                or type(contract["option_type"]) is not str
+                or type(contract["strike"]) is not decimal.Decimal
+                or not contract["strike"].is_finite()
+                or type(contract["contract_multiplier"]) is not int
+                or type(contract["currency"]) is not str
+                or contract["deliverable_id"] is not None
+                and type(contract["deliverable_id"]) is not str
+            ):
+                raise TypeError("liquidity evidence contract has wrong exact types")
+            verified_items.append(item)
+        evidence_by_role[role] = tuple(verified_items)
+    bid_terms = []
+    ask_terms = []
+    volumes = []
+    open_interests = []
+    disclosed_ids = []
+    for index, (leg, item) in enumerate(zip(structure.legs, correspondence)):
+        if type(item) is not dict or set(item) != _LIQUIDITY_CORRESPONDENCE_KEYS:
+            raise ValueError("liquidity leg correspondence has the wrong schema")
+        if (
+            type(item["underlying"]) is not dict
+            or set(item["underlying"]) != {
+                "symbol", "listing_mic", "security_type", "currency"
+            }
+            or type(item["option_type"]) is not str
+            or type(item["expiration"]) is not datetime.date
+            or type(item["strike"]) is not decimal.Decimal
+            or not item["strike"].is_finite()
+            or type(item["currency"]) is not str
+            or item["deliverable_id"] is not None
+            and type(item["deliverable_id"]) is not str
+            or type(item["contract_multiplier"]) is not int
+            or type(item["quantity"]) is not int
+            or any(type(item[key]) is not str for key in (
+                "quote_record_id", "volume_record_id",
+                "open_interest_record_id",
+            ))
+        ):
+            raise TypeError("liquidity leg correspondence has wrong exact types")
+        quote = evidence_by_role["option_quotes"][index]
+        volume = evidence_by_role["option_volumes"][index]
+        open_interest = evidence_by_role["option_open_interest"][index]
+        if not (quote["contract"] == volume["contract"] == open_interest["contract"]):
+            raise ValueError("liquidity evidence contract identities differ")
+        contract = quote["contract"]
+        if (
+            contract["underlying"] != item["underlying"]
+            or contract["option_type"] != leg.option_type
+            or contract["expiration"] != leg.expiration
+            or contract["strike"] != decimal.Decimal(str(leg.strike))
+            or contract["contract_multiplier"] != leg.contract_multiplier
+            or item["option_type"] != leg.option_type
+            or item["expiration"] != leg.expiration
+            or item["strike"] != contract["strike"]
+            or item["contract_multiplier"] != leg.contract_multiplier
+            or item["quantity"] != leg.quantity
+            or item["currency"] != contract["currency"]
+            or item["deliverable_id"] != contract["deliverable_id"]
+            or item["quote_record_id"] != quote["record_id"]
+            or item["volume_record_id"] != volume["record_id"]
+            or item["open_interest_record_id"] != open_interest["record_id"]
+        ):
+            raise ValueError("liquidity leg correspondence is inconsistent")
+        for name in ("bid_premium", "ask_premium"):
+            if type(quote[name]) is not decimal.Decimal:
+                raise TypeError(f"liquidity {name} must have exact type Decimal")
+            if not quote[name].is_finite():
+                raise ValueError(f"liquidity {name} must be finite")
+        if quote["bid_premium"] < 0 or quote["ask_premium"] <= 0 or quote["ask_premium"] < quote["bid_premium"]:
+            raise ValueError("liquidity quote premiums are economically invalid")
+        if quote["session_date"] != record.as_of_date or volume["session_date"] != record.as_of_date:
+            raise ValueError("liquidity quote and volume sessions are inconsistent")
+        if volume["is_session_complete"] is not True:
+            raise ValueError("liquidity volume session must be complete")
+        if type(volume["cumulative_volume"]) is not int or volume["cumulative_volume"] < 0:
+            raise TypeError("liquidity volume must be an exact nonnegative int")
+        if type(open_interest["open_interest"]) is not int or open_interest["open_interest"] < 0:
+            raise TypeError("liquidity open interest must be an exact nonnegative int")
+        if type(open_interest["open_interest_session_date"]) is not datetime.date:
+            raise TypeError("open-interest date must have exact type date")
+        if open_interest["open_interest_session_date"] > record.as_of_date:
+            raise ValueError("open-interest date follows the activity session")
+        if leg.expiration <= record.as_of_date:
+            raise ValueError("liquidity expiration must follow as_of_date")
+        bid_terms.append((quote["bid_premium"], leg.quantity * leg.contract_multiplier))
+        ask_terms.append((quote["ask_premium"], leg.quantity * leg.contract_multiplier))
+        volumes.append(volume["cumulative_volume"])
+        open_interests.append(open_interest["open_interest"])
+        disclosed_ids.extend((quote["record_id"], volume["record_id"], open_interest["record_id"]))
+    if len(set(disclosed_ids)) != len(disclosed_ids):
+        raise ValueError("liquidity normalized evidence IDs must be unique")
+    values = decoded["calculation_values"]
+    if type(values) is not dict or set(values) != {
+        "as_of_date", "quoted_bid_value_exact", "quoted_ask_value_exact",
+        "minimum_leg_daily_volume", "minimum_leg_open_interest",
+        "quote_methodology", "stable_public_values",
+    }:
+        raise ValueError("liquidity calculation values have the wrong schema")
+    exact_bid = _exact_scaled_sum(tuple(bid_terms))
+    exact_ask = _exact_scaled_sum(tuple(ask_terms))
+    expected_volume = min(volumes)
+    expected_open_interest = min(open_interests)
+    stable = values["stable_public_values"]
+    if type(stable) is not dict or set(stable) != {
+        "quoted_bid_value_repr", "quoted_ask_value_repr",
+    }:
+        raise ValueError("liquidity stable values have the wrong schema")
+    if (
+        values["as_of_date"] != record.as_of_date
+        or values["quoted_bid_value_exact"] != exact_bid
+        or values["quoted_ask_value_exact"] != exact_ask
+        or type(values["minimum_leg_daily_volume"]) is not int
+        or values["minimum_leg_daily_volume"] != expected_volume
+        or type(values["minimum_leg_open_interest"]) is not int
+        or values["minimum_leg_open_interest"] != expected_open_interest
+        or values["quote_methodology"] != _QUOTE_METHODOLOGY
+        or record.quote_methodology != _QUOTE_METHODOLOGY
+        or _finite_float(exact_bid) != record.quoted_bid_value
+        or _finite_float(exact_ask) != record.quoted_ask_value
+        or stable["quoted_bid_value_repr"] != repr(record.quoted_bid_value)
+        or stable["quoted_ask_value_repr"] != repr(record.quoted_ask_value)
+        or record.minimum_leg_daily_volume != expected_volume
+        or record.minimum_leg_open_interest != expected_open_interest
+    ):
+        raise ValueError("liquidity calculation values are inconsistent")
+    references = {item.record_id: item for item in lineage.inputs}
+    if set(references) != set(disclosed_ids):
+        raise ValueError("liquidity lineage inputs differ from evidence")
+    propagated_values = set()
+    for role, _extra in roles:
+        for item in evidence_by_role[role]:
+            reference = references[item["record_id"]]
+            if reference.normalized_at != item["normalized_at"] or reference.source_ids != item["source_ids"]:
+                raise ValueError("liquidity evidence differs from lineage input")
+            propagated_values.update(item["propagated_quality_flags"])
+    selected_flags = {CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED}
+    for flag in permitted:
+        if flag.value in propagated_values:
+            selected_flags.add(flag)
+    expected_flags = tuple(
+        flag for flag in CalculationQualityFlag if flag in selected_flags
+    )
+    if lineage.quality_flags != expected_flags:
+        raise ValueError("liquidity quality flags are inconsistent")
+    return record, lineage, decoded
 
 
 _COST_ROLES_BY_GROUP_KIND = {
@@ -4079,6 +4786,14 @@ def _validate_realized_dependency(
     }
     if not required.issubset(flags):
         raise ValueError("realized lineage is missing mandatory quality flags")
+    permitted = required | {
+        CalculationQualityFlag.ADJUSTED_INPUT_USED,
+        CalculationQualityFlag.CORRECTION_SELECTED,
+        CalculationQualityFlag.COMPOSITE_INPUT_USED,
+        CalculationQualityFlag.INTERPOLATED,
+    }
+    if any(flag not in permitted for flag in flags):
+        raise ValueError("realized lineage contains a prohibited quality flag")
     adjusted = record.price_basis is HistoricalReturnPriceBasis.ADJUSTED_CLOSE
     if (
         (CalculationQualityFlag.ADJUSTED_INPUT_USED in flags) != adjusted
@@ -4130,7 +4845,9 @@ def _realized_dependency_parameters(
         "calculated_at": lineage.calculated_at,
         "parameters_json": lineage.parameters_json,
         "quality_flags": tuple(flag.value for flag in lineage.quality_flags),
-        "input_record_ids": tuple(item.record_id for item in lineage.inputs),
+        "inputs": tuple(
+            _complete_input_reference(item) for item in lineage.inputs
+        ),
         "underlying": {
             "symbol": record.underlying_key.symbol,
             "listing_mic": record.underlying_key.listing_mic,
@@ -4139,11 +4856,16 @@ def _realized_dependency_parameters(
         },
         "start_session_date": record.start_session_date,
         "end_session_date": record.end_session_date,
+        "session_dates": record.session_dates,
         "price_basis": record.price_basis.value,
         "adjustment_methodology": record.adjustment_methodology,
+        "prices": record.prices,
+        "log_returns": record.log_returns,
         "annualization_sessions_per_year": record.annualization_sessions_per_year,
         "return_formula": record.return_formula,
         "variance_estimator": record.variance_estimator,
+        "price_observation_count": record.price_observation_count,
+        "return_observation_count": record.return_observation_count,
         "annualized_realized_volatility_float_repr": repr(
             record.annualized_realized_volatility
         ),
@@ -4288,6 +5010,12 @@ def transform_volatility_environment(
         term_structure=term_structure,
     )
 
+    iv_records = current[6] + tuple(
+        selected_record for item in historical for selected_record in item[6]
+    )
+    all_bindings = current[5] + tuple(
+        binding for item in historical for binding in item[5]
+    )
     parameters_json = canonicalize_lineage_parameters({
         "atm_candidate_universe": {
             "declared_complete": True,
@@ -4323,6 +5051,11 @@ def transform_volatility_environment(
         "median_formula": (
             "odd_middle_even_arithmetic_mean_of_two_middle_values"
         ),
+        "normalized_evidence": {
+            "direct_inputs": _direct_normalized_evidence(
+                iv_records, all_bindings
+            ),
+        },
         "percentile_formula": (
             "inclusive_count_historical_atm_iv_lte_current_reference_atm_iv_"
             "divided_by_count"
@@ -4341,10 +5074,7 @@ def transform_volatility_environment(
         "volatility_unit": "annualized_decimal_ratio",
     })
 
-    iv_records = current[6] + tuple(
-        record for item in historical for record in item[6]
-    )
-    inputs = realized_lineage.inputs + _construct_input_references(iv_records)
+    inputs = _union_lineage_inputs(realized_lineage.inputs, iv_records)
     input_ids = tuple(item.record_id for item in inputs)
     if len(set(input_ids)) != len(input_ids):
         raise ValueError("normalized input record IDs must be globally unique")
@@ -4360,9 +5090,6 @@ def transform_volatility_environment(
         CalculationQualityFlag.INTERPOLATED,
     }
     flags.update(flag for flag in realized_lineage.quality_flags if flag in propagated)
-    all_bindings = current[5] + tuple(
-        binding for item in historical for binding in item[5]
-    )
     if any(
         binding.correction_selection.reason_codes == (
             CorrectionSelectionReasonCode.DOMINATING_REVISION_VECTOR_SELECTED,
@@ -4385,7 +5112,7 @@ def transform_volatility_environment(
         calculation_id=normalized_id,
         calculation_type="volatility_environment",
         methodology_id="paired-atm-volatility-environment",
-        methodology_version="v0.1",
+        methodology_version="v0.2",
         calculated_at=normalized_at,
         inputs=inputs,
         parameters_json=parameters_json,
@@ -4446,6 +5173,7 @@ _VOLATILITY_PARAMETER_KEYS = (
     "historical_sample_semantics",
     "iv_methodology",
     "median_formula",
+    "normalized_evidence",
     "percentile_formula",
     "realized_volatility_dependency",
     "realized_window_matching_rule",
@@ -4914,6 +5642,8 @@ def _tail_skew_metrics(
 
 
 def _decode_volatility_parameters(parameters_json: str) -> dict:
+    if type(parameters_json) is not str:
+        raise TypeError("volatility parameters_json must have exact type str")
     def reject_float(_value: str) -> object:
         raise ValueError("3C.7d parameters must not contain JSON floats")
 
@@ -5000,7 +5730,7 @@ def _decode_volatility_parameters(parameters_json: str) -> dict:
     if type(decoded) is not dict:
         raise ValueError("3C.7d parameters root must be a tagged map")
     if tuple(sorted(decoded)) != tuple(sorted(_VOLATILITY_PARAMETER_KEYS)):
-        raise ValueError("3C.7d parameters have the wrong exact 20-key schema")
+        raise ValueError("volatility v0.2 parameters have the wrong exact 21-key schema")
     try:
         if canonicalize_lineage_parameters(decoded) != parameters_json:
             raise ValueError("3C.7d parameters are not byte-canonical")
@@ -5134,40 +5864,249 @@ def _validate_volatility_fixed_methodology(decoded: dict) -> None:
         )
 
 
-def _validate_volatility_dependency(
+_REALIZED_DEPENDENCY_KEYS = {
+    "calculation_id",
+    "calculation_type",
+    "methodology_id",
+    "methodology_version",
+    "calculated_at",
+    "parameters_json",
+    "quality_flags",
+    "inputs",
+    "underlying",
+    "start_session_date",
+    "end_session_date",
+    "session_dates",
+    "price_basis",
+    "adjustment_methodology",
+    "prices",
+    "log_returns",
+    "annualization_sessions_per_year",
+    "return_formula",
+    "variance_estimator",
+    "price_observation_count",
+    "return_observation_count",
+    "annualized_realized_volatility_float_repr",
+}
+_HISTORICAL_PARAMETER_KEYS = {
+    "adjustment_methodology",
+    "annualization_rule",
+    "annualization_sessions_per_year",
+    "expected_session_dates",
+    "price_basis",
+    "price_observation_count",
+    "price_unit",
+    "return_association_rule",
+    "return_formula",
+    "return_observation_count",
+    "return_unit",
+    "underlying",
+    "variance_estimator",
+    "volatility_unit",
+    "window_end_session_date",
+    "window_start_session_date",
+}
+
+
+def _reconstruct_realized_dependency(
     value: object,
-    calculation_id: str,
-    calculated_at: datetime.datetime,
+    enclosing_underlying: str,
+    enclosing_calculation_id: str,
+    enclosing_calculated_at: datetime.datetime,
 ) -> tuple:
-    if type(value) is not VolatilityEnvironmentTransformationResult:
+    if type(value) is not dict:
+        raise TypeError("realized dependency must have exact type dict")
+    if set(value) != _REALIZED_DEPENDENCY_KEYS:
+        raise ValueError("realized dependency has the wrong exact schema")
+
+    underlying_value = value["underlying"]
+    if type(underlying_value) is not dict:
+        raise TypeError("realized dependency underlying must have exact type dict")
+    if set(underlying_value) != {
+        "symbol", "listing_mic", "security_type", "currency",
+    }:
+        raise ValueError("realized dependency underlying has the wrong exact schema")
+    for key in ("symbol", "security_type", "currency"):
+        if type(underlying_value[key]) is not str:
+            raise TypeError(
+                f"realized dependency underlying {key} must have exact type str"
+            )
+    if (
+        underlying_value["listing_mic"] is not None
+        and type(underlying_value["listing_mic"]) is not str
+    ):
         raise TypeError(
-            "volatility_environment_result must have exact type "
-            "VolatilityEnvironmentTransformationResult"
+            "realized dependency underlying listing_mic must be None or an "
+            "exact str"
         )
-    record = value.record
-    lineage = value.lineage
+    try:
+        security_type = UnderlyingSecurityType(
+            underlying_value["security_type"]
+        )
+    except ValueError as error:
+        raise ValueError(
+            "realized dependency underlying security_type is unsupported"
+        ) from error
+    underlying = UnderlyingKey(
+        symbol=underlying_value["symbol"],
+        listing_mic=underlying_value["listing_mic"],
+        security_type=security_type,
+        currency=underlying_value["currency"],
+    )
+    if _underlying_identity(underlying) != underlying_value:
+        raise ValueError("realized dependency underlying is noncanonical")
+    if underlying.symbol != enclosing_underlying:
+        raise ValueError("realized and volatility underlyings differ")
+
+    if type(value["price_basis"]) is not str:
+        raise TypeError("realized dependency price_basis must have exact type str")
+    try:
+        price_basis = HistoricalReturnPriceBasis(value["price_basis"])
+    except ValueError as error:
+        raise ValueError("realized dependency price_basis is unsupported") from error
+    annualized = _float_from_stable_repr(
+        value["annualized_realized_volatility_float_repr"],
+        "realized dependency annualized volatility",
+    )
+    realized_record = HistoricalRealizedVolatility(
+        underlying_key=underlying,
+        start_session_date=value["start_session_date"],
+        end_session_date=value["end_session_date"],
+        price_basis=price_basis,
+        adjustment_methodology=value["adjustment_methodology"],
+        session_dates=value["session_dates"],
+        prices=value["prices"],
+        log_returns=value["log_returns"],
+        annualized_realized_volatility=annualized,
+        annualization_sessions_per_year=(
+            value["annualization_sessions_per_year"]
+        ),
+        return_formula=value["return_formula"],
+        variance_estimator=value["variance_estimator"],
+    )
+    for key, expected in (
+        ("price_observation_count", realized_record.price_observation_count),
+        ("return_observation_count", realized_record.return_observation_count),
+    ):
+        if type(value[key]) is not int:
+            raise TypeError(f"realized dependency {key} must have exact type int")
+        if value[key] != expected:
+            raise ValueError(f"realized dependency {key} is inconsistent")
+
+    inputs_value = value["inputs"]
+    if type(inputs_value) is not tuple:
+        raise TypeError("realized dependency inputs must have exact type tuple")
+    inputs = tuple(
+        CalculationInputReference(
+            record_id=_complete_reference_from_mapping(
+                item, f"realized dependency inputs[{index}]"
+            )["record_id"],
+            normalized_at=item["normalized_at"],
+            source_ids=item["source_ids"],
+        )
+        for index, item in enumerate(inputs_value)
+    )
+    flags_value = _quality_flag_values(
+        value["quality_flags"], set(CalculationQualityFlag),
+        "realized dependency quality_flags",
+    )
+    flags = tuple(CalculationQualityFlag(item) for item in flags_value)
+    realized_lineage = CalculationLineage(
+        calculation_id=value["calculation_id"],
+        calculation_type=value["calculation_type"],
+        methodology_id=value["methodology_id"],
+        methodology_version=value["methodology_version"],
+        calculated_at=value["calculated_at"],
+        inputs=inputs,
+        parameters_json=value["parameters_json"],
+        quality_flags=flags,
+    )
+    realized_result = HistoricalRealizedVolatilityTransformationResult(
+        record=realized_record,
+        lineage=realized_lineage,
+    )
+    _validate_realized_dependency(
+        realized_result,
+        enclosing_calculation_id,
+        enclosing_calculated_at,
+    )
+
+    historical_parameters = _decode_strict_tagged_parameters(
+        realized_lineage.parameters_json,
+        _HISTORICAL_PARAMETER_KEYS,
+        "realized dependency",
+    )
+    if realized_lineage.parameters_json != _construct_historical_parameters(
+        realized_record
+    ):
+        raise ValueError("realized dependency parameters differ from its record")
+    if (
+        historical_parameters["expected_session_dates"]
+        != realized_record.session_dates
+        or historical_parameters["price_observation_count"]
+        != realized_record.price_observation_count
+        or historical_parameters["return_observation_count"]
+        != realized_record.return_observation_count
+    ):
+        raise ValueError("realized dependency observation disclosure is inconsistent")
+    return realized_record, realized_lineage, inputs_value, flags_value
+
+
+def _verify_volatility_environment_result(
+    record: object, lineage: object
+) -> tuple:
     if type(record) is not VolatilityEnvironment:
         raise TypeError(
             "volatility dependency record must have exact type "
             "VolatilityEnvironment"
         )
-    if type(lineage) is not CalculationLineage:
-        raise TypeError(
-            "volatility dependency lineage must have exact type "
-            "CalculationLineage"
-        )
+    if type(record.underlying) is not str:
+        raise TypeError("volatility underlying must have exact type str")
+    if type(record.as_of_date) is not datetime.date:
+        raise TypeError("volatility as_of_date must have exact type date")
+    for name in (
+        "reference_tenor_days", "iv_history_lookback_observations",
+        "matched_realized_window_days",
+    ):
+        if type(getattr(record, name)) is not int:
+            raise TypeError(f"volatility {name} must have exact type int")
+    for name in (
+        "iv_percentile", "historical_median_atm_iv",
+        "matched_realized_volatility",
+    ):
+        _stable_float(getattr(record, name), f"volatility {name}")
+    if type(record.term_structure) is not tuple:
+        raise TypeError("volatility term_structure must have exact type tuple")
     if any(type(item) is not TermVolatilityPoint for item in record.term_structure):
         raise TypeError("every dependency term point must have exact type TermVolatilityPoint")
-    if any(
-        type(item) is not CalculationInputReference for item in lineage.inputs
-    ):
-        raise TypeError(
-            "every prior input must have exact type CalculationInputReference"
-        )
+    reconstructed_points = []
+    for point in record.term_structure:
+        if type(point.tenor_days) is not int:
+            raise TypeError("term-point tenor_days must have exact type int")
+        _stable_float(point.atm_iv, "term-point atm_iv")
+        reconstructed_points.append(TermVolatilityPoint(
+            tenor_days=point.tenor_days, atm_iv=point.atm_iv
+        ))
+    reconstructed_record = VolatilityEnvironment(
+        underlying=record.underlying,
+        as_of_date=record.as_of_date,
+        reference_tenor_days=record.reference_tenor_days,
+        iv_percentile=record.iv_percentile,
+        iv_history_lookback_observations=(
+            record.iv_history_lookback_observations
+        ),
+        historical_median_atm_iv=record.historical_median_atm_iv,
+        matched_realized_volatility=record.matched_realized_volatility,
+        matched_realized_window_days=record.matched_realized_window_days,
+        term_structure=tuple(reconstructed_points),
+    )
+    if reconstructed_record != record:
+        raise ValueError("volatility record is constructor-bypassed")
+    lineage = _reconstruct_lineage(lineage)
     if (
         lineage.calculation_type != "volatility_environment"
         or lineage.methodology_id != "paired-atm-volatility-environment"
-        or lineage.methodology_version != "v0.1"
+        or lineage.methodology_version != "v0.2"
     ):
         raise ValueError("volatility dependency lineage identity is invalid")
     required = {
@@ -5175,16 +6114,6 @@ def _validate_volatility_dependency(
         CalculationQualityFlag.ANNUALIZED,
         CalculationQualityFlag.ASSUMPTION_APPLIED,
     }
-    if (
-        not required.issubset(lineage.quality_flags)
-        or CalculationQualityFlag.INCOMPLETE_INPUT_USED
-        in lineage.quality_flags
-    ):
-        raise ValueError("volatility dependency quality flags are invalid")
-    if calculation_id == lineage.calculation_id:
-        raise ValueError("new and prior calculation IDs must differ")
-    if calculated_at < lineage.calculated_at:
-        raise ValueError("new calculation must not precede dependency")
     decoded = _decode_volatility_parameters(lineage.parameters_json)
     _validate_volatility_fixed_methodology(decoded)
     current = decoded["current_observations"]
@@ -5221,6 +6150,9 @@ def _validate_volatility_dependency(
             raise ValueError(
                 "dependency current observation has the wrong exact schema"
             )
+        _validate_tail_atm_observation_parameter(
+            item, "volatility current observation"
+        )
         if (
             type(item["session_date"]) is not datetime.date
             or type(item["expiration"]) is not datetime.date
@@ -5256,6 +6188,9 @@ def _validate_volatility_dependency(
             raise ValueError(
                 "dependency historical observation has the wrong exact schema"
             )
+        _validate_tail_atm_observation_parameter(
+            item, "volatility historical observation"
+        )
         if (
             type(item["session_date"]) is not datetime.date
             or type(item["expiration"]) is not datetime.date
@@ -5291,19 +6226,51 @@ def _validate_volatility_dependency(
     ):
         raise ValueError("dependency historical median is inconsistent")
     realized = decoded["realized_volatility_dependency"]
+    (
+        realized_record,
+        realized_lineage,
+        realized_inputs,
+        realized_flags,
+    ) = _reconstruct_realized_dependency(
+        realized,
+        record.underlying,
+        lineage.calculation_id,
+        lineage.calculated_at,
+    )
+    realized_span = (
+        realized_record.end_session_date - realized_record.start_session_date
+    ).days
     if (
-        type(realized) is not dict
-        or realized.get("end_session_date") != record.as_of_date
-        or realized.get("annualized_realized_volatility_float_repr")
-        != repr(record.matched_realized_volatility)
-        or record.matched_realized_window_days
-        != record.reference_tenor_days
+        realized_record.end_session_date != record.as_of_date
+        or realized_span != record.reference_tenor_days
+        or record.matched_realized_window_days != realized_span
+        or realized_record.annualized_realized_volatility
+        != record.matched_realized_volatility
+        or repr(realized_record.annualized_realized_volatility)
+        != realized["annualized_realized_volatility_float_repr"]
     ):
         raise ValueError("dependency realized-volatility fields are inconsistent")
     input_ids = tuple(item.record_id for item in lineage.inputs)
-    expected_input_ids = set(realized.get("input_record_ids", ()))
+    realized_ids = tuple(item["record_id"] for item in realized_inputs)
+    if tuple(sorted(realized_ids)) != realized_ids or len(set(realized_ids)) != len(realized_ids):
+        raise ValueError("realized dependency inputs are not canonical")
+    expected_input_ids = set(realized_ids)
+    direct = _validate_direct_evidence(
+        decoded["normalized_evidence"], {
+            "underlying_quote", "option_quote",
+            "option_implied_volatility", "option_contract_reference",
+        }, "volatility normalized_evidence",
+    )
+    direct_by_id = {item["record_id"]: item for item in direct}
+    expected_roles = {}
+    def retain_role(record_id: str, role: str) -> None:
+        existing = expected_roles.get(record_id)
+        if existing is not None and existing != role:
+            raise ValueError("volatility direct evidence role collision")
+        expected_roles[record_id] = role
     for item in current + historical:
         expected_input_ids.add(item["underlying_quote_record_id"])
+        retain_role(item["underlying_quote_record_id"], "underlying_quote")
         for pair in item["candidate_pairs"]:
             if type(pair) is not dict:
                 raise ValueError("dependency ATM candidate must be a map")
@@ -5315,9 +6282,79 @@ def _validate_volatility_dependency(
                 pair["put_iv_record_id"],
                 pair["put_contract_reference_record_id"],
             ))
+            for key, role in (
+                ("call_quote_record_id", "option_quote"),
+                ("put_quote_record_id", "option_quote"),
+                ("call_iv_record_id", "option_implied_volatility"),
+                ("put_iv_record_id", "option_implied_volatility"),
+                ("call_contract_reference_record_id", "option_contract_reference"),
+                ("put_contract_reference_record_id", "option_contract_reference"),
+            ):
+                retain_role(pair[key], role)
+    if set(direct_by_id) != set(expected_roles) or any(
+        direct_by_id[record_id]["role"] != role
+        for record_id, role in expected_roles.items()
+    ):
+        raise ValueError("volatility direct evidence is missing, surplus, or mis-typed")
+    references = {item.record_id: item for item in lineage.inputs}
+    for item in realized_inputs + direct:
+        reference = references.get(item["record_id"])
+        if reference is None or (
+            reference.normalized_at != item["normalized_at"]
+            or reference.source_ids != item["source_ids"]
+        ):
+            raise ValueError("volatility retained reference differs from lineage")
     if len(input_ids) != len(set(input_ids)) or set(input_ids) != expected_input_ids:
         raise ValueError("dependency lineage inputs are inconsistent with parameters")
+    calculation_ids = {
+        lineage.calculation_id,
+        realized_lineage.calculation_id,
+    }
+    if (
+        len(calculation_ids) != 2
+        or not calculation_ids.isdisjoint(expected_input_ids)
+    ):
+        raise ValueError("volatility calculation ID namespace collides")
+    selected_flags = set(required)
+    propagated_values = set(realized_flags)
+    propagated_values.update(
+        flag for item in direct for flag in item["propagated_quality_flags"]
+    )
+    for flag in (
+        CalculationQualityFlag.ADJUSTED_INPUT_USED,
+        CalculationQualityFlag.CORRECTION_SELECTED,
+        CalculationQualityFlag.COMPOSITE_INPUT_USED,
+        CalculationQualityFlag.INTERPOLATED,
+    ):
+        if flag.value in propagated_values:
+            selected_flags.add(flag)
+    expected_flags = tuple(
+        flag for flag in CalculationQualityFlag if flag in selected_flags
+    )
+    if lineage.quality_flags != expected_flags:
+        raise ValueError("volatility dependency quality flags are invalid")
     return record, lineage, decoded, by_tenor
+
+
+def _validate_volatility_dependency(
+    value: object,
+    calculation_id: str,
+    calculated_at: datetime.datetime,
+) -> tuple:
+    if type(value) is not VolatilityEnvironmentTransformationResult:
+        raise TypeError(
+            "volatility_environment_result must have exact type "
+            "VolatilityEnvironmentTransformationResult"
+        )
+    verified = _verify_volatility_environment_result(
+        value.record, value.lineage
+    )
+    lineage = verified[1]
+    if calculation_id == lineage.calculation_id:
+        raise ValueError("new and prior calculation IDs must differ")
+    if calculated_at < lineage.calculated_at:
+        raise ValueError("new calculation must not precede dependency")
+    return verified
 
 
 def _historical_atm(
@@ -5431,13 +6468,23 @@ def _tail_dependency_parameters(
         "calculated_at": lineage.calculated_at,
         "parameters_json": lineage.parameters_json,
         "quality_flags": tuple(flag.value for flag in lineage.quality_flags),
-        "input_record_ids": tuple(item.record_id for item in lineage.inputs),
+        "inputs": tuple(
+            _complete_input_reference(item) for item in lineage.inputs
+        ),
         "underlying": record.underlying,
         "as_of_date": record.as_of_date,
         "reference_tenor_days": record.reference_tenor_days,
+        "iv_percentile_float_repr": repr(record.iv_percentile),
         "historical_observation_count": (
             record.iv_history_lookback_observations
         ),
+        "historical_median_atm_iv_float_repr": repr(
+            record.historical_median_atm_iv
+        ),
+        "matched_realized_volatility_float_repr": repr(
+            record.matched_realized_volatility
+        ),
+        "matched_realized_window_days": record.matched_realized_window_days,
         "term_points": tuple({
             "tenor_days": point.tenor_days,
             "atm_iv_float_repr": repr(point.atm_iv),
@@ -5866,6 +6913,14 @@ def transform_tail_pricing(
             delta_methodology=delta_string,
         ))
 
+    direct_records = current["records"] + tuple(
+        selected_record
+        for item in historical
+        for selected_record in item["records"]
+    )
+    all_bindings = current["bindings"] + tuple(
+        binding for item in historical for binding in item["bindings"]
+    )
     parameters_json = canonicalize_lineage_parameters({
         "tail_output_architecture": "ordered_tail_pricing_slice_tuple",
         "candidate_universe": {
@@ -5886,6 +6941,11 @@ def transform_tail_pricing(
         "target_deltas": dict(_TAIL_TARGETS),
         "delta_point_selection_rule": "nearest_observed_signed_delta",
         "interpolation_rule": "none",
+        "normalized_evidence": {
+            "direct_inputs": _direct_normalized_evidence(
+                direct_records, all_bindings
+            ),
+        },
         "delta_tie_rule": (
             "reject_equal_distance_or_remaining_economic_ambiguity"
         ),
@@ -5938,9 +6998,6 @@ def transform_tail_pricing(
         ),
         "volatility_unit": "annualized_decimal_ratio",
     })
-    direct_records = current["records"] + tuple(
-        record for item in historical for record in item["records"]
-    )
     inputs = _union_lineage_inputs(dependency_lineage.inputs, direct_records)
     flags = {
         CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
@@ -5956,9 +7013,6 @@ def transform_tail_pricing(
     flags.update(
         flag for flag in dependency_lineage.quality_flags
         if flag in propagated
-    )
-    all_bindings = current["bindings"] + tuple(
-        binding for item in historical for binding in item["bindings"]
     )
     if any(
         binding.correction_selection.reason_codes == (
@@ -5984,7 +7038,7 @@ def transform_tail_pricing(
         methodology_id=(
             "nearest-observed-delta-wing-tail-relative-pricing"
         ),
-        methodology_version="v0.1",
+        methodology_version="v0.2",
         calculated_at=normalized_at,
         inputs=inputs,
         parameters_json=parameters_json,
@@ -7293,6 +8347,7 @@ _TAIL_PRICING_PARAMETER_KEYS = {
     "target_deltas",
     "delta_point_selection_rule",
     "interpolation_rule",
+    "normalized_evidence",
     "delta_tie_rule",
     "same_contract_reuse_rule",
     "atm_dependency",
@@ -7422,11 +8477,15 @@ _TAIL_ATM_DEPENDENCY_PARAMETER_KEYS = {
     "calculated_at",
     "parameters_json",
     "quality_flags",
-    "input_record_ids",
+    "inputs",
     "underlying",
     "as_of_date",
     "reference_tenor_days",
+    "iv_percentile_float_repr",
     "historical_observation_count",
+    "historical_median_atm_iv_float_repr",
+    "matched_realized_volatility_float_repr",
+    "matched_realized_window_days",
     "term_points",
     "current_atm_observations",
     "historical_atm_observations",
@@ -7998,6 +9057,13 @@ def _validate_tail_wing_selections(
 
 
 def _validate_tail_pricing_parameter_schema(decoded: dict) -> None:
+    _validate_direct_evidence(
+        decoded["normalized_evidence"], {
+            "underlying_quote", "option_quote",
+            "option_implied_volatility", "option_greeks",
+            "option_contract_reference",
+        }, "TailPricing normalized_evidence",
+    )
     candidate_universe = _tail_schema_map(
         decoded["candidate_universe"],
         {
@@ -8124,7 +9190,7 @@ def _validate_tail_pricing_parameter_schema(decoded: dict) -> None:
         atm_dependency["calculation_type"] != "volatility_environment"
         or atm_dependency["methodology_id"]
         != "paired-atm-volatility-environment"
-        or atm_dependency["methodology_version"] != "v0.1"
+        or atm_dependency["methodology_version"] != "v0.2"
         or type(atm_dependency["calculated_at"]) is not datetime.datetime
         or atm_dependency["calculated_at"].utcoffset()
         != datetime.timedelta(0)
@@ -8133,27 +9199,42 @@ def _validate_tail_pricing_parameter_schema(decoded: dict) -> None:
         or atm_dependency["reference_tenor_days"] <= 0
         or type(atm_dependency["historical_observation_count"]) is not int
         or atm_dependency["historical_observation_count"] <= 0
+        or type(atm_dependency["matched_realized_window_days"]) is not int
+        or atm_dependency["matched_realized_window_days"] <= 0
     ):
         raise ValueError("TailPricing atm_dependency fields are invalid")
     _validate_volatility_fixed_methodology(
         _decode_volatility_parameters(atm_dependency["parameters_json"])
     )
-    input_ids = _tail_schema_tuple(
-        atm_dependency["input_record_ids"],
-        "TailPricing atm_dependency input_record_ids",
+    dependency_inputs = _tail_schema_tuple(
+        atm_dependency["inputs"],
+        "TailPricing atm_dependency inputs",
     )
     flags = _tail_schema_tuple(
         atm_dependency["quality_flags"],
         "TailPricing atm_dependency quality_flags",
     )
     if (
-        not input_ids
-        or any(type(item) is not str or not item for item in input_ids)
-        or len(set(input_ids)) != len(input_ids)
+        not dependency_inputs
         or any(type(item) is not str or not item for item in flags)
         or len(set(flags)) != len(flags)
     ):
         raise ValueError("TailPricing atm_dependency IDs or flags are invalid")
+    for index, item in enumerate(dependency_inputs):
+        _complete_reference_from_mapping(
+            item, f"TailPricing atm_dependency inputs[{index}]"
+        )
+    dependency_ids = tuple(item["record_id"] for item in dependency_inputs)
+    if tuple(sorted(dependency_ids)) != dependency_ids or len(set(dependency_ids)) != len(dependency_ids):
+        raise ValueError("TailPricing atm_dependency inputs are noncanonical")
+    for key in (
+        "iv_percentile_float_repr",
+        "historical_median_atm_iv_float_repr",
+        "matched_realized_volatility_float_repr",
+    ):
+        _tail_schema_string(
+            atm_dependency[key], f"TailPricing atm_dependency {key}"
+        )
     term_points = _tail_schema_tuple(
         atm_dependency["term_points"],
         "TailPricing atm_dependency term_points",
@@ -8512,25 +9593,65 @@ def _calculated_dependency_disclosure(
     }
 
 
-def _validate_tail_pricing_dependency(
-    value: object,
-) -> Tuple[
-    TailPricingTransformationResult,
-    dict,
-    Tuple[dict, ...],
-]:
-    if type(value) is not TailPricingTransformationResult:
-        raise TypeError(
-            "tail_pricing_result must have exact type "
-            "TailPricingTransformationResult"
-        )
-    verified = TailPricingTransformationResult(value.records, value.lineage)
-    lineage = verified.lineage
+def _float_from_stable_repr(value: object, label: str) -> float:
+    if type(value) is not str:
+        raise TypeError(f"{label} must have exact type str")
+    try:
+        converted = float(value)
+    except (OverflowError, ValueError) as error:
+        raise ValueError(f"{label} is not a finite float representation") from error
+    if not math.isfinite(converted) or repr(converted) != value:
+        raise ValueError(f"{label} is not a canonical finite float representation")
+    return converted
+
+
+def _verify_tail_pricing_result(
+    records: object, lineage: object
+) -> tuple:
+    if type(records) is not tuple:
+        raise TypeError("tail records must have exact type tuple")
+    if len(records) < 2:
+        raise ValueError("tail records must contain at least two items")
+    reconstructed_records = []
+    for record in records:
+        if type(record) is not TailPricingSlice:
+            raise TypeError("every tail record must have exact type TailPricingSlice")
+        for name in ("underlying", "delta_methodology"):
+            if type(getattr(record, name)) is not str:
+                raise TypeError(f"tail {name} must have exact type str")
+        for name in ("as_of_date", "expiration"):
+            if type(getattr(record, name)) is not datetime.date:
+                raise TypeError(f"tail {name} must have exact type date")
+        for name in (
+            "atm_iv", "put_25_delta_iv", "call_25_delta_iv",
+            "put_10_delta_iv", "call_10_delta_iv", "skew_percentile",
+        ):
+            _stable_float(getattr(record, name), f"tail {name}")
+        if type(record.skew_history_lookback_observations) is not int:
+            raise TypeError("tail history count must have exact type int")
+        reconstructed_records.append(TailPricingSlice(
+            underlying=record.underlying,
+            as_of_date=record.as_of_date,
+            expiration=record.expiration,
+            atm_iv=record.atm_iv,
+            put_25_delta_iv=record.put_25_delta_iv,
+            call_25_delta_iv=record.call_25_delta_iv,
+            put_10_delta_iv=record.put_10_delta_iv,
+            call_10_delta_iv=record.call_10_delta_iv,
+            skew_percentile=record.skew_percentile,
+            skew_history_lookback_observations=(
+                record.skew_history_lookback_observations
+            ),
+            delta_methodology=record.delta_methodology,
+        ))
+    if tuple(reconstructed_records) != records:
+        raise ValueError("tail records are constructor-bypassed")
+    lineage = _reconstruct_lineage(lineage)
     if (
         lineage.calculation_type != "tail_pricing"
         or lineage.methodology_id
         != "nearest-observed-delta-wing-tail-relative-pricing"
-        or lineage.methodology_version != "v0.1"
+        or lineage.methodology_version != "v0.2"
     ):
         raise ValueError("tail-pricing dependency identity is invalid")
     if CalculationQualityFlag.INCOMPLETE_INPUT_USED in lineage.quality_flags:
@@ -8541,7 +9662,7 @@ def _validate_tail_pricing_dependency(
         raise TypeError(
             "current_expiration_observations must have exact type tuple"
         )
-    if len(observations) != len(verified.records):
+    if len(observations) != len(records):
         raise ValueError("tail records and parameters have different counts")
     if (
         decoded["volatility_unit"] != "annualized_decimal_ratio"
@@ -8554,7 +9675,13 @@ def _validate_tail_pricing_dependency(
         decoded["delta_convention"]
     )
     input_ids = set()
-    for record, observation in zip(verified.records, observations):
+    direct_roles = {}
+    def retain_tail_role(record_id: str, role: str) -> None:
+        existing = direct_roles.get(record_id)
+        if existing is not None and existing != role:
+            raise ValueError("tail direct evidence role collision")
+        direct_roles[record_id] = role
+    for record, observation in zip(records, observations):
         if type(observation) is not dict:
             raise TypeError("every current tail observation must be a dict")
         expected = {
@@ -8604,10 +9731,18 @@ def _validate_tail_pricing_dependency(
                 if type(candidate.get(key)) is not str:
                     raise TypeError("tail candidate record IDs must be strings")
                 input_ids.add(candidate[key])
+            for key, role in (
+                ("quote_record_id", "option_quote"),
+                ("iv_record_id", "option_implied_volatility"),
+                ("greeks_record_id", "option_greeks"),
+                ("contract_reference_record_id", "option_contract_reference"),
+            ):
+                retain_tail_role(candidate[key], role)
         underlying_id = observation.get("underlying_quote_record_id")
         if type(underlying_id) is not str:
             raise TypeError("tail underlying record ID must be a string")
         input_ids.add(underlying_id)
+        retain_tail_role(underlying_id, "underlying_quote")
     historical = decoded["historical_observations_by_tenor"]
     if type(historical) is not tuple:
         raise TypeError("historical_observations_by_tenor must be a tuple")
@@ -8639,37 +9774,171 @@ def _validate_tail_pricing_dependency(
                     if type(candidate.get(key)) is not str:
                         raise TypeError("historical candidate ID must be a string")
                     input_ids.add(candidate[key])
+                for key, role in (
+                    ("quote_record_id", "option_quote"),
+                    ("iv_record_id", "option_implied_volatility"),
+                    ("greeks_record_id", "option_greeks"),
+                    ("contract_reference_record_id", "option_contract_reference"),
+                ):
+                    retain_tail_role(candidate[key], role)
+            retain_tail_role(underlying_id, "underlying_quote")
     atm_dependency = decoded["atm_dependency"]
     if type(atm_dependency) is not dict:
         raise TypeError("atm_dependency must have exact type dict")
     if (
-        atm_dependency.get("underlying") != verified.records[0].underlying
-        or atm_dependency.get("as_of_date") != verified.records[0].as_of_date
+        atm_dependency.get("underlying") != records[0].underlying
+        or atm_dependency.get("as_of_date") != records[0].as_of_date
     ):
         raise ValueError(
             "tail records do not correspond to dependency underlying and date"
         )
-    atm_ids = atm_dependency.get("input_record_ids")
-    if type(atm_ids) is not tuple or any(type(item) is not str for item in atm_ids):
-        raise TypeError("atm_dependency input IDs must be a tuple of strings")
-    input_ids.update(atm_ids)
-    if set(item.record_id for item in lineage.inputs) != input_ids:
+    dependency_inputs = tuple(
+        CalculationInputReference(
+            record_id=item["record_id"],
+            normalized_at=item["normalized_at"],
+            source_ids=item["source_ids"],
+        )
+        for item in atm_dependency["inputs"]
+    )
+    dependency_flags = tuple(
+        CalculationQualityFlag(item) for item in atm_dependency["quality_flags"]
+    )
+    dependency_record = VolatilityEnvironment(
+        underlying=atm_dependency["underlying"],
+        as_of_date=atm_dependency["as_of_date"],
+        reference_tenor_days=atm_dependency["reference_tenor_days"],
+        iv_percentile=_float_from_stable_repr(
+            atm_dependency["iv_percentile_float_repr"],
+            "ATM dependency IV percentile",
+        ),
+        iv_history_lookback_observations=(
+            atm_dependency["historical_observation_count"]
+        ),
+        historical_median_atm_iv=_float_from_stable_repr(
+            atm_dependency["historical_median_atm_iv_float_repr"],
+            "ATM dependency historical median",
+        ),
+        matched_realized_volatility=_float_from_stable_repr(
+            atm_dependency["matched_realized_volatility_float_repr"],
+            "ATM dependency realized volatility",
+        ),
+        matched_realized_window_days=(
+            atm_dependency["matched_realized_window_days"]
+        ),
+        term_structure=tuple(TermVolatilityPoint(
+            tenor_days=item["tenor_days"],
+            atm_iv=_float_from_stable_repr(
+                item["atm_iv_float_repr"], "ATM dependency term IV"
+            ),
+        ) for item in atm_dependency["term_points"]),
+    )
+    dependency_lineage = CalculationLineage(
+        calculation_id=atm_dependency["calculation_id"],
+        calculation_type=atm_dependency["calculation_type"],
+        methodology_id=atm_dependency["methodology_id"],
+        methodology_version=atm_dependency["methodology_version"],
+        calculated_at=atm_dependency["calculated_at"],
+        inputs=dependency_inputs,
+        parameters_json=atm_dependency["parameters_json"],
+        quality_flags=dependency_flags,
+    )
+    dependency = VolatilityEnvironmentTransformationResult(
+        dependency_record, dependency_lineage
+    )
+    dependency_decoded = _decode_volatility_parameters(
+        dependency.lineage.parameters_json
+    )
+    if (
+        atm_dependency["current_atm_observations"]
+        != dependency_decoded["current_observations"]
+        or atm_dependency["historical_atm_observations"]
+        != dependency_decoded["historical_observations"]
+    ):
+        raise ValueError("ATM dependency disclosure differs from verified artifact")
+    if dependency.lineage.calculation_id == lineage.calculation_id:
+        raise ValueError("tail and ATM calculation IDs must differ")
+    if dependency.lineage.calculated_at > lineage.calculated_at:
+        raise ValueError("ATM dependency follows tail calculation")
+    dependency_ids = {item.record_id for item in dependency.lineage.inputs}
+    direct = decoded["normalized_evidence"]["direct_inputs"]
+    direct_by_id = {item["record_id"]: item for item in direct}
+    dependency_calculation_ids = {
+        dependency.lineage.calculation_id,
+        dependency_decoded["realized_volatility_dependency"][
+            "calculation_id"
+        ],
+    }
+    calculation_ids = dependency_calculation_ids | {
+        lineage.calculation_id,
+    }
+    complete_input_ids = dependency_ids | set(direct_by_id)
+    if (
+        len(dependency_calculation_ids) != 2
+        or len(calculation_ids) != 3
+        or not calculation_ids.isdisjoint(complete_input_ids)
+    ):
+        raise ValueError("tail calculation ID namespace collides")
+    if set(direct_by_id) != input_ids:
+        raise ValueError("tail direct evidence is missing or surplus")
+    if any(
+        direct_by_id[record_id]["role"] != role
+        for record_id, role in direct_roles.items()
+    ):
+        raise ValueError("tail direct evidence role is inconsistent")
+    references = {item.record_id: item for item in lineage.inputs}
+    expected_union = dependency_ids | set(direct_by_id)
+    if set(references) != expected_union:
         raise ValueError("tail parameter input IDs do not match lineage inputs")
+    for item in direct:
+        reference = references[item["record_id"]]
+        if (
+            reference.normalized_at != item["normalized_at"]
+            or reference.source_ids != item["source_ids"]
+        ):
+            raise ValueError("tail direct reference differs from lineage")
+    for reference in dependency.lineage.inputs:
+        final = references[reference.record_id]
+        if final != reference:
+            raise ValueError("tail dependency overlap is contradictory")
     expected_flags = {
         CalculationQualityFlag.DECIMAL_TO_FLOAT_CONVERTED,
         CalculationQualityFlag.ANNUALIZED,
         CalculationQualityFlag.ASSUMPTION_APPLIED,
     }
     expected_flags.update(
-        flag
-        for flag in lineage.quality_flags
+        flag for flag in dependency.lineage.quality_flags
         if flag in _SCENARIO_VALUATION_PROPAGATED_FLAGS
+    )
+    direct_flag_values = {
+        flag for item in direct for flag in item["propagated_quality_flags"]
+    }
+    expected_flags.update(
+        flag for flag in _SCENARIO_VALUATION_PROPAGATED_FLAGS
+        if flag.value in direct_flag_values
     )
     if lineage.quality_flags != tuple(
         flag for flag in CalculationQualityFlag if flag in expected_flags
     ):
         raise ValueError("tail-pricing quality flags are invalid")
-    return verified, decoded, observations
+    return decoded, observations, dependency
+
+
+def _validate_tail_pricing_dependency(
+    value: object,
+) -> Tuple[
+    TailPricingTransformationResult,
+    dict,
+    Tuple[dict, ...],
+]:
+    if type(value) is not TailPricingTransformationResult:
+        raise TypeError(
+            "tail_pricing_result must have exact type "
+            "TailPricingTransformationResult"
+        )
+    decoded, observations, _dependency = _verify_tail_pricing_result(
+        value.records, value.lineage
+    )
+    return value, decoded, observations
 
 
 _SCENARIO_VALUATION_DEPENDENCY_KEYS = {
@@ -8903,7 +10172,7 @@ def _scenario_valuation_methodology(
             "identity": (
                 "tail_pricing",
                 "nearest-observed-delta-wing-tail-relative-pricing",
-                "v0.1",
+                "v0.2",
             ),
             "use": "context_only",
         },
@@ -9002,7 +10271,7 @@ def _validate_scenario_valuation_records(
             (
                 "tail_pricing",
                 "nearest-observed-delta-wing-tail-relative-pricing",
-                "v0.1",
+                "v0.2",
             ),
             {
                 "underlying",
@@ -9016,6 +10285,61 @@ def _validate_scenario_valuation_records(
             "tail_pricing_dependency",
         )
     )
+    tail_input_ids = {
+        item["record_id"]
+        for item in tail_parameters["atm_dependency"]["inputs"]
+    }
+    tail_input_ids.update(
+        item["record_id"]
+        for item in tail_parameters["normalized_evidence"]["direct_inputs"]
+    )
+    scenario_references = {
+        item.record_id: item for item in lineage.inputs
+    }
+    if not tail_input_ids.issubset(scenario_references):
+        raise ValueError("scenario is missing a TailPricing lineage input")
+    tail_lineage = CalculationLineage(
+        calculation_id=tail_dependency["calculation_id"],
+        calculation_type=tail_dependency["calculation_type"],
+        methodology_id=tail_dependency["methodology_id"],
+        methodology_version=tail_dependency["methodology_version"],
+        calculated_at=tail_dependency["calculated_at"],
+        inputs=tuple(
+            scenario_references[record_id]
+            for record_id in sorted(tail_input_ids)
+        ),
+        parameters_json=tail_dependency["parameters_json"],
+        quality_flags=tuple(
+            flag for flag in CalculationQualityFlag if flag in tail_flags
+        ),
+    )
+    delta_methodology = canonicalize_lineage_parameters(
+        tail_parameters["delta_convention"]
+    )
+    reconstructed_tail_records = tuple(TailPricingSlice(
+        underlying=tail_selected["underlying"],
+        as_of_date=observation["session_date"],
+        expiration=observation["expiration"],
+        atm_iv=_finite_float(observation["atm_iv"]),
+        put_25_delta_iv=_finite_float(
+            observation["selected_put_25"]["implied_volatility"]
+        ),
+        call_25_delta_iv=_finite_float(
+            observation["selected_call_25"]["implied_volatility"]
+        ),
+        put_10_delta_iv=_finite_float(
+            observation["selected_put_10"]["implied_volatility"]
+        ),
+        call_10_delta_iv=_finite_float(
+            observation["selected_call_10"]["implied_volatility"]
+        ),
+        skew_percentile=_finite_float(observation["skew_percentile"]),
+        skew_history_lookback_observations=(
+            observation["historical_observation_count"]
+        ),
+        delta_methodology=delta_methodology,
+    ) for observation in tail_parameters["current_expiration_observations"])
+    _verify_tail_pricing_result(reconstructed_tail_records, tail_lineage)
     pricing_dependency, pricing_selected, scenario_parameters, pricing_flags = (
         _scenario_valuation_dependency(
             decoded["scenario_pricing_dependency"],
@@ -10215,7 +11539,7 @@ def transform_scenario_valuation(
                 "identity": (
                     "tail_pricing",
                     "nearest-observed-delta-wing-tail-relative-pricing",
-                    "v0.1",
+                    "v0.2",
                 ),
                 "use": "context_only",
             },

@@ -6630,9 +6630,37 @@ integration, and services remain later work.
 Milestone 6A strengthens exactly the existing
 `VolatilityEnvironmentTransformationResult`,
 `TailPricingTransformationResult`, and
-`StructureLiquidityTransformationResult` wrappers. It does not implement the
-work; this section freezes the exact contract for a fresh formal read-only
-preflight.
+`StructureLiquidityTransformationResult` wrappers. The frozen contract in
+this section is now implemented and independently reviewed.
+
+The implemented identities remain exactly Volatility Environment
+`volatility_environment` / `paired-atm-volatility-environment` / `v0.2`, Tail
+Pricing `tail_pricing` /
+`nearest-observed-delta-wing-tail-relative-pricing` / `v0.2`, and Structure
+Liquidity `structure_liquidity` / `exact-structure-liquidity` / `v0.2`.
+Each wrapper performs complete intrinsic public-record-to-lineage
+verification. Producer output and direct construction use the same private
+verifier; Tail consumption reuses the Volatility verifier, and Scenario
+Valuation consumption reuses the Tail verifier. The Volatility verifier
+strictly reconstructs the complete embedded Historical Realized Volatility
+public record, every input reference, and its lineage before applying the
+existing historical dependency semantics. Volatility and Tail enforce
+calculation-ID disjointness across every target calculation, embedded
+dependency calculation, and normalized input in their complete closures.
+
+Former v0.1 wrapper artifacts intentionally reject. Public result fields,
+producer signatures, package-root exclusions, and the ordered export surfaces
+remain unchanged at 25 `market_data_transformations` names and 64
+`market_data` names. The accepted noncryptographic trust boundary in Section
+13.24.2 remains unchanged.
+
+Final validation passed 179 focused transformation tests, 365 market-data
+tests, 32 risk-assessment tests, and 885 full-suite tests, plus API and both
+relevant import-order checks. The initial independent review failed with
+three accepted MAJOR findings: incomplete Historical Realized Volatility
+dependency verification, calculation-ID namespace collisions, and inadequate
+independent v0.2 golden and consumer-path coverage. All three were corrected;
+targeted re-review passed with no remaining finding.
 
 ### 13.24.1 Common version and compatibility policy
 

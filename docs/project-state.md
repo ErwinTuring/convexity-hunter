@@ -20,12 +20,12 @@ supported Long Call, Long Put, and Long Straddle grammar. Milestone 5 —
 Standalone Structure Affordability Evidence implements reviewed standalone
 affordability evidence for one already-specified supported structure.
 Milestone 6 is contractually decomposed into 6A — Reviewed Artifact
-Verifiability and 6B — Reviewed-Artifact Candidate Assembly. The accepted 6A
-contract clarification is complete; the active next gate is a fresh formal
-read-only 6A preflight, and implemented, independently reviewed, committed,
-and pushed 6A remains a prerequisite for 6B.
+Verifiability and 6B — Reviewed-Artifact Candidate Assembly. Milestone 6A is
+implemented and has passed targeted independent re-review after correction of
+all accepted findings. Milestone 6B remains unimplemented; the active next
+gate is its fresh formal read-only preflight.
 
-### Accepted Milestone 6A contract
+### Completed Milestone 6A implementation
 
 Milestone 6A strengthens the existing Volatility Environment, Tail Pricing,
 and Structure Liquidity wrappers without changing their result fields or
@@ -35,7 +35,7 @@ producer signatures. Their accepted identities are respectively
 and `structure_liquidity` / `exact-structure-liquidity` / `v0.2`.
 
 The exact v0.2 schemas are intentionally incompatible with v0.1. Current
-producers will emit v0.2 and direct constructors will accept only exact v0.2;
+producers emit v0.2 and direct constructors accept only exact v0.2;
 v0.1 wrapper instances intentionally reject, with no migration, legacy
 verifier, compatibility adapter, dual-version constructor path, or persisted-
 artifact migration requirement.
@@ -53,6 +53,18 @@ calculation values. Private wrapper verifiers reconstruct every public field,
 lineage reference, chronology boundary, and quality flag from strict
 byte-canonical tagged JSON.
 
+The implementation was built against the clarified v0.2 contract and changed
+only `src/convexity_hunter/market_data_transformations.py` and
+`tests/test_market_data_transformations.py`. Volatility reconstructs the
+complete embedded Historical Realized Volatility public record, exact input
+references, and lineage before authoritative dependency validation.
+Volatility and Tail enforce mutually disjoint calculation IDs across target
+calculations, every embedded dependency calculation, and every normalized
+input in the complete closure. Tests retain complete static literal v0.2 JSON
+artifacts with full byte equality for Volatility Environment, Tail Pricing,
+and Structure Liquidity, plus decisive dependency-mutation and actual
+Tail/Scenario consumer-path coverage.
+
 Tail production reuses the private Volatility v0.2 verifier, and Scenario
 Valuation reuses the private Tail v0.2 verifier without changing Scenario
 Valuation's public records, signature, identity, formulas, ordering, or
@@ -60,9 +72,16 @@ exports. The 25-name `market_data_transformations` API, 64-name `market_data`
 API, their ordering, package-root exports, and public domain-record fields are
 preserved. The canonical exact contract is
 [`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
-Milestone 6A remains unimplemented. Later v0.1 references in completed
-checkpoint narratives remain historically accurate descriptions of the code
-at those checkpoints; they are not active Milestone 6A implementation targets.
+The initial independent review failed with three accepted MAJOR findings:
+incomplete Historical dependency verification, calculation-ID collisions,
+and insufficient independent golden, mutation, and consumer-path coverage.
+All three were corrected, and targeted re-review passed with no remaining
+finding. Final validation passed 179 focused transformation tests, 365
+market-data tests, 32 risk-assessment tests, and 885 full-suite tests. Public
+API counts remain 25 transformation names, 64 market-data names, and 7
+risk-assessment names. Later v0.1 references in completed checkpoint
+narratives remain historically accurate descriptions of the code at those
+checkpoints; they are not active Milestone 6A implementation targets.
 
 ## Decisions locked
 
@@ -823,25 +842,24 @@ at those checkpoints; they are not active Milestone 6A implementation targets.
 
 ## Current task
 
-The documentation-only Milestone 6A verifiability clarification is complete.
-It resolves the accepted preflight blockers by freezing the three exact v0.2
-identities, retained-reference and evidence schemas, public reconstruction,
-quality flags, private verification, downstream dependency behavior,
-compatibility boundary, preserved API, and exclusions in
-[`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
-The 6A/6B decomposition, direct reviewed-artifact inventory, assembly sidecar,
-provenance, and qualitative ownership remain frozen in
-[`candidate-assembly-contracts.md`](candidate-assembly-contracts.md).
+Milestone 6A — Reviewed Artifact Verifiability is complete. Its clarified v0.2
+contract was implemented in the transformation source and tests, passed broad
+independent review after correction of three accepted MAJOR findings, and
+passed targeted re-review with no remaining finding. Milestone 6B remains
+unimplemented. The current task is to prepare
+`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly` as a fresh
+formal read-only preflight against the unchanged assembly contracts.
 
 ## Last completed checkpoint
 
-- Commit: `3c37c50923a0e3847730bce8b33a28f7d45af4ea`
-- Subject: `Implement structure affordability evidence`
-- Validation: 32 focused risk-assessment tests, 174 focused transformation
-  tests, 365 market-data tests, 880 full-suite tests, non-writing compilation,
-  both import orders, API checks, and `git diff --check` passed
-- Status: Milestone 5 complete after broad independent review, correction of
-  all three accepted findings, and passing targeted re-review
+- Commit: resolve the current HEAD after finalization
+- Subject: `Implement reviewed artifact verifiability`
+- Validation: 179 focused transformation tests, 365 market-data tests, 32
+  focused risk-assessment tests, 885 full-suite tests, both import orders, API
+  checks, and `git diff --check` passed
+- Status: Milestone 6A complete after initial independent-review failure,
+  correction of all three accepted MAJOR findings, and passing targeted
+  re-review with no remaining finding
 - Risk-assessment public API: 7 names
 - Transformation-module public API: 25 names
 - Public `market_data` API: 64 names
@@ -849,7 +867,7 @@ provenance, and qualitative ownership remain frozen in
 ### Preserved checkpoint chronology
 
 The entries below preserve earlier checkpoint wording and interim states. They
-do not override the current Milestone 5 completion checkpoint above.
+do not override the current Milestone 6A completion checkpoint above.
 
 - Milestone 3C.1 semantic observation identity complete
 - Milestone 3C.2 per-record selected/fresh binding complete
@@ -1072,14 +1090,10 @@ do not override the current Milestone 5 completion checkpoint above.
 
 ## Next task
 
-Run `PREFLIGHT｜Milestone 6A — Reviewed Artifact Verifiability` as a fresh
-formal read-only preflight against the clarified v0.2 contract. It concerns
-complete intrinsic record-to-lineage verification for exactly
-`VolatilityEnvironmentTransformationResult`,
-`TailPricingTransformationResult`, and
-`StructureLiquidityTransformationResult`. It is not an implementation BUILD.
-Milestone 6B must not begin until 6A is implemented, independently reviewed,
-committed, and pushed.
+Run `PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly` as a fresh
+formal read-only preflight against the existing aggregate, sidecar,
+provenance, completeness, identity, chronology, quality, and exclusion
+contracts. Milestone 6B is not implemented or approved for BUILD.
 
 ## Current capability and roadmap
 
@@ -1089,10 +1103,10 @@ yet completed the active-discovery front end, real option-structure
 generation, broader discovery/application-flow candidate production,
 position-management-plan integration, non-expiration pricing production, or
 the complete application flow. Reviewed-artifact candidate assembly is the
-active Milestone 6 contract: 6A first strengthens three existing wrappers,
-then 6B assembles reviewed artifacts into the existing
-`CandidateResearchRecord` plus a provenance-retaining sidecar. Neither work
-unit is implemented. Deterministic exact-rational expiration 1x/2x/5x/10x
+active Milestone 6 contract: completed 6A strengthens three existing wrappers,
+and unimplemented 6B will assemble reviewed artifacts into the existing
+`CandidateResearchRecord` plus a provenance-retaining sidecar. Deterministic
+exact-rational expiration 1x/2x/5x/10x
 threshold evidence and reviewed standalone structure-affordability evidence
 are implemented.
 
@@ -1106,8 +1120,8 @@ The accepted post-Milestone-3 sequence is:
 1. prior documentation alignment;
 2. completed Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence;
 3. completed Milestone 5 — Standalone Structure Affordability Evidence;
-4. next Milestone 6A — Reviewed Artifact Verifiability;
-5. then Milestone 6B — Reviewed-Artifact Candidate Assembly;
+4. completed Milestone 6A — Reviewed Artifact Verifiability;
+5. next Milestone 6B — Reviewed-Artifact Candidate Assembly;
 6. later position-management-plan contract;
 7. later screening and Chinese-report integration;
 8. later deterministic offline single-structure service; and

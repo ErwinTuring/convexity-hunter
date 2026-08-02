@@ -15,10 +15,11 @@ Milestone 6 is decomposed into these ordered work units:
 1. **Milestone 6A — Reviewed Artifact Verifiability**; and
 2. **Milestone 6B — Reviewed-Artifact Candidate Assembly**.
 
-Milestone 6A is a prerequisite for Milestone 6B. Milestone 6B must not begin
-until 6A has been implemented, independently reviewed, committed, and pushed.
-The next repository gate after this documentation clarification is a fresh
-formal read-only preflight for Milestone 6A.
+Milestone 6A is complete: it has been implemented, independently reviewed,
+corrected for all accepted findings, and passed targeted re-review. The three
+direct wrappers strengthened by 6A now satisfy the intrinsic-verifiability
+prerequisite. Milestone 6B remains unimplemented and is unlocked only for its
+fresh formal read-only preflight.
 
 ## 2. Direct reviewed-artifact boundary
 
@@ -38,7 +39,7 @@ other nested inputs remain indirect dependencies retained through those
 direct wrappers. Candidate assembly does not duplicate them as separate
 direct inputs.
 
-Milestone 6A introduces no new public class or function, changes no producer
+Milestone 6A introduced no new public class or function, changed no producer
 signature or public domain-record field, and preserves all current export
 counts and ordering. Its exact v0.2 identities, retained-evidence schemas, and
 private verification behavior are frozen in the linked market-data contract.
@@ -137,8 +138,8 @@ Milestone 6A strengthens exactly these existing wrappers:
 - `TailPricingTransformationResult`; and
 - `StructureLiquidityTransformationResult`.
 
-Their current direct constructors do not completely bind public output
-records to retained lineage. The selected correction architecture is:
+Their direct constructors now completely bind public output records to
+retained lineage. The implemented correction architecture is:
 
 - strengthen the existing wrappers rather than introduce replacements;
 - make direct construction perform complete intrinsic record-to-lineage
@@ -151,7 +152,7 @@ records to retained lineage. The selected correction architecture is:
 - perform no upstream market-data recomputation; and
 - add no provider behavior.
 
-The accepted clarification resolves the former schema and version blockers.
+The accepted implementation resolves the former schema and version blockers.
 The exact identities are:
 
 - `volatility_environment`, `paired-atm-volatility-environment`, `v0.2`;
@@ -171,8 +172,12 @@ failure taxonomy, noncryptographic trust boundary, and exclusions are frozen
 in
 [`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
 
-The next gate is a fresh formal read-only Milestone 6A preflight against that
-clarified contract. It is not an implementation BUILD.
+Milestone 6A is complete. The next gate is
+`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly`, a fresh
+formal read-only preflight. All existing Milestone 6B aggregate, sidecar,
+provenance, completeness, dependency-identity, chronology, quality, and
+exclusion contracts below remain unchanged; this status update does not
+pre-decide the exact 6B public API.
 
 ## 7. Milestone 6B aggregate architecture
 

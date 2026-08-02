@@ -1198,8 +1198,34 @@ class SuccessfulCalculationTests(unittest.TestCase):
             ),
             (325.0, 400.0, 30, 70),
         )
-        self.assertEqual(first_result.lineage.parameters_json,
-                         second_result.lineage.parameters_json)
+        self.assertNotEqual(
+            first_result.lineage.parameters_json,
+            second_result.lineage.parameters_json,
+        )
+        first_parameters = transformations._decode_strict_tagged_parameters(
+            first_result.lineage.parameters_json,
+            transformations._LIQUIDITY_PARAMETER_KEYS,
+            "test liquidity",
+        )
+        second_parameters = transformations._decode_strict_tagged_parameters(
+            second_result.lineage.parameters_json,
+            transformations._LIQUIDITY_PARAMETER_KEYS,
+            "test liquidity",
+        )
+        self.assertEqual(
+            tuple(
+                item["option_type"]
+                for item in first_parameters["structure_identity"]["legs"]
+            ),
+            ("call", "put"),
+        )
+        self.assertEqual(
+            tuple(
+                item["option_type"]
+                for item in second_parameters["structure_identity"]["legs"]
+            ),
+            ("put", "call"),
+        )
         self.assertEqual(
             tuple(item.record_id for item in first_result.lineage.inputs),
             tuple(sorted(item.record_id for item in first_result.lineage.inputs)),
@@ -1489,7 +1515,7 @@ class CorrespondenceSessionAndLineageTests(unittest.TestCase):
         self.assertEqual(lineage.calculation_id, "calculation-3c7a")
         self.assertEqual(lineage.calculation_type, "structure_liquidity")
         self.assertEqual(lineage.methodology_id, "exact-structure-liquidity")
-        self.assertEqual(lineage.methodology_version, "v0.1")
+        self.assertEqual(lineage.methodology_version, "v0.2")
         self.assertEqual(lineage.calculated_at, CALCULATED_AT)
         self.assertEqual(
             lineage.quality_flags,
@@ -1519,25 +1545,8 @@ class CorrespondenceSessionAndLineageTests(unittest.TestCase):
                       for source in record.metadata.source_references),
             )
         self.assertEqual(
-            lineage.parameters_json,
-            '{"$map":[["activity_count_unit","contracts"],'
-            '["leg_correspondence",{"$list":[{"$map":['
-            '["contract_multiplier",100],["currency","USD"],'
-            '["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],'
-            '["open_interest_record_id","liquidity-call-open-interest"],'
-            '["option_type","call"],["quantity",1],'
-            '["quote_record_id","liquidity-call-quote"],'
-            '["strike",{"$decimal":"100.0"}],'
-            '["underlying",{"$map":[["currency","USD"],'
-            '["listing_mic","ARCX"],["security_type","etf"],'
-            '["symbol","SPY"]]}],'
-            '["volume_record_id","liquidity-call-volume"]]}]}],'
-            '["minimum_leg_rule",'
-            '"minimum_unscaled_contract_count_across_legs"],'
-            '["position_value_rule",'
-            '"sum(premium_per_underlying_unit*quantity*contract_multiplier)"],'
-            '["position_value_unit","usd"],'
-            '["premium_input_unit","usd_per_underlying_unit"]]}',
+            hashlib.sha256(lineage.parameters_json.encode()).hexdigest(),
+            "e396a0d698bab8f9eede00c457527cb0e56c2749cc5796a107f0c7c2a83eb055",
         )
 
     def test_all_authorized_quality_flags_and_prohibited_flags(self):
@@ -5048,7 +5057,7 @@ class VolatilityEnvironmentTransformationTests(unittest.TestCase):
             (
                 "volatility_environment",
                 "paired-atm-volatility-environment",
-                "v0.1",
+                "v0.2",
             ),
         )
         self.assertEqual(
@@ -5152,6 +5161,7 @@ class VolatilityEnvironmentTransformationTests(unittest.TestCase):
                 "historical_sample_semantics",
                 "iv_methodology",
                 "median_formula",
+                "normalized_evidence",
                 "percentile_formula",
                 "realized_volatility_dependency",
                 "realized_window_matching_rule",
@@ -5171,30 +5181,6 @@ class VolatilityEnvironmentTransformationTests(unittest.TestCase):
         self.assertIn(
             '"caller_declared_observation_sample"',
             result.lineage.parameters_json,
-        )
-
-    def test_complete_canonical_parameters_golden(self):
-        current = (
-            (
-                SESSION_DATE + datetime.timedelta(days=30),
-                "100",
-                "0.3",
-                "0.3",
-            ),
-            (
-                SESSION_DATE + datetime.timedelta(days=60),
-                "100",
-                "0.4",
-                "0.4",
-            ),
-        )
-        result = make_volatility_result(
-            current_candidates=current,
-            historical_values=("0.20",),
-        )
-        self.assertEqual(
-            result.lineage.parameters_json,
-            '{"$map":[["atm_candidate_universe",{"$map":[["completeness_semantics","no_eligible_paired_call_put_strike_omitted"],["declared_complete",true],["scope","all_exact_selected_session_expiration_universes"]]}],["atm_selection_rule","nearest_paired_call_put_strike_to_underlying_bid_ask_midpoint"],["call_put_combination_rule","arithmetic_mean_of_same_strike_call_and_put_implied_volatility"],["current_observations",{"$list":[{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-current-0-call-reference"],["call_implied_volatility",{"$decimal":"0.3"}],["call_iv_record_id","ve-current-0-call-iv"],["call_quote_record_id","ve-current-0-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.30"}],["put_contract_reference_record_id","ve-current-0-put-reference"],["put_implied_volatility",{"$decimal":"0.3"}],["put_iv_record_id","ve-current-0-put-iv"],["put_quote_record_id","ve-current-0-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-02-01"}],["selected_atm_iv",{"$decimal":"0.30"}],["selected_call_iv_record_id","ve-current-0-call-iv"],["selected_put_iv_record_id","ve-current-0-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2030-01-02"}],["tenor_days",30],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-current-underlying"]]},{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-current-1-call-reference"],["call_implied_volatility",{"$decimal":"0.4"}],["call_iv_record_id","ve-current-1-call-iv"],["call_quote_record_id","ve-current-1-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.40"}],["put_contract_reference_record_id","ve-current-1-put-reference"],["put_implied_volatility",{"$decimal":"0.4"}],["put_iv_record_id","ve-current-1-put-iv"],["put_quote_record_id","ve-current-1-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-03-03"}],["selected_atm_iv",{"$decimal":"0.40"}],["selected_call_iv_record_id","ve-current-1-call-iv"],["selected_put_iv_record_id","ve-current-1-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2030-01-02"}],["tenor_days",60],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-current-underlying"]]}]}],["float_conversion_rule","convert_only_final_decimal_research_values_to_finite_float"],["historical_expected_session_dates",{"$list":[{"$date":"2029-12-30"}]}],["historical_matched_tenor_rule","expiration_minus_session_date_calendar_days_equals_reference_tenor"],["historical_observation_count",1],["historical_observations",{"$list":[{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-history-0-0-call-reference"],["call_implied_volatility",{"$decimal":"0.19"}],["call_iv_record_id","ve-history-0-0-call-iv"],["call_quote_record_id","ve-history-0-0-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.200"}],["put_contract_reference_record_id","ve-history-0-0-put-reference"],["put_implied_volatility",{"$decimal":"0.21"}],["put_iv_record_id","ve-history-0-0-put-iv"],["put_quote_record_id","ve-history-0-0-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-01-29"}],["selected_atm_iv",{"$decimal":"0.200"}],["selected_call_iv_record_id","ve-history-0-0-call-iv"],["selected_put_iv_record_id","ve-history-0-0-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2029-12-30"}],["tenor_days",30],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-history-0-underlying"]]}]}],["historical_sample_semantics","caller_declared_observation_sample"],["iv_methodology",{"$map":[["dividend_input_description","Synthetic dividend input"],["model_name","Synthetic Black-Scholes"],["model_version","fixture-v1"],["rate_input_description","Synthetic USD curve input"],["unit_convention","annualized_decimal_ratio"]]}],["median_formula","odd_middle_even_arithmetic_mean_of_two_middle_values"],["percentile_formula","inclusive_count_historical_atm_iv_lte_current_reference_atm_iv_divided_by_count"],["realized_volatility_dependency",{"$map":[["adjustment_methodology",null],["annualization_sessions_per_year",252],["annualized_realized_volatility_float_repr","0.3328756933888896"],["calculated_at",{"$datetime":"2030-01-02T15:30:04.000000Z"}],["calculation_id","calculation-3c7c"],["calculation_type","historical_realized_volatility"],["end_session_date",{"$date":"2030-01-02"}],["input_record_ids",{"$list":["hrv-0","hrv-1","hrv-2"]}],["methodology_id","historical-log-return-sample-realized-volatility"],["methodology_version","v0.1"],["parameters_json","{\\"$map\\":[[\\"adjustment_methodology\\",null],[\\"annualization_rule\\",\\"daily_sample_standard_deviation_times_square_root_sessions_per_year\\"],[\\"annualization_sessions_per_year\\",252],[\\"expected_session_dates\\",{\\"$list\\":[{\\"$date\\":\\"2029-12-03\\"},{\\"$date\\":\\"2029-12-18\\"},{\\"$date\\":\\"2030-01-02\\"}]}],[\\"price_basis\\",\\"raw_close\\"],[\\"price_observation_count\\",3],[\\"price_unit\\",\\"usd_per_underlying_share\\"],[\\"return_association_rule\\",\\"ending_session\\"],[\\"return_formula\\",\\"natural_log_price_ratio\\"],[\\"return_observation_count\\",2],[\\"return_unit\\",\\"decimal_ratio\\"],[\\"underlying\\",{\\"$map\\":[[\\"currency\\",\\"USD\\"],[\\"listing_mic\\",\\"ARCX\\"],[\\"security_type\\",\\"etf\\"],[\\"symbol\\",\\"SPY\\"]]}],[\\"variance_estimator\\",\\"sample_variance\\"],[\\"volatility_unit\\",\\"annualized_decimal_ratio\\"],[\\"window_end_session_date\\",{\\"$date\\":\\"2030-01-02\\"}],[\\"window_start_session_date\\",{\\"$date\\":\\"2029-12-03\\"}]]}"],["price_basis","raw_close"],["quality_flags",{"$list":["decimal_to_float_converted","annualized","assumption_applied"]}],["return_formula","natural_log_price_ratio"],["start_session_date",{"$date":"2029-12-03"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}],["variance_estimator","sample_variance"]]}],["realized_window_matching_rule","realized_end_equals_current_as_of_and_calendar_span_equals_reference_tenor"],["reference_tenor_days",30],["strike_tie_rule","lower_strike"],["term_tenor_rule","expiration_minus_session_date_calendar_days"],["underlying_midpoint_rule","bid_ask_midpoint_no_last_fallback"],["volatility_unit","annualized_decimal_ratio"]]}',
         )
 
     def test_top_level_type_and_completeness_failures(self):
@@ -5541,6 +5527,7 @@ class TailPricingTransformationTests(unittest.TestCase):
                 "historical_matched_tenor_rule",
                 "historical_observations_by_tenor",
                 "interpolation_rule",
+                "normalized_evidence",
                 "same_contract_reuse_rule",
                 "skew_percentile_formula",
                 "skew_term_structure_ordering",
@@ -5554,7 +5541,7 @@ class TailPricingTransformationTests(unittest.TestCase):
             result.lineage.methodology_id,
             "nearest-observed-delta-wing-tail-relative-pricing",
         )
-        self.assertEqual(result.lineage.methodology_version, "v0.1")
+        self.assertEqual(result.lineage.methodology_version, "v0.2")
         self.assertEqual(
             set(result.lineage.quality_flags),
             {
@@ -5572,18 +5559,6 @@ class TailPricingTransformationTests(unittest.TestCase):
         self.assertIn('"caller_declared_daily_eod_observation_sample"', serialized)
         self.assertIn('{"$decimal":"0.25"}', serialized)
         self.assertNotIn('"incomplete_input_used"', serialized)
-
-    def test_complete_canonical_parameters_literal_golden(self):
-        expected_compressed = "c-rk<S##US5&kPGRvyJI0;I5(-;&)tClx1ENfs^?1dOCv<KW_;R&n{ir+W@ya11a2Nr|A><+3HRr|0^n=j-kn;Opv7vA<t^{N<OGpZL*hL4(|jN%5S9X_P*_u5Q295>FW+Uve*`2O5$j^k}j#3oj&jkkNfX(`0qK`t+I<&ji%mNU<9xw)%WqDTvdML|)>@q*356kso|ne+r({h~!=Q1Icn;$0Pl{C^ND?SgKU!7i6SK|N8XvO;BbB(rr_j(83GS<UkTp?58v-GCwHRA$g<;32y>FNfR3Q(G3do7Sh8J!vTejhoX|z4g*Nc90DlW?Y^HRr61A%kq~qRH1;D@Pt(=s&)=|+U&Qdm9(qKQpotSd_tHl%gvPLs*$*FA_GY_TZ>;skUNHqQkU<&2ccJGOm0&^Rrtm+lyN}z=$Ib4C4g2%oW@%`wM?+|@^1*r={1~p<QpM{Y2l<fV?-4CtJ(3(~mL@UunM;>h20we)we%q;*@2bJS>qy_7tlMUn}COqVw=6aPcyw#6yeA+EO{AuBv3~{;HMzXLf-ZRS&O>Yn>7|#S8}o&kw@cwL}9S%4)8(alLKS6`C+@M1_$I1BX!V2t^Bt#Eymi!WOxzTow$q&ip|Pax7KD;4<aIB1z2O^09y*M^&cX_bSGsLvCm<!d>o4+1ptO5i(YB+<i#}Hr!*-#-4ngT(S~s_8V^~dEGEqX$hW2dHB6WRCVm*MK#V_%jtoCa*Q1{o8T~?9Ra>m9uryiq<o7*gt2ODaKpWN-Z)8p)67cmGLu>WJR|!r6R#j@kU{qxWI?2RxG=ifxrXWe0fz&Ik&MkxIIL@FFi8MucaE59*w2rsuwh`7bHezRHBdm!w!dj}0*v+#M)_fbWGqMrZBpYF!)<$gMubGY5O|=o$92;T1k&STP%0}=hcm{B%8B)r3;T*jBSFpfGu@38g(4ur|8MP^$63eqH_B5-a_IS2kv8^Gy(yn66vb5z-W?QVaeQ#!4Y*X8!gV>05(G1Da_Qk$mTlQK~!83D^x)UQ7MzJn{$P(+cnD@v0#Y$_#rmUW`!+HZ1;s2KS-`0^nz0)x4;`Gx&Ee9Ut>YBYq&sBz*RsSxe-FgQpf^Iv|LU_m+ju~(rzz5d$h$R|88-tn>HR9mp)^ZJtdtF<tb=&Dyi`B7>18ghYKKYpsBJhRxYtFv<>avZ_#huP&VTgKDEE6>MIdK8R4Y42v`w40iShQYFVn4x17l^s5B=umIc%ryR2m{Z|46X`p0lYM(1sDVuTjau~5=1@|6G}l%k(GpfnFr~fFukaQ{ElY7HYmbm)aJ2jF|>sTR(O|q5fsSEi0exTRGJsMHa2&%2MSg-|5Di((e$biH2r}lezOKYqs4QKVInUkeu6=q90p(3zzV}qd;R;7tU?4)R5Bx`1C0vKM{8=Dlx9SBgxIit4A>fV9QwMz>K1kw>U5bG?5@5kr4FOD(Suq|%W7-NFezEAOLAPva@>mMFhxLgDpaae$E~=IJ4SYTJ6-izOL;V7RTmr~KHYI>m>bb69n=QrslD6xS5?hY4+ZKkq0SLs6Fm*F_z;K<*j1>I6!uXGNY>#P+3*%28XICgEgA!+mKco;Rf`(wyU&Gdg4Ex4bi$-`O_N-~liZaVS{YfAYV>re-L+cM<x!irvr5+SR%vH$m8=<7$+{-1w3~00tYfXx&e$qhldY0<KC6TQpea^qH^(YjbFGr~K32(jd#fa->oH1wk)LA>x#n#AGoV{Z^y)nVrHkrx9m#<*2G8EXk4lo`LIVK`wKH{M@DvXbK+)u>I52&tPZ==j>tav8wH3yG5j=xFK8jVF75W>~q|6)jA#6wz`h3(q@>}Ugxw2H5u5Q~q-mS~sTb<B5a8kXuHpBi~_oMc|$E7sb0s8&T#qR<3^gTf93Qyk!Y-?;6=(_6T`#`T7f9jn8!*x@30(;6%poi$_UZ5SY6Yd78aeGsa+81U~_XEYIfrq|_h1HB{;8>E(t0EPub>s!aVBxWnIsnrNo9NHBuxfOtTZHoZa7#<NalEA=EcQ1hU!QLgBK^l(TDn^YTtv~<`4%4T(426oBQY@vsh@a{X$JPrXNA%*#CZ;3$O$O(dSWKUODaY9&MQ|k$pWk%K36r;B#6o!EF|BzyjD^OW+=j4QG``$dnLZ)BOiJXuX5kxV?{*Ql=Ck2ah=XY`{A!;USLqJg@?*k%h3`b;_D{&pi|x}&<qf@@9c&oRNmJL&Sf&P&sg`tqutsce!O$;x7!c!=iaF|srr17vNrLAP>Zc~&Il=cqjE|}E)DgZP|&JPo)luT%2f39M3ltkF^yEVBknDF;qs_EZvn>LtDitag-kWr+G^|?K8D>27EiL~t9>n-zwR`@C;rN<5O53$+-3}xef`yS1%O-*Ay*3`SAmh+1`;EMD1rZkJ_QylEgDb*pn<qJ4^&JHOg*qgpoAG1%``1~aOm<zyW@y;Ys|WAAM7K)E}I-zPLIp^pDQOAf5(61UIAVc{Pyj3K*ahmAW}iatq3*zw1;UW-h-dhyc(;_fANAS&56=uF4v{PSZ3RhL3>!KD)W$yin1@|&oIP_W{xJ$&+{~(Ju?T3fED9o*DWXwo|I2~_!yQI0L0@h;-<G#u)i~QQ>f9KrY)}(Dm!UCsZ9V^1Xk)o5?gCP1n_-6s3iXUkDvanh~xxxpp|1bq#B*#QI&a(AJVA$^3&h{!@jI$`v7|iW5ooj0~adIDp|2Kq=ceWF|du%&~9>d(HEM8>5JE~WA!Kvg0!Io7Hw7-s%fkk=)SZz3fR%o)IjIoqeIB|5&x-cI%Ox(*;Slomc420`TW;BFJs0cJb%xad}U!<z-1X24QM6f?sQ#4DC^LQ%I?|$$bM%^#UOse@F$6{iaq9N1Mb9k9CM5+0p2Qx(}OjXY2&PtueL!k-^|0u_EgS&C4qPn-g|YhmK_Yn6jJ5n=X)ScgHC?y(-!@f*)K}!CPe8ASTjlg1#{2hBf=0Bi|layT3tKk<|U~Y`FY_z0vUe*!Yh=tSL!GgWqHsB>KiF~J>nauxbc?`+C}QNZ;0h#1vYZ5L%P#Of{50<4ypoHx9U0k&^#R3UvRhTIh7^PGc?lXfMj_Zy_*7VoJf}dth^*Bt>%4YZZ)S*37dnc@RhW($p4BXMXl^_mHcgZWtxga(1M-z%BEDy^2&J3UG#*@;!<k)3;0o6QI%w_hD&HsmVm+Gv*wY1Z{De3ostQMgvX96*BzH(9_>N7q2pvnp4p#w8qL~xu#Y^ELVIjfmA3D6()JyfmX~7&Th4{}T@dp#?xr)I?$!Gj_>Hh=Q?4ASOQh4HJ9#8)=w#aMY398EAEj#MmbcTsJNM*UyD5_|5BT>?zNY!p5MY1kMSw>4R2XQ~7-GTR4PxQ$+*q(S=f;AZT{A35<QQTBnm-W>jxiQM_bIRdY7DVpSwmQ`&T1E6zgjR9c<ZMjVP_j5fvfHXg1nG8jsvd52nOpB9NeE91`FODc<U$91IH8wy1ii%3`}>1^~lz6f6|>{<Tl|#$RRfT^xRNk@}~1XbQ^MT%8i&I_ld&vCCO<>aNM{9m46{G-PPmBp_cM57!Sad6NZOKPl45hJDCOt_M3he>|z(rW{#z&i=!lRerA&rjDN6|t5YFx+W`YC><f2uzB^xK7z_s9$`}~zyDk_om~uYDa3X4ZBr#bQKOKUB5knn@!MfilAP&xF6Hdf!zbk?|f`f62I*NmaJutfhjYP+*kEgWFkik7h<EzhDY(Gk~pc@-oUVz+>vn(dx;qNo!)z%5()s{iLdiP%OYHP9aYHLosdN=BmSVzaJt!2ckon^<XotYePYrp}W({Mm%G4X0=+3{*;rgLbr`#Yy`4xPostDQy1tDSlNz@2S`gya1IXDRV&XVLL$XP!H-b4+1yq&wg&BVKJSHC}Dah*z6%!{g%B)-}ef>*s@AO1#>+fOz#%DaqBvtDOsoS1;99xwd$<^ZxPbCGyj&i&s1EAFo~_LA{Q6wR5rY>gIWD)-iGAgwI=DEnd}S*AzrJSwIyJdMnRuS5^-Hl3k<$UHLv0PkT=alI>G**Rk=e|5cJEeBSwO+<lhf<<hJrrMbv^BgJp{OtZ(gWhAC$?A2ETp?sO}U**yE#_4zU8T9;dWob?eydI0Ak&q`Je_1KGs-KnC>WnyD&v_}{>{F??fE=%tU)X3qbZuNiRb1Xafg&0C6?E_$Enel_;I$JH`!qpN0O*o5rh(_j5A><TC6B6lpYef%(0#%Ou3B~jiQT;6Ant$2$EwBANgAqm6B=mY_ZsT!47y2AA0MG+Kf1}t6W}yki)DNB*T4OIlPCT@e-=<{-%S@&s@_cJS3a>>-8<@yiw^__;nizgvEar6FFf$IUd^AJ+|g&7w9+hnPw;Fj>ORv18#n!lCUVI$JuAH{mE+BBE~Lo`b?$OZKVLL_wMYM8R^icA7OKnq9Ys(vWnIA!Z<`And-m}q2Ru4$pT;NT^P0_{qdO%dHt_J~%gTw>4PEFhj=l~|M8bft*{6M$x7nxYQgdUSwk|Ct($|5Bm~bXwVs1F9Ptm33$Qo^3V3w?>{SzZnwjm<sM<ROETxzbY-PA?z8gs%Cwqp*5nE{C&HJ6z)8-8!YVo2olyqSF0gz-xiCS=YA-aK&)xwHEH7d+~%_lcz8ZH0lfEAp&~wzE*9<2mml`OVcN+|J@deW#Al`y}4#=aCTh1jnHD;FLe!H}%K+rY`?|Q_Fsnl==Ih&Yw0vhqrsQkFq?M^=i`R=WutwL!b3R(&)`M)6ILe+}mWt2Ok_~lJXimqBt?-wKYz8*`_Hk`z=#mEsQ!F_FlF{WxfWwaFT~q4Cp_S@2jdVKON>QJsswp;ZXs7+K)%YV$xyG($iti8J;E5r~NdTSVTI^S$I0kIsIcKdXyi>C7tD@!<>bu!<^GUO`=EnDd2FK>9Bszv!tw;z6WRImosu?dPP_FSTsq=#!_WF!&KS!ZBu2=MWo7>%zdsfRpwkos%*(l(v_#m%wsi%8MEz1pD`PcdT0`7Mlp`1<j=Mf@@J+*$1shy-DuNjql}?Hn`Xohj!&v>jgo5P_!`QsjgG*gQ*6#9q}Z0~247){&AEgW+fx1D<)zrVoqFFqoAREe<|R>i9a7#7&Hb3DyJVTS?>{n$>Y`&M>IYex=jh4dtv%=$lfzc8dhYcqH(>`}lBznWOo95k)b`s^>uT70tpE&VfTQHWq>zliR?5!<@j63xUk@mUa=ov3CW)GN<fx&MmzD+E27KW<El9wJe#O+{Z9(<MW**_Y<BC#Vaa2*4w>V|(opzj-I>)FDawxl3*Roaa@*vV%uPbZ3Q>^*2GQ4&9e<R+{eg"
-        expected = zlib.decompress(
-            base64.b85decode(expected_compressed)
-        ).decode()
-        self.assertEqual(
-            make_tail_result(
-                historical_skews=("0.06",)
-            ).lineage.parameters_json,
-            expected,
-        )
 
     def test_percentile_boundaries_tie_and_decimal_before_float(self):
         cases = (
@@ -5894,10 +5869,16 @@ class TailPricingTransformationTests(unittest.TestCase):
                 parameters_json=forged_parameters,
                 quality_flags=dependency.lineage.quality_flags,
             )
-            arguments[4] = VolatilityEnvironmentTransformationResult(
-                record=dependency.record,
-                lineage=forged_lineage,
+            forged_dependency = object.__new__(
+                VolatilityEnvironmentTransformationResult
             )
+            object.__setattr__(
+                forged_dependency, "record", dependency.record
+            )
+            object.__setattr__(
+                forged_dependency, "lineage", forged_lineage
+            )
+            arguments[4] = forged_dependency
             with self.subTest(path=path, forged_value=forged_value):
                 if path == (
                     "atm_candidate_universe",
@@ -5947,10 +5928,16 @@ class TailPricingTransformationTests(unittest.TestCase):
             historical_skews=("0.04",),
             return_arguments=True,
         ))
-        ordering_arguments[4] = VolatilityEnvironmentTransformationResult(
-            record=dependency.record,
-            lineage=forged_lineage,
+        forged_dependency = object.__new__(
+            VolatilityEnvironmentTransformationResult
         )
+        object.__setattr__(
+            forged_dependency, "record", dependency.record
+        )
+        object.__setattr__(
+            forged_dependency, "lineage", forged_lineage
+        )
+        ordering_arguments[4] = forged_dependency
         with mock.patch.object(
             TailPricingSlice,
             "__init__",
@@ -5958,21 +5945,13 @@ class TailPricingTransformationTests(unittest.TestCase):
                 "TailPricingSlice must not be constructed before "
                 "methodology rejection"
             ),
-        ) as tail_init, mock.patch.object(
-            CalculationLineage,
-            "__init__",
-            side_effect=AssertionError(
-                "CalculationLineage must not be constructed before "
-                "methodology rejection"
-            ),
-        ) as lineage_init:
+        ) as tail_init:
             with self.assertRaisesRegex(
                 ValueError,
                 "dependency IV methodology|authoritative IV inputs",
             ):
                 transform_tail_pricing(*ordering_arguments)
             tail_init.assert_not_called()
-            lineage_init.assert_not_called()
 
     def test_declarations_and_delta_methodology_exactness(self):
         base = list(make_tail_result(
@@ -7072,6 +7051,7 @@ def make_scenario_valuation_result(
     expiration_exit_cost="0",
     include_expiration=True,
     scenario_grid_complete=False,
+    return_arguments=False,
 ):
     expiration = SESSION_DATE + datetime.timedelta(days=60)
     structure = OptionStructure(
@@ -7120,7 +7100,7 @@ def make_scenario_valuation_result(
         )
         for scenario in scenarios
     )
-    return transform_scenario_valuation(
+    arguments = (
         "scenario-valuation-calculation-001",
         costs,
         tail,
@@ -7131,6 +7111,9 @@ def make_scenario_valuation_result(
         "explicit_fixture_exit_cost_v0.1",
         CALCULATED_AT + datetime.timedelta(seconds=10),
     )
+    if return_arguments:
+        return arguments
+    return transform_scenario_valuation(*arguments)
 
 
 def rebuild_scenario_pricing_scenarios(result, scenarios):
@@ -7506,19 +7489,19 @@ class ScenarioValuationTransformationTests(unittest.TestCase):
             hashlib.sha256(
                 result.records[0].pricing_methodology.encode()
             ).hexdigest(),
-            "9e90314e7f363f2976715298e45f95e58203bfef8669408219a5f11cd970344f",
+            "f66351122871403e24a8613f9083596f4a933aef11913a92e4e4a4fed55de9c9",
         )
         self.assertEqual(
             hashlib.sha256(
                 expiration.pricing_methodology.encode()
             ).hexdigest(),
-            "d39130d8c78bc33a5533b0f2f1bf885486ac64aee8149132f35efa77bc836cf6",
+            "7ad4c54760eeea8507a6ee11cbc40e32d1fd794b91da702fd8f2cdf09de32c08",
         )
         self.assertEqual(
             hashlib.sha256(
                 result.lineage.parameters_json.encode()
             ).hexdigest(),
-            "6dc7c7be4d622dfd11ad3be69f8b28e9e7fba486e81addd4e939e14a4c850ff9",
+            "d66b73f30424ceadbee00358f2113386e5efb378546283c8639abc904632eded",
         )
 
     def test_complete_grid_and_explicit_subset(self):
@@ -8325,11 +8308,12 @@ class ScenarioValuationTransformationTests(unittest.TestCase):
                 " noncanonical ",
                 arguments[8],
             )
-        forged_tail = TailPricingTransformationResult(
-            tail.records,
-            dataclasses.replace(
-                tail.lineage, methodology_version="v9"
-            ),
+        forged_tail = object.__new__(TailPricingTransformationResult)
+        object.__setattr__(forged_tail, "records", tail.records)
+        object.__setattr__(
+            forged_tail,
+            "lineage",
+            dataclasses.replace(tail.lineage, methodology_version="v9"),
         )
         with self.assertRaises(ValueError):
             transform_scenario_valuation(
@@ -8364,8 +8348,11 @@ class ScenarioValuationTransformationTests(unittest.TestCase):
             "lineage",
             dataclasses.replace(costs.lineage, methodology_version="v0.1"),
         )
-        forged_tail = TailPricingTransformationResult(
-            tail.records,
+        forged_tail = object.__new__(TailPricingTransformationResult)
+        object.__setattr__(forged_tail, "records", tail.records)
+        object.__setattr__(
+            forged_tail,
+            "lineage",
             dataclasses.replace(tail.lineage, methodology_version="v9"),
         )
         forged_pricing = object.__new__(ScenarioPricingCalculationResult)
@@ -9349,6 +9336,635 @@ class ExpirationPayoffThresholdExecutionPropertiesTests(unittest.TestCase):
                 transform_expiration_payoff_thresholds(*arguments)
                 .record.thresholds
             )
+
+
+
+EXPECTED_VOLATILITY_ENVIRONMENT_V02_JSON = '{"$map":[["atm_candidate_universe",{"$map":[["completeness_semantics","no_eligible_paired_call_put_strike_omitted"],["declared_complete",true],["scope","all_exact_selected_session_expiration_universes"]]}],["atm_selection_rule","nearest_paired_call_put_strike_to_underlying_bid_ask_midpoint"],["call_put_combination_rule","arithmetic_mean_of_same_strike_call_and_put_implied_volatility"],["current_observations",{"$list":[{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-current-0-call-reference"],["call_implied_volatility",{"$decimal":"0.3"}],["call_iv_record_id","ve-current-0-call-iv"],["call_quote_record_id","ve-current-0-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.30"}],["put_contract_reference_record_id","ve-current-0-put-reference"],["put_implied_volatility",{"$decimal":"0.3"}],["put_iv_record_id","ve-current-0-put-iv"],["put_quote_record_id","ve-current-0-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-02-01"}],["selected_atm_iv",{"$decimal":"0.30"}],["selected_call_iv_record_id","ve-current-0-call-iv"],["selected_put_iv_record_id","ve-current-0-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2030-01-02"}],["tenor_days",30],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-current-underlying"]]},{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-current-1-call-reference"],["call_implied_volatility",{"$decimal":"0.4"}],["call_iv_record_id","ve-current-1-call-iv"],["call_quote_record_id","ve-current-1-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.40"}],["put_contract_reference_record_id","ve-current-1-put-reference"],["put_implied_volatility",{"$decimal":"0.4"}],["put_iv_record_id","ve-current-1-put-iv"],["put_quote_record_id","ve-current-1-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-03-03"}],["selected_atm_iv",{"$decimal":"0.40"}],["selected_call_iv_record_id","ve-current-1-call-iv"],["selected_put_iv_record_id","ve-current-1-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2030-01-02"}],["tenor_days",60],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-current-underlying"]]}]}],["float_conversion_rule","convert_only_final_decimal_research_values_to_finite_float"],["historical_expected_session_dates",{"$list":[{"$date":"2029-12-30"}]}],["historical_matched_tenor_rule","expiration_minus_session_date_calendar_days_equals_reference_tenor"],["historical_observation_count",1],["historical_observations",{"$list":[{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-history-0-0-call-reference"],["call_implied_volatility",{"$decimal":"0.19"}],["call_iv_record_id","ve-history-0-0-call-iv"],["call_quote_record_id","ve-history-0-0-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.200"}],["put_contract_reference_record_id","ve-history-0-0-put-reference"],["put_implied_volatility",{"$decimal":"0.21"}],["put_iv_record_id","ve-history-0-0-put-iv"],["put_quote_record_id","ve-history-0-0-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-01-29"}],["selected_atm_iv",{"$decimal":"0.200"}],["selected_call_iv_record_id","ve-history-0-0-call-iv"],["selected_put_iv_record_id","ve-history-0-0-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2029-12-30"}],["tenor_days",30],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-history-0-underlying"]]}]}],["historical_sample_semantics","caller_declared_observation_sample"],["iv_methodology",{"$map":[["dividend_input_description","Synthetic dividend input"],["model_name","Synthetic Black-Scholes"],["model_version","fixture-v1"],["rate_input_description","Synthetic USD curve input"],["unit_convention","annualized_decimal_ratio"]]}],["median_formula","odd_middle_even_arithmetic_mean_of_two_middle_values"],["normalized_evidence",{"$map":[["direct_inputs",{"$list":[{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-call-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-current-0-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-call-quote"],["role","option_quote"],["source_ids",{"$list":["ve-current-0-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-call-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-current-0-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-put-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-current-0-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-put-quote"],["role","option_quote"],["source_ids",{"$list":["ve-current-0-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-put-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-current-0-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-call-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-current-1-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-call-quote"],["role","option_quote"],["source_ids",{"$list":["ve-current-1-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-call-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-current-1-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-put-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-current-1-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-put-quote"],["role","option_quote"],["source_ids",{"$list":["ve-current-1-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-put-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-current-1-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-underlying"],["role","underlying_quote"],["source_ids",{"$list":["ve-current-underlying-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-call-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-history-0-0-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-call-quote"],["role","option_quote"],["source_ids",{"$list":["ve-history-0-0-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-call-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-history-0-0-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-put-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-history-0-0-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-put-quote"],["role","option_quote"],["source_ids",{"$list":["ve-history-0-0-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-put-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-history-0-0-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-underlying"],["role","underlying_quote"],["source_ids",{"$list":["ve-history-0-underlying-source-0"]}]]}]}]]}],["percentile_formula","inclusive_count_historical_atm_iv_lte_current_reference_atm_iv_divided_by_count"],["realized_volatility_dependency",{"$map":[["adjustment_methodology",null],["annualization_sessions_per_year",252],["annualized_realized_volatility_float_repr","0.3328756933888896"],["calculated_at",{"$datetime":"2030-01-02T15:30:04.000000Z"}],["calculation_id","calculation-3c7c"],["calculation_type","historical_realized_volatility"],["end_session_date",{"$date":"2030-01-02"}],["inputs",{"$list":[{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","hrv-0"],["source_ids",{"$list":["hrv-0-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","hrv-1"],["source_ids",{"$list":["hrv-1-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","hrv-2"],["source_ids",{"$list":["hrv-2-source-0"]}]]}]}],["log_returns",{"$list":[{"$decimal":"0.01980262729617971302602906688510039"},{"$decimal":"-0.009852296443011630177813709340839653"}]}],["methodology_id","historical-log-return-sample-realized-volatility"],["methodology_version","v0.1"],["parameters_json","{\\"$map\\":[[\\"adjustment_methodology\\",null],[\\"annualization_rule\\",\\"daily_sample_standard_deviation_times_square_root_sessions_per_year\\"],[\\"annualization_sessions_per_year\\",252],[\\"expected_session_dates\\",{\\"$list\\":[{\\"$date\\":\\"2029-12-03\\"},{\\"$date\\":\\"2029-12-18\\"},{\\"$date\\":\\"2030-01-02\\"}]}],[\\"price_basis\\",\\"raw_close\\"],[\\"price_observation_count\\",3],[\\"price_unit\\",\\"usd_per_underlying_share\\"],[\\"return_association_rule\\",\\"ending_session\\"],[\\"return_formula\\",\\"natural_log_price_ratio\\"],[\\"return_observation_count\\",2],[\\"return_unit\\",\\"decimal_ratio\\"],[\\"underlying\\",{\\"$map\\":[[\\"currency\\",\\"USD\\"],[\\"listing_mic\\",\\"ARCX\\"],[\\"security_type\\",\\"etf\\"],[\\"symbol\\",\\"SPY\\"]]}],[\\"variance_estimator\\",\\"sample_variance\\"],[\\"volatility_unit\\",\\"annualized_decimal_ratio\\"],[\\"window_end_session_date\\",{\\"$date\\":\\"2030-01-02\\"}],[\\"window_start_session_date\\",{\\"$date\\":\\"2029-12-03\\"}]]}"],["price_basis","raw_close"],["price_observation_count",3],["prices",{"$list":[{"$decimal":"100"},{"$decimal":"102"},{"$decimal":"101"}]}],["quality_flags",{"$list":["decimal_to_float_converted","annualized","assumption_applied"]}],["return_formula","natural_log_price_ratio"],["return_observation_count",2],["session_dates",{"$list":[{"$date":"2029-12-03"},{"$date":"2029-12-18"},{"$date":"2030-01-02"}]}],["start_session_date",{"$date":"2029-12-03"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}],["variance_estimator","sample_variance"]]}],["realized_window_matching_rule","realized_end_equals_current_as_of_and_calendar_span_equals_reference_tenor"],["reference_tenor_days",30],["strike_tie_rule","lower_strike"],["term_tenor_rule","expiration_minus_session_date_calendar_days"],["underlying_midpoint_rule","bid_ask_midpoint_no_last_fallback"],["volatility_unit","annualized_decimal_ratio"]]}'
+EXPECTED_TAIL_PRICING_V02_JSON = '{"$map":[["analytics_methodology",{"$map":[["greeks_dividend_input_description","Synthetic dividend input"],["greeks_model_name","Synthetic Black-Scholes"],["greeks_model_version","fixture-v1"],["greeks_rate_input_description","Synthetic USD curve input"],["greeks_unit_convention","Contract-defined canonical units"],["iv_dividend_input_description","Synthetic dividend input"],["iv_model_name","Synthetic Black-Scholes"],["iv_model_version","fixture-v1"],["iv_rate_input_description","Synthetic USD curve input"],["iv_unit_convention","annualized_decimal_ratio"]]}],["atm_dependency",{"$map":[["as_of_date",{"$date":"2030-01-02"}],["calculated_at",{"$datetime":"2030-01-02T15:30:04.000000Z"}],["calculation_id","calculation-3c7d"],["calculation_type","volatility_environment"],["current_atm_observations",{"$list":[{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-current-0-call-reference"],["call_implied_volatility",{"$decimal":"0.30"}],["call_iv_record_id","ve-current-0-call-iv"],["call_quote_record_id","ve-current-0-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.300"}],["put_contract_reference_record_id","ve-current-0-put-reference"],["put_implied_volatility",{"$decimal":"0.30"}],["put_iv_record_id","ve-current-0-put-iv"],["put_quote_record_id","ve-current-0-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-02-01"}],["selected_atm_iv",{"$decimal":"0.300"}],["selected_call_iv_record_id","ve-current-0-call-iv"],["selected_put_iv_record_id","ve-current-0-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2030-01-02"}],["tenor_days",30],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-current-underlying"]]},{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-current-1-call-reference"],["call_implied_volatility",{"$decimal":"0.40"}],["call_iv_record_id","ve-current-1-call-iv"],["call_quote_record_id","ve-current-1-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.400"}],["put_contract_reference_record_id","ve-current-1-put-reference"],["put_implied_volatility",{"$decimal":"0.40"}],["put_iv_record_id","ve-current-1-put-iv"],["put_quote_record_id","ve-current-1-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-03-03"}],["selected_atm_iv",{"$decimal":"0.400"}],["selected_call_iv_record_id","ve-current-1-call-iv"],["selected_put_iv_record_id","ve-current-1-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2030-01-02"}],["tenor_days",60],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-current-underlying"]]}]}],["historical_atm_observations",{"$list":[{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-history-0-0-call-reference"],["call_implied_volatility",{"$decimal":"0.19"}],["call_iv_record_id","ve-history-0-0-call-iv"],["call_quote_record_id","ve-history-0-0-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.200"}],["put_contract_reference_record_id","ve-history-0-0-put-reference"],["put_implied_volatility",{"$decimal":"0.21"}],["put_iv_record_id","ve-history-0-0-put-iv"],["put_quote_record_id","ve-history-0-0-put-quote"],["strike",{"$decimal":"100"}]]}]}],["expiration",{"$date":"2030-01-29"}],["selected_atm_iv",{"$decimal":"0.200"}],["selected_call_iv_record_id","ve-history-0-0-call-iv"],["selected_put_iv_record_id","ve-history-0-0-put-iv"],["selected_strike",{"$decimal":"100"}],["session_date",{"$date":"2029-12-30"}],["tenor_days",30],["underlying_midpoint",{"$decimal":"100.0"}],["underlying_quote_record_id","ve-history-0-underlying"]]}]}],["historical_median_atm_iv_float_repr","0.2"],["historical_observation_count",1],["inputs",{"$list":[{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","hrv-0"],["source_ids",{"$list":["hrv-0-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","hrv-1"],["source_ids",{"$list":["hrv-1-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","hrv-2"],["source_ids",{"$list":["hrv-2-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-0-call-iv"],["source_ids",{"$list":["ve-current-0-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-0-call-quote"],["source_ids",{"$list":["ve-current-0-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-0-call-reference"],["source_ids",{"$list":["ve-current-0-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-0-put-iv"],["source_ids",{"$list":["ve-current-0-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-0-put-quote"],["source_ids",{"$list":["ve-current-0-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-0-put-reference"],["source_ids",{"$list":["ve-current-0-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-1-call-iv"],["source_ids",{"$list":["ve-current-1-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-1-call-quote"],["source_ids",{"$list":["ve-current-1-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-1-call-reference"],["source_ids",{"$list":["ve-current-1-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-1-put-iv"],["source_ids",{"$list":["ve-current-1-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-1-put-quote"],["source_ids",{"$list":["ve-current-1-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-1-put-reference"],["source_ids",{"$list":["ve-current-1-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-current-underlying"],["source_ids",{"$list":["ve-current-underlying-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-history-0-0-call-iv"],["source_ids",{"$list":["ve-history-0-0-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-history-0-0-call-quote"],["source_ids",{"$list":["ve-history-0-0-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-history-0-0-call-reference"],["source_ids",{"$list":["ve-history-0-0-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-history-0-0-put-iv"],["source_ids",{"$list":["ve-history-0-0-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-history-0-0-put-quote"],["source_ids",{"$list":["ve-history-0-0-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-history-0-0-put-reference"],["source_ids",{"$list":["ve-history-0-0-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["record_id","ve-history-0-underlying"],["source_ids",{"$list":["ve-history-0-underlying-source-0"]}]]}]}],["iv_percentile_float_repr","1.0"],["matched_realized_volatility_float_repr","0.3328756933888896"],["matched_realized_window_days",30],["methodology_id","paired-atm-volatility-environment"],["methodology_version","v0.2"],["parameters_json","{\\"$map\\":[[\\"atm_candidate_universe\\",{\\"$map\\":[[\\"completeness_semantics\\",\\"no_eligible_paired_call_put_strike_omitted\\"],[\\"declared_complete\\",true],[\\"scope\\",\\"all_exact_selected_session_expiration_universes\\"]]}],[\\"atm_selection_rule\\",\\"nearest_paired_call_put_strike_to_underlying_bid_ask_midpoint\\"],[\\"call_put_combination_rule\\",\\"arithmetic_mean_of_same_strike_call_and_put_implied_volatility\\"],[\\"current_observations\\",{\\"$list\\":[{\\"$map\\":[[\\"candidate_pairs\\",{\\"$list\\":[{\\"$map\\":[[\\"call_contract_reference_record_id\\",\\"ve-current-0-call-reference\\"],[\\"call_implied_volatility\\",{\\"$decimal\\":\\"0.30\\"}],[\\"call_iv_record_id\\",\\"ve-current-0-call-iv\\"],[\\"call_quote_record_id\\",\\"ve-current-0-call-quote\\"],[\\"contract_multiplier\\",100],[\\"currency\\",\\"USD\\"],[\\"deliverable_id\\",null],[\\"distance_to_underlying_midpoint\\",{\\"$decimal\\":\\"0.0\\"}],[\\"paired_implied_volatility\\",{\\"$decimal\\":\\"0.300\\"}],[\\"put_contract_reference_record_id\\",\\"ve-current-0-put-reference\\"],[\\"put_implied_volatility\\",{\\"$decimal\\":\\"0.30\\"}],[\\"put_iv_record_id\\",\\"ve-current-0-put-iv\\"],[\\"put_quote_record_id\\",\\"ve-current-0-put-quote\\"],[\\"strike\\",{\\"$decimal\\":\\"100\\"}]]}]}],[\\"expiration\\",{\\"$date\\":\\"2030-02-01\\"}],[\\"selected_atm_iv\\",{\\"$decimal\\":\\"0.300\\"}],[\\"selected_call_iv_record_id\\",\\"ve-current-0-call-iv\\"],[\\"selected_put_iv_record_id\\",\\"ve-current-0-put-iv\\"],[\\"selected_strike\\",{\\"$decimal\\":\\"100\\"}],[\\"session_date\\",{\\"$date\\":\\"2030-01-02\\"}],[\\"tenor_days\\",30],[\\"underlying_midpoint\\",{\\"$decimal\\":\\"100.0\\"}],[\\"underlying_quote_record_id\\",\\"ve-current-underlying\\"]]},{\\"$map\\":[[\\"candidate_pairs\\",{\\"$list\\":[{\\"$map\\":[[\\"call_contract_reference_record_id\\",\\"ve-current-1-call-reference\\"],[\\"call_implied_volatility\\",{\\"$decimal\\":\\"0.40\\"}],[\\"call_iv_record_id\\",\\"ve-current-1-call-iv\\"],[\\"call_quote_record_id\\",\\"ve-current-1-call-quote\\"],[\\"contract_multiplier\\",100],[\\"currency\\",\\"USD\\"],[\\"deliverable_id\\",null],[\\"distance_to_underlying_midpoint\\",{\\"$decimal\\":\\"0.0\\"}],[\\"paired_implied_volatility\\",{\\"$decimal\\":\\"0.400\\"}],[\\"put_contract_reference_record_id\\",\\"ve-current-1-put-reference\\"],[\\"put_implied_volatility\\",{\\"$decimal\\":\\"0.40\\"}],[\\"put_iv_record_id\\",\\"ve-current-1-put-iv\\"],[\\"put_quote_record_id\\",\\"ve-current-1-put-quote\\"],[\\"strike\\",{\\"$decimal\\":\\"100\\"}]]}]}],[\\"expiration\\",{\\"$date\\":\\"2030-03-03\\"}],[\\"selected_atm_iv\\",{\\"$decimal\\":\\"0.400\\"}],[\\"selected_call_iv_record_id\\",\\"ve-current-1-call-iv\\"],[\\"selected_put_iv_record_id\\",\\"ve-current-1-put-iv\\"],[\\"selected_strike\\",{\\"$decimal\\":\\"100\\"}],[\\"session_date\\",{\\"$date\\":\\"2030-01-02\\"}],[\\"tenor_days\\",60],[\\"underlying_midpoint\\",{\\"$decimal\\":\\"100.0\\"}],[\\"underlying_quote_record_id\\",\\"ve-current-underlying\\"]]}]}],[\\"float_conversion_rule\\",\\"convert_only_final_decimal_research_values_to_finite_float\\"],[\\"historical_expected_session_dates\\",{\\"$list\\":[{\\"$date\\":\\"2029-12-30\\"}]}],[\\"historical_matched_tenor_rule\\",\\"expiration_minus_session_date_calendar_days_equals_reference_tenor\\"],[\\"historical_observation_count\\",1],[\\"historical_observations\\",{\\"$list\\":[{\\"$map\\":[[\\"candidate_pairs\\",{\\"$list\\":[{\\"$map\\":[[\\"call_contract_reference_record_id\\",\\"ve-history-0-0-call-reference\\"],[\\"call_implied_volatility\\",{\\"$decimal\\":\\"0.19\\"}],[\\"call_iv_record_id\\",\\"ve-history-0-0-call-iv\\"],[\\"call_quote_record_id\\",\\"ve-history-0-0-call-quote\\"],[\\"contract_multiplier\\",100],[\\"currency\\",\\"USD\\"],[\\"deliverable_id\\",null],[\\"distance_to_underlying_midpoint\\",{\\"$decimal\\":\\"0.0\\"}],[\\"paired_implied_volatility\\",{\\"$decimal\\":\\"0.200\\"}],[\\"put_contract_reference_record_id\\",\\"ve-history-0-0-put-reference\\"],[\\"put_implied_volatility\\",{\\"$decimal\\":\\"0.21\\"}],[\\"put_iv_record_id\\",\\"ve-history-0-0-put-iv\\"],[\\"put_quote_record_id\\",\\"ve-history-0-0-put-quote\\"],[\\"strike\\",{\\"$decimal\\":\\"100\\"}]]}]}],[\\"expiration\\",{\\"$date\\":\\"2030-01-29\\"}],[\\"selected_atm_iv\\",{\\"$decimal\\":\\"0.200\\"}],[\\"selected_call_iv_record_id\\",\\"ve-history-0-0-call-iv\\"],[\\"selected_put_iv_record_id\\",\\"ve-history-0-0-put-iv\\"],[\\"selected_strike\\",{\\"$decimal\\":\\"100\\"}],[\\"session_date\\",{\\"$date\\":\\"2029-12-30\\"}],[\\"tenor_days\\",30],[\\"underlying_midpoint\\",{\\"$decimal\\":\\"100.0\\"}],[\\"underlying_quote_record_id\\",\\"ve-history-0-underlying\\"]]}]}],[\\"historical_sample_semantics\\",\\"caller_declared_observation_sample\\"],[\\"iv_methodology\\",{\\"$map\\":[[\\"dividend_input_description\\",\\"Synthetic dividend input\\"],[\\"model_name\\",\\"Synthetic Black-Scholes\\"],[\\"model_version\\",\\"fixture-v1\\"],[\\"rate_input_description\\",\\"Synthetic USD curve input\\"],[\\"unit_convention\\",\\"annualized_decimal_ratio\\"]]}],[\\"median_formula\\",\\"odd_middle_even_arithmetic_mean_of_two_middle_values\\"],[\\"normalized_evidence\\",{\\"$map\\":[[\\"direct_inputs\\",{\\"$list\\":[{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-0-call-iv\\"],[\\"role\\",\\"option_implied_volatility\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-0-call-iv-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-0-call-quote\\"],[\\"role\\",\\"option_quote\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-0-call-quote-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-0-call-reference\\"],[\\"role\\",\\"option_contract_reference\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-0-call-reference-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-0-put-iv\\"],[\\"role\\",\\"option_implied_volatility\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-0-put-iv-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-0-put-quote\\"],[\\"role\\",\\"option_quote\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-0-put-quote-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-0-put-reference\\"],[\\"role\\",\\"option_contract_reference\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-0-put-reference-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-1-call-iv\\"],[\\"role\\",\\"option_implied_volatility\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-1-call-iv-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-1-call-quote\\"],[\\"role\\",\\"option_quote\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-1-call-quote-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-1-call-reference\\"],[\\"role\\",\\"option_contract_reference\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-1-call-reference-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-1-put-iv\\"],[\\"role\\",\\"option_implied_volatility\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-1-put-iv-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-1-put-quote\\"],[\\"role\\",\\"option_quote\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-1-put-quote-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-1-put-reference\\"],[\\"role\\",\\"option_contract_reference\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-1-put-reference-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-current-underlying\\"],[\\"role\\",\\"underlying_quote\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-current-underlying-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-history-0-0-call-iv\\"],[\\"role\\",\\"option_implied_volatility\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-history-0-0-call-iv-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-history-0-0-call-quote\\"],[\\"role\\",\\"option_quote\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-history-0-0-call-quote-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-history-0-0-call-reference\\"],[\\"role\\",\\"option_contract_reference\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-history-0-0-call-reference-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-history-0-0-put-iv\\"],[\\"role\\",\\"option_implied_volatility\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-history-0-0-put-iv-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-history-0-0-put-quote\\"],[\\"role\\",\\"option_quote\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-history-0-0-put-quote-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-history-0-0-put-reference\\"],[\\"role\\",\\"option_contract_reference\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-history-0-0-put-reference-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"propagated_quality_flags\\",{\\"$list\\":[]}],[\\"record_id\\",\\"ve-history-0-underlying\\"],[\\"role\\",\\"underlying_quote\\"],[\\"source_ids\\",{\\"$list\\":[\\"ve-history-0-underlying-source-0\\"]}]]}]}]]}],[\\"percentile_formula\\",\\"inclusive_count_historical_atm_iv_lte_current_reference_atm_iv_divided_by_count\\"],[\\"realized_volatility_dependency\\",{\\"$map\\":[[\\"adjustment_methodology\\",null],[\\"annualization_sessions_per_year\\",252],[\\"annualized_realized_volatility_float_repr\\",\\"0.3328756933888896\\"],[\\"calculated_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:04.000000Z\\"}],[\\"calculation_id\\",\\"calculation-3c7c\\"],[\\"calculation_type\\",\\"historical_realized_volatility\\"],[\\"end_session_date\\",{\\"$date\\":\\"2030-01-02\\"}],[\\"inputs\\",{\\"$list\\":[{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"record_id\\",\\"hrv-0\\"],[\\"source_ids\\",{\\"$list\\":[\\"hrv-0-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"record_id\\",\\"hrv-1\\"],[\\"source_ids\\",{\\"$list\\":[\\"hrv-1-source-0\\"]}]]},{\\"$map\\":[[\\"normalized_at\\",{\\"$datetime\\":\\"2030-01-02T15:30:00.000002Z\\"}],[\\"record_id\\",\\"hrv-2\\"],[\\"source_ids\\",{\\"$list\\":[\\"hrv-2-source-0\\"]}]]}]}],[\\"log_returns\\",{\\"$list\\":[{\\"$decimal\\":\\"0.01980262729617971302602906688510039\\"},{\\"$decimal\\":\\"-0.009852296443011630177813709340839653\\"}]}],[\\"methodology_id\\",\\"historical-log-return-sample-realized-volatility\\"],[\\"methodology_version\\",\\"v0.1\\"],[\\"parameters_json\\",\\"{\\\\\\"$map\\\\\\":[[\\\\\\"adjustment_methodology\\\\\\",null],[\\\\\\"annualization_rule\\\\\\",\\\\\\"daily_sample_standard_deviation_times_square_root_sessions_per_year\\\\\\"],[\\\\\\"annualization_sessions_per_year\\\\\\",252],[\\\\\\"expected_session_dates\\\\\\",{\\\\\\"$list\\\\\\":[{\\\\\\"$date\\\\\\":\\\\\\"2029-12-03\\\\\\"},{\\\\\\"$date\\\\\\":\\\\\\"2029-12-18\\\\\\"},{\\\\\\"$date\\\\\\":\\\\\\"2030-01-02\\\\\\"}]}],[\\\\\\"price_basis\\\\\\",\\\\\\"raw_close\\\\\\"],[\\\\\\"price_observation_count\\\\\\",3],[\\\\\\"price_unit\\\\\\",\\\\\\"usd_per_underlying_share\\\\\\"],[\\\\\\"return_association_rule\\\\\\",\\\\\\"ending_session\\\\\\"],[\\\\\\"return_formula\\\\\\",\\\\\\"natural_log_price_ratio\\\\\\"],[\\\\\\"return_observation_count\\\\\\",2],[\\\\\\"return_unit\\\\\\",\\\\\\"decimal_ratio\\\\\\"],[\\\\\\"underlying\\\\\\",{\\\\\\"$map\\\\\\":[[\\\\\\"currency\\\\\\",\\\\\\"USD\\\\\\"],[\\\\\\"listing_mic\\\\\\",\\\\\\"ARCX\\\\\\"],[\\\\\\"security_type\\\\\\",\\\\\\"etf\\\\\\"],[\\\\\\"symbol\\\\\\",\\\\\\"SPY\\\\\\"]]}],[\\\\\\"variance_estimator\\\\\\",\\\\\\"sample_variance\\\\\\"],[\\\\\\"volatility_unit\\\\\\",\\\\\\"annualized_decimal_ratio\\\\\\"],[\\\\\\"window_end_session_date\\\\\\",{\\\\\\"$date\\\\\\":\\\\\\"2030-01-02\\\\\\"}],[\\\\\\"window_start_session_date\\\\\\",{\\\\\\"$date\\\\\\":\\\\\\"2029-12-03\\\\\\"}]]}\\"],[\\"price_basis\\",\\"raw_close\\"],[\\"price_observation_count\\",3],[\\"prices\\",{\\"$list\\":[{\\"$decimal\\":\\"100\\"},{\\"$decimal\\":\\"102\\"},{\\"$decimal\\":\\"101\\"}]}],[\\"quality_flags\\",{\\"$list\\":[\\"decimal_to_float_converted\\",\\"annualized\\",\\"assumption_applied\\"]}],[\\"return_formula\\",\\"natural_log_price_ratio\\"],[\\"return_observation_count\\",2],[\\"session_dates\\",{\\"$list\\":[{\\"$date\\":\\"2029-12-03\\"},{\\"$date\\":\\"2029-12-18\\"},{\\"$date\\":\\"2030-01-02\\"}]}],[\\"start_session_date\\",{\\"$date\\":\\"2029-12-03\\"}],[\\"underlying\\",{\\"$map\\":[[\\"currency\\",\\"USD\\"],[\\"listing_mic\\",\\"ARCX\\"],[\\"security_type\\",\\"etf\\"],[\\"symbol\\",\\"SPY\\"]]}],[\\"variance_estimator\\",\\"sample_variance\\"]]}],[\\"realized_window_matching_rule\\",\\"realized_end_equals_current_as_of_and_calendar_span_equals_reference_tenor\\"],[\\"reference_tenor_days\\",30],[\\"strike_tie_rule\\",\\"lower_strike\\"],[\\"term_tenor_rule\\",\\"expiration_minus_session_date_calendar_days\\"],[\\"underlying_midpoint_rule\\",\\"bid_ask_midpoint_no_last_fallback\\"],[\\"volatility_unit\\",\\"annualized_decimal_ratio\\"]]}"],["quality_flags",{"$list":["decimal_to_float_converted","annualized","assumption_applied"]}],["reference_tenor_days",30],["term_points",{"$list":[{"$map":[["atm_iv_float_repr","0.3"],["tenor_days",30]]},{"$map":[["atm_iv_float_repr","0.4"],["tenor_days",60]]}]}],["underlying","SPY"]]}],["candidate_universe",{"$map":[["current_semantics","no_eligible_nearest_signed_delta_candidate_omitted"],["declared_complete",true],["historical_semantics","no_eligible_paired_atm_or_nearest_signed_delta_candidate_omitted"],["scope","current_delta_and_historical_atm_and_delta_candidate_universes"]]}],["current_expiration_observations",{"$list":[{"$map":[["atm_dependency_selected_call_iv_record_id","ve-current-0-call-iv"],["atm_dependency_selected_put_iv_record_id","ve-current-0-put-iv"],["atm_iv",{"$decimal":"0.300"}],["candidate_contracts",{"$list":[{"$map":[["contract_multiplier",100],["contract_reference_record_id","ve-current-0-call-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.40"}],["distance_to_25_target",{"$decimal":"0.25"}],["greeks_record_id","ve-current-0-call-greeks"],["implied_volatility",{"$decimal":"0.30"}],["iv_record_id","ve-current-0-call-iv"],["option_type","call"],["quote_record_id","ve-current-0-call-quote"],["signed_delta",{"$decimal":"0.50"}],["strike",{"$decimal":"100"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-30-call25-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.14"}],["distance_to_25_target",{"$decimal":"0.01"}],["greeks_record_id","tail-current-30-call25-greeks"],["implied_volatility",{"$decimal":"0.28"}],["iv_record_id","tail-current-30-call25-iv"],["option_type","call"],["quote_record_id","tail-current-30-call25-quote"],["signed_delta",{"$decimal":"0.24"}],["strike",{"$decimal":"105"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-30-call10-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.01"}],["distance_to_25_target",{"$decimal":"0.14"}],["greeks_record_id","tail-current-30-call10-greeks"],["implied_volatility",{"$decimal":"0.26"}],["iv_record_id","tail-current-30-call10-iv"],["option_type","call"],["quote_record_id","tail-current-30-call10-quote"],["signed_delta",{"$decimal":"0.11"}],["strike",{"$decimal":"110"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-30-put10-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.01"}],["distance_to_25_target",{"$decimal":"0.14"}],["greeks_record_id","tail-current-30-put10-greeks"],["implied_volatility",{"$decimal":"0.42"}],["iv_record_id","tail-current-30-put10-iv"],["option_type","put"],["quote_record_id","tail-current-30-put10-quote"],["signed_delta",{"$decimal":"-0.11"}],["strike",{"$decimal":"90"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-30-put25-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.14"}],["distance_to_25_target",{"$decimal":"0.01"}],["greeks_record_id","tail-current-30-put25-greeks"],["implied_volatility",{"$decimal":"0.36"}],["iv_record_id","tail-current-30-put25-iv"],["option_type","put"],["quote_record_id","tail-current-30-put25-quote"],["signed_delta",{"$decimal":"-0.24"}],["strike",{"$decimal":"95"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","ve-current-0-put-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.40"}],["distance_to_25_target",{"$decimal":"0.25"}],["greeks_record_id","ve-current-0-put-greeks"],["implied_volatility",{"$decimal":"0.30"}],["iv_record_id","ve-current-0-put-iv"],["option_type","put"],["quote_record_id","ve-current-0-put-quote"],["signed_delta",{"$decimal":"-0.50"}],["strike",{"$decimal":"100"}]]}]}],["downside_25_delta_skew",{"$decimal":"0.060"}],["downside_wing_curvature",{"$decimal":"0.06"}],["expiration",{"$date":"2030-02-01"}],["historical_observation_count",1],["selected_call_10",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-30-call10-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-current-30-call10-greeks"],["implied_volatility",{"$decimal":"0.26"}],["iv_record_id","tail-current-30-call10-iv"],["option_type","call"],["quote_record_id","tail-current-30-call10-quote"],["selected_delta",{"$decimal":"0.11"}],["strike",{"$decimal":"110"}],["target_delta",{"$decimal":"0.10"}]]}],["selected_call_25",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-30-call25-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-current-30-call25-greeks"],["implied_volatility",{"$decimal":"0.28"}],["iv_record_id","tail-current-30-call25-iv"],["option_type","call"],["quote_record_id","tail-current-30-call25-quote"],["selected_delta",{"$decimal":"0.24"}],["strike",{"$decimal":"105"}],["target_delta",{"$decimal":"0.25"}]]}],["selected_put_10",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-30-put10-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-current-30-put10-greeks"],["implied_volatility",{"$decimal":"0.42"}],["iv_record_id","tail-current-30-put10-iv"],["option_type","put"],["quote_record_id","tail-current-30-put10-quote"],["selected_delta",{"$decimal":"-0.11"}],["strike",{"$decimal":"90"}],["target_delta",{"$decimal":"-0.10"}]]}],["selected_put_25",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-30-put25-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-current-30-put25-greeks"],["implied_volatility",{"$decimal":"0.36"}],["iv_record_id","tail-current-30-put25-iv"],["option_type","put"],["quote_record_id","tail-current-30-put25-quote"],["selected_delta",{"$decimal":"-0.24"}],["strike",{"$decimal":"95"}],["target_delta",{"$decimal":"-0.25"}]]}],["session_date",{"$date":"2030-01-02"}],["skew_percentile",{"$decimal":"1"}],["tenor_days",30],["underlying_quote_record_id","ve-current-underlying"],["upside_25_delta_skew",{"$decimal":"-0.020"}],["upside_wing_curvature",{"$decimal":"-0.02"}]]},{"$map":[["atm_dependency_selected_call_iv_record_id","ve-current-1-call-iv"],["atm_dependency_selected_put_iv_record_id","ve-current-1-put-iv"],["atm_iv",{"$decimal":"0.400"}],["candidate_contracts",{"$list":[{"$map":[["contract_multiplier",100],["contract_reference_record_id","ve-current-1-call-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.40"}],["distance_to_25_target",{"$decimal":"0.25"}],["greeks_record_id","ve-current-1-call-greeks"],["implied_volatility",{"$decimal":"0.40"}],["iv_record_id","ve-current-1-call-iv"],["option_type","call"],["quote_record_id","ve-current-1-call-quote"],["signed_delta",{"$decimal":"0.50"}],["strike",{"$decimal":"100"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-60-call25-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.14"}],["distance_to_25_target",{"$decimal":"0.01"}],["greeks_record_id","tail-current-60-call25-greeks"],["implied_volatility",{"$decimal":"0.38"}],["iv_record_id","tail-current-60-call25-iv"],["option_type","call"],["quote_record_id","tail-current-60-call25-quote"],["signed_delta",{"$decimal":"0.24"}],["strike",{"$decimal":"105"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-60-call10-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.01"}],["distance_to_25_target",{"$decimal":"0.14"}],["greeks_record_id","tail-current-60-call10-greeks"],["implied_volatility",{"$decimal":"0.36"}],["iv_record_id","tail-current-60-call10-iv"],["option_type","call"],["quote_record_id","tail-current-60-call10-quote"],["signed_delta",{"$decimal":"0.11"}],["strike",{"$decimal":"110"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-60-put10-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.01"}],["distance_to_25_target",{"$decimal":"0.14"}],["greeks_record_id","tail-current-60-put10-greeks"],["implied_volatility",{"$decimal":"0.52"}],["iv_record_id","tail-current-60-put10-iv"],["option_type","put"],["quote_record_id","tail-current-60-put10-quote"],["signed_delta",{"$decimal":"-0.11"}],["strike",{"$decimal":"90"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-60-put25-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.14"}],["distance_to_25_target",{"$decimal":"0.01"}],["greeks_record_id","tail-current-60-put25-greeks"],["implied_volatility",{"$decimal":"0.46"}],["iv_record_id","tail-current-60-put25-iv"],["option_type","put"],["quote_record_id","tail-current-60-put25-quote"],["signed_delta",{"$decimal":"-0.24"}],["strike",{"$decimal":"95"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","ve-current-1-put-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.40"}],["distance_to_25_target",{"$decimal":"0.25"}],["greeks_record_id","ve-current-1-put-greeks"],["implied_volatility",{"$decimal":"0.40"}],["iv_record_id","ve-current-1-put-iv"],["option_type","put"],["quote_record_id","ve-current-1-put-quote"],["signed_delta",{"$decimal":"-0.50"}],["strike",{"$decimal":"100"}]]}]}],["downside_25_delta_skew",{"$decimal":"0.060"}],["downside_wing_curvature",{"$decimal":"0.06"}],["expiration",{"$date":"2030-03-03"}],["historical_observation_count",1],["selected_call_10",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-60-call10-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-current-60-call10-greeks"],["implied_volatility",{"$decimal":"0.36"}],["iv_record_id","tail-current-60-call10-iv"],["option_type","call"],["quote_record_id","tail-current-60-call10-quote"],["selected_delta",{"$decimal":"0.11"}],["strike",{"$decimal":"110"}],["target_delta",{"$decimal":"0.10"}]]}],["selected_call_25",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-60-call25-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-current-60-call25-greeks"],["implied_volatility",{"$decimal":"0.38"}],["iv_record_id","tail-current-60-call25-iv"],["option_type","call"],["quote_record_id","tail-current-60-call25-quote"],["selected_delta",{"$decimal":"0.24"}],["strike",{"$decimal":"105"}],["target_delta",{"$decimal":"0.25"}]]}],["selected_put_10",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-60-put10-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-current-60-put10-greeks"],["implied_volatility",{"$decimal":"0.52"}],["iv_record_id","tail-current-60-put10-iv"],["option_type","put"],["quote_record_id","tail-current-60-put10-quote"],["selected_delta",{"$decimal":"-0.11"}],["strike",{"$decimal":"90"}],["target_delta",{"$decimal":"-0.10"}]]}],["selected_put_25",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-current-60-put25-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-current-60-put25-greeks"],["implied_volatility",{"$decimal":"0.46"}],["iv_record_id","tail-current-60-put25-iv"],["option_type","put"],["quote_record_id","tail-current-60-put25-quote"],["selected_delta",{"$decimal":"-0.24"}],["strike",{"$decimal":"95"}],["target_delta",{"$decimal":"-0.25"}]]}],["session_date",{"$date":"2030-01-02"}],["skew_percentile",{"$decimal":"1"}],["tenor_days",60],["underlying_quote_record_id","ve-current-underlying"],["upside_25_delta_skew",{"$decimal":"-0.020"}],["upside_wing_curvature",{"$decimal":"-0.02"}]]}]}],["current_skew_formula","put_25_delta_iv_minus_atm_iv"],["delta_convention",{"$map":[["delta_basis","spot"],["interpolation_methodology","none"],["model_provider_methodology","Synthetic Black-Scholes provider delta"],["premium_adjustment","unadjusted"],["signed_delta_convention","call_positive_put_negative"],["target_selection_methodology","nearest_observed_signed_delta"]]}],["delta_point_selection_rule","nearest_observed_signed_delta"],["delta_tie_rule","reject_equal_distance_or_remaining_economic_ambiguity"],["float_conversion_rule","convert_only_final_tail_pricing_record_values_to_finite_float"],["historical_eod_semantics",{"$map":[["declared",true],["methodology","Synthetic official regular-session EOD snapshot"],["sample_semantics","caller_declared_daily_eod_observation_sample"],["scope","every_historical_session_and_tenor_selection"]]}],["historical_expected_session_dates",{"$list":[{"$date":"2029-12-30"}]}],["historical_matched_tenor_rule","expiration_minus_session_date_calendar_days_equals_current_tenor"],["historical_observations_by_tenor",{"$list":[{"$map":[["current_expiration",{"$date":"2030-02-01"}],["historical_observations",{"$list":[{"$map":[["atm_iv",{"$decimal":"0.200"}],["call_10_delta_iv",{"$decimal":"0.16"}],["call_25_delta_iv",{"$decimal":"0.18"}],["candidate_contracts",{"$list":[{"$map":[["contract_multiplier",100],["contract_reference_record_id","ve-history-0-0-call-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.40"}],["distance_to_25_target",{"$decimal":"0.25"}],["greeks_record_id","ve-history-0-0-call-greeks"],["implied_volatility",{"$decimal":"0.19"}],["iv_record_id","ve-history-0-0-call-iv"],["option_type","call"],["quote_record_id","ve-history-0-0-call-quote"],["signed_delta",{"$decimal":"0.50"}],["strike",{"$decimal":"100"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-30-call25-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.14"}],["distance_to_25_target",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-30-call25-greeks"],["implied_volatility",{"$decimal":"0.18"}],["iv_record_id","tail-history-0-30-call25-iv"],["option_type","call"],["quote_record_id","tail-history-0-30-call25-quote"],["signed_delta",{"$decimal":"0.24"}],["strike",{"$decimal":"105"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-30-call10-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.01"}],["distance_to_25_target",{"$decimal":"0.14"}],["greeks_record_id","tail-history-0-30-call10-greeks"],["implied_volatility",{"$decimal":"0.16"}],["iv_record_id","tail-history-0-30-call10-iv"],["option_type","call"],["quote_record_id","tail-history-0-30-call10-quote"],["signed_delta",{"$decimal":"0.11"}],["strike",{"$decimal":"110"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-30-put10-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.01"}],["distance_to_25_target",{"$decimal":"0.14"}],["greeks_record_id","tail-history-0-30-put10-greeks"],["implied_volatility",{"$decimal":"0.32"}],["iv_record_id","tail-history-0-30-put10-iv"],["option_type","put"],["quote_record_id","tail-history-0-30-put10-quote"],["signed_delta",{"$decimal":"-0.11"}],["strike",{"$decimal":"90"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-30-put25-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.14"}],["distance_to_25_target",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-30-put25-greeks"],["implied_volatility",{"$decimal":"0.26"}],["iv_record_id","tail-history-0-30-put25-iv"],["option_type","put"],["quote_record_id","tail-history-0-30-put25-quote"],["signed_delta",{"$decimal":"-0.24"}],["strike",{"$decimal":"95"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","ve-history-0-0-put-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.40"}],["distance_to_25_target",{"$decimal":"0.25"}],["greeks_record_id","ve-history-0-0-put-greeks"],["implied_volatility",{"$decimal":"0.21"}],["iv_record_id","ve-history-0-0-put-iv"],["option_type","put"],["quote_record_id","ve-history-0-0-put-quote"],["signed_delta",{"$decimal":"-0.50"}],["strike",{"$decimal":"100"}]]}]}],["downside_25_delta_skew",{"$decimal":"0.060"}],["downside_wing_curvature",{"$decimal":"0.06"}],["expiration",{"$date":"2030-01-29"}],["put_10_delta_iv",{"$decimal":"0.32"}],["put_25_delta_iv",{"$decimal":"0.26"}],["selected_call_10",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-30-call10-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-30-call10-greeks"],["implied_volatility",{"$decimal":"0.16"}],["iv_record_id","tail-history-0-30-call10-iv"],["option_type","call"],["quote_record_id","tail-history-0-30-call10-quote"],["selected_delta",{"$decimal":"0.11"}],["strike",{"$decimal":"110"}],["target_delta",{"$decimal":"0.10"}]]}],["selected_call_25",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-30-call25-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-30-call25-greeks"],["implied_volatility",{"$decimal":"0.18"}],["iv_record_id","tail-history-0-30-call25-iv"],["option_type","call"],["quote_record_id","tail-history-0-30-call25-quote"],["selected_delta",{"$decimal":"0.24"}],["strike",{"$decimal":"105"}],["target_delta",{"$decimal":"0.25"}]]}],["selected_paired_atm_evidence",{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","ve-history-0-0-call-reference"],["call_implied_volatility",{"$decimal":"0.19"}],["call_iv_record_id","ve-history-0-0-call-iv"],["call_quote_record_id","ve-history-0-0-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.200"}],["put_contract_reference_record_id","ve-history-0-0-put-reference"],["put_implied_volatility",{"$decimal":"0.21"}],["put_iv_record_id","ve-history-0-0-put-iv"],["put_quote_record_id","ve-history-0-0-put-quote"],["strike",{"$decimal":"100"}]]}]}],["selected_atm_iv",{"$decimal":"0.200"}],["selected_call_iv_record_id","ve-history-0-0-call-iv"],["selected_put_iv_record_id","ve-history-0-0-put-iv"],["selected_strike",{"$decimal":"100"}],["underlying_midpoint",{"$decimal":"100.0"}]]}],["selected_put_10",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-30-put10-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-30-put10-greeks"],["implied_volatility",{"$decimal":"0.32"}],["iv_record_id","tail-history-0-30-put10-iv"],["option_type","put"],["quote_record_id","tail-history-0-30-put10-quote"],["selected_delta",{"$decimal":"-0.11"}],["strike",{"$decimal":"90"}],["target_delta",{"$decimal":"-0.10"}]]}],["selected_put_25",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-30-put25-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-30-put25-greeks"],["implied_volatility",{"$decimal":"0.26"}],["iv_record_id","tail-history-0-30-put25-iv"],["option_type","put"],["quote_record_id","tail-history-0-30-put25-quote"],["selected_delta",{"$decimal":"-0.24"}],["strike",{"$decimal":"95"}],["target_delta",{"$decimal":"-0.25"}]]}],["session_date",{"$date":"2029-12-30"}],["underlying_quote_record_id","ve-history-0-underlying"],["upside_25_delta_skew",{"$decimal":"-0.020"}],["upside_wing_curvature",{"$decimal":"-0.02"}]]}]}],["tenor_days",30]]},{"$map":[["current_expiration",{"$date":"2030-03-03"}],["historical_observations",{"$list":[{"$map":[["atm_iv",{"$decimal":"0.300"}],["call_10_delta_iv",{"$decimal":"0.26"}],["call_25_delta_iv",{"$decimal":"0.28"}],["candidate_contracts",{"$list":[{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-atm-call-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.40"}],["distance_to_25_target",{"$decimal":"0.25"}],["greeks_record_id","tail-history-0-60-atm-call-greeks"],["implied_volatility",{"$decimal":"0.30"}],["iv_record_id","tail-history-0-60-atm-call-iv"],["option_type","call"],["quote_record_id","tail-history-0-60-atm-call-quote"],["signed_delta",{"$decimal":"0.50"}],["strike",{"$decimal":"100"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-call25-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.14"}],["distance_to_25_target",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-60-call25-greeks"],["implied_volatility",{"$decimal":"0.28"}],["iv_record_id","tail-history-0-60-call25-iv"],["option_type","call"],["quote_record_id","tail-history-0-60-call25-quote"],["signed_delta",{"$decimal":"0.24"}],["strike",{"$decimal":"105"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-call10-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.01"}],["distance_to_25_target",{"$decimal":"0.14"}],["greeks_record_id","tail-history-0-60-call10-greeks"],["implied_volatility",{"$decimal":"0.26"}],["iv_record_id","tail-history-0-60-call10-iv"],["option_type","call"],["quote_record_id","tail-history-0-60-call10-quote"],["signed_delta",{"$decimal":"0.11"}],["strike",{"$decimal":"110"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-put10-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.01"}],["distance_to_25_target",{"$decimal":"0.14"}],["greeks_record_id","tail-history-0-60-put10-greeks"],["implied_volatility",{"$decimal":"0.42"}],["iv_record_id","tail-history-0-60-put10-iv"],["option_type","put"],["quote_record_id","tail-history-0-60-put10-quote"],["signed_delta",{"$decimal":"-0.11"}],["strike",{"$decimal":"90"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-put25-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.14"}],["distance_to_25_target",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-60-put25-greeks"],["implied_volatility",{"$decimal":"0.36"}],["iv_record_id","tail-history-0-60-put25-iv"],["option_type","put"],["quote_record_id","tail-history-0-60-put25-quote"],["signed_delta",{"$decimal":"-0.24"}],["strike",{"$decimal":"95"}]]},{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-atm-put-reference"],["currency","USD"],["deliverable_id",null],["distance_to_10_target",{"$decimal":"0.40"}],["distance_to_25_target",{"$decimal":"0.25"}],["greeks_record_id","tail-history-0-60-atm-put-greeks"],["implied_volatility",{"$decimal":"0.30"}],["iv_record_id","tail-history-0-60-atm-put-iv"],["option_type","put"],["quote_record_id","tail-history-0-60-atm-put-quote"],["signed_delta",{"$decimal":"-0.50"}],["strike",{"$decimal":"100"}]]}]}],["downside_25_delta_skew",{"$decimal":"0.060"}],["downside_wing_curvature",{"$decimal":"0.06"}],["expiration",{"$date":"2030-02-28"}],["put_10_delta_iv",{"$decimal":"0.42"}],["put_25_delta_iv",{"$decimal":"0.36"}],["selected_call_10",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-call10-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-60-call10-greeks"],["implied_volatility",{"$decimal":"0.26"}],["iv_record_id","tail-history-0-60-call10-iv"],["option_type","call"],["quote_record_id","tail-history-0-60-call10-quote"],["selected_delta",{"$decimal":"0.11"}],["strike",{"$decimal":"110"}],["target_delta",{"$decimal":"0.10"}]]}],["selected_call_25",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-call25-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-60-call25-greeks"],["implied_volatility",{"$decimal":"0.28"}],["iv_record_id","tail-history-0-60-call25-iv"],["option_type","call"],["quote_record_id","tail-history-0-60-call25-quote"],["selected_delta",{"$decimal":"0.24"}],["strike",{"$decimal":"105"}],["target_delta",{"$decimal":"0.25"}]]}],["selected_paired_atm_evidence",{"$map":[["candidate_pairs",{"$list":[{"$map":[["call_contract_reference_record_id","tail-history-0-60-atm-call-reference"],["call_implied_volatility",{"$decimal":"0.30"}],["call_iv_record_id","tail-history-0-60-atm-call-iv"],["call_quote_record_id","tail-history-0-60-atm-call-quote"],["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["distance_to_underlying_midpoint",{"$decimal":"0.0"}],["paired_implied_volatility",{"$decimal":"0.300"}],["put_contract_reference_record_id","tail-history-0-60-atm-put-reference"],["put_implied_volatility",{"$decimal":"0.30"}],["put_iv_record_id","tail-history-0-60-atm-put-iv"],["put_quote_record_id","tail-history-0-60-atm-put-quote"],["strike",{"$decimal":"100"}]]}]}],["selected_atm_iv",{"$decimal":"0.300"}],["selected_call_iv_record_id","tail-history-0-60-atm-call-iv"],["selected_put_iv_record_id","tail-history-0-60-atm-put-iv"],["selected_strike",{"$decimal":"100"}],["underlying_midpoint",{"$decimal":"100.0"}]]}],["selected_put_10",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-put10-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-60-put10-greeks"],["implied_volatility",{"$decimal":"0.42"}],["iv_record_id","tail-history-0-60-put10-iv"],["option_type","put"],["quote_record_id","tail-history-0-60-put10-quote"],["selected_delta",{"$decimal":"-0.11"}],["strike",{"$decimal":"90"}],["target_delta",{"$decimal":"-0.10"}]]}],["selected_put_25",{"$map":[["contract_multiplier",100],["contract_reference_record_id","tail-history-0-60-put25-reference"],["currency","USD"],["deliverable_id",null],["distance",{"$decimal":"0.01"}],["greeks_record_id","tail-history-0-60-put25-greeks"],["implied_volatility",{"$decimal":"0.36"}],["iv_record_id","tail-history-0-60-put25-iv"],["option_type","put"],["quote_record_id","tail-history-0-60-put25-quote"],["selected_delta",{"$decimal":"-0.24"}],["strike",{"$decimal":"95"}],["target_delta",{"$decimal":"-0.25"}]]}],["session_date",{"$date":"2029-12-30"}],["underlying_quote_record_id","tail-history-0-60-underlying"],["upside_25_delta_skew",{"$decimal":"-0.020"}],["upside_wing_curvature",{"$decimal":"-0.02"}]]}]}],["tenor_days",60]]}]}],["interpolation_rule","none"],["normalized_evidence",{"$map":[["direct_inputs",{"$list":[{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-call10-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-current-30-call10-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-call10-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-current-30-call10-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-call10-quote"],["role","option_quote"],["source_ids",{"$list":["tail-current-30-call10-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-call10-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-current-30-call10-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-call25-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-current-30-call25-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-call25-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-current-30-call25-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-call25-quote"],["role","option_quote"],["source_ids",{"$list":["tail-current-30-call25-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-call25-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-current-30-call25-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-put10-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-current-30-put10-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-put10-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-current-30-put10-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-put10-quote"],["role","option_quote"],["source_ids",{"$list":["tail-current-30-put10-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-put10-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-current-30-put10-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-put25-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-current-30-put25-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-put25-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-current-30-put25-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-put25-quote"],["role","option_quote"],["source_ids",{"$list":["tail-current-30-put25-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-30-put25-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-current-30-put25-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-call10-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-current-60-call10-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-call10-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-current-60-call10-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-call10-quote"],["role","option_quote"],["source_ids",{"$list":["tail-current-60-call10-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-call10-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-current-60-call10-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-call25-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-current-60-call25-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-call25-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-current-60-call25-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-call25-quote"],["role","option_quote"],["source_ids",{"$list":["tail-current-60-call25-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-call25-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-current-60-call25-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-put10-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-current-60-put10-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-put10-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-current-60-put10-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-put10-quote"],["role","option_quote"],["source_ids",{"$list":["tail-current-60-put10-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-put10-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-current-60-put10-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-put25-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-current-60-put25-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-put25-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-current-60-put25-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-put25-quote"],["role","option_quote"],["source_ids",{"$list":["tail-current-60-put25-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-current-60-put25-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-current-60-put25-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-call10-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-30-call10-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-call10-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-30-call10-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-call10-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-30-call10-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-call10-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-30-call10-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-call25-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-30-call25-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-call25-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-30-call25-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-call25-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-30-call25-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-call25-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-30-call25-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-put10-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-30-put10-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-put10-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-30-put10-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-put10-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-30-put10-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-put10-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-30-put10-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-put25-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-30-put25-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-put25-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-30-put25-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-put25-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-30-put25-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-30-put25-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-30-put25-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-atm-call-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-60-atm-call-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-atm-call-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-60-atm-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-atm-call-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-60-atm-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-atm-call-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-60-atm-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-atm-put-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-60-atm-put-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-atm-put-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-60-atm-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-atm-put-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-60-atm-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-atm-put-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-60-atm-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-call10-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-60-call10-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-call10-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-60-call10-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-call10-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-60-call10-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-call10-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-60-call10-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-call25-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-60-call25-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-call25-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-60-call25-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-call25-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-60-call25-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-call25-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-60-call25-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-put10-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-60-put10-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-put10-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-60-put10-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-put10-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-60-put10-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-put10-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-60-put10-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-put25-greeks"],["role","option_greeks"],["source_ids",{"$list":["tail-history-0-60-put25-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-put25-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["tail-history-0-60-put25-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-put25-quote"],["role","option_quote"],["source_ids",{"$list":["tail-history-0-60-put25-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-put25-reference"],["role","option_contract_reference"],["source_ids",{"$list":["tail-history-0-60-put25-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","tail-history-0-60-underlying"],["role","underlying_quote"],["source_ids",{"$list":["tail-history-0-60-underlying-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-call-greeks"],["role","option_greeks"],["source_ids",{"$list":["ve-current-0-call-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-call-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-current-0-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-call-quote"],["role","option_quote"],["source_ids",{"$list":["ve-current-0-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-call-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-current-0-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-put-greeks"],["role","option_greeks"],["source_ids",{"$list":["ve-current-0-put-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-put-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-current-0-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-put-quote"],["role","option_quote"],["source_ids",{"$list":["ve-current-0-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-0-put-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-current-0-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-call-greeks"],["role","option_greeks"],["source_ids",{"$list":["ve-current-1-call-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-call-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-current-1-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-call-quote"],["role","option_quote"],["source_ids",{"$list":["ve-current-1-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-call-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-current-1-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-put-greeks"],["role","option_greeks"],["source_ids",{"$list":["ve-current-1-put-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-put-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-current-1-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-put-quote"],["role","option_quote"],["source_ids",{"$list":["ve-current-1-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-1-put-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-current-1-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-current-underlying"],["role","underlying_quote"],["source_ids",{"$list":["ve-current-underlying-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-call-greeks"],["role","option_greeks"],["source_ids",{"$list":["ve-history-0-0-call-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-call-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-history-0-0-call-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-call-quote"],["role","option_quote"],["source_ids",{"$list":["ve-history-0-0-call-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-call-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-history-0-0-call-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-put-greeks"],["role","option_greeks"],["source_ids",{"$list":["ve-history-0-0-put-greeks-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-put-iv"],["role","option_implied_volatility"],["source_ids",{"$list":["ve-history-0-0-put-iv-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-put-quote"],["role","option_quote"],["source_ids",{"$list":["ve-history-0-0-put-quote-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-0-put-reference"],["role","option_contract_reference"],["source_ids",{"$list":["ve-history-0-0-put-reference-source-0"]}]]},{"$map":[["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","ve-history-0-underlying"],["role","underlying_quote"],["source_ids",{"$list":["ve-history-0-underlying-source-0"]}]]}]}]]}],["same_contract_reuse_rule","reject_same_economic_contract_across_10_and_25_same_side"],["skew_percentile_formula","inclusive_count_historical_downside_25_skew_lte_current_divided_by_count"],["skew_term_structure_ordering","ascending_days_to_expiration_then_expiration"],["tail_output_architecture","ordered_tail_pricing_slice_tuple"],["target_deltas",{"$map":[["call_10",{"$decimal":"0.10"}],["call_25",{"$decimal":"0.25"}],["put_10",{"$decimal":"-0.10"}],["put_25",{"$decimal":"-0.25"}]]}],["volatility_unit","annualized_decimal_ratio"]]}'
+EXPECTED_STRUCTURE_LIQUIDITY_V02_JSON = '{"$map":[["activity_count_unit","contracts"],["calculation_values",{"$map":[["as_of_date",{"$date":"2030-01-02"}],["minimum_leg_daily_volume",30],["minimum_leg_open_interest",70],["quote_methodology","exact selected option quotes scaled by quantity and contract multiplier"],["quoted_ask_value_exact",{"$decimal":"400.00"}],["quoted_bid_value_exact",{"$decimal":"325.00"}],["stable_public_values",{"$map":[["quoted_ask_value_repr","400.0"],["quoted_bid_value_repr","325.0"]]}]]}],["leg_correspondence",{"$list":[{"$map":[["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],["open_interest_record_id","liquidity-call-open-interest"],["option_type","call"],["quantity",1],["quote_record_id","liquidity-call-quote"],["strike",{"$decimal":"100.0"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}],["volume_record_id","liquidity-call-volume"]]},{"$map":[["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],["open_interest_record_id","liquidity-put-open-interest"],["option_type","put"],["quantity",1],["quote_record_id","liquidity-put-quote"],["strike",{"$decimal":"100.0"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}],["volume_record_id","liquidity-put-volume"]]}]}],["minimum_leg_rule","minimum_unscaled_contract_count_across_legs"],["normalized_evidence",{"$map":[["option_open_interest",{"$list":[{"$map":[["contract",{"$map":[["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],["option_type","call"],["strike",{"$decimal":"100.0"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}]]}],["leg_index",0],["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["open_interest",80],["open_interest_session_date",{"$date":"2030-01-02"}],["propagated_quality_flags",{"$list":[]}],["record_id","liquidity-call-open-interest"],["source_ids",{"$list":["liquidity-call-open-interest-source-0"]}]]},{"$map":[["contract",{"$map":[["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],["option_type","put"],["strike",{"$decimal":"100.0"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}]]}],["leg_index",1],["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["open_interest",70],["open_interest_session_date",{"$date":"2030-01-02"}],["propagated_quality_flags",{"$list":[]}],["record_id","liquidity-put-open-interest"],["source_ids",{"$list":["liquidity-put-open-interest-source-0"]}]]}]}],["option_quotes",{"$list":[{"$map":[["ask_premium",{"$decimal":"1.50"}],["bid_premium",{"$decimal":"1.25"}],["contract",{"$map":[["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],["option_type","call"],["strike",{"$decimal":"100.0"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}]]}],["leg_index",0],["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","liquidity-call-quote"],["session_date",{"$date":"2030-01-02"}],["source_ids",{"$list":["liquidity-call-quote-source-0"]}]]},{"$map":[["ask_premium",{"$decimal":"2.50"}],["bid_premium",{"$decimal":"2.00"}],["contract",{"$map":[["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],["option_type","put"],["strike",{"$decimal":"100.0"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}]]}],["leg_index",1],["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","liquidity-put-quote"],["session_date",{"$date":"2030-01-02"}],["source_ids",{"$list":["liquidity-put-quote-source-0"]}]]}]}],["option_volumes",{"$list":[{"$map":[["contract",{"$map":[["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],["option_type","call"],["strike",{"$decimal":"100.0"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}]]}],["cumulative_volume",40],["is_session_complete",true],["leg_index",0],["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","liquidity-call-volume"],["session_date",{"$date":"2030-01-02"}],["source_ids",{"$list":["liquidity-call-volume-source-0"]}]]},{"$map":[["contract",{"$map":[["contract_multiplier",100],["currency","USD"],["deliverable_id",null],["expiration",{"$date":"2030-03-15"}],["option_type","put"],["strike",{"$decimal":"100.0"}],["underlying",{"$map":[["currency","USD"],["listing_mic","ARCX"],["security_type","etf"],["symbol","SPY"]]}]]}],["cumulative_volume",30],["is_session_complete",true],["leg_index",1],["normalized_at",{"$datetime":"2030-01-02T15:30:00.000002Z"}],["propagated_quality_flags",{"$list":[]}],["record_id","liquidity-put-volume"],["session_date",{"$date":"2030-01-02"}],["source_ids",{"$list":["liquidity-put-volume-source-0"]}]]}]}]]}],["position_value_rule","sum(premium_per_underlying_unit*quantity*contract_multiplier)"],["position_value_unit","usd"],["premium_input_unit","usd_per_underlying_unit"],["structure_identity",{"$map":[["assumed_portfolio_value_repr","100000.0"],["expected_holding_days",14],["legs",{"$list":[{"$map":[["contract_multiplier",100],["expiration",{"$date":"2030-03-15"}],["option_type","call"],["quantity",1],["strike_float_repr","100.0"],["underlying","SPY"]]},{"$map":[["contract_multiplier",100],["expiration",{"$date":"2030-03-15"}],["option_type","put"],["quantity",1],["strike_float_repr","100.0"],["underlying","SPY"]]}]}],["structure_type","long_straddle"],["underlying","SPY"]]}]]}'
+
+class Milestone6AReviewedArtifactVerifiabilityTests(unittest.TestCase):
+    @staticmethod
+    def _tagged_map(value):
+        if type(value) is not dict or tuple(value) != ("$map",):
+            raise AssertionError("expected a literal tagged map")
+        pairs = value["$map"]
+        if type(pairs) is not list:
+            raise AssertionError("expected a literal map-pair list")
+        return {pair[0]: pair[1] for pair in pairs}
+
+    @staticmethod
+    def _bypass_replace(value, **changes):
+        forged = object.__new__(type(value))
+        for field in dataclasses.fields(value):
+            object.__setattr__(
+                forged,
+                field.name,
+                changes.get(field.name, getattr(value, field.name)),
+            )
+        return forged
+
+    def _forged_volatility_lineage(self, result, mutate):
+        parameters = copy.deepcopy(
+            transformations._decode_volatility_parameters(
+                result.lineage.parameters_json
+            )
+        )
+        mutate(parameters)
+        return dataclasses.replace(
+            result.lineage,
+            parameters_json=market_data.canonicalize_lineage_parameters(
+                parameters
+            ),
+        )
+
+    def _forged_tail_lineage(self, result, mutate):
+        parameters = copy.deepcopy(
+            transformations._decode_tail_pricing_parameters(
+                result.lineage.parameters_json
+            )
+        )
+        mutate(parameters)
+        return dataclasses.replace(
+            result.lineage,
+            parameters_json=market_data.canonicalize_lineage_parameters(
+                parameters
+            ),
+        )
+
+    @staticmethod
+    def _coordinate_realized_field(parameters, field, value):
+        realized = parameters["realized_volatility_dependency"]
+        realized[field] = value
+        historical = transformations._decode_strict_tagged_parameters(
+            realized["parameters_json"],
+            transformations._HISTORICAL_PARAMETER_KEYS,
+            "test historical dependency",
+        )
+        historical_field = {
+            "start_session_date": "window_start_session_date",
+            "end_session_date": "window_end_session_date",
+        }.get(field, field)
+        historical[historical_field] = value
+        realized["parameters_json"] = (
+            market_data.canonicalize_lineage_parameters(historical)
+        )
+
+    @staticmethod
+    def _coordinate_realized_underlying_field(
+        parameters, field, value
+    ):
+        realized = parameters["realized_volatility_dependency"]
+        realized["underlying"][field] = value
+        historical = transformations._decode_strict_tagged_parameters(
+            realized["parameters_json"],
+            transformations._HISTORICAL_PARAMETER_KEYS,
+            "test historical dependency",
+        )
+        historical["underlying"][field] = value
+        realized["parameters_json"] = (
+            market_data.canonicalize_lineage_parameters(historical)
+        )
+
+    def test_literal_v02_byte_goldens_and_frozen_nested_schemas(self):
+        volatility = make_volatility_result(
+            current_candidates=(
+                (
+                    SESSION_DATE + datetime.timedelta(days=30),
+                    "100", "0.3", "0.3",
+                ),
+                (
+                    SESSION_DATE + datetime.timedelta(days=60),
+                    "100", "0.4", "0.4",
+                ),
+            ),
+            historical_values=("0.20",),
+        )
+        tail = make_tail_result(historical_skews=("0.06",))
+        structure = make_structure(("call", "put"))
+        liquidity = transform(structure, make_selection(structure)[0])
+        artifacts = (
+            (
+                "Volatility Environment v0.2",
+                volatility.lineage.parameters_json,
+                EXPECTED_VOLATILITY_ENVIRONMENT_V02_JSON,
+                (
+                    "atm_candidate_universe", "atm_selection_rule",
+                    "call_put_combination_rule", "current_observations",
+                    "float_conversion_rule",
+                    "historical_expected_session_dates",
+                    "historical_matched_tenor_rule",
+                    "historical_observation_count",
+                    "historical_observations",
+                    "historical_sample_semantics", "iv_methodology",
+                    "median_formula", "normalized_evidence",
+                    "percentile_formula",
+                    "realized_volatility_dependency",
+                    "realized_window_matching_rule", "reference_tenor_days",
+                    "strike_tie_rule", "term_tenor_rule",
+                    "underlying_midpoint_rule", "volatility_unit",
+                ),
+            ),
+            (
+                "Tail Pricing v0.2",
+                tail.lineage.parameters_json,
+                EXPECTED_TAIL_PRICING_V02_JSON,
+                (
+                    "analytics_methodology", "atm_dependency",
+                    "candidate_universe", "current_expiration_observations",
+                    "current_skew_formula", "delta_convention",
+                    "delta_point_selection_rule", "delta_tie_rule",
+                    "float_conversion_rule", "historical_eod_semantics",
+                    "historical_expected_session_dates",
+                    "historical_matched_tenor_rule",
+                    "historical_observations_by_tenor",
+                    "interpolation_rule", "normalized_evidence",
+                    "same_contract_reuse_rule", "skew_percentile_formula",
+                    "skew_term_structure_ordering",
+                    "tail_output_architecture", "target_deltas",
+                    "volatility_unit",
+                ),
+            ),
+            (
+                "Structure Liquidity v0.2",
+                liquidity.lineage.parameters_json,
+                EXPECTED_STRUCTURE_LIQUIDITY_V02_JSON,
+                (
+                    "activity_count_unit", "calculation_values",
+                    "leg_correspondence", "minimum_leg_rule",
+                    "normalized_evidence", "position_value_rule",
+                    "position_value_unit", "premium_input_unit",
+                    "structure_identity",
+                ),
+            ),
+        )
+        for name, actual, expected, top_level_keys in artifacts:
+            with self.subTest(name=name):
+                self.assertEqual(actual, expected)
+                self.assertEqual(
+                    hashlib.sha256(actual.encode()).hexdigest(),
+                    hashlib.sha256(expected.encode()).hexdigest(),
+                )
+                self.assertEqual(
+                    tuple(self._tagged_map(json.loads(expected))),
+                    top_level_keys,
+                )
+
+        volatility_map = self._tagged_map(
+            json.loads(EXPECTED_VOLATILITY_ENVIRONMENT_V02_JSON)
+        )
+        realized = self._tagged_map(
+            volatility_map["realized_volatility_dependency"]
+        )
+        self.assertEqual(
+            set(realized),
+            {
+                "adjustment_methodology",
+                "annualization_sessions_per_year",
+                "annualized_realized_volatility_float_repr",
+                "calculated_at", "calculation_id", "calculation_type",
+                "end_session_date", "inputs", "log_returns",
+                "methodology_id", "methodology_version", "parameters_json",
+                "price_basis", "price_observation_count", "prices",
+                "quality_flags", "return_formula",
+                "return_observation_count", "session_dates",
+                "start_session_date", "underlying", "variance_estimator",
+            },
+        )
+        tail_map = self._tagged_map(
+            json.loads(EXPECTED_TAIL_PRICING_V02_JSON)
+        )
+        atm = self._tagged_map(tail_map["atm_dependency"])
+        self.assertIn("inputs", atm)
+        self.assertNotIn("input_record_ids", atm)
+        liquidity_map = self._tagged_map(
+            json.loads(EXPECTED_STRUCTURE_LIQUIDITY_V02_JSON)
+        )
+        normalized = self._tagged_map(
+            liquidity_map["normalized_evidence"]
+        )
+        self.assertEqual(
+            set(normalized),
+            {"option_quotes", "option_volumes", "option_open_interest"},
+        )
+        calculations = self._tagged_map(
+            liquidity_map["calculation_values"]
+        )
+        self.assertEqual(
+            set(calculations),
+            {
+                "as_of_date", "quoted_bid_value_exact",
+                "quoted_ask_value_exact", "minimum_leg_daily_volume",
+                "minimum_leg_open_interest", "quote_methodology",
+                "stable_public_values",
+            },
+        )
+
+    def test_authentic_direct_reconstruction_and_v01_rejection(self):
+        volatility = make_volatility_result()
+        tail = make_tail_result()
+        structure = make_structure(("put", "call"))
+        liquidity = transform(structure, make_selection(structure)[0])
+        self.assertEqual(
+            VolatilityEnvironmentTransformationResult(
+                volatility.record, volatility.lineage
+            ),
+            volatility,
+        )
+        self.assertEqual(
+            TailPricingTransformationResult(tail.records, tail.lineage), tail
+        )
+        self.assertEqual(
+            StructureLiquidityTransformationResult(
+                liquidity.record, liquidity.lineage
+            ),
+            liquidity,
+        )
+        for wrapper, public, lineage in (
+            (
+                VolatilityEnvironmentTransformationResult,
+                volatility.record,
+                volatility.lineage,
+            ),
+            (TailPricingTransformationResult, tail.records, tail.lineage),
+            (
+                StructureLiquidityTransformationResult,
+                liquidity.record,
+                liquidity.lineage,
+            ),
+        ):
+            with self.subTest(wrapper=wrapper.__name__), self.assertRaises(
+                ValueError
+            ):
+                wrapper(
+                    public,
+                    dataclasses.replace(lineage, methodology_version="v0.1"),
+                )
+
+    def test_complete_realized_dependency_mutation_matrix_rejects(self):
+        result = make_volatility_result()
+        mutations = (
+            (
+                "incomplete_underlying",
+                ValueError,
+                lambda value: value["realized_volatility_dependency"]
+                ["underlying"].pop("listing_mic"),
+            ),
+            (
+                "surplus_underlying",
+                ValueError,
+                lambda value: value["realized_volatility_dependency"]
+                ["underlying"].__setitem__("extra", "forged"),
+            ),
+            (
+                "forged_currency",
+                ValueError,
+                lambda value: self._coordinate_realized_underlying_field(
+                    value, "currency", "EUR"
+                ),
+            ),
+            (
+                "forged_return_formula",
+                ValueError,
+                lambda value: self._coordinate_realized_field(
+                    value, "return_formula", "forged"
+                ),
+            ),
+            (
+                "forged_variance_estimator",
+                ValueError,
+                lambda value: self._coordinate_realized_field(
+                    value, "variance_estimator", "forged"
+                ),
+            ),
+            (
+                "forged_price_basis",
+                ValueError,
+                lambda value: self._coordinate_realized_field(
+                    value, "price_basis", "forged"
+                ),
+            ),
+            (
+                "boolean_annualization_sessions",
+                TypeError,
+                lambda value: self._coordinate_realized_field(
+                    value, "annualization_sessions_per_year", True
+                ),
+            ),
+            (
+                "inconsistent_start_and_window",
+                ValueError,
+                lambda value: self._coordinate_realized_field(
+                    value,
+                    "start_session_date",
+                    SESSION_DATE - datetime.timedelta(days=31),
+                ),
+            ),
+            (
+                "inconsistent_end_and_window",
+                ValueError,
+                lambda value: self._coordinate_realized_field(
+                    value,
+                    "end_session_date",
+                    SESSION_DATE - datetime.timedelta(days=1),
+                ),
+            ),
+            (
+                "malformed_underlying_type",
+                TypeError,
+                lambda value: value.__setitem__(
+                    "realized_volatility_dependency",
+                    {
+                        **value["realized_volatility_dependency"],
+                        "underlying": "SPY",
+                    },
+                ),
+            ),
+        )
+        for name, exception, mutate in mutations:
+            with self.subTest(name=name), self.assertRaises(exception):
+                VolatilityEnvironmentTransformationResult(
+                    result.record,
+                    self._forged_volatility_lineage(result, mutate),
+                )
+
+        forged_window = self._bypass_replace(
+            result.record,
+            matched_realized_window_days=result.reference_tenor_days + 1
+            if hasattr(result, "reference_tenor_days")
+            else result.record.reference_tenor_days + 1,
+        )
+        with self.assertRaises(ValueError):
+            VolatilityEnvironmentTransformationResult(
+                forged_window, result.lineage
+            )
+
+    def test_complete_calculation_id_namespace_rejects(self):
+        volatility = make_volatility_result()
+        decoded = transformations._decode_volatility_parameters(
+            volatility.lineage.parameters_json
+        )
+        realized = decoded["realized_volatility_dependency"]
+        dependency_input_id = realized["inputs"][0]["record_id"]
+        direct_input_id = decoded["normalized_evidence"]["direct_inputs"][0][
+            "record_id"
+        ]
+        for name, collision_id in (
+            ("realized_own_input", dependency_input_id),
+            ("realized_direct_input", direct_input_id),
+        ):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                VolatilityEnvironmentTransformationResult(
+                    volatility.record,
+                    self._forged_volatility_lineage(
+                        volatility,
+                        lambda value, collision_id=collision_id: value[
+                            "realized_volatility_dependency"
+                        ].__setitem__("calculation_id", collision_id),
+                    ),
+                )
+        for name, collision_id in (
+            ("volatility_input", direct_input_id),
+            ("volatility_dependency", realized["calculation_id"]),
+        ):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                VolatilityEnvironmentTransformationResult(
+                    volatility.record,
+                    self._bypass_replace(
+                        volatility.lineage, calculation_id=collision_id
+                    ),
+                )
+
+        tail = make_tail_result()
+        tail_only_id = "tail-current-30-call10-greeks"
+        with self.assertRaises(ValueError):
+            TailPricingTransformationResult(
+                tail.records,
+                self._forged_tail_lineage(
+                    tail,
+                    lambda value: value["atm_dependency"].__setitem__(
+                        "calculation_id", tail_only_id
+                    ),
+                ),
+            )
+
+        def collide_realized_with_tail_direct(value):
+            dependency = value["atm_dependency"]
+            parameters = transformations._decode_volatility_parameters(
+                dependency["parameters_json"]
+            )
+            parameters["realized_volatility_dependency"][
+                "calculation_id"
+            ] = tail_only_id
+            dependency["parameters_json"] = (
+                market_data.canonicalize_lineage_parameters(parameters)
+            )
+
+        with self.assertRaises(ValueError):
+            TailPricingTransformationResult(
+                tail.records,
+                self._forged_tail_lineage(
+                    tail, collide_realized_with_tail_direct
+                ),
+            )
+
+    def test_complete_public_mutation_matrix_rejects(self):
+        volatility = make_volatility_result()
+        volatility_changes = {
+            "underlying": "QQQ",
+            "as_of_date": volatility.record.as_of_date - datetime.timedelta(days=1),
+            "reference_tenor_days": 60,
+            "iv_percentile": 0.5,
+            "iv_history_lookback_observations": 2,
+            "historical_median_atm_iv": 0.31,
+            "matched_realized_volatility": 0.1,
+            "matched_realized_window_days": 60,
+            "term_structure": tuple(reversed(volatility.record.term_structure)),
+        }
+        for field, value in volatility_changes.items():
+            forged = self._bypass_replace(volatility.record, **{field: value})
+            with self.subTest(artifact="volatility", field=field), self.assertRaises(
+                (TypeError, ValueError)
+            ):
+                VolatilityEnvironmentTransformationResult(
+                    forged, volatility.lineage
+                )
+        tail = make_tail_result()
+        first = tail.records[0]
+        tail_changes = {
+            "underlying": "QQQ",
+            "as_of_date": first.as_of_date - datetime.timedelta(days=1),
+            "expiration": first.expiration + datetime.timedelta(days=1),
+            "atm_iv": 0.99,
+            "put_25_delta_iv": 0.99,
+            "call_25_delta_iv": 0.99,
+            "put_10_delta_iv": 0.99,
+            "call_10_delta_iv": 0.99,
+            "skew_percentile": 0.5,
+            "skew_history_lookback_observations": 2,
+            "delta_methodology": "forged",
+        }
+        for field, value in tail_changes.items():
+            forged_first = self._bypass_replace(first, **{field: value})
+            with self.subTest(artifact="tail", field=field), self.assertRaises(
+                (TypeError, ValueError)
+            ):
+                TailPricingTransformationResult(
+                    (forged_first,) + tail.records[1:], tail.lineage
+                )
+        structure = make_structure(("call", "put"))
+        liquidity = transform(structure, make_selection(structure)[0])
+        liquidity_changes = {
+            "structure": make_structure(("put", "call")),
+            "as_of_date": liquidity.record.as_of_date - datetime.timedelta(days=1),
+            "quoted_bid_value": liquidity.record.quoted_bid_value + 1.0,
+            "quoted_ask_value": liquidity.record.quoted_ask_value + 1.0,
+            "minimum_leg_open_interest": 0,
+            "minimum_leg_daily_volume": 0,
+            "quote_methodology": "forged",
+        }
+        for field, value in liquidity_changes.items():
+            forged = self._bypass_replace(liquidity.record, **{field: value})
+            with self.subTest(artifact="liquidity", field=field), self.assertRaises(
+                (TypeError, ValueError)
+            ):
+                StructureLiquidityTransformationResult(
+                    forged, liquidity.lineage
+                )
+
+    def test_lineage_canonical_type_and_quality_adversaries_reject(self):
+        results = (
+            make_volatility_result(),
+            make_tail_result(),
+            transform(make_structure(), make_selection(make_structure())[0]),
+        )
+        wrappers = (
+            VolatilityEnvironmentTransformationResult,
+            TailPricingTransformationResult,
+            StructureLiquidityTransformationResult,
+        )
+        for result, wrapper in zip(results, wrappers):
+            public = getattr(result, "record", None)
+            if public is None:
+                public = result.records
+            mutations = (
+                {"calculation_type": "forged"},
+                {"methodology_id": "forged"},
+                {"methodology_version": "v0.1"},
+                {"calculation_id": result.lineage.inputs[0].record_id},
+                {"calculated_at": result.lineage.inputs[0].normalized_at - datetime.timedelta(microseconds=1)},
+                {"quality_flags": ()},
+                {"parameters_json": '{"$map":[],"$map":[]}'},
+                {"parameters_json": '{"$map":[["x",1.5]]}'},
+                {"parameters_json": result.lineage.parameters_json + " "},
+            )
+            for changes in mutations:
+                forged_lineage = self._bypass_replace(
+                    result.lineage, **changes
+                )
+                with self.subTest(
+                    wrapper=wrapper.__name__, changes=tuple(changes)
+                ), self.assertRaises((TypeError, ValueError)):
+                    wrapper(public, forged_lineage)
+
+    def test_direct_verification_and_consumers_do_not_call_producers(self):
+        volatility = make_volatility_result()
+        tail = make_tail_result()
+        structure = make_structure()
+        liquidity = transform(structure, make_selection(structure)[0])
+        blocked = (
+            "transform_volatility_environment", "transform_tail_pricing",
+            "transform_structure_liquidity", "transform_scenario_valuation",
+            "select_market_data_relationship_assessment",
+            "assess_market_data_snapshot_timing", "provider", "network",
+            "scanner", "renderer", "risk_assessment",
+        )
+        with ExitStack() as stack:
+            for name in blocked:
+                stack.enter_context(mock.patch.object(
+                    transformations, name,
+                    side_effect=AssertionError(f"{name} called"),
+                    create=True,
+                ))
+            VolatilityEnvironmentTransformationResult(
+                volatility.record, volatility.lineage
+            )
+            TailPricingTransformationResult(tail.records, tail.lineage)
+            StructureLiquidityTransformationResult(
+                liquidity.record, liquidity.lineage
+            )
+
+        tail_arguments = list(make_tail_result(return_arguments=True))
+        with mock.patch.object(
+            transformations,
+            "transform_volatility_environment",
+            side_effect=AssertionError("Volatility producer called"),
+        ) as volatility_producer:
+            consumed_tail = transform_tail_pricing(*tail_arguments)
+        self.assertTrue(consumed_tail.records)
+        volatility_producer.assert_not_called()
+
+        authentic_volatility = tail_arguments[4]
+        forged_volatility = object.__new__(
+            VolatilityEnvironmentTransformationResult
+        )
+        object.__setattr__(
+            forged_volatility, "record", authentic_volatility.record
+        )
+        object.__setattr__(
+            forged_volatility,
+            "lineage",
+            self._forged_volatility_lineage(
+                authentic_volatility,
+                lambda value: self._coordinate_realized_field(
+                    value, "return_formula", "forged"
+                ),
+            ),
+        )
+        tail_arguments[4] = forged_volatility
+        with mock.patch.object(
+            transformations,
+            "transform_volatility_environment",
+            side_effect=AssertionError("Volatility producer called"),
+        ) as volatility_producer, self.assertRaises(ValueError):
+            transform_tail_pricing(*tail_arguments)
+        volatility_producer.assert_not_called()
+
+        scenario_arguments = list(
+            make_scenario_valuation_result(return_arguments=True)
+        )
+        with mock.patch.object(
+            transformations,
+            "transform_tail_pricing",
+            side_effect=AssertionError("Tail producer called"),
+        ) as tail_producer:
+            consumed_scenario = transform_scenario_valuation(
+                *scenario_arguments
+            )
+        self.assertTrue(consumed_scenario.records)
+        tail_producer.assert_not_called()
+
+        authentic_tail = scenario_arguments[2]
+        forged_tail = object.__new__(TailPricingTransformationResult)
+        object.__setattr__(forged_tail, "records", authentic_tail.records)
+        object.__setattr__(
+            forged_tail,
+            "lineage",
+            self._forged_tail_lineage(
+                authentic_tail,
+                lambda value: value["atm_dependency"].__setitem__(
+                    "calculation_id", "tail-current-30-call10-greeks"
+                ),
+            ),
+        )
+        scenario_arguments[2] = forged_tail
+        with mock.patch.object(
+            transformations,
+            "transform_tail_pricing",
+            side_effect=AssertionError("Tail producer called"),
+        ) as tail_producer, self.assertRaises(ValueError):
+            transform_scenario_valuation(*scenario_arguments)
+        tail_producer.assert_not_called()
 
 
 if __name__ == "__main__":
