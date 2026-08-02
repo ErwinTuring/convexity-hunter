@@ -6625,6 +6625,432 @@ Milestone 4 creates expiration payoff-threshold evidence only. It contains no:
 Candidate assembly, screening integration, reporting, position-management
 integration, and services remain later work.
 
+## 13.24 Milestone 6A reviewed-artifact verifiability contract
+
+Milestone 6A strengthens exactly the existing
+`VolatilityEnvironmentTransformationResult`,
+`TailPricingTransformationResult`, and
+`StructureLiquidityTransformationResult` wrappers. It does not implement the
+work; this section freezes the exact contract for a fresh formal read-only
+preflight.
+
+### 13.24.1 Common version and compatibility policy
+
+The exact calculation identities are:
+
+```text
+Volatility Environment
+calculation_type: volatility_environment
+methodology_id: paired-atm-volatility-environment
+methodology_version: v0.2
+
+Tail Pricing
+calculation_type: tail_pricing
+methodology_id: nearest-observed-delta-wing-tail-relative-pricing
+methodology_version: v0.2
+
+Structure Liquidity
+calculation_type: structure_liquidity
+methodology_id: exact-structure-liquidity
+methodology_version: v0.2
+```
+
+Calculation types and methodology IDs are unchanged. Only the methodology
+versions advance. Version v0.2 is required because each exact canonical
+parameter contract is incompatible with its existing v0.1 contract.
+
+Current producers emit v0.2. Strengthened direct constructors accept only
+their exact v0.2 contracts, and v0.1 wrapper instances intentionally reject.
+There is no v0.1 migration function, legacy verifier, compatibility adapter,
+dual-version constructor path, or persisted-artifact migration requirement.
+Rejection of formerly accepted shallow or contradictory instances is
+intentional.
+
+Existing result dataclass fields and producer signatures remain unchanged.
+All 25 `market_data_transformations` exports and their order, all 64
+`market_data` exports and their order, package-root exports, and public
+domain-record fields remain unchanged.
+
+### 13.24.2 Common retained references and trust boundary
+
+Where this contract requires a complete input reference, it has exactly:
+
+```text
+record_id
+normalized_at
+source_ids
+```
+
+`record_id` is a canonical nonempty string. `normalized_at` is an aware UTC
+datetime. `source_ids` is a nonempty tuple of unique canonical strings in
+lexical order, following the current canonical `CalculationInputReference`
+ordering contract. Every retained reference corresponds exactly to one
+lineage input on all three fields. Missing, surplus, duplicate, conflicting,
+or reordered references where order is contractual reject. Every normalized
+time is no later than the result calculation time.
+
+A direct normalized-evidence item has exactly:
+
+```text
+record_id
+role
+normalized_at
+source_ids
+propagated_quality_flags
+```
+
+`propagated_quality_flags` is an exact tuple of
+`CalculationQualityFlag` value strings in declaration order. It contains only
+causes that the transformation may propagate from that selected direct input;
+mandatory transformation-owned flags are excluded.
+
+The accepted noncryptographic boundary is the same as Structure Costs v0.2.
+Without signatures or immutable retained payloads, complete internally
+consistent fabrication cannot be prevented. Unrelated, incomplete,
+contradictory, or partially forged public-record and lineage pairings must
+reject.
+
+### 13.24.3 Volatility Environment v0.2
+
+The v0.2 schema preserves the existing 20 top-level keys and adds exactly
+`normalized_evidence`. Its exact 21-key schema is:
+
+```text
+atm_candidate_universe
+atm_selection_rule
+call_put_combination_rule
+current_observations
+float_conversion_rule
+historical_expected_session_dates
+historical_matched_tenor_rule
+historical_observation_count
+historical_observations
+historical_sample_semantics
+iv_methodology
+median_formula
+normalized_evidence
+percentile_formula
+realized_volatility_dependency
+realized_window_matching_rule
+reference_tenor_days
+strike_tie_rule
+term_tenor_rule
+underlying_midpoint_rule
+volatility_unit
+```
+
+The canonical serializer and a byte-canonical strict decoder are required.
+Duplicate keys, JSON floats, nonfinite constants, unknown tags, wrong
+containers, missing or surplus keys, and noncanonical representations reject.
+
+Within `realized_volatility_dependency`, the former record-ID-only input
+disclosure is replaced by `inputs`. It is the exact tuple of complete input
+references retained by the supplied historical-realized-volatility lineage;
+record IDs alone are insufficient. The dependency continues to disclose its
+calculation ID and type, methodology ID and version, calculated time,
+canonical parameters, quality flags, underlying identity, realized window,
+price basis, adjustment methodology, annualization, return and variance
+methods, and stable realized-volatility representation. Milestone 6A does not
+strengthen or version `HistoricalRealizedVolatilityTransformationResult`.
+
+`normalized_evidence` has exactly one key, `direct_inputs`. That tuple is the
+exact set of unique direct normalized-evidence items consumed from current and
+historical volatility selections. Allowed roles are exactly:
+
+```text
+underlying_quote
+option_quote
+option_implied_volatility
+option_contract_reference
+```
+
+The direct IDs correspond exactly to every ID disclosed by current
+observations, historical observations, ATM candidate pairs, selected call and
+put evidence, underlying-quote evidence, option-quote evidence, IV evidence,
+and contract-reference evidence. No referenced ID may be absent and no
+unreferenced direct item may be present. Direct volatility inputs may propagate
+only `correction_selected`, `composite_input_used`, and `interpolated`.
+`incomplete_input_used` is prohibited because selected normalized evidence is
+complete.
+
+The private v0.2 verifier reconstructs and binds the underlying, as-of date,
+reference tenor, IV percentile, historical observation count, historical
+median ATM IV, matched realized volatility, matched realized window, every
+`TermVolatilityPoint`, canonical term order, and every exact float-conversion
+boundary. Existing exact current and historical observation values remain the
+economic authority; no separate `calculation_values` key is added.
+
+Required result flags are exactly `DECIMAL_TO_FLOAT_CONVERTED`, `ANNUALIZED`,
+and `ASSUMPTION_APPLIED`. `ADJUSTED_INPUT_USED` is present if and only if the
+retained realized-volatility dependency discloses it.
+`CORRECTION_SELECTED`, `COMPOSITE_INPUT_USED`, and `INTERPOLATED` are each
+present if and only if disclosed by either the retained dependency quality
+flags or at least one direct normalized-evidence item.
+`INCOMPLETE_INPUT_USED` is prohibited. The final tuple follows
+`CalculationQualityFlag` declaration order.
+
+### 13.24.4 Tail Pricing v0.2
+
+The v0.2 schema preserves the existing 20 top-level keys and adds exactly
+`normalized_evidence`. Its exact 21-key schema is:
+
+```text
+analytics_methodology
+atm_dependency
+candidate_universe
+current_expiration_observations
+current_skew_formula
+delta_convention
+delta_point_selection_rule
+delta_tie_rule
+float_conversion_rule
+historical_eod_semantics
+historical_expected_session_dates
+historical_matched_tenor_rule
+historical_observations_by_tenor
+interpolation_rule
+normalized_evidence
+same_contract_reuse_rule
+skew_percentile_formula
+skew_term_structure_ordering
+tail_output_architecture
+target_deltas
+volatility_unit
+```
+
+It uses the same strict tagged-JSON and byte-canonical rules as Volatility
+Environment v0.2 and Structure Costs v0.2.
+
+The supplied ATM dependency must be an intrinsically valid exact v0.2
+`VolatilityEnvironmentTransformationResult`. Within `atm_dependency`, the
+complete volatility-dependency input references replace record IDs alone. The
+disclosure continues to retain complete calculation identity, time,
+parameters, quality flags, public economic disclosure, and ATM evidence. Tail
+verification reuses the same private Volatility Environment v0.2 verifier as
+direct wrapper construction; it may not maintain a weaker duplicate path.
+
+`normalized_evidence` has exactly one key, `direct_inputs`. Allowed roles are:
+
+```text
+underlying_quote
+option_quote
+option_implied_volatility
+option_greeks
+option_contract_reference
+```
+
+Direct evidence covers exactly every current and historical tail input ID
+referenced by candidate contracts, ATM candidates, selected 10-Delta and
+25-Delta wings, historical ATM evidence, historical wing evidence, underlying
+observations, and quote, IV, Greeks, and contract-reference evidence. No item
+is missing or surplus. Direct tail inputs may propagate only
+`correction_selected`, `composite_input_used`, and `interpolated`;
+`incomplete_input_used` is prohibited.
+
+Tail lineage inputs are the deterministic union of complete
+volatility-dependency input references and complete direct tail
+normalized-evidence references. If a record ID occurs in both sets, its
+normalized time and source IDs must be identical and one final reference is
+retained. Conflicting overlap rejects, and no final lineage record ID may occur
+twice.
+
+The private verifier reconstructs and binds exact tuple cardinality, common
+underlying and as-of date, expiration and tenor order, ATM IV, 25-Delta put and
+call IV, 10-Delta put and call IV, skew percentile, history count, Delta
+methodology, candidate selection, uniqueness, and all finite float-conversion
+boundaries. Existing exact current and historical observation disclosures
+remain the numerical authority; no separate `calculation_values` key is added.
+
+Required flags are exactly `DECIMAL_TO_FLOAT_CONVERTED`, `ANNUALIZED`, and
+`ASSUMPTION_APPLIED`. `ADJUSTED_INPUT_USED`, `CORRECTION_SELECTED`,
+`COMPOSITE_INPUT_USED`, and `INTERPOLATED` propagate conditionally from the
+intrinsically verified volatility dependency and direct normalized evidence
+under the existing transformation semantics. `INCOMPLETE_INPUT_USED` is
+prohibited. The final tuple follows enum declaration order.
+
+### 13.24.5 Structure Liquidity v0.2
+
+The v0.2 schema preserves the existing six keys and adds exactly
+`calculation_values`, `normalized_evidence`, and `structure_identity`. Its
+exact nine-key schema is:
+
+```text
+activity_count_unit
+calculation_values
+leg_correspondence
+minimum_leg_rule
+normalized_evidence
+position_value_rule
+position_value_unit
+premium_input_unit
+structure_identity
+```
+
+`structure_identity` uses the Structure Costs v0.2 five-key pattern:
+
+```text
+structure_type
+underlying
+assumed_portfolio_value_repr
+expected_holding_days
+legs
+```
+
+Every `legs` item has exactly `underlying`, `option_type`,
+`strike_float_repr`, `expiration`, `quantity`, and `contract_multiplier`.
+Public leg order is retained. `strike_float_repr` is the exact public `repr`,
+and exact contract strike correspondence uses
+`Decimal(str(public_leg.strike))`. Assumed portfolio value remains
+compatibility metadata. Missing, surplus, duplicate, or reordered public legs
+reject.
+
+`leg_correspondence` remains and is now in public structure-leg order. Each
+item has exactly:
+
+```text
+underlying
+option_type
+expiration
+strike
+currency
+deliverable_id
+contract_multiplier
+quantity
+quote_record_id
+volume_record_id
+open_interest_record_id
+```
+
+Its nested `underlying` identity has exactly `symbol`, `listing_mic`,
+`security_type`, and `currency`. Every item agrees exactly with the public
+structure identity and the normalized quote, volume, and open-interest
+evidence.
+
+`calculation_values` has exactly:
+
+```text
+as_of_date
+quoted_bid_value_exact
+quoted_ask_value_exact
+minimum_leg_daily_volume
+minimum_leg_open_interest
+quote_methodology
+stable_public_values
+```
+
+`stable_public_values` has exactly `quoted_bid_value_repr` and
+`quoted_ask_value_repr`. Bid and ask exact values are tagged finite Decimals;
+minimum counts are exact nonnegative built-in integers; `quote_methodology`
+equals the current exact public methodology constant; and stable values are
+canonical finite-float `repr` strings. Exact Decimal conversion, stable
+representation, and public float all agree.
+
+`normalized_evidence` has exactly `option_quotes`, `option_volumes`, and
+`option_open_interest`. Each tuple contains exactly one item per public
+structure leg in public leg order. Every item contains `leg_index`,
+`record_id`, `normalized_at`, `source_ids`, `propagated_quality_flags`, and
+`contract`. `leg_index` is the exact zero-based public leg index. `contract`
+has exactly `underlying`, `expiration`, `option_type`, `strike`,
+`contract_multiplier`, `currency`, and `deliverable_id`; its nested
+`underlying` identity has exactly `symbol`, `listing_mic`, `security_type`,
+and `currency`.
+
+Each option-quote item additionally has exactly `session_date`, `bid_premium`,
+and `ask_premium`. Each option-volume item additionally has exactly
+`session_date`, `cumulative_volume`, and `is_session_complete`. Each
+option-open-interest item additionally has exactly
+`open_interest_session_date` and `open_interest`. Monetary and strike values
+are tagged finite Decimals. Activity counts are exact nonnegative built-in
+integers, and `is_session_complete` is an exact built-in Boolean.
+Liquidity normalized-evidence items may disclose exactly `interpolated`,
+`correction_selected`, `composite_input_used`, and `incomplete_input_used`
+when the corresponding current transformation condition is established.
+
+The verifier independently recomputes:
+
+```text
+quoted_bid_value_exact =
+sum(bid_premium * quantity * contract_multiplier)
+
+quoted_ask_value_exact =
+sum(ask_premium * quantity * contract_multiplier)
+
+minimum_leg_daily_volume =
+minimum(cumulative_volume across legs)
+
+minimum_leg_open_interest =
+minimum(open_interest across legs)
+```
+
+It verifies that each role's contract identity matches the same public leg;
+quote and volume session rules remain exactly the current transformation
+rules; one common public `as_of_date` is obtained; open-interest date and
+applicability rules remain unchanged; every expiration follows the public
+as-of date; exact aggregates match `calculation_values`; aggregates convert to
+the public finite floats; stable representations equal public `repr`; public
+minimum counts match evidence; and public quote methodology matches the
+frozen constant. Liquidity selection, eligibility, freshness, relationship,
+activity, and applicability semantics do not change.
+
+`DECIMAL_TO_FLOAT_CONVERTED` is always required. `INTERPOLATED`,
+`CORRECTION_SELECTED`, `COMPOSITE_INPUT_USED`, and `INCOMPLETE_INPUT_USED` are
+each present if and only if at least one normalized-evidence item discloses the
+corresponding cause. `ANNUALIZED`, `ADJUSTED_INPUT_USED`, and
+`ASSUMPTION_APPLIED` are prohibited. The final tuple follows enum declaration
+order.
+
+### 13.24.6 Private verification and downstream coordination
+
+For each target wrapper, the private verifier reconstructs exact outer and
+nested types and re-executes ordinary constructor invariants; a
+constructor-bypassed invalid nested object rejects. It reconstructs an exact
+`CalculationLineage` before semantic validation, uses strict duplicate-safe
+tagged-JSON decoding, and requires byte-identical canonical re-encoding. The
+calculation identity is exact v0.2. Calculation IDs may not collide with input
+or dependency IDs. No normalized input may follow calculation time. Every
+public field is reconstructed from retained evidence and every quality flag is
+independently derived. Producer and direct wrapper construction use the same
+private verifier. Wrong exact Python types raise `TypeError`; malformed,
+contradictory, noncanonical, economic, identity, ordering, chronology,
+reference, or flag states raise `ValueError`.
+
+No verifier is public. Milestone 6A adds no generic calculated-artifact
+superclass or registry.
+
+`transform_tail_pricing` and its private dependency path accept only an
+intrinsically valid Volatility Environment v0.2 result. Scenario valuation and
+its private dependency path accept only an intrinsically valid Tail Pricing
+v0.2 result. Each consumer reuses the corresponding target-wrapper verifier;
+it does not maintain a weaker consumer-specific copy.
+
+Scenario valuation's public record fields, producer signature, calculation
+type, methodology ID, methodology version, formulas, result ordering, and
+public exports remain unchanged. Its canonical dependency disclosure may
+contain the new Tail Pricing v0.2 identity without a scenario methodology
+version change because the scenario formula and parameter schema are
+unchanged. Existing scenario artifacts depending on Tail Pricing v0.1 are not
+a supported migration target. Historical section 13.22 remains accurate for
+the implementation checkpoint it describes; this accepted 6A contract
+supersedes its v0.1 Tail Pricing dependency target for future implementation.
+
+### 13.24.7 Explicit exclusions
+
+Milestone 6A contains no:
+
+- candidate assembly or `CandidateResearchRecord` modification;
+- sidecar construction;
+- screening or reporting;
+- position management, sizing, ranking, or recommendation;
+- discovery or Event Intelligence;
+- provider or option-chain access;
+- structure generation or Strike or Delta selection;
+- services, monitoring, alerts, or execution;
+- public validation API;
+- generic artifact framework; or
+- package-root export expansion.
+
+It does not strengthen `HistoricalRealizedVolatilityTransformationResult`.
+
 The following questions remain open:
 
 - Which MIC or listing registry should supply `listing_mic`?

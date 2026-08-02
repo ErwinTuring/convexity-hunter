@@ -5,8 +5,8 @@ Repository: `ErwinTuring/convexity-hunter`
 Current HEAD: resolve with `git rev-parse HEAD`; do not rely on a hard-coded
 value in this file. It is a documentation-only Milestone 6 contract-
 clarification commit. Its immediate documentation-only base was
-`ca6cd88eeffeab53c728db10989deb5a9eea9b34` — Align milestone session naming
-and handoff.
+`890e2b3e373b14d49fd273e34254146cc903cba6` — Define Milestone 6 candidate
+assembly contract.
 
 Product-direction baseline:
 `365dcd5ab7c3661172061c852b26341a98a1fbff` — Align post-Milestone-3 product
@@ -37,14 +37,26 @@ Verifiability and Milestone 6B — Reviewed-Artifact Candidate Assembly. 6A is a
 prerequisite for 6B. The canonical contract is
 [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md).
 
-Next development gate: fresh formal read-only preflight for Milestone 6A —
-Reviewed Artifact Verifiability.
+Accepted Milestone 6A clarification: Volatility Environment, Tail Pricing, and
+Structure Liquidity advance to exact incompatible v0.2 canonical contracts.
+Their existing result fields and producer signatures remain unchanged; v0.1
+wrapper instances intentionally reject. The contracts retain complete input
+references, exact normalized evidence, public reconstruction values where
+required, independently derived quality flags, and coordinated private
+dependency verification. All 25 transformation exports, all 64 `market_data`
+exports, their ordering, package-root exports, and public domain-record fields
+remain unchanged. Milestone 6A is not implemented. The exact contract is
+[`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
+
+Next development gate:
+`PREFLIGHT｜Milestone 6A — Reviewed Artifact Verifiability`.
+This is a fresh formal read-only preflight against the clarified contract, not
+an implementation BUILD.
 
 Conversation boundary: begin a new ChatGPT main conversation for Milestone 6A.
-That conversation performs Repository Grounding and first authors the separate
-Codex PREFLIGHT session name and complete preflight prompt; it does not execute
-the formal preflight itself or produce a BUILD prompt before the returned
-preflight report is evaluated.
+That conversation performs Repository Grounding and authors the separate Codex
+PREFLIGHT session name and complete preflight prompt; it does not produce a
+BUILD prompt before the returned preflight report is evaluated.
 
 Read first: `docs/current-checkpoint.md`, `docs/product-direction.md`,
 `docs/project-state.md`, `docs/mvp-spec.md`, and

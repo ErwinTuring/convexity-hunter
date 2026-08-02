@@ -20,8 +20,49 @@ supported Long Call, Long Put, and Long Straddle grammar. Milestone 5 —
 Standalone Structure Affordability Evidence implements reviewed standalone
 affordability evidence for one already-specified supported structure.
 Milestone 6 is contractually decomposed into 6A — Reviewed Artifact
-Verifiability and 6B — Reviewed-Artifact Candidate Assembly. 6A is the active
-next implementation gate and is a prerequisite for 6B.
+Verifiability and 6B — Reviewed-Artifact Candidate Assembly. The accepted 6A
+contract clarification is complete; the active next gate is a fresh formal
+read-only 6A preflight, and implemented, independently reviewed, committed,
+and pushed 6A remains a prerequisite for 6B.
+
+### Accepted Milestone 6A contract
+
+Milestone 6A strengthens the existing Volatility Environment, Tail Pricing,
+and Structure Liquidity wrappers without changing their result fields or
+producer signatures. Their accepted identities are respectively
+`volatility_environment` / `paired-atm-volatility-environment` / `v0.2`,
+`tail_pricing` / `nearest-observed-delta-wing-tail-relative-pricing` / `v0.2`,
+and `structure_liquidity` / `exact-structure-liquidity` / `v0.2`.
+
+The exact v0.2 schemas are intentionally incompatible with v0.1. Current
+producers will emit v0.2 and direct constructors will accept only exact v0.2;
+v0.1 wrapper instances intentionally reject, with no migration, legacy
+verifier, compatibility adapter, dual-version constructor path, or persisted-
+artifact migration requirement.
+
+The accepted retained-evidence boundary uses complete input references
+(`record_id`, aware UTC `normalized_at`, and canonical ordered `source_ids`)
+and exact direct normalized-evidence items that add role and permitted
+propagated flags. Volatility v0.2 retains complete realized-volatility
+dependency inputs plus exact direct current and historical evidence. Tail v0.2
+requires intrinsically verified Volatility v0.2, retains exact direct tail
+evidence, and uses a conflict-checking deterministic input union. Liquidity
+v0.2 retains exact public structure identity, public-leg-ordered quote,
+volume, and open-interest evidence, and exact independently recomputable
+calculation values. Private wrapper verifiers reconstruct every public field,
+lineage reference, chronology boundary, and quality flag from strict
+byte-canonical tagged JSON.
+
+Tail production reuses the private Volatility v0.2 verifier, and Scenario
+Valuation reuses the private Tail v0.2 verifier without changing Scenario
+Valuation's public records, signature, identity, formulas, ordering, or
+exports. The 25-name `market_data_transformations` API, 64-name `market_data`
+API, their ordering, package-root exports, and public domain-record fields are
+preserved. The canonical exact contract is
+[`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
+Milestone 6A remains unimplemented. Later v0.1 references in completed
+checkpoint narratives remain historically accurate descriptions of the code
+at those checkpoints; they are not active Milestone 6A implementation targets.
 
 ## Decisions locked
 
@@ -782,10 +823,14 @@ next implementation gate and is a prerequisite for 6B.
 
 ## Current task
 
-The documentation-only Milestone 6 clarification is complete. It freezes the
-6A/6B decomposition, direct reviewed-artifact inventory, completeness and
-dependency rules, verifiability correction, assembly sidecar, provenance,
-qualitative ownership, compatibility boundaries, and exclusions in
+The documentation-only Milestone 6A verifiability clarification is complete.
+It resolves the accepted preflight blockers by freezing the three exact v0.2
+identities, retained-reference and evidence schemas, public reconstruction,
+quality flags, private verification, downstream dependency behavior,
+compatibility boundary, preserved API, and exclusions in
+[`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
+The 6A/6B decomposition, direct reviewed-artifact inventory, assembly sidecar,
+provenance, and qualitative ownership remain frozen in
 [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md).
 
 ## Last completed checkpoint
@@ -1027,12 +1072,14 @@ do not override the current Milestone 5 completion checkpoint above.
 
 ## Next task
 
-Run a fresh formal read-only preflight for Milestone 6A — Reviewed Artifact
-Verifiability. It concerns complete intrinsic record-to-lineage verification
-for exactly `VolatilityEnvironmentTransformationResult`,
+Run `PREFLIGHT｜Milestone 6A — Reviewed Artifact Verifiability` as a fresh
+formal read-only preflight against the clarified v0.2 contract. It concerns
+complete intrinsic record-to-lineage verification for exactly
+`VolatilityEnvironmentTransformationResult`,
 `TailPricingTransformationResult`, and
-`StructureLiquidityTransformationResult`. Milestone 6B must not begin until
-6A is implemented, independently reviewed, committed, and pushed.
+`StructureLiquidityTransformationResult`. It is not an implementation BUILD.
+Milestone 6B must not begin until 6A is implemented, independently reviewed,
+committed, and pushed.
 
 ## Current capability and roadmap
 

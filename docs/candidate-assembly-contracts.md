@@ -2,8 +2,11 @@
 
 This document is the canonical technical contract for Milestone 6. It freezes
 the product and architecture decisions needed for later formal preflight and
-implementation. It does not freeze the exact public API, module layout,
-calculation identity strings, or canonical parameter-key schema.
+implementation. The exact Milestone 6A calculation identities and canonical
+parameter schemas are frozen in
+[`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
+Milestone 6B public API, module layout, calculation identity, and canonical
+parameter schema remain for its later formal preflight.
 
 ## 1. Milestone decomposition and gate
 
@@ -35,10 +38,13 @@ other nested inputs remain indirect dependencies retained through those
 direct wrappers. Candidate assembly does not duplicate them as separate
 direct inputs.
 
-This clarification does not freeze a new public class name, function
-signature, implementation-file list, export count, canonical parameter-key
-count, or calculation identity. The formal 6A and 6B preflights must determine
-those exact technical details within their respective scopes.
+Milestone 6A introduces no new public class or function, changes no producer
+signature or public domain-record field, and preserves all current export
+counts and ordering. Its exact v0.2 identities, retained-evidence schemas, and
+private verification behavior are frozen in the linked market-data contract.
+The formal 6B preflight remains responsible for 6B's exact public sidecar,
+function signature, implementation-file list, calculation identity, and
+canonical parameter schema.
 
 ## 3. State-specific artifact completeness
 
@@ -145,10 +151,28 @@ records to retained lineage. The selected correction architecture is:
 - perform no upstream market-data recomputation; and
 - add no provider behavior.
 
-The 6A formal preflight must determine whether the current lineage parameters
-already contain sufficient proof. If complete intrinsic verification requires
-an incompatible lineage-schema correction or methodology-version change, the
-preflight must report that blocker rather than infer or guess a correction.
+The accepted clarification resolves the former schema and version blockers.
+The exact identities are:
+
+- `volatility_environment`, `paired-atm-volatility-environment`, `v0.2`;
+- `tail_pricing`,
+  `nearest-observed-delta-wing-tail-relative-pricing`, `v0.2`; and
+- `structure_liquidity`, `exact-structure-liquidity`, `v0.2`.
+
+Each v0.2 canonical parameter schema retains complete normalized evidence,
+complete lineage references, exact public reconstruction values, and the
+dependency disclosures required for intrinsic record-to-lineage verification.
+Current producers emit v0.2 and strengthened direct constructors accept only
+their exact v0.2 contract. Former v0.1 wrapper instances intentionally reject;
+there is no migration function, legacy verifier, compatibility adapter,
+dual-version constructor path, or persisted-artifact migration requirement.
+The complete schemas, quality-flag derivation, downstream dependency behavior,
+failure taxonomy, noncryptographic trust boundary, and exclusions are frozen
+in
+[`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
+
+The next gate is a fresh formal read-only Milestone 6A preflight against that
+clarified contract. It is not an implementation BUILD.
 
 ## 7. Milestone 6B aggregate architecture
 
