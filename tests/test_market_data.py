@@ -4171,6 +4171,12 @@ class CalculationLineageTests(unittest.TestCase):
                 build_calculation_lineage(quality_flags=value)
 
     def test_inputs_exact_container_record_type_and_uniqueness(self) -> None:
+        class TupleSubclass(tuple):
+            pass
+
+        class ListSubclass(list):
+            pass
+
         @dataclasses.dataclass(frozen=True)
         class ReferenceSubclass(CalculationInputReference):
             pass
@@ -4179,14 +4185,29 @@ class CalculationLineageTests(unittest.TestCase):
         subclass = ReferenceSubclass(
             base.record_id, base.normalized_at, base.source_ids
         )
-        for value in ({base}, (item for item in (base,)), (object(),), (subclass,)):
+        for value in (
+            {base},
+            (item for item in (base,)),
+            TupleSubclass(),
+            ListSubclass(),
+            (object(),),
+            (subclass,),
+        ):
             with self.subTest(value=type(value)):
                 with self.assertRaises(TypeError):
                     build_calculation_lineage(inputs=value)
         with self.assertRaises(ValueError):
-            build_calculation_lineage(inputs=[])
-        with self.assertRaises(ValueError):
             build_calculation_lineage(inputs=[base, base])
+
+    def test_empty_tuple_and_list_are_canonical_and_do_not_infer_flags(
+        self,
+    ) -> None:
+        from_tuple = build_calculation_lineage(inputs=(), quality_flags=())
+        from_list = build_calculation_lineage(inputs=[], quality_flags=[])
+        self.assertEqual(from_tuple.inputs, ())
+        self.assertEqual(from_list.inputs, ())
+        self.assertEqual(from_tuple.quality_flags, ())
+        self.assertEqual(from_list.quality_flags, ())
 
     def test_id_collision_and_chronology_equality_and_failure(self) -> None:
         input_reference = build_calculation_input_reference("input-a")

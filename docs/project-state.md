@@ -21,17 +21,36 @@ Standalone Structure Affordability Evidence implements reviewed standalone
 affordability evidence for one already-specified supported structure.
 Milestone 6 is contractually decomposed into 6A — Reviewed Artifact
 Verifiability and 6B — Reviewed-Artifact Candidate Assembly. Milestone 6A is
-implemented and has passed targeted independent re-review after correction of
-all accepted findings. Milestone 6B remains unimplemented. Its initial formal
-read-only preflight returned `PREFLIGHT RESULT: BLOCKED`: all assembly
-architecture other than zero-artifact lineage was found implementable, but
-valid zero-artifact candidates produced an empty normalized-input union that
-the existing one-or-more `CalculationLineage` contract could not represent.
-The selected documentation-only resolution makes generic lineage inputs
+implemented and passed targeted independent re-review after correction of all
+accepted findings. Milestone 6B is implemented, independently reviewed,
+corrected for one accepted MAJOR direct-construction error-taxonomy finding,
+and passed targeted re-review with no remaining findings. Its initial
+zero-artifact preflight blocker was resolved by making generic lineage inputs
 zero-or-more while preserving methodology-specific exact-input verification.
-Source and tests remain unchanged. The active next gate after this
-clarification commit is a rerun of
-`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly`.
+
+## Milestone 6B completion checkpoint
+
+The base clarification commit is
+`abde4a0309afef070a28ea8f8774c337d36fbd67` (`Clarify zero-input assembly
+lineage`). Final implementation commit: resolve with `git rev-parse HEAD` after
+finalization; do not guess the SHA beforehand.
+Formal preflight became READY after canonical-schema completion. Implementation
+used exactly three source and three test files. Independent review initially
+failed on one MAJOR finding: exact-type constructor-bypassed wrappers leaked
+raw `AttributeError`. A narrow required-field validation correction now returns
+controlled `ValueError`; targeted re-review passed with no remaining findings.
+
+Final validation passed 366 market-data tests, 181 market-data transformation
+tests, 50 candidate-assembly tests, 32 risk-assessment tests, and 938 full-suite
+tests. API baselines remain 64 `market_data` exports, 25 transformation exports,
+7 risk-assessment exports, 2 candidate-assembly exports, 17 candidate-record
+fields, 9 assembly-result fields, and 21 producer parameters. Package-root,
+scanner, renderer, existing producer signatures, fixtures, and persisted
+candidate-record compatibility remain unchanged.
+
+The next gate is a fresh formal read-only preflight for the already documented
+later position-management-plan contract. It is not READY and no implementation
+work for it begins before that preflight is evaluated.
 
 ### Completed Milestone 6A implementation
 
@@ -850,26 +869,23 @@ checkpoints; they are not active Milestone 6A implementation targets.
 
 ## Current task
 
-Milestone 6A — Reviewed Artifact Verifiability is complete. Its clarified v0.2
-contract was implemented in the transformation source and tests, passed broad
-independent review after correction of three accepted MAJOR findings, and
-passed targeted re-review with no remaining finding. Milestone 6B remains
-unimplemented. Its initial formal preflight was blocked only by the
-zero-artifact lineage representation conflict. This documentation-only task
-freezes the selected zero-or-more generic `CalculationLineage.inputs`
-resolution; it does not select the final 6B API or canonical schema and does
-not modify source or tests.
+Milestone 6B — Reviewed-Artifact Candidate Assembly is complete. Its initial
+formal preflight blocker was the zero-artifact lineage representation conflict;
+the clarified zero-or-more generic `CalculationLineage.inputs` contract was
+implemented. Independent review initially found one accepted MAJOR
+direct-construction error-taxonomy defect; narrow required-field validation
+corrected it, and targeted re-review passed with no remaining finding.
 
 ## Last completed checkpoint
 
-- Commit: resolve the current HEAD after finalization
-- Subject: `Implement reviewed artifact verifiability`
-- Validation: 179 focused transformation tests, 365 market-data tests, 32
-  focused risk-assessment tests, 885 full-suite tests, both import orders, API
-  checks, and `git diff --check` passed
-- Status: Milestone 6A complete after initial independent-review failure,
-  correction of all three accepted MAJOR findings, and passing targeted
-  re-review with no remaining finding
+- Commit: resolve with `git rev-parse HEAD` after finalization
+- Subject: `Implement reviewed-artifact candidate assembly`
+- Validation: 366 market-data tests, 181 transformation tests, 50
+  candidate-assembly tests, 32 risk-assessment tests, 938 full-suite tests,
+  API/import probes, canonical goldens, no-call probes, and `git diff --check`
+  passed
+- Status: Milestones 1–5, 6A, and 6B complete; 6B passed targeted re-review
+  with no remaining finding
 - Risk-assessment public API: 7 names
 - Transformation-module public API: 25 names
 - Public `market_data` API: 64 names
@@ -1100,12 +1116,9 @@ do not override the current Milestone 6A completion checkpoint above.
 
 ## Next task
 
-Rerun the existing
-`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly` task as a
-formal read-only preflight against the clarified lineage cardinality and the
-existing aggregate, sidecar, provenance, completeness, identity, chronology,
-quality, and exclusion contracts. Milestone 6B is not implemented or approved
-for BUILD.
+Begin a fresh formal read-only preflight for the already documented later
+position-management-plan contract. Do not claim that work unit is READY and do
+not begin its BUILD before the preflight report is evaluated.
 
 ## Current capability and roadmap
 
@@ -1114,10 +1127,10 @@ foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
 generation, broader discovery/application-flow candidate production,
 position-management-plan integration, non-expiration pricing production, or
-the complete application flow. Reviewed-artifact candidate assembly is the
-active Milestone 6 contract: completed 6A strengthens three existing wrappers,
-and unimplemented 6B will assemble reviewed artifacts into the existing
-`CandidateResearchRecord` plus a provenance-retaining sidecar. Deterministic
+the complete application flow. Reviewed-artifact candidate assembly is
+complete: 6A strengthens three existing wrappers and 6B assembles reviewed
+artifacts into the existing `CandidateResearchRecord` plus a
+provenance-retaining sidecar. Deterministic
 exact-rational expiration 1x/2x/5x/10x
 threshold evidence and reviewed standalone structure-affordability evidence
 are implemented.
@@ -1133,8 +1146,9 @@ The accepted post-Milestone-3 sequence is:
 2. completed Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence;
 3. completed Milestone 5 — Standalone Structure Affordability Evidence;
 4. completed Milestone 6A — Reviewed Artifact Verifiability;
-5. next Milestone 6B — Reviewed-Artifact Candidate Assembly;
-6. later position-management-plan contract;
+5. completed Milestone 6B — Reviewed-Artifact Candidate Assembly;
+6. later position-management-plan contract, beginning with a fresh formal
+   read-only preflight;
 7. later screening and Chinese-report integration;
 8. later deterministic offline single-structure service; and
 9. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,

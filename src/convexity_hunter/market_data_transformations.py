@@ -399,6 +399,10 @@ class HistoricalRealizedVolatilityTransformationResult:
             )
         if type(self.lineage) is not CalculationLineage:
             raise TypeError("lineage must have exact type CalculationLineage")
+        if len(self.lineage.inputs) != self.record.price_observation_count:
+            raise ValueError(
+                "realized lineage input count does not match its record"
+            )
 
 
 @dataclass(frozen=True)
@@ -10227,6 +10231,364 @@ def _scenario_valuation_methodology(
     return methodology
 
 
+def _scenario_disclosed_record_ids(value: object) -> set:
+    """Collect normalized record identities from one strict disclosure tree."""
+
+    result = set()
+
+    def visit(item: object, key: Optional[str] = None) -> None:
+        if type(item) is dict:
+            for child_key, child in item.items():
+                if (
+                    type(child_key) is str
+                    and child_key.endswith("record_id")
+                    and type(child) is str
+                ):
+                    result.add(child)
+                elif (
+                    type(child_key) is str
+                    and child_key.endswith("record_ids")
+                    and type(child) is tuple
+                ):
+                    for value in child:
+                        if type(value) is not str:
+                            raise TypeError(
+                                "disclosed record IDs must be exact strings"
+                            )
+                        result.add(value)
+                visit(child, child_key)
+        elif type(item) is tuple:
+            for child in item:
+                visit(child, key)
+
+    visit(value)
+    return result
+
+
+def _scenario_dependency_inputs(
+    parameters: dict, lineage: CalculationLineage, label: str
+) -> tuple:
+    identifiers = _scenario_disclosed_record_ids(parameters)
+    references = {item.record_id: item for item in lineage.inputs}
+    missing = identifiers - set(references)
+    if missing:
+        raise ValueError(f"scenario is missing a {label} lineage input")
+    return tuple(references[item] for item in sorted(identifiers))
+
+
+def _scenario_union_dependency_inputs(groups: tuple) -> tuple:
+    references = {}
+    for group in groups:
+        for reference in group:
+            existing = references.get(reference.record_id)
+            if existing is not None and existing != reference:
+                raise ValueError(
+                    "scenario dependency input overlap is contradictory"
+                )
+            references[reference.record_id] = reference
+    return tuple(references[key] for key in sorted(references))
+
+
+def _scenario_dependency_lineage(
+    disclosure: dict,
+    parameters: dict,
+    lineage: CalculationLineage,
+    label: str,
+) -> CalculationLineage:
+    try:
+        flags = tuple(
+            CalculationQualityFlag(value)
+            for value in disclosure["quality_flags"]
+        )
+    except ValueError as error:
+        raise ValueError(f"{label} contains an unknown quality flag") from error
+    return CalculationLineage(
+        calculation_id=disclosure["calculation_id"],
+        calculation_type=disclosure["calculation_type"],
+        methodology_id=disclosure["methodology_id"],
+        methodology_version=disclosure["methodology_version"],
+        calculated_at=disclosure["calculated_at"],
+        inputs=_scenario_dependency_inputs(parameters, lineage, label),
+        parameters_json=disclosure["parameters_json"],
+        quality_flags=flags,
+    )
+
+
+def _scenario_reconstruct_costs_dependency(
+    record: ScenarioResult,
+    disclosure: dict,
+    parameters: dict,
+    lineage: CalculationLineage,
+) -> StructureCostsTransformationResult:
+    dependency_lineage = _scenario_dependency_lineage(
+        disclosure, parameters, lineage, "StructureCosts"
+    )
+    values = parameters["calculation_values"]
+    stable = values["stable_record_values"]
+    methodology = parameters["greeks_methodology"]
+    cost_record = StructureCosts(
+        structure=record.structure,
+        as_of_date=record.as_of_date,
+        quoted_mid_premium=_cost_stable_float_repr(
+            stable["quoted_mid_premium_repr"], "quoted_mid_premium_repr"
+        ),
+        estimated_spread_cost=_cost_stable_float_repr(
+            stable["estimated_spread_cost_repr"],
+            "estimated_spread_cost_repr",
+        ),
+        commissions_and_fees=_cost_stable_float_repr(
+            stable["commissions_and_fees_repr"],
+            "commissions_and_fees_repr",
+        ),
+        theta_per_day=_cost_stable_float_repr(
+            stable["theta_per_day_repr"], "theta_per_day_repr"
+        ),
+        gamma=_cost_stable_float_repr(
+            stable["gamma_repr"], "gamma_repr"
+        ),
+        underlying_price=_cost_stable_float_repr(
+            stable["underlying_price_repr"], "underlying_price_repr"
+        ),
+        greeks_methodology=_greeks_methodology_disclosure((
+            methodology["model_name"],
+            methodology["model_version"],
+            methodology["rate_input_description"],
+            methodology["dividend_input_description"],
+            methodology["theta_day_basis"],
+            methodology["unit_convention"],
+        )),
+        repeated_bet_count=parameters["repeated_bet_count"],
+    )
+    return StructureCostsTransformationResult(cost_record, dependency_lineage)
+
+
+def _scenario_reconstruct_tail_dependency(
+    disclosure: dict,
+    selected: dict,
+    parameters: dict,
+    lineage: CalculationLineage,
+) -> tuple:
+    dependency_lineage = _scenario_dependency_lineage(
+        disclosure, parameters, lineage, "TailPricing"
+    )
+    delta_methodology = canonicalize_lineage_parameters(
+        parameters["delta_convention"]
+    )
+    records = tuple(TailPricingSlice(
+        underlying=selected["underlying"],
+        as_of_date=observation["session_date"],
+        expiration=observation["expiration"],
+        atm_iv=_finite_float(observation["atm_iv"]),
+        put_25_delta_iv=_finite_float(
+            observation["selected_put_25"]["implied_volatility"]
+        ),
+        call_25_delta_iv=_finite_float(
+            observation["selected_call_25"]["implied_volatility"]
+        ),
+        put_10_delta_iv=_finite_float(
+            observation["selected_put_10"]["implied_volatility"]
+        ),
+        call_10_delta_iv=_finite_float(
+            observation["selected_call_10"]["implied_volatility"]
+        ),
+        skew_percentile=_finite_float(observation["skew_percentile"]),
+        skew_history_lookback_observations=(
+            observation["historical_observation_count"]
+        ),
+        delta_methodology=delta_methodology,
+    ) for observation in parameters["current_expiration_observations"])
+    result = TailPricingTransformationResult(records, dependency_lineage)
+    _decoded, _observations, volatility = _verify_tail_pricing_result(
+        result.records, result.lineage
+    )
+    return result, volatility
+
+
+def _scenario_reconstruct_contract_key(value: dict) -> OptionContractKey:
+    underlying = value["underlying_key"]
+    return OptionContractKey(
+        underlying_key=UnderlyingKey(
+            symbol=underlying["symbol"],
+            listing_mic=underlying["listing_mic"],
+            security_type=UnderlyingSecurityType(
+                underlying["security_type"]
+            ),
+            currency=underlying["currency"],
+        ),
+        expiration=value["expiration"],
+        option_type=value["option_type"],
+        strike=value["strike"],
+        contract_multiplier=value["contract_multiplier"],
+        currency=value["currency"],
+        deliverable_id=value["deliverable_id"],
+    )
+
+
+def _scenario_reconstruct_pricing_dependency(
+    record: ScenarioResult,
+    disclosure: dict,
+    parameters: dict,
+    lineage: CalculationLineage,
+) -> ScenarioPricingCalculationResult:
+    dependency_lineage = _scenario_dependency_lineage(
+        disclosure, parameters, lineage, "ScenarioPricing"
+    )
+    producer_identity = parameters["producer_identity"]
+    producer = parameters["producer_provenance"]
+    pricing = parameters["pricing_methodology"]
+    rate = parameters["rate_methodology"]
+    dividend = parameters["dividend_methodology"]
+    methodology = ScenarioPricingMethodology(
+        pricing_source_classification=producer[
+            "pricing_source_classification"
+        ],
+        producer_name=producer_identity["producer_name"],
+        producer_version=producer_identity["producer_version"],
+        pricing_request_id=producer["pricing_request_id"],
+        pricing_payload_sha256=producer["pricing_payload_sha256"],
+        producer_calculated_at=producer["producer_calculated_at"],
+        pricing_model_name=pricing["pricing_model_name"],
+        pricing_model_version=pricing["pricing_model_version"],
+        supported_exercise_settlement_pairs=parameters[
+            "exercise_and_settlement_support"
+        ],
+        settlement_treatment=pricing["settlement_treatment"],
+        rate_source=rate["rate_source"],
+        rate_curve_identity=rate["rate_curve_identity"],
+        rate_effective_date=rate["rate_effective_date"],
+        rate_currency=rate["rate_currency"],
+        rate_remaining_tenor_treatment=rate[
+            "rate_remaining_tenor_treatment"
+        ],
+        rate_compounding_conversion=rate["rate_compounding_conversion"],
+        rate_day_count_convention=rate["rate_day_count_convention"],
+        rate_interpolation=rate["rate_interpolation"],
+        dividend_source=dividend["dividend_source"],
+        dividend_treatment=dividend["dividend_treatment"],
+        dividend_coverage_start_date=dividend[
+            "dividend_coverage_start_date"
+        ],
+        dividend_coverage_end_date=dividend["dividend_coverage_end_date"],
+        explicit_zero_dividend_assumption=dividend[
+            "explicit_zero_dividend_assumption"
+        ],
+        volatility_surface_treatment=pricing[
+            "volatility_surface_treatment"
+        ],
+        skew_treatment=pricing["skew_treatment"],
+        term_treatment=pricing["term_treatment"],
+        volatility_interpolation=pricing["volatility_interpolation"],
+        remaining_time_rule=parameters["remaining_time_rule"],
+        position_scaling_rule=parameters["position_scaling_rule"],
+        numerical_calculation_boundary=pricing[
+            "numerical_calculation_boundary"
+        ],
+        limitations=parameters["limitations"],
+    )
+    correspondence = parameters["leg_correspondence"]
+    calculations = []
+    for values in parameters["calculation_values"]:
+        identity = values["scenario"]
+        scenario = Scenario(
+            float(identity["underlying_move"]),
+            float(identity["iv_change"]),
+            identity["valuation_time"],
+            identity["days_forward"],
+        )
+        leg_values = values["leg_values"]
+        leg_calculations = tuple(
+            ScenarioPricingLegCalculation(
+                leg=leg,
+                contract_key=_scenario_reconstruct_contract_key(
+                    common["contract_key"]
+                ),
+                base_iv=common["base_iv"],
+                shocked_iv=item["shocked_iv"],
+                remaining_calendar_days=item["remaining_calendar_days"],
+                per_underlying_unit_option_value=item[
+                    "per_underlying_unit_option_value"
+                ],
+                total_leg_value=item["total_leg_value"],
+                exercise_style=common["exercise_style"],
+                settlement_type=common["settlement_type"],
+                implied_volatility_record_id=common[
+                    "implied_volatility_record_id"
+                ],
+                contract_reference_record_id=common[
+                    "contract_reference_record_id"
+                ],
+            )
+            for leg, common, item in zip(
+                record.structure.legs, correspondence, leg_values
+            )
+        )
+        calculations.append(NonExpirationScenarioPricingCalculation(
+            structure=record.structure,
+            as_of_date=record.as_of_date,
+            scenario=scenario,
+            valuation_date=values["valuation_date"],
+            base_underlying_price=values["base_underlying_price"],
+            shocked_underlying_price=values["shocked_underlying_price"],
+            underlying_quote_record_id=values[
+                "underlying_quote_record_id"
+            ],
+            leg_calculations=leg_calculations,
+            estimated_gross_position_value=values[
+                "estimated_gross_position_value"
+            ],
+            pricing_methodology=methodology,
+        ))
+    return ScenarioPricingCalculationResult(
+        tuple(calculations), dependency_lineage
+    )
+
+
+def _reconstruct_scenario_valuation_dependencies(
+    records: object, lineage: object
+) -> tuple:
+    """Reconstruct Scenario's complete retained calculations without producers."""
+
+    if type(records) is not tuple or not records:
+        raise TypeError("scenario records must have exact nonempty tuple type")
+    if type(lineage) is not CalculationLineage:
+        raise TypeError("scenario lineage must have exact type CalculationLineage")
+    decoded = _decode_scenario_valuation_parameters(lineage.parameters_json)
+    cost_disclosure = decoded["structure_costs_dependency"]
+    tail_disclosure = decoded["tail_pricing_dependency"]
+    pricing_disclosure = decoded["scenario_pricing_dependency"]
+    cost_parameters = _decode_cost_parameters(
+        cost_disclosure["parameters_json"]
+    )
+    tail_parameters = _decode_tail_pricing_parameters(
+        tail_disclosure["parameters_json"]
+    )
+    pricing_parameters = _decode_scenario_pricing_parameters(
+        pricing_disclosure["parameters_json"]
+    )
+    costs = _scenario_reconstruct_costs_dependency(
+        records[0], cost_disclosure, cost_parameters, lineage
+    )
+    tail, volatility = _scenario_reconstruct_tail_dependency(
+        tail_disclosure,
+        tail_disclosure["selected"],
+        tail_parameters,
+        lineage,
+    )
+    pricing = _scenario_reconstruct_pricing_dependency(
+        records[0], pricing_disclosure, pricing_parameters, lineage
+    )
+    expected = _scenario_union_dependency_inputs((
+        costs.lineage.inputs,
+        tail.lineage.inputs,
+        pricing.lineage.inputs,
+    ))
+    if lineage.inputs != expected:
+        raise ValueError(
+            "scenario lineage inputs must equal the exact dependency union"
+        )
+    return costs, tail, pricing, volatility
+
+
 def _validate_scenario_valuation_records(
     records: Tuple[ScenarioResult, ...],
     lineage: CalculationLineage,
@@ -10239,6 +10601,7 @@ def _validate_scenario_valuation_records(
     ):
         raise ValueError("scenario-valuation lineage identity is invalid")
     decoded = _decode_scenario_valuation_parameters(lineage.parameters_json)
+    _reconstruct_scenario_valuation_dependencies(records, lineage)
     first = records[0]
     structure = first.structure
     as_of_date = first.as_of_date

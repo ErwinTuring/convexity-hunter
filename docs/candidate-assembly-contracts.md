@@ -1,12 +1,11 @@
 # Candidate-Assembly Contracts
 
-This document is the canonical technical contract for Milestone 6. It freezes
-the product and architecture decisions needed for later formal preflight and
-implementation. The exact Milestone 6A calculation identities and canonical
+This document is the canonical implemented technical contract for Milestone 6.
+The exact Milestone 6A calculation identities and canonical
 parameter schemas are frozen in
 [`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
-Milestone 6B public API, module layout, calculation identity, and canonical
-parameter schema remain for its later formal preflight.
+Milestone 6B is implemented, independently reviewed, corrected, and passed
+targeted re-review.
 
 ## 1. Milestone decomposition and gate
 
@@ -16,12 +15,11 @@ Milestone 6 is decomposed into these ordered work units:
 2. **Milestone 6B — Reviewed-Artifact Candidate Assembly**.
 
 Milestone 6A is complete: it has been implemented, independently reviewed,
-corrected for all accepted findings, and passed targeted re-review. The three
-direct wrappers strengthened by 6A now satisfy the intrinsic-verifiability
-prerequisite. Milestone 6B remains unimplemented and is unlocked only for its
-formal read-only preflight. Its initial preflight was blocked by the
-zero-artifact lineage contradiction resolved in Section 8.2; the next gate is
-a rerun of that existing preflight task against the clarified contract.
+corrected for all accepted findings, and passed targeted re-review. Milestone
+6B is also complete. Its initial preflight blocker was the zero-artifact
+lineage contradiction resolved in Section 8.2; implementation then passed
+independent review after one accepted MAJOR direct-construction error-taxonomy
+correction, and targeted re-review passed with no remaining findings.
 
 ## 2. Direct reviewed-artifact boundary
 
@@ -45,9 +43,8 @@ Milestone 6A introduced no new public class or function, changed no producer
 signature or public domain-record field, and preserves all current export
 counts and ordering. Its exact v0.2 identities, retained-evidence schemas, and
 private verification behavior are frozen in the linked market-data contract.
-The formal 6B preflight remains responsible for 6B's exact public sidecar,
-function signature, implementation-file list, calculation identity, and
-canonical parameter schema.
+The implemented 6B public contract is fixed below and is authoritative for
+the reviewed implementation.
 
 ## 3. State-specific artifact completeness
 
@@ -174,12 +171,9 @@ failure taxonomy, noncryptographic trust boundary, and exclusions are frozen
 in
 [`market-data-contracts.md`](market-data-contracts.md#1324-milestone-6a-reviewed-artifact-verifiability-contract).
 
-Milestone 6A is complete. The next gate is a rerun of
-`PREFLIGHT｜Milestone 6B — Reviewed-Artifact Candidate Assembly`, the existing
-formal read-only preflight task, against this clarified contract. All existing
-Milestone 6B aggregate, sidecar, provenance, completeness,
-dependency-identity, chronology, quality, and exclusion contracts below remain
-unchanged; this status update does not pre-decide the exact 6B public API.
+Milestone 6A is complete, and Milestone 6B is implemented and reviewed. The
+public API, sidecar, provenance, completeness, dependency-identity, chronology,
+quality, and exclusion contracts below describe the accepted implementation.
 
 ## 7. Milestone 6B aggregate architecture
 
@@ -200,7 +194,7 @@ They are not converted to prose, flattened into `ClassifiedEvidence`, or
 inserted into screening.
 
 The exact public sidecar name, fields, producer signature, module exports, and
-canonical schema remain decisions for the formal 6B preflight.
+canonical schema are implemented as specified in Section 12.
 
 ## 8. Assembly-level provenance
 
@@ -256,10 +250,9 @@ must be nonempty for a zero-artifact `WATCH`, `REJECT`, or
 
 For one or more direct artifacts, the existing deterministic union,
 deduplication, conflict-rejection, dependency-closure, identity, chronology,
-quality, and completeness rules remain unchanged. This clarification resolves
-the blocked formal-preflight representation conflict, but does not by itself
-freeze the remaining Milestone 6B public API, sidecar, producer, calculation
-identity, or canonical parameter schema.
+quality, and completeness rules remain unchanged. This implemented resolution
+records the accepted public API, sidecar, producer, calculation identity, and
+canonical parameter schema for Milestone 6B.
 
 Rejected alternatives are a second assembly-only lineage type, revoking
 zero-artifact support, and fabricating a normalized input. A second type would
@@ -351,3 +344,89 @@ Milestones 6A and 6B contain no:
 Broader discovery, application-flow candidate production, screening and
 report integration, position management, and production services remain later
 work.
+
+## 12. Implemented Milestone 6B contract
+
+Milestone 6B is implemented, independently reviewed, corrected for one
+accepted MAJOR direct-construction error-taxonomy finding, and passed targeted
+re-review with no remaining findings.
+
+The public module is:
+
+```text
+convexity_hunter.candidate_assembly
+```
+
+Its only public exports, in order, are:
+
+```text
+CandidateResearchRecordAssemblyResult
+assemble_candidate_research_record
+```
+
+`CandidateResearchRecordAssemblyResult` retains the exact existing
+`CandidateResearchRecord`, seven explicitly named optional direct wrapper
+fields, and one assembly `CalculationLineage`. All nine fields are required;
+absent artifact positions are explicit `None`. The package root remains
+unchanged and does not export either candidate-assembly name.
+
+The assembly identity is:
+
+```text
+calculation_type: candidate_research_record_assembly
+methodology_id: reviewed-artifact-candidate-research-record-assembly
+methodology_version: v0.1
+```
+
+The existing 17-field `CandidateResearchRecord` remains unchanged. Its
+structure and as-of date are caller-owned. Milestone 4 Expiration and
+Milestone 5 Affordability artifacts remain sidecar-only.
+
+The implemented state matrix is:
+
+- `INVESTIGATE`: all seven artifacts, no direct incomplete-input flag, and
+  conclusive affordability;
+- `WATCH` and `REJECT`: zero through seven artifacts, with nonempty
+  `missing_data` whenever an artifact is absent or directly incomplete; and
+- `DATA_INSUFFICIENT`: zero through seven artifacts, with nonempty
+  `missing_data` always required.
+
+The direct dependency closure and exact supplied-wrapper identity are:
+
+```text
+Tail → Volatility
+Scenario → Volatility
+Scenario → Tail
+Scenario → Costs
+Expiration → Costs
+Affordability → Costs
+```
+
+Zero artifacts produce `inputs=()` and the absence-derived
+`INCOMPLETE_INPUT_USED` flag. Nonzero inputs are the deterministic exact
+union of the supplied direct wrappers' normalized references. Complete
+calculation-ID and chronology closure applies across direct and retained
+nested dependencies and normalized inputs. The fixed canonical parameter
+schema has these 12 top-level keys:
+
+```text
+schema_version
+output_architecture
+caller_inputs
+candidate_record
+volatility_environment_result
+tail_pricing_result
+structure_liquidity_result
+structure_costs_result
+scenario_valuation_result
+expiration_payoff_threshold_result
+structure_affordability_result
+assembly_rules
+```
+
+`_ASSEMBLY_RULES` is fixed and authoritative. Direct construction invokes the
+same intrinsic verifier as the producer. Exact-type wrappers with missing
+required outer fields produce controlled `ValueError`; wrong outer types remain
+`TypeError`. No producer, provider, LLM, scanner, renderer, clock, ID
+generation, screening, prose generation, or synthetic normalized input is
+invoked.

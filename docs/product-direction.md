@@ -464,8 +464,9 @@ yet completed the active-discovery front end, real option-structure
 generation, broader discovery/application-flow candidate production,
 position-management-plan integration, non-expiration pricing production, or
 the complete application flow. Reviewed-artifact candidate assembly is now
-the active Milestone 6 contract, decomposed into prerequisite 6A wrapper
-verifiability and subsequent 6B assembly. Neither work unit is implemented.
+complete: Milestone 6A provides the prerequisite wrapper verifiability and
+Milestone 6B assembles the reviewed artifacts without adding screening or
+reporting integration.
 Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence
 implements exact-rational expiration 1x/2x/5x/10x thresholds. Milestone 5 —
 Standalone Structure Affordability Evidence implements reviewed standalone
@@ -484,12 +485,12 @@ complete application workflow.
 2. Completed Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence.
 3. Completed Milestone 5 — Standalone Structure Affordability Evidence.
 4. Completed Milestone 6A — Reviewed Artifact Verifiability.
-5. Milestone 6B — Reviewed-Artifact Candidate Assembly, currently in contract
-   clarification after its initial formal preflight was blocked by the
-   zero-artifact lineage contradiction. No 6B implementation has begun; after
-   this clarification commit, the next gate is a rerun of the existing formal
-   Milestone 6B PREFLIGHT task.
-6. Later position-management-plan contract.
+5. Completed Milestone 6B — Reviewed-Artifact Candidate Assembly. The initial
+   zero-artifact preflight blocker was clarified and implemented; independent
+   review found one accepted MAJOR direct-construction error-taxonomy defect,
+   which was corrected, and targeted re-review passed with no findings.
+6. Later position-management-plan contract, beginning with a fresh formal
+   read-only preflight.
 7. Later screening and Chinese-report integration.
 8. Later deterministic offline single-structure service.
 9. Subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
@@ -515,11 +516,11 @@ complete application workflow.
 - Completed Milestone 1–3 history remains unchanged.
 - Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence is complete.
 - Milestone 5 — Standalone Structure Affordability Evidence is complete.
-- Milestone 6A — Reviewed Artifact Verifiability is complete. Milestone 6B —
-  Reviewed-Artifact Candidate Assembly remains unimplemented and is in
-  contract clarification after a blocked formal preflight. After the
-  clarification commit, the next gate is a rerun of the existing formal 6B
-  PREFLIGHT task. The canonical Milestone 6 contract is
+- Milestone 6A — Reviewed Artifact Verifiability and Milestone 6B —
+  Reviewed-Artifact Candidate Assembly are complete. 6B passed targeted
+  re-review after correction of one accepted MAJOR finding. The next gate is a
+  fresh formal read-only preflight for the later position-management-plan
+  contract already listed in the roadmap. The canonical Milestone 6 contract is
   [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md).
 
 ## 18. Future design questions

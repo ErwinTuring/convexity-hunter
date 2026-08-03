@@ -1221,8 +1221,6 @@ def _normalize_calculation_inputs(
         raise TypeError(
             "every inputs item must have exact type CalculationInputReference"
         )
-    if not normalized:
-        raise ValueError("inputs must contain at least one item")
     record_ids = tuple(item.record_id for item in normalized)
     if len(set(record_ids)) != len(record_ids):
         raise ValueError("input record IDs must not contain duplicates")

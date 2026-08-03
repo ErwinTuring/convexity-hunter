@@ -4730,6 +4730,28 @@ class HistoricalRealizedVolatilityAcceptanceTests(unittest.TestCase):
 
 
 class HistoricalRealizedVolatilityBoundaryTests(unittest.TestCase):
+    def test_wrapper_requires_exact_price_observation_input_count(self):
+        result = transform_historical(make_historical_assessment()[0])
+        HistoricalRealizedVolatilityTransformationResult(
+            result.record, result.lineage
+        )
+        extra = CalculationInputReference(
+            "historical-surplus-input",
+            result.lineage.calculated_at,
+            ("fixture-source",),
+        )
+        for inputs in (
+            (),
+            result.lineage.inputs[:-1],
+            result.lineage.inputs + (extra,),
+        ):
+            with self.subTest(count=len(inputs)):
+                lineage = dataclasses.replace(result.lineage, inputs=inputs)
+                with self.assertRaisesRegex(ValueError, "input count"):
+                    HistoricalRealizedVolatilityTransformationResult(
+                        result.record, lineage
+                    )
+
     def test_direct_construction_rejection_and_methodology_taxonomy_matrix(self):
         valid = transform_historical(make_historical_assessment()[0]).record
         dates = valid.session_dates
@@ -7714,6 +7736,46 @@ class ScenarioValuationTransformationTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             invoke(conflicting, "scenario-valuation-conflicting-overlap")
+
+    def test_direct_wrapper_requires_exact_three_dependency_input_union(self):
+        result = make_scenario_valuation_result()
+        costs, tail, pricing, _volatility = (
+            transformations._reconstruct_scenario_valuation_dependencies(
+                result.records, result.lineage
+            )
+        )
+        groups = (
+            costs.lineage.inputs,
+            tail.lineage.inputs,
+            pricing.lineage.inputs,
+        )
+        identifiers = tuple({item.record_id for item in group} for group in groups)
+        labels = ("costs", "tail", "pricing")
+        for index, label in enumerate(labels):
+            other = set().union(*(
+                value for offset, value in enumerate(identifiers)
+                if offset != index
+            ))
+            exclusive = next(iter(identifiers[index] - other))
+            inputs = tuple(
+                item for item in result.lineage.inputs
+                if item.record_id != exclusive
+            )
+            lineage = dataclasses.replace(result.lineage, inputs=inputs)
+            with self.subTest(label=label), self.assertRaises(ValueError):
+                ScenarioValuationTransformationResult(
+                    result.records, lineage
+                )
+        surplus = CalculationInputReference(
+            "scenario-surplus-input",
+            result.lineage.calculated_at,
+            ("fixture-source",),
+        )
+        lineage = dataclasses.replace(
+            result.lineage, inputs=result.lineage.inputs + (surplus,)
+        )
+        with self.assertRaisesRegex(ValueError, "exact dependency union"):
+            ScenarioValuationTransformationResult(result.records, lineage)
 
     def test_direct_wrapper_rejects_record_lineage_and_quality_forgery(self):
         result = make_scenario_valuation_result()

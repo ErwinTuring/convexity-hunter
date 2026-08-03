@@ -5063,17 +5063,26 @@ or sidecar verifier; no dependency-closure rule is weakened.
 In particular, generic `CalculationLineage` validation does not infer a quality
 flag merely because `inputs` is empty. Empty inputs neither require nor prohibit
 `INCOMPLETE_INPUT_USED`; the concrete calculation verifier derives the exact
-expected quality-flag tuple from its methodology.
+expected quality-flag tuple from its methodology. The implemented constructor
+accepts an exact tuple or exact list containing zero or more
+`CalculationInputReference` values and stores an empty collection canonically as
+`()`. Nonempty validation, ordering, uniqueness, chronology, source-ID, and
+calculation-ID disjointness invariants remain unchanged.
 
 This general zero-or-more cardinality does not reclassify any existing
 transformation or risk-assessment methodology as parameter-only. Every existing
 calculated-artifact wrapper and private verifier continues to require its exact
-complete methodology-specific input set and to reject an empty lineage where
-nonempty inputs are expected, as well as missing, surplus, conflicting, or
-forged inputs. Generic lineage validation supplies structural validation;
-calculation-specific verification supplies input completeness. Source and test
-implementation of the zero-input constructor case is deferred to the Milestone
-6B BUILD, and only after the clarified formal 6B preflight is rerun successfully.
+complete methodology-specific input set and to reject an empty or incomplete
+lineage where nonempty inputs are expected, as well as missing, surplus,
+conflicting, or forged inputs. Generic lineage validation supplies structural
+validation; calculation-specific verification supplies input completeness. An
+empty generic input tuple alone does not derive a quality flag.
+
+The implemented methodology-specific safeguards include an explicit
+Historical Realized Volatility input-count guard and Scenario Valuation
+verification of the exact union of Structure Costs, Tail Pricing, and provider
+Scenario Pricing inputs. Existing non-parameter-only wrappers therefore retain
+their strict input completeness requirements.
 
 A sidecar is necessary because existing research records mostly use date-only `as_of_date`, while real inputs have intraday timestamps and individual source identities. Existing research records do not receive lineage fields in 3B. Future Milestone 3C.7 transformations will consume temporally coherent, relationship-validated, deterministically selected, and where applicable historically complete inputs; perform deterministic calculations; produce existing research records; and create `CalculationLineage` sidecars.
 
@@ -7136,3 +7145,17 @@ The following questions remain open:
 - What raw payload material may legally be retained for each provider?
 - When should existing research records receive direct lineage IDs instead of sidecar lineage?
 - Should forecast dividends use one provider model or a system-composite methodology?
+
+## 13.25 Current Milestone 6 status
+
+Milestones 6A — Reviewed Artifact Verifiability and 6B — Reviewed-Artifact
+Candidate Assembly are complete. Milestone 6B passed independent review after
+one accepted MAJOR direct-construction error-taxonomy correction and passed
+targeted re-review with no remaining findings.
+
+Current validation totals are 366 market-data tests, 181 transformation tests,
+50 candidate-assembly tests, 32 risk-assessment tests, and 938 full-suite tests.
+The public API baselines are 64 `market_data` exports, 25 transformation
+exports, 7 risk-assessment exports, and 2 candidate-assembly exports. The next
+gate is a fresh formal read-only preflight for the already documented later
+position-management-plan contract; it is not a readiness claim.
