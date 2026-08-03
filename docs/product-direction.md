@@ -369,36 +369,45 @@ evidence separately from candidate assembly, screening, reporting, sizing,
 holdings, monitoring, and execution; see
 [Risk-Assessment Contracts](risk-assessment-contracts.md).
 
-## 12. First-report position-management conditions
+## 12. Position-management plan contract
 
-The product does not monitor positions, schedule tasks, send alerts or
-notifications, or automate exits. The first report states limitations and
-human-readable conditions for later judgment:
+The canonical product and architecture clarification is
+[Position-Management Plan Contract](position-management-contracts.md). The
+selected artifact identity is `PositionManagementPlan`: prospective research
+guidance for a hypothetical future long-option position, for later human
+judgment only. Its fixed scope is `prospective_research_guidance`.
 
-- monetization conditions: for example, executable net liquidation value at a
-  disclosed 2x, 5x, or 10x cost multiple; disclosed ATM IV or skew thresholds;
-  the event becoming public; disappearance of underpricing evidence; or
-  growing Theta/IV-collapse dominance;
-- reassessment conditions: for example, a disclosed event-window shift, loss
-  of the 30-day buffer, remaining DTE reaching 30 days, a disclosed spread
-  threshold, stale or missing evidence, contract adjustment, or a material
-  impact-path change; and
-- exit conditions: for example, event-window expiry without the hypothesized
-  change, cancellation or definitive contrary resolution, a confirmed
-  exemption, invalidated impact path, inability to cover the revised event
-  window and buffer, breach of the user's risk boundary, liquidity below
-  disclosed limits, or data loss that prevents responsible evaluation.
+The plan is permitted only for `INVESTIGATE` and `WATCH` assemblies.
+`INVESTIGATE` requires nonempty monetization, reassessment, and exit
+categories. `WATCH` requires at least one reassessment condition; monetization
+and exit may be empty. `REJECT` and `DATA_INSUFFICIENT` do not receive a plan.
+The plan uses exactly one reviewed
+`CandidateResearchRecordAssemblyResult` and does not accept separate artifact
+arguments.
 
-Conditions should be quantitative where evidence permits. There is no
-universal automatic 2x take-profit rule or option-price drawdown stop. The
-active report says “consider monetization,” “consider reassessment,” or
-“consider exit”; these are not mandatory trade commands.
+V0.1 is future-condition declaration only. It never evaluates current trigger
+status and contains no monitoring, alerting, live position value or P&L,
+current executable quote, automatic decision, or system-clock evaluation.
+Categories structurally map only to “consider monetization,” “consider
+reassessment,” and “consider exit”; they cannot encode a sell, close-now,
+take-profit, stop-out, or execution instruction.
 
-A future `PositionManagementPlan`-like immutable record is a design direction,
-not a frozen class, module, or signature. Preflight must decide its record
-boundary; deterministic versus Event Intelligence, caller, human, or AI
-inputs; threshold derivation and disclosure; and integration with research and
-reporting.
+Conditions use closed immutable quantitative and qualitative forms. Quantitative
+metrics are net liquidation value multiple, remaining DTE, bid-ask spread
+fraction, ATM IV, skew percentile, single-loss fraction, and repeated-loss
+fraction, with only inclusive comparisons and exact non-float thresholds.
+Qualitative triggers are the closed event, evidence, contract, impact-path,
+and data-loss declarations in the canonical contract. Thresholds are supplied
+by the caller or human analyst except the exact reviewed M5 risk boundaries;
+AI is not an authority and no event record is accepted.
+
+The selected future architecture is `PositionManagementPlan` plus
+`PositionManagementPlanResult` retaining the exact assembly result and
+existing `CalculationLineage`. The exact final Python API, annotations,
+validation, exports, constructor behavior, and canonical nested parameter
+schema remain subject to the rerun formal preflight. Implementation has not
+started, no milestone number is assigned, and screening/report integration
+remains later work.
 
 ## 13. Chinese report and simplified overview
 
@@ -462,11 +471,14 @@ Convexity Hunter has largely completed the auditable numerical and evidence
 foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
 generation, broader discovery/application-flow candidate production,
-position-management-plan integration, non-expiration pricing production, or
-the complete application flow. Reviewed-artifact candidate assembly is now
-complete: Milestone 6A provides the prerequisite wrapper verifiability and
-Milestone 6B assembles the reviewed artifacts without adding screening or
-reporting integration.
+position-management-plan implementation or integration, non-expiration
+pricing production, or the complete application flow. The product and
+architecture boundary for the prospective plan is clarified in
+[the canonical contract](position-management-contracts.md), but no source
+implementation exists. Reviewed-artifact candidate assembly is complete:
+Milestone 6A provides the prerequisite wrapper verifiability and Milestone 6B
+assembles the reviewed artifacts without adding screening or reporting
+integration.
 Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence
 implements exact-rational expiration 1x/2x/5x/10x thresholds. Milestone 5 —
 Standalone Structure Affordability Evidence implements reviewed standalone
@@ -489,8 +501,8 @@ complete application workflow.
    zero-artifact preflight blocker was clarified and implemented; independent
    review found one accepted MAJOR direct-construction error-taxonomy defect,
    which was corrected, and targeted re-review passed with no findings.
-6. Later position-management-plan contract, beginning with a fresh formal
-   read-only preflight.
+6. Position-Management Plan Contract clarification is complete; rerun its
+   existing formal read-only preflight. The work unit remains unnumbered.
 7. Later screening and Chinese-report integration.
 8. Later deterministic offline single-structure service.
 9. Subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
@@ -511,17 +523,20 @@ complete application workflow.
   defaults alone.
 - Low premium does not establish cheapness, no single scenario multiple
   determines `Investigate`, and no universal annual convexity budget applies.
-- The product reports research dispositions and future human-judgment
-  conditions; it does not monitor, recommend, or execute.
+- The product reports research dispositions and prospective human-judgment
+  conditions under the canonical position-management contract; it does not
+  monitor, recommend, or execute.
 - Completed Milestone 1–3 history remains unchanged.
 - Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence is complete.
 - Milestone 5 — Standalone Structure Affordability Evidence is complete.
 - Milestone 6A — Reviewed Artifact Verifiability and Milestone 6B —
   Reviewed-Artifact Candidate Assembly are complete. 6B passed targeted
   re-review after correction of one accepted MAJOR finding. The next gate is a
-  fresh formal read-only preflight for the later position-management-plan
-  contract already listed in the roadmap. The canonical Milestone 6 contract is
-  [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md).
+  fresh formal read-only preflight for the clarified, unnumbered
+  position-management-plan contract. The canonical Milestone 6 contract is
+  [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md), while
+  [`position-management-contracts.md`](position-management-contracts.md) is
+  the canonical plan contract.
 
 ## 18. Future design questions
 
@@ -536,9 +551,9 @@ The following are unresolved future contracts, not blockers for this alignment:
 - asset-class and event-specific stress calibration;
 - the annual convexity-budget contract decision;
 - actual mature Skills, their gaps, adapters, and compositions;
-- quantitative derivation of monetization, reassessment, and exit thresholds;
 - provider versus internal non-expiration pricing;
-- final position-management-plan architecture;
+- the exact Python API, annotations, validation, and exports for the clarified
+  position-management plan;
 - final event-to-underlying accepted contract;
 - direct-entry resolution of incomplete structure descriptions; and
 - code changes required for the Chinese beginner overview.

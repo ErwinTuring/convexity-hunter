@@ -435,35 +435,45 @@ qualitative material; it does not screen, derive state, generate prose, infer
 evidence impact, or flatten reviewed numerical artifacts into qualitative
 evidence.
 
-## 12. First-report position-management conditions
+## 12. Prospective position-management plan
 
-The first report states in advance:
+The canonical product and architecture contract is
+[Position-Management Plan Contract](position-management-contracts.md). The
+selected artifact is `PositionManagementPlan`, meaning prospective research
+guidance for a hypothetical future long-option position, for later human
+judgment only. Its fixed scope is `prospective_research_guidance`.
 
-- monetization conditions under which initially underpriced convexity may have
-  repriced;
-- reassessment conditions that require fresh analysis;
-- exit conditions that may invalidate or make the position irresponsible to
-  evaluate; and
-- limitations.
+A plan is allowed only for `INVESTIGATE` and `WATCH` candidate assemblies.
+`INVESTIGATE` requires at least one monetization, reassessment, and exit
+condition. `WATCH` requires at least one reassessment condition and may omit
+monetization and exit. `REJECT` and `DATA_INSUFFICIENT` do not receive a
+plan. There is no separate plan-completeness status.
 
-Conditions should be quantitative where evidence permits. Examples include
-disclosed executable 2x/5x/10x liquidation multiples; ATM IV and skew
-thresholds; event publication; disappearance of underpricing evidence; a
-disclosed event-window change; loss of the event buffer; DTE reaching 30 days;
-a disclosed spread threshold; stale data or a contract adjustment; event
-cancellation or contrary resolution; invalidated impact path; a user
-risk-budget breach; insufficient liquidity; or loss of required evidence.
+The sole reviewed input is exactly one
+`CandidateResearchRecordAssemblyResult`; the producer does not accept seven
+separate artifact wrappers or separately supplied candidate identity. The
+plan is future-condition declaration only. It does not evaluate current
+triggers and contains no live status, current executable quote, monitoring,
+alerting, system-clock evaluation, or automatic decision.
 
-There is no universal automatic 2x take-profit or option-price drawdown stop.
-A price decline alone does not invalidate a hypothesis when predefined maximum
-loss remains within the user's declared risk budget. The report says “consider
-monetization,” “consider reassessment,” or “consider exit”; it does not issue
-mandatory buy or sell instructions.
+Conditions use closed immutable quantitative and qualitative forms. Supported
+quantitative metrics are `net_liquidation_value_multiple`, `remaining_dte`,
+`bid_ask_spread_fraction`, `atm_iv`, `skew_percentile`,
+`single_loss_fraction`, and `repeated_loss_fraction`. Comparisons are only
+inclusive `greater_than_or_equal` and `less_than_or_equal`, with exact
+non-float threshold types. Qualitative triggers use the closed monetization,
+reassessment, and exit trigger grammar in the canonical contract.
 
-The MVP does not monitor positions, schedule tasks, send alerts or
-notifications, or automate exits. The final position-management record,
-condition ownership, threshold derivation, and report integration require a
-future preflight; this specification does not freeze a class signature.
+Thresholds are caller or human-analyst declarations except exact reviewed
+Milestone 5 risk boundaries. AI is not an authority, and no Event
+Intelligence record is accepted. Milestone 4 expiration gross 1x/2x/5x/10x
+thresholds are terminal payoff evidence, not executable liquidation or
+automatic monetization rules.
+
+The MVP still does not monitor positions, schedule evaluations, send alerts,
+recommend or execute trades, or integrate the plan into screening or report
+rendering. Exact Python APIs remain subject to the rerun formal preflight;
+implementation has not begun.
 
 ## 13. Active Chinese report
 

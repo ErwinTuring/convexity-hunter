@@ -2,44 +2,34 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-Current HEAD subject before finalization: `Clarify zero-input assembly lineage`.
-After finalization, the implementation checkpoint subject is:
-`Implement reviewed-artifact candidate assembly`.
+Previous implementation checkpoint:
 
-Completed: Milestones 1–5, Milestone 6A — Reviewed Artifact Verifiability, and
-Milestone 6B — Reviewed-Artifact Candidate Assembly. Milestone 6B passed
-independent review after correction of one accepted MAJOR direct-construction
-error-taxonomy finding and passed targeted re-review with no remaining findings.
+- HEAD: `81d69196011b9a3bbc7161c57a3c2d628ba53444`
+- subject: `Implement reviewed-artifact candidate assembly`
 
-The generic `CalculationLineage` now implements zero-input lineage with
-canonical `inputs=()`. The public module
-`convexity_hunter.candidate_assembly` exists with exactly two exports and
-remains absent from package-root exports. Screening and report integration,
-position management, providers, services, and the later application flow
-remain deferred.
+This clarification checkpoint is titled `Define prospective position management contract`.
 
-Final validation baselines:
+Completed implementation remains Milestones 1–5, Milestone 6A — Reviewed Artifact
+Verifiability, and Milestone 6B — Reviewed-Artifact Candidate Assembly. The
+existing 6B validation baseline remains 938 full-suite tests, with API
+baselines of 64 `market_data` exports, 25
+`market_data_transformations` exports, 7 `risk_assessment` exports, 2
+`candidate_assembly` exports, 17 `CandidateResearchRecord` fields, 9
+`CandidateResearchRecordAssemblyResult` fields, and 21 assembly-producer
+parameters.
 
-- market-data tests: 366;
-- market-data transformation tests: 181;
-- candidate-assembly tests: 50;
-- risk-assessment tests: 32; and
-- full suite: 938.
+Position-management implementation has not begun. The first formal
+`PREFLIGHT｜Position-Management Plan Contract` returned `PREFLIGHT RESULT:
+BLOCKED` because product-contract choices were not frozen. The prospective
+plan contract is now clarified in
+[`position-management-contracts.md`](position-management-contracts.md).
+The clarification freezes the product and architecture boundary without
+assigning Milestone 6C or any other milestone number.
 
-API baselines:
-
-- `market_data.__all__`: 64;
-- `market_data_transformations.__all__`: 25;
-- `risk_assessment.__all__`: 7;
-- `candidate_assembly.__all__`: 2;
-- `CandidateResearchRecord` fields: 17;
-- `CandidateResearchRecordAssemblyResult` fields: 9; and
-- `assemble_candidate_research_record` parameters: 21.
-
-Next development gate: a fresh formal read-only preflight for the exact later
-position-management-plan work unit already documented in
-`product-direction.md`. No BUILD work for that unit begins before its preflight
-report is evaluated.
+The next gate is rerunning the existing formal
+`PREFLIGHT｜Position-Management Plan Contract`. No BUILD prompt may be issued
+before that report is evaluated. Screening, report integration, monitoring,
+and execution remain outside this work unit.
 
 This file is a concise navigation map, not a complete specification or
 history.

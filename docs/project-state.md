@@ -48,9 +48,24 @@ fields, 9 assembly-result fields, and 21 producer parameters. Package-root,
 scanner, renderer, existing producer signatures, fixtures, and persisted
 candidate-record compatibility remain unchanged.
 
-The next gate is a fresh formal read-only preflight for the already documented
-later position-management-plan contract. It is not READY and no implementation
-work for it begins before that preflight is evaluated.
+The next gate is a continuation or rerun of the formal read-only preflight for
+the clarified, unnumbered position-management-plan contract. It is not READY
+and no implementation work for it begins before that preflight is evaluated.
+
+## Position-management clarification checkpoint
+
+The first formal read-only preflight for the standalone
+`Position-Management Plan Contract` returned `PREFLIGHT RESULT: BLOCKED`.
+Its blockers were product-contract choices rather than technical incapability.
+This clarification freezes the prospective product boundary in
+[`position-management-contracts.md`](position-management-contracts.md):
+`PositionManagementPlan` is future research guidance for a hypothetical
+future long-option position and later human judgment only.
+
+No source or test implementation exists. The work unit remains unnumbered and
+is not Milestone 6C or Milestone 7. The next gate is continuation or rerun of
+the existing formal preflight task; no BUILD prompt may be issued before that
+report is evaluated.
 
 ### Completed Milestone 6A implementation
 
@@ -876,6 +891,13 @@ implemented. Independent review initially found one accepted MAJOR
 direct-construction error-taxonomy defect; narrow required-field validation
 corrected it, and targeted re-review passed with no remaining finding.
 
+The position-management plan contract clarification is complete in
+[`position-management-contracts.md`](position-management-contracts.md), but
+position-management implementation has not begun. Its first formal preflight
+returned `PREFLIGHT RESULT: BLOCKED` because the product boundary was not yet
+frozen; this documentation checkpoint resolves those product choices without
+assigning a milestone number.
+
 ## Last completed checkpoint
 
 - Commit: resolve with `git rev-parse HEAD` after finalization
@@ -1116,9 +1138,10 @@ do not override the current Milestone 6A completion checkpoint above.
 
 ## Next task
 
-Begin a fresh formal read-only preflight for the already documented later
-position-management-plan contract. Do not claim that work unit is READY and do
-not begin its BUILD before the preflight report is evaluated.
+Continue or rerun the existing formal read-only
+`PREFLIGHT｜Position-Management Plan Contract` against the clarified canonical
+contract. Do not claim that work unit is READY and do not begin its BUILD
+before the preflight report is evaluated.
 
 ## Current capability and roadmap
 
@@ -1147,8 +1170,8 @@ The accepted post-Milestone-3 sequence is:
 3. completed Milestone 5 — Standalone Structure Affordability Evidence;
 4. completed Milestone 6A — Reviewed Artifact Verifiability;
 5. completed Milestone 6B — Reviewed-Artifact Candidate Assembly;
-6. later position-management-plan contract, beginning with a fresh formal
-   read-only preflight;
+6. clarified, unnumbered Position-Management Plan Contract, beginning with a
+   continuation or rerun of its formal read-only preflight;
 7. later screening and Chinese-report integration;
 8. later deterministic offline single-structure service; and
 9. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
@@ -1168,7 +1191,8 @@ The accepted post-Milestone-3 sequence is:
 - non-expiration scenario-pricing production
 - broader discovery/application-flow candidate production beyond the active
   reviewed-artifact assembly contract
-- future annual convexity-budget contract and position-management-plan contract
+- future annual convexity-budget contract and position-management-plan
+  implementation after its formal preflight
 - Chinese beginner-overview renderer changes
 - LLM integration
 - user interface
@@ -1196,9 +1220,8 @@ Deferred does not mean rejected. These items remain outside the current mileston
   budget?
 - What final record should hold portfolio value, single-loss and repeated-loss
   boundaries, and methodology?
-- How should monetization, reassessment, and exit thresholds be derived and
-  disclosed?
-- What is the final position-management-plan architecture and integration?
+- What exact Python API, annotations, validation, and exports should implement
+  the clarified position-management plan?
 - What is the final accepted event-to-underlying contract?
 - How may incomplete direct-entry descriptions be resolved without inventing
   contracts?
