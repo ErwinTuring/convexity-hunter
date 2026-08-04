@@ -470,10 +470,14 @@ Intelligence record is accepted. Milestone 4 expiration gross 1x/2x/5x/10x
 thresholds are terminal payoff evidence, not executable liquidation or
 automatic monetization rules.
 
-The MVP still does not monitor positions, schedule evaluations, send alerts,
-recommend or execute trades, or integrate the plan into screening or report
-rendering. Exact Python APIs remain subject to the rerun formal preflight;
-implementation has not begun.
+The implemented contract is in
+`src/convexity_hunter/position_management.py`, with focused tests in
+`tests/test_position_management.py`. It provides the exact immutable plan,
+result, and condition records, the four-parameter
+`create_position_management_plan` producer, sole assembly-result input, and
+declaration-only calculation lineage. It does not yet integrate the plan into
+screening or report rendering. The MVP still does not monitor positions,
+schedule evaluations, send alerts, recommend or execute trades.
 
 ## 13. Active Chinese report
 
@@ -481,7 +485,8 @@ The active user-facing output is Chinese only. The implemented English
 renderer remains in the repository for compatibility and possible future
 reuse, but it is not part of the active product flow. Reactivation requires a
 separately accepted product decision. Historical bilingual implementation
-remains a completed fact.
+remains a completed fact. `PositionManagementPlanResult` is not automatically
+consumed by the current renderer.
 
 Every active report begins with a short plain-language Chinese overview for a
 user with little option experience:

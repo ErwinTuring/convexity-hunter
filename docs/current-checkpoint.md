@@ -2,34 +2,36 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-Previous implementation checkpoint:
+Previous committed checkpoint:
 
-- HEAD: `81d69196011b9a3bbc7161c57a3c2d628ba53444`
-- subject: `Implement reviewed-artifact candidate assembly`
+- HEAD: `a41b35df797c0720410c548841c5bb456b20f2ce`
+- subject: `Define prospective position management contract`
 
-This clarification checkpoint is titled `Define prospective position management contract`.
+Current finalized work-unit subject:
 
-Completed implementation remains Milestones 1–5, Milestone 6A — Reviewed Artifact
-Verifiability, and Milestone 6B — Reviewed-Artifact Candidate Assembly. The
-existing 6B validation baseline remains 938 full-suite tests, with API
-baselines of 64 `market_data` exports, 25
-`market_data_transformations` exports, 7 `risk_assessment` exports, 2
-`candidate_assembly` exports, 17 `CandidateResearchRecord` fields, 9
-`CandidateResearchRecordAssemblyResult` fields, and 21 assembly-producer
-parameters.
+`Implement prospective position management plan`
 
-Position-management implementation has not begun. The first formal
-`PREFLIGHT｜Position-Management Plan Contract` returned `PREFLIGHT RESULT:
-BLOCKED` because product-contract choices were not frozen. The prospective
-plan contract is now clarified in
-[`position-management-contracts.md`](position-management-contracts.md).
-The clarification freezes the product and architecture boundary without
-assigning Milestone 6C or any other milestone number.
+Milestones 1–5, 6A, and 6B remain complete. The standalone
+Position-Management Plan Contract is complete after independent review,
+correction, and targeted re-review. The work unit remains unnumbered and is
+not Milestone 6C.
 
-The next gate is rerunning the existing formal
-`PREFLIGHT｜Position-Management Plan Contract`. No BUILD prompt may be issued
-before that report is evaluated. Screening, report integration, monitoring,
-and execution remain outside this work unit.
+Implementation:
+
+- module: `src/convexity_hunter/position_management.py`
+- tests: `tests/test_position_management.py`
+- public module exports: 11
+- position-management tests: 60
+- full-suite tests: 998
+- review status: final targeted re-review passed
+
+The plan is not integrated into screening or report rendering. Monitoring,
+alerts, and execution remain absent.
+
+The next repository workflow gate is a fresh formal read-only preflight for
+separate screening and Chinese-report integration. Its exact scope, input
+authority, rendering behavior, screening interaction, localization, and
+compatibility must be frozen before implementation.
 
 This file is a concise navigation map, not a complete specification or
 history.

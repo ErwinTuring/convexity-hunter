@@ -48,24 +48,44 @@ fields, 9 assembly-result fields, and 21 producer parameters. Package-root,
 scanner, renderer, existing producer signatures, fixtures, and persisted
 candidate-record compatibility remain unchanged.
 
-The next gate is a continuation or rerun of the formal read-only preflight for
-the clarified, unnumbered position-management-plan contract. It is not READY
-and no implementation work for it begins before that preflight is evaluated.
+The standalone, unnumbered Position-Management Plan Contract is also
+implemented, independently reviewed, corrected, targeted re-reviewed, and
+complete. It is not Milestone 6C.
 
-## Position-management clarification checkpoint
+The position-management contract is now complete. The next gate is a fresh
+formal read-only preflight for separate screening and Chinese-report
+integration; no implementation work for that integration begins before its
+scope and compatibility are evaluated.
 
-The first formal read-only preflight for the standalone
-`Position-Management Plan Contract` returned `PREFLIGHT RESULT: BLOCKED`.
-Its blockers were product-contract choices rather than technical incapability.
-This clarification freezes the prospective product boundary in
-[`position-management-contracts.md`](position-management-contracts.md):
-`PositionManagementPlan` is future research guidance for a hypothetical
-future long-option position and later human judgment only.
+## Position-management completion checkpoint
 
-No source or test implementation exists. The work unit remains unnumbered and
-is not Milestone 6C or Milestone 7. The next gate is continuation or rerun of
-the existing formal preflight task; no BUILD prompt may be issued before that
-report is evaluated.
+The base clarification commit is
+`a41b35df797c0720410c548841c5bb456b20f2ce` (`Define prospective position
+management contract`). The final implementation checkpoint is the current
+repository HEAD with subject `Implement prospective position management plan`.
+The exact implementation files are
+`src/convexity_hunter/position_management.py` and
+`tests/test_position_management.py`. The exact documentation files finalized
+with it are `docs/position-management-contracts.md`,
+`docs/product-direction.md`, `docs/mvp-spec.md`, `docs/project-state.md`, and
+`docs/current-checkpoint.md`.
+
+The standalone work unit provides 11 public module exports, the exact
+assembly-retaining plan/result architecture, and the four-parameter producer.
+Final validation passed 60 position-management tests, 366 market-data tests,
+181 market-data transformation tests, 50 candidate-assembly tests, 32
+risk-assessment tests, and 998 full-suite tests. Compatibility baselines are
+64 `market_data` exports, 25 `market_data_transformations` exports, 2
+`candidate_assembly` exports, 7 `risk_assessment` exports, 17
+`CandidateResearchRecord` fields, 9
+`CandidateResearchRecordAssemblyResult` fields, and 21 assembly-producer
+parameters.
+
+The implementation passed independent review after correction and targeted
+re-review. No package-root, scanner, renderer, fixture, persisted-record, or
+existing-producer change was made. Screening/report integration, monitoring,
+and execution remain absent. The work unit remains unnumbered and is not
+Milestone 6C.
 
 ### Completed Milestone 6A implementation
 
@@ -891,23 +911,23 @@ implemented. Independent review initially found one accepted MAJOR
 direct-construction error-taxonomy defect; narrow required-field validation
 corrected it, and targeted re-review passed with no remaining finding.
 
-The position-management plan contract clarification is complete in
-[`position-management-contracts.md`](position-management-contracts.md), but
-position-management implementation has not begun. Its first formal preflight
-returned `PREFLIGHT RESULT: BLOCKED` because the product boundary was not yet
-frozen; this documentation checkpoint resolves those product choices without
-assigning a milestone number.
+The standalone position-management plan implementation is complete in
+[`position-management-contracts.md`](position-management-contracts.md) and
+the reviewed module. It remains separate from screening, report rendering,
+monitoring, and execution, without assigning a milestone number.
 
 ## Last completed checkpoint
 
-- Commit: resolve with `git rev-parse HEAD` after finalization
-- Subject: `Implement reviewed-artifact candidate assembly`
-- Validation: 366 market-data tests, 181 transformation tests, 50
-  candidate-assembly tests, 32 risk-assessment tests, 938 full-suite tests,
-  API/import probes, canonical goldens, no-call probes, and `git diff --check`
-  passed
-- Status: Milestones 1–5, 6A, and 6B complete; 6B passed targeted re-review
-  with no remaining finding
+- Commit: current finalization commit with subject
+  `Implement prospective position management plan`
+- Parent: `a41b35df797c0720410c548841c5bb456b20f2ce`
+- Validation: 60 position-management tests, 366 market-data tests, 181
+  transformation tests, 50 candidate-assembly tests, 32 risk-assessment
+  tests, 998 full-suite tests, API/import probes, canonical goldens, no-call
+  probes, and `git diff --check` passed
+- Status: Milestones 1–5, 6A, 6B, and the standalone unnumbered
+  Position-Management Plan Contract are complete; final targeted re-review
+  passed with no remaining findings
 - Risk-assessment public API: 7 names
 - Transformation-module public API: 25 names
 - Public `market_data` API: 64 names
@@ -1138,10 +1158,11 @@ do not override the current Milestone 6A completion checkpoint above.
 
 ## Next task
 
-Continue or rerun the existing formal read-only
-`PREFLIGHT｜Position-Management Plan Contract` against the clarified canonical
-contract. Do not claim that work unit is READY and do not begin its BUILD
-before the preflight report is evaluated.
+The next repository workflow gate is a fresh formal read-only preflight for
+separate screening and Chinese-report integration. Its exact scope, input
+authority, rendering behavior, screening interaction, localization, and
+compatibility must be frozen before implementation. Do not authorize or begin
+that work here.
 
 ## Current capability and roadmap
 
@@ -1170,9 +1191,9 @@ The accepted post-Milestone-3 sequence is:
 3. completed Milestone 5 — Standalone Structure Affordability Evidence;
 4. completed Milestone 6A — Reviewed Artifact Verifiability;
 5. completed Milestone 6B — Reviewed-Artifact Candidate Assembly;
-6. clarified, unnumbered Position-Management Plan Contract, beginning with a
-   continuation or rerun of its formal read-only preflight;
-7. later screening and Chinese-report integration;
+6. completed standalone, unnumbered Position-Management Plan Contract;
+7. fresh formal read-only preflight for separate screening and Chinese-report
+   integration;
 8. later deterministic offline single-structure service; and
 9. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
@@ -1191,8 +1212,7 @@ The accepted post-Milestone-3 sequence is:
 - non-expiration scenario-pricing production
 - broader discovery/application-flow candidate production beyond the active
   reviewed-artifact assembly contract
-- future annual convexity-budget contract and position-management-plan
-  implementation after its formal preflight
+- future annual convexity-budget contract
 - Chinese beginner-overview renderer changes
 - LLM integration
 - user interface

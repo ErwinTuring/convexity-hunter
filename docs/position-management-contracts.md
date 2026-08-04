@@ -7,17 +7,42 @@ the standalone work unit named **Position-Management Plan Contract**. It
 resolves the accepted product-contract blockers reported by the first formal
 read-only preflight, which returned `PREFLIGHT RESULT: BLOCKED`.
 
-This is a contract clarification, not a source BUILD, implementation
-preflight, formal review, or implementation. No source, test, fixture,
-configuration, workflow, or package-export change is part of this contract.
-No implementation exists yet.
+The standalone implementation is complete. It was independently reviewed,
+corrected, and targeted re-reviewed with a passing result. The implementation
+and its focused tests are intentionally limited to this work unit; screening,
+reporting, monitoring, and execution remain outside its scope.
 
 The work unit is intentionally unnumbered. It is not Milestone 6C, Milestone
-7, or a decision that it belongs to Milestone 6. Formal milestone numbering is
-deferred until this clarified contract passes the existing formal preflight
-and the broader roadmap is evaluated. The next gate is a rerun or continuation
-of `PREFLIGHT｜Position-Management Plan Contract`; this document does not make
-that preflight READY and does not authorize a BUILD prompt.
+7, or a decision that it belongs to Milestone 6.
+
+### Implementation status
+
+The reviewed implementation is frozen in:
+
+`src/convexity_hunter/position_management.py`
+
+with focused tests in:
+
+`tests/test_position_management.py`
+
+The module exports exactly these 11 public names:
+
+`PositionManagementScope`, `PositionManagementCategory`,
+`PositionManagementAuthority`, `PositionManagementMetric`,
+`PositionManagementComparison`, `PositionManagementQualitativeTrigger`,
+`QuantitativePositionManagementCondition`,
+`QualitativePositionManagementCondition`, `PositionManagementPlan`,
+`PositionManagementPlanResult`, and `create_position_management_plan`.
+
+The exact producer is
+`create_position_management_plan(calculation_id, assembly_result, conditions,
+calculated_at)`. Its result retains exactly `assembly_result`, `plan`, and
+`lineage`; the package root does not re-export the position-management API.
+The calculation identity is `position_management_plan` /
+`prospective-human-judgment-position-management-plan` / `v0.1`. The final
+reviewed baseline is 60 position-management tests, 998 full-suite tests, and
+passing independent targeted re-review. The source conforms to the frozen
+v0.1 product contract.
 
 ## 2. Product identity and scope
 
@@ -339,15 +364,15 @@ rerun formal preflight.
 
 ## 11. Producer boundary
 
-The future producer's conceptual required inputs are exactly:
+The implemented producer's required inputs are exactly:
 
 `calculation_id
 assembly_result
 conditions
 calculated_at`
 
-There are no implicit values. The formal preflight must freeze the exact
-public function name and annotation details.
+There are no implicit values. The public function name and four-parameter
+surface are frozen above.
 
 The producer must not accept a separately supplied candidate ID, candidate
 state, structure, as-of date, artifact dictionaries, seven individual
@@ -362,8 +387,7 @@ calculation identity is:
 methodology_id: prospective-human-judgment-position-management-plan
 methodology_version: v0.1`
 
-The formal preflight must verify these exact strings against repository
-conventions.
+The implementation verifies and emits these exact strings.
 
 Future plan lineage inputs are exactly the normalized input tuple retained by
 `assembly_result.lineage.inputs`. Caller or human declarations are not
@@ -466,11 +490,9 @@ The work unit excludes:
 
 ## 17. Next formal gate
 
-Continue the existing `PREFLIGHT｜Position-Management Plan Contract` as a
-fresh formal read-only preflight. It must verify repository feasibility and
-freeze the exact Python API, annotations, validation, exports, constructor
-behavior, canonical nested parameter schema, and independent test contract
-against this clarification.
-
-No BUILD prompt may be issued until that formal report is evaluated. No plan
-implementation is claimed by this document.
+This standalone implementation is complete. Screening and Chinese-report
+integration remain separate later work and require a fresh formal read-only
+preflight covering their exact contract, input authority, rendering behavior,
+screening interaction, localization, and compatibility. No automatic
+monitoring or execution work is implied, and this document does not authorize
+that later implementation.

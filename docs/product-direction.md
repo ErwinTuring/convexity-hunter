@@ -401,13 +401,14 @@ and data-loss declarations in the canonical contract. Thresholds are supplied
 by the caller or human analyst except the exact reviewed M5 risk boundaries;
 AI is not an authority and no event record is accepted.
 
-The selected future architecture is `PositionManagementPlan` plus
-`PositionManagementPlanResult` retaining the exact assembly result and
-existing `CalculationLineage`. The exact final Python API, annotations,
-validation, exports, constructor behavior, and canonical nested parameter
-schema remain subject to the rerun formal preflight. Implementation has not
-started, no milestone number is assigned, and screening/report integration
-remains later work.
+The implemented architecture is `PositionManagementPlan` plus
+`PositionManagementPlanResult`, retaining the exact assembly result and
+existing `CalculationLineage`. It is implemented in
+`src/convexity_hunter/position_management.py` with focused coverage in
+`tests/test_position_management.py`; the exact records and four-parameter
+producer are frozen by the canonical contract. The work unit was independently
+reviewed, corrected, and passed targeted re-review. It remains unnumbered;
+screening and Chinese-report integration remain later work.
 
 ## 13. Chinese report and simplified overview
 
@@ -471,11 +472,11 @@ Convexity Hunter has largely completed the auditable numerical and evidence
 foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
 generation, broader discovery/application-flow candidate production,
-position-management-plan implementation or integration, non-expiration
-pricing production, or the complete application flow. The product and
-architecture boundary for the prospective plan is clarified in
-[the canonical contract](position-management-contracts.md), but no source
-implementation exists. Reviewed-artifact candidate assembly is complete:
+non-expiration pricing production, screening/report integration, or the
+complete application flow. Standalone prospective plan construction is
+implemented and complete under [the canonical contract](position-management-contracts.md),
+but it is not wired into screening or report flows. Reviewed-artifact candidate
+assembly is complete:
 Milestone 6A provides the prerequisite wrapper verifiability and Milestone 6B
 assembles the reviewed artifacts without adding screening or reporting
 integration.
@@ -501,9 +502,11 @@ complete application workflow.
    zero-artifact preflight blocker was clarified and implemented; independent
    review found one accepted MAJOR direct-construction error-taxonomy defect,
    which was corrected, and targeted re-review passed with no findings.
-6. Position-Management Plan Contract clarification is complete; rerun its
-   existing formal read-only preflight. The work unit remains unnumbered.
-7. Later screening and Chinese-report integration.
+6. Completed standalone Position-Management Plan Contract implementation. The
+   work unit remains unnumbered; independent review, correction, and targeted
+   re-review are complete.
+7. Fresh formal read-only preflight for separate screening and Chinese-report
+   integration.
 8. Later deterministic offline single-structure service.
 9. Subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
@@ -530,10 +533,11 @@ complete application workflow.
 - Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence is complete.
 - Milestone 5 — Standalone Structure Affordability Evidence is complete.
 - Milestone 6A — Reviewed Artifact Verifiability and Milestone 6B —
-  Reviewed-Artifact Candidate Assembly are complete. 6B passed targeted
-  re-review after correction of one accepted MAJOR finding. The next gate is a
-  fresh formal read-only preflight for the clarified, unnumbered
-  position-management-plan contract. The canonical Milestone 6 contract is
+  Reviewed-Artifact Candidate Assembly are complete. The standalone,
+  unnumbered Position-Management Plan Contract is also complete after
+  correction and targeted re-review. The next gate is a fresh formal
+  read-only preflight for separate screening and Chinese-report integration.
+  The canonical Milestone 6 contract is
   [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md), while
   [`position-management-contracts.md`](position-management-contracts.md) is
   the canonical plan contract.
