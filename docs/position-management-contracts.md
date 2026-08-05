@@ -40,9 +40,25 @@ calculated_at)`. Its result retains exactly `assembly_result`, `plan`, and
 `lineage`; the package root does not re-export the position-management API.
 The calculation identity is `position_management_plan` /
 `prospective-human-judgment-position-management-plan` / `v0.1`. The final
-reviewed baseline is 60 position-management tests, 998 full-suite tests, and
-passing independent targeted re-review. The source conforms to the frozen
-v0.1 product contract.
+reviewed baseline is 60 position-management tests, and the source conforms to
+the frozen v0.1 product contract. The separate downstream integration has 55
+report-rendering tests and is included in the 1026-test full-suite baseline.
+
+### Subsequent integration status
+
+The standalone plan module and producer remain unchanged. A later separate,
+standalone, unnumbered work unit named **Position-Management Plan Screening
+and Chinese-Report Integration** is complete. It optionally supplies a
+verified `PositionManagementPlanResult` to deterministic report rendering
+through the fourth renderer parameter. The renderer does not create, assemble,
+screen, evaluate, monitor, alert on, recommend, or execute a plan.
+
+The integration is active only for Chinese rendering and only for verified
+`WATCH` or `INVESTIGATE` plans. The supplied candidate must be the exact
+record retained by the verified result; screening state remains separate from
+research state. The no-plan path remains compatible, English plan rendering
+is unsupported, the package root remains unchanged, and monitoring, alerts,
+and execution remain absent. Final confirmation review passed.
 
 ## 2. Product identity and scope
 
@@ -74,8 +90,10 @@ There is no independent free-form action field. A category cannot encode
 `sell`, `close now`, `take profit`, `stop out`, or `execute`. This is a
 structural restriction, not a disclaimer.
 
-A future evaluator, monitor, alerting system, or report integration requires a
-separate work unit.
+A future evaluator, monitor, or alerting system requires a separate work unit.
+The separate downstream report-integration work unit is now complete for the
+narrow Chinese rendering boundary described above; it does not add evaluation,
+monitoring, alerting, or execution.
 
 ## 3. Declaration-only behavior
 
@@ -465,12 +483,14 @@ report renderer
 Chinese overview
 English renderer`
 
-Future report integration may consume a separately supplied
-`PositionManagementPlanResult`. The report must preserve candidate research
-state, deterministic screening state, and prospective plan conditions as
-separate concepts. The plan does not modify either research or screening
-state. Screening and Chinese-report integration remain separate later roadmap
-work after plan implementation and review.
+The completed downstream integration may consume a separately supplied,
+verified `PositionManagementPlanResult` through the deterministic renderer.
+The report preserves candidate research state, deterministic screening state,
+and prospective plan conditions as separate concepts. The plan does not modify
+either research or screening state. This standalone contract remains separate
+from the renderer implementation; the downstream integration is Chinese-only,
+declaration-only, non-monitoring, non-alerting, non-recommending, and
+non-executing.
 
 ## 16. Explicit exclusions
 
@@ -490,9 +510,8 @@ The work unit excludes:
 
 ## 17. Next formal gate
 
-This standalone implementation is complete. Screening and Chinese-report
-integration remain separate later work and require a fresh formal read-only
-preflight covering their exact contract, input authority, rendering behavior,
-screening interaction, localization, and compatibility. No automatic
-monitoring or execution work is implied, and this document does not authorize
-that later implementation.
+This standalone implementation is complete, and the separate downstream
+screening and Chinese-report integration work unit is also complete. No
+automatic monitoring or execution work is implied. The next formal gate is a
+fresh formal read-only preflight for the deterministic offline single-structure
+service; this document does not authorize that later implementation.

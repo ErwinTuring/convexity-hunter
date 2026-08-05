@@ -1,7 +1,10 @@
 """Immutable records used to assemble investigation reports."""
 
 import datetime
+import decimal
+import json
 import math
+import re
 from dataclasses import dataclass
 from numbers import Real
 from typing import TYPE_CHECKING, Optional, Tuple
@@ -21,6 +24,7 @@ from .evidence import (
 
 if TYPE_CHECKING:
     from .scanner import ScreeningDecision
+    from .position_management import PositionManagementPlanResult
 
 
 def _validate_real(name: str, value: object) -> None:
@@ -1187,17 +1191,148 @@ def _normalize_report_locale(locale: object) -> str:
     return normalized
 
 
+_PLAN_STATE_LABELS_ZH_CN = {
+    "reject": "拒绝",
+    "watch": "观察",
+    "investigate": "深入研究",
+    "data_insufficient": "数据不足",
+}
+
+
 def _validate_screening_decision(
     screening_decision: Optional["ScreeningDecision"],
 ) -> None:
-    """Validate an optional decision without creating a module import cycle."""
+    """Revalidate one optional decision without creating an import cycle."""
 
     if screening_decision is None:
         return
-    from .scanner import ScreeningDecision
+    from .scanner import (
+        DATA_INSUFFICIENT_REASON_ORDER,
+        INVESTIGATE_REASON_ORDER,
+        REJECT_REASON_ORDER,
+        WATCH_REASON_ORDER,
+        ScreeningDecision,
+        ScreeningReasonCode,
+    )
 
     if not isinstance(screening_decision, ScreeningDecision):
         raise TypeError("screening_decision must be a ScreeningDecision or None")
+
+    values = {}
+    for field in ("proposed_state", "reason_codes", "policy_id", "policy_version"):
+        try:
+            values[field] = object.__getattribute__(screening_decision, field)
+        except AttributeError as error:
+            raise ValueError(
+                f"screening decision is missing {field}"
+            ) from error
+
+    proposed_state = values["proposed_state"]
+    if type(proposed_state) is not CandidateState:
+        raise TypeError("screening proposed_state must have exact type CandidateState")
+
+    reason_codes = values["reason_codes"]
+    if type(reason_codes) is not tuple:
+        raise TypeError("screening reason_codes must have exact built-in type tuple")
+    if not reason_codes:
+        raise ValueError("screening reason_codes must contain at least one item")
+    if any(type(reason) is not ScreeningReasonCode for reason in reason_codes):
+        raise TypeError(
+            "screening reason_codes items must have exact type ScreeningReasonCode"
+        )
+    if len(set(reason_codes)) != len(reason_codes):
+        raise ValueError("screening reason_codes must not contain duplicates")
+
+    reason_groups = {
+        CandidateState.REJECT: REJECT_REASON_ORDER,
+        CandidateState.DATA_INSUFFICIENT: DATA_INSUFFICIENT_REASON_ORDER,
+        CandidateState.WATCH: WATCH_REASON_ORDER,
+        CandidateState.INVESTIGATE: INVESTIGATE_REASON_ORDER,
+    }
+    canonical_group = reason_groups[proposed_state]
+    if any(reason not in canonical_group for reason in reason_codes):
+        raise ValueError("screening reason_codes must belong to proposed state group")
+    if tuple(reason for reason in canonical_group if reason in reason_codes) != reason_codes:
+        raise ValueError("screening reason_codes must follow canonical order")
+    if (
+        proposed_state is CandidateState.INVESTIGATE
+        and reason_codes != INVESTIGATE_REASON_ORDER
+    ):
+        raise ValueError(
+            "screening investigate decisions require the complete reason tuple"
+        )
+
+    for field in ("policy_id", "policy_version"):
+        field_value = values[field]
+        if type(field_value) is not str:
+            raise TypeError(
+                f"screening {field} must have exact built-in type str"
+            )
+        if not field_value or field_value != field_value.strip():
+            raise ValueError(f"screening {field} is not canonical")
+
+
+def _validate_position_management_plan_result(
+    position_management_plan_result: Optional["PositionManagementPlanResult"],
+) -> None:
+    """Run the completed plan verifier after the exact outer boundary check."""
+
+    if position_management_plan_result is None:
+        return
+    from . import position_management
+
+    if type(position_management_plan_result) is not position_management.PositionManagementPlanResult:
+        raise TypeError(
+            "position_management_plan_result must have exact type PositionManagementPlanResult"
+        )
+    try:
+        position_management._verify_position_management_plan_result(
+            position_management_plan_result
+        )
+    except (
+        AttributeError,
+        KeyError,
+        IndexError,
+        json.JSONDecodeError,
+        decimal.DecimalException,
+        OverflowError,
+        RecursionError,
+    ) as error:
+        raise ValueError(
+            "position-management plan result has malformed structural state"
+        ) from error
+
+
+def _validate_plan_binding(
+    candidate: CandidateResearchRecord,
+    normalized_locale: str,
+    position_management_plan_result: Optional["PositionManagementPlanResult"],
+) -> None:
+    """Validate the sidecar's exact record binding and report compatibility."""
+
+    if position_management_plan_result is None:
+        return
+    assembly_result = object.__getattribute__(
+        position_management_plan_result, "assembly_result"
+    )
+    plan = object.__getattribute__(position_management_plan_result, "plan")
+    record = object.__getattribute__(assembly_result, "record")
+    if candidate is not record:
+        raise ValueError(
+            "position-management plan must bind the exact candidate record object"
+        )
+    if candidate.state not in {CandidateState.WATCH, CandidateState.INVESTIGATE}:
+        raise ValueError(
+            "position-management plans are only valid for WATCH or INVESTIGATE records"
+        )
+    if plan.candidate_state not in {CandidateState.WATCH, CandidateState.INVESTIGATE}:
+        raise ValueError(
+            "position-management plans are only valid for WATCH or INVESTIGATE records"
+        )
+    if normalized_locale == "en":
+        raise ValueError(
+            "position-management plan presentation is available only for zh-CN"
+        )
 
 
 def _screening_reason_label(reason_value: str, locale: str) -> str:
@@ -1214,6 +1349,389 @@ def _format_screening_reason(reason_value: str, locale: str) -> str:
     if locale == "zh-CN":
         return f"{label}（`{reason_value}`）"
     return f"{label} (`{reason_value}`)"
+
+
+_PLAN_METRIC_LABELS_ZH_CN = {
+    "net_liquidation_value_multiple": "未来净清算价值倍数",
+    "remaining_dte": "剩余到期日天数",
+    "bid_ask_spread_fraction": "未来买卖价差占报价中点的比例",
+    "atm_iv": "未来平值隐含波动率（ATM IV）",
+    "skew_percentile": "未来结构到期日偏斜历史百分位",
+    "single_loss_fraction": "单次最大损失比例",
+    "repeated_loss_fraction": "重复最大损失比例",
+}
+
+_PLAN_COMPARISON_LABELS_ZH_CN = {
+    "greater_than_or_equal": "大于或等于",
+    "less_than_or_equal": "小于或等于",
+}
+
+_PLAN_AUTHORITY_LABELS_ZH_CN = {
+    "reviewed_artifact": "经审阅证据",
+    "caller": "调用方",
+    "human_analyst": "人工分析员",
+}
+
+_PLAN_TRIGGER_LABELS_ZH_CN = {
+    "event_becomes_public": "事件公开",
+    "underpricing_evidence_disappears": "低估定价证据消失",
+    "event_window_shifts": "事件窗口发生变化",
+    "evidence_stale_or_missing": "证据过时或缺失",
+    "contract_adjusted": "合约发生调整",
+    "impact_path_materially_changes": "影响路径发生重大变化",
+    "event_window_expires_without_hypothesized_change": "事件窗口结束但假设的变化未发生",
+    "event_cancelled": "事件取消",
+    "definitive_contrary_resolution": "确定性的相反结论",
+    "exemption_confirmed": "豁免得到确认",
+    "impact_path_invalidated": "影响路径失效",
+    "revised_event_window_not_covered": "修订后的事件窗口不在覆盖范围内",
+    "data_loss_prevents_responsible_evaluation": "数据丢失，无法负责地评估",
+}
+
+_PLAN_CATEGORY_LABELS_ZH_CN = {
+    "monetization": "考虑货币化",
+    "reassessment": "考虑重新评估",
+    "exit": "考虑退出",
+}
+
+_PLAN_STRUCTURE_LABELS_ZH_CN = {
+    "long_call": "买入看涨",
+    "long_put": "买入看跌",
+    "long_straddle": "买入跨式",
+}
+
+_PLAN_OPTION_TYPE_LABELS_ZH_CN = {
+    "call": "看涨",
+    "put": "看跌",
+}
+
+_PLAN_CATEGORY_HEADING_ZH_CN = {
+    value: f"#### {_PLAN_CATEGORY_LABELS_ZH_CN[value]}（`{value}`）"
+    for value in ("monetization", "reassessment", "exit")
+}
+
+_PLAN_NET_LIQUIDATION_NOTE_ZH_CN = (
+    "未来净清算价值倍数是未来扣除退出成本后的净清算价值除以精确复核的总入场成本；"
+    "它不是 M4 到期毛仓位价值倍数、情景估算仓位价值倍数或扣除成本后盈亏倍数。"
+    "M4 的 1×、2×、5×、10×证据不会自动成为本条件。"
+)
+
+
+def _safe_fenced_lines(value: str) -> list:
+    """Return a deterministic fenced literal that cannot be prematurely closed."""
+
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    longest_run = max(
+        (len(run) for run in re.findall(r"`+", normalized)),
+        default=0,
+    )
+    delimiter = "`" * max(3, longest_run + 1)
+    content = normalized if normalized.endswith("\n") else normalized + "\n"
+    content_lines = content.split("\n")[:-1]
+    return [delimiter, *content_lines, delimiter]
+
+
+def _canonical_decimal_text(value: decimal.Decimal) -> str:
+    """Render an exact Decimal in canonical fixed-point form."""
+
+    if type(value) is not decimal.Decimal:
+        raise TypeError("value must have exact type Decimal")
+    if value.is_zero():
+        return "0"
+    rendered = format(value, "f")
+    if "." in rendered:
+        rendered = rendered.rstrip("0").rstrip(".")
+    return "0" if rendered in {"", "-0"} else rendered
+
+
+def _decimal_percentage_text(value: decimal.Decimal) -> str:
+    """Round an exact decimal ratio to two percentage places."""
+
+    with decimal.localcontext() as context:
+        context.prec = max(28, len(value.as_tuple().digits) * 2 + 16)
+        percentage = (value * decimal.Decimal(100)).quantize(
+            decimal.Decimal("0.01"), rounding=decimal.ROUND_HALF_UP
+        )
+    return format(percentage, ".2f") + "%"
+
+
+def _rational_percentage_text(value: object) -> str:
+    """Round an exact-rational ratio to two percentage places."""
+
+    numerator = value.numerator
+    denominator = value.denominator
+    with decimal.localcontext() as context:
+        context.prec = max(
+            28,
+            len(str(abs(numerator))) + len(str(abs(denominator))) + 16,
+        )
+        percentage = (
+            decimal.Decimal(numerator) * decimal.Decimal(100) /
+            decimal.Decimal(denominator)
+        ).quantize(decimal.Decimal("0.01"), rounding=decimal.ROUND_HALF_UP)
+    return format(percentage, ".2f") + "%"
+
+
+def _format_plan_threshold(condition: object) -> str:
+    """Format one verified quantitative condition for both report sections."""
+
+    metric = condition.metric.value
+    threshold = condition.threshold
+    if metric == "remaining_dte":
+        return f"{threshold} 个日历日"
+    if metric == "net_liquidation_value_multiple":
+        canonical = _canonical_decimal_text(threshold)
+        return f'Decimal("{canonical}")（{canonical}×）'
+    if metric in {
+        "bid_ask_spread_fraction",
+        "atm_iv",
+        "skew_percentile",
+    }:
+        canonical = _canonical_decimal_text(threshold)
+        return f'Decimal("{canonical}")（{_decimal_percentage_text(threshold)})'
+    if metric in {"single_loss_fraction", "repeated_loss_fraction"}:
+        return (
+            f"ExactRational({threshold.numerator}, {threshold.denominator})"
+            f"（{_rational_percentage_text(threshold)}）"
+        )
+    raise ValueError(f"unsupported plan metric: {metric}")
+
+
+def _group_plan_conditions(plan: object) -> dict:
+    """Group verified conditions once, retaining each category's stored order."""
+
+    grouped = {category: [] for category in ("monetization", "reassessment", "exit")}
+    for condition in plan.conditions:
+        grouped[condition.category.value].append(condition)
+    return grouped
+
+
+def _plan_condition_overview_line(condition: object) -> str:
+    category = condition.category.value
+    action = _PLAN_CATEGORY_LABELS_ZH_CN[category]
+    if hasattr(condition, "metric"):
+        metric = condition.metric.value
+        comparison = _PLAN_COMPARISON_LABELS_ZH_CN[condition.comparison.value]
+        return (
+            f"- 若未来“{_PLAN_METRIC_LABELS_ZH_CN[metric]}”{comparison} "
+            f"{_format_plan_threshold(condition)}，则{action}"
+            f"（条件 ID：`{condition.condition_id}`）；当前未评估该条件是否已经满足。"
+        )
+    trigger = _PLAN_TRIGGER_LABELS_ZH_CN[condition.trigger.value]
+    return (
+        f"- 若未来发生“{trigger}”，则{action}"
+        f"（条件 ID：`{condition.condition_id}`）；当前未评估该条件是否已经满足。"
+    )
+
+
+def _plan_category_lines(category: str, conditions: list) -> list:
+    lines = [_PLAN_CATEGORY_HEADING_ZH_CN[category], ""]
+    if not conditions:
+        lines.append("- 本 WATCH 计划未声明此类未来条件；报告不会从其他记录生成条件。")
+    else:
+        lines.extend(_plan_condition_overview_line(condition) for condition in conditions)
+    return lines
+
+
+def _append_plan_overview(
+    lines: list,
+    candidate: CandidateResearchRecord,
+    screening_decision: Optional["ScreeningDecision"],
+    plan: object,
+    grouped_conditions: dict,
+) -> None:
+    """Append the Chinese-only eighth overview section for a verified plan."""
+
+    research_state = candidate.state.value
+    research_label = _PLAN_STATE_LABELS_ZH_CN[research_state]
+    lines.extend(
+        (
+            "",
+            "### 8. 未来条件声明（仅供后续人工判断）",
+            "",
+            "研究记录状态、确定性筛选建议状态和未来条件声明是三类分开的信息。未来条件声明只描述未来可能需要重新判断的条件；当前未评估这些条件是否已经满足，不构成交易指令，也不表示已经存在或持有该仓位，仅供后续人工判断。",
+            f"- **研究记录状态：** {research_label}（`{research_state}`）",
+        )
+    )
+    if screening_decision is None:
+        lines.append(
+            "- **确定性筛选建议状态：** 未提供（本报告未提供确定性筛选决策）"
+        )
+    else:
+        screening_state = screening_decision.proposed_state.value
+        screening_label = _PLAN_STATE_LABELS_ZH_CN[screening_state]
+        lines.append(
+            f"- **确定性筛选建议状态：** {screening_label}（`{screening_state}`）"
+        )
+    lines.append(
+        "- **计划范围：** 前瞻性研究指导（`prospective_research_guidance`）"
+    )
+    if (
+        screening_decision is not None
+        and screening_decision.proposed_state.value != research_state
+    ):
+        screening_state = screening_decision.proposed_state.value
+        screening_label = _PLAN_STATE_LABELS_ZH_CN[screening_state]
+        lines.extend(
+            (
+                "",
+                "研究记录状态与确定性筛选建议状态不一致："
+                f"研究记录状态为“{research_label}”（`{research_state}`），"
+                f"确定性筛选建议状态为“{screening_label}”（`{screening_state}`）。"
+                "本节分别展示两者；确定性筛选建议不会修改研究记录状态。",
+            )
+        )
+    if any(
+        getattr(condition, "metric", None) is not None
+        and condition.metric.value == "net_liquidation_value_multiple"
+        for condition in plan.conditions
+    ):
+        lines.extend(("", _PLAN_NET_LIQUIDATION_NOTE_ZH_CN))
+    for category in ("monetization", "reassessment", "exit"):
+        lines.extend(("", *_plan_category_lines(category, grouped_conditions[category])))
+    lines.extend(("", "该计划不会监控、提醒、安排评估或执行任何动作。"))
+
+
+def _format_plan_datetime(value: datetime.datetime) -> str:
+    return value.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _append_plan_structure(lines: list, structure: object) -> None:
+    """Render the verified structure without changing stored leg order."""
+
+    structure_type = structure.structure_type
+    lines.extend(
+        (
+            f"- **结构类型：** {_PLAN_STRUCTURE_LABELS_ZH_CN[structure_type]}"
+            f"（`{structure_type}`）",
+            "- **结构标的：**",
+        )
+    )
+    lines.extend(_safe_fenced_lines(structure.underlying))
+    lines.extend(
+        (
+            f"- **假设组合价值：** {_format_money(structure.assumed_portfolio_value)}",
+            f"- **预计持有天数：** {structure.expected_holding_days}",
+            f"- **共同到期日：** `{min(leg.expiration for leg in structure.legs).isoformat()}`",
+        )
+    )
+    for index, leg in enumerate(structure.legs, start=1):
+        option_type = _PLAN_OPTION_TYPE_LABELS_ZH_CN[leg.option_type]
+        lines.extend(
+            (
+                f"- **期权腿 {index}：** {option_type}（`{leg.option_type}`）",
+                f"- **期权腿 {index} 标的：**",
+            )
+        )
+        lines.extend(_safe_fenced_lines(leg.underlying))
+        lines.extend(
+            (
+                f"- **期权腿 {index} 执行价：** {_format_money(leg.strike)}",
+                f"- **期权腿 {index} 到期日：** `{leg.expiration.isoformat()}`",
+                f"- **期权腿 {index} 数量：** {leg.quantity}",
+                f"- **期权腿 {index} 合约乘数：** {leg.contract_multiplier}",
+            )
+        )
+
+
+def _append_plan_condition_technical(lines: list, condition: object) -> None:
+    category = condition.category.value
+    lines.extend(
+        (
+            f"- **条件 ID：** `{condition.condition_id}`",
+            f"- **条件类别：** {_PLAN_CATEGORY_LABELS_ZH_CN[category]}（`{category}`）",
+        )
+    )
+    if hasattr(condition, "metric"):
+        lines.extend(
+            (
+                "- **条件类型：** 定量（`quantitative`）",
+                f"- **指标：** {_PLAN_METRIC_LABELS_ZH_CN[condition.metric.value]}"
+                f"（`{condition.metric.value}`）",
+                f"- **比较：** {_PLAN_COMPARISON_LABELS_ZH_CN[condition.comparison.value]}"
+                f"（`{condition.comparison.value}`）",
+                f"- **阈值：** {_format_plan_threshold(condition)}",
+            )
+        )
+    else:
+        lines.extend(
+            (
+                "- **条件类型：** 定性（`qualitative`）",
+                f"- **触发条件：** {_PLAN_TRIGGER_LABELS_ZH_CN[condition.trigger.value]}"
+                f"（`{condition.trigger.value}`）",
+            )
+        )
+    lines.extend(
+        (
+            f"- **权威：** {_PLAN_AUTHORITY_LABELS_ZH_CN[condition.authority.value]}"
+            f"（`{condition.authority.value}`）",
+            "- **来源引用：**",
+        )
+    )
+    lines.extend(_safe_fenced_lines(condition.source_reference))
+    lines.extend(("- **理由：**", *_safe_fenced_lines(condition.rationale)))
+
+
+def _render_plan_technical_block(
+    position_management_plan_result: object,
+    grouped_conditions: dict,
+) -> list:
+    """Render the verified plan and its conditions as Chinese technical Markdown."""
+
+    plan = position_management_plan_result.plan
+    assembly = position_management_plan_result.assembly_result
+    plan_lineage = position_management_plan_result.lineage
+    assembly_lineage = assembly.lineage
+    state = plan.candidate_state.value
+    quality_flags = tuple(f"`{flag.value}`" for flag in plan_lineage.quality_flags)
+    quality_display = "、".join(quality_flags) if quality_flags else "无"
+    lines = [
+        "### 未来条件声明技术明细",
+        "",
+        "- **计划范围：** 前瞻性研究指导（`prospective_research_guidance`）",
+        "- **计划候选 ID：**",
+    ]
+    lines.extend(_safe_fenced_lines(plan.candidate_id))
+    lines.extend(
+        (
+            f"- **计划研究记录状态：** {_PLAN_STATE_LABELS_ZH_CN[state]}（`{state}`）",
+            f"- **计划数据截至日期：** `{plan.as_of_date.isoformat()}`",
+            "- **计划结构：**",
+        )
+    )
+    _append_plan_structure(lines, plan.structure)
+    lines.extend(("- **计划计算 ID：**", *_safe_fenced_lines(plan_lineage.calculation_id)))
+    lines.extend(
+        (
+            "- **计算类型：** `position_management_plan`",
+            "- **方法 ID：** `prospective-human-judgment-position-management-plan`",
+            "- **方法版本：** `v0.1`",
+            f"- **计算时间（UTC）：** `{_format_plan_datetime(plan_lineage.calculated_at)}`",
+            "- **候选组装计算 ID：**",
+        )
+    )
+    lines.extend(_safe_fenced_lines(assembly_lineage.calculation_id))
+    lines.extend(
+        (
+            "- **候选组装计算类型：** `candidate_research_record_assembly`",
+            "- **候选组装方法 ID：** `reviewed-artifact-candidate-research-record-assembly`",
+            "- **候选组装方法版本：** `v0.1`",
+            f"- **质量标记：** {quality_display}",
+        )
+    )
+    for category in ("monetization", "reassessment", "exit"):
+        lines.extend(("", _PLAN_CATEGORY_HEADING_ZH_CN[category], ""))
+        conditions = grouped_conditions[category]
+        if not conditions:
+            lines.append(
+                "- 本 WATCH 计划未声明此类未来条件；报告不会从其他记录生成条件。"
+            )
+        else:
+            for condition in conditions:
+                _append_plan_condition_technical(lines, condition)
+                lines.append("")
+            lines.pop()
+    return lines
 
 
 def _append_screening_decision(
@@ -1255,6 +1773,8 @@ def _append_overview(
     candidate: CandidateResearchRecord,
     locale: str,
     screening_decision: Optional["ScreeningDecision"],
+    position_management_plan_result: Optional["PositionManagementPlanResult"] = None,
+    grouped_conditions: Optional[dict] = None,
 ) -> None:
     text = REPORT_TEXT[locale]
     labels = text["labels"]
@@ -1321,12 +1841,28 @@ def _append_overview(
     lines.extend(("", f"**{labels['falsification']}**", ""))
     for index, condition in enumerate(candidate.falsification_conditions, start=1):
         lines.append(f"{index}. {condition}")
+    if position_management_plan_result is not None:
+        if locale != "zh-CN":
+            raise ValueError(
+                "position-management plan presentation is available only for zh-CN"
+            )
+        if grouped_conditions is None:
+            raise ValueError("internal plan condition grouping is missing")
+        _append_plan_overview(
+            lines,
+            candidate,
+            screening_decision,
+            position_management_plan_result.plan,
+            grouped_conditions,
+        )
 
 
 def _technical_body(
     candidate: CandidateResearchRecord,
     locale: str,
     screening_decision: Optional["ScreeningDecision"],
+    position_management_plan_result: Optional["PositionManagementPlanResult"] = None,
+    grouped_conditions: Optional[dict] = None,
 ) -> str:
     lines = _render_technical_english(candidate).rstrip("\n").split("\n")
     lines = lines[2:]
@@ -1340,7 +1876,7 @@ def _technical_body(
     if locale == "zh-CN":
         for source, translated in ZH_TECHNICAL_REPLACEMENTS.items():
             body = body.replace(source, translated)
-    if screening_decision is not None:
+    if position_management_plan_result is None and screening_decision is not None:
         research_heading = (
             "### Research hypothesis"
             if locale == "en"
@@ -1354,23 +1890,92 @@ def _technical_body(
             f"{screening_body}\n\n{research_heading}",
             1,
         )
-    return body
+        return body
+
+    if position_management_plan_result is None:
+        return body
+    if locale != "zh-CN":
+        raise ValueError(
+            "position-management plan presentation is available only for zh-CN"
+        )
+    if grouped_conditions is None:
+        raise ValueError("internal plan condition grouping is missing")
+
+    body_lines = body.split("\n")
+    research_heading = "### 研究假设"
+    anchor_positions = [
+        index for index, line in enumerate(body_lines) if line == research_heading
+    ]
+    if len(anchor_positions) != 1:
+        raise RuntimeError("internal report anchor must appear exactly once")
+
+    insertion = []
+    if screening_decision is not None:
+        screening_lines = []
+        _append_screening_decision(screening_lines, screening_decision, locale)
+        insertion.extend("\n".join(screening_lines).rstrip("\n").split("\n"))
+        insertion.append("")
+    insertion.extend(
+        _render_plan_technical_block(
+            position_management_plan_result, grouped_conditions
+        )
+    )
+    insertion.append("")
+    anchor = anchor_positions[0]
+    body_lines[anchor:anchor] = insertion
+    return "\n".join(body_lines).rstrip("\n")
 
 
 def render_candidate_markdown(
     candidate: CandidateResearchRecord,
     locale: str = "en",
     screening_decision: Optional["ScreeningDecision"] = None,
+    position_management_plan_result: Optional[
+        "PositionManagementPlanResult"
+    ] = None,
 ) -> str:
     """Render one deterministic bilingual candidate research report."""
     if not isinstance(candidate, CandidateResearchRecord):
         raise TypeError("candidate must be a CandidateResearchRecord")
     normalized = _normalize_report_locale(locale)
     _validate_screening_decision(screening_decision)
+    _validate_position_management_plan_result(position_management_plan_result)
+    _validate_plan_binding(
+        candidate, normalized, position_management_plan_result
+    )
+    grouped_conditions = (
+        _group_plan_conditions(position_management_plan_result.plan)
+        if position_management_plan_result is not None
+        else None
+    )
     text = REPORT_TEXT[normalized]
     lines = [text["title"], ""]
     if candidate.candidate_id.startswith("SYNTHETIC-"):
         lines.extend((text["warning"], ""))
-    _append_overview(lines, candidate, normalized, screening_decision)
-    lines.extend(("", "---", "", text["technical"], "", _technical_body(candidate, normalized, screening_decision), "", text["footer"]))
+    _append_overview(
+        lines,
+        candidate,
+        normalized,
+        screening_decision,
+        position_management_plan_result,
+        grouped_conditions,
+    )
+    lines.extend(
+        (
+            "",
+            "---",
+            "",
+            text["technical"],
+            "",
+            _technical_body(
+                candidate,
+                normalized,
+                screening_decision,
+                position_management_plan_result,
+                grouped_conditions,
+            ),
+            "",
+            text["footer"],
+        )
+    )
     return "\n".join(lines).rstrip("\n") + "\n"

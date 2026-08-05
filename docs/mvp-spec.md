@@ -277,8 +277,10 @@ sign of the move from the current base price.
 The implemented transformation produces evidence only. It calculates no
 probability, expected return, direction forecast, recommendation, position
 sizing, automatic exit advice, or screening or report consequence. Candidate
-assembly, screening and report integration, position-management integration,
-and services remain later work. The complete technical contract is
+assembly, screening, report integration, and services remain separate layers;
+this transformation does not perform them. The downstream position-management
+report integration is complete at the renderer boundary. The complete
+technical contract is
 [Milestone 4 deterministic expiration payoff-threshold evidence](market-data-contracts.md#1323-milestone-4-deterministic-expiration-payoff-threshold-evidence).
 
 ## 7. Non-expiration scenario framework
@@ -475,8 +477,11 @@ The implemented contract is in
 `tests/test_position_management.py`. It provides the exact immutable plan,
 result, and condition records, the four-parameter
 `create_position_management_plan` producer, sole assembly-result input, and
-declaration-only calculation lineage. It does not yet integrate the plan into
-screening or report rendering. The MVP still does not monitor positions,
+declaration-only calculation lineage. A separate downstream work unit now
+optionally supplies a verified result to the four-parameter report renderer;
+the plan is rendered only in Chinese and only for `WATCH` or `INVESTIGATE`.
+The renderer does not create or evaluate a plan, and research state remains
+separate from screening state. The MVP still does not monitor positions,
 schedule evaluations, send alerts, recommend or execute trades.
 
 ## 13. Active Chinese report
@@ -485,8 +490,18 @@ The active user-facing output is Chinese only. The implemented English
 renderer remains in the repository for compatibility and possible future
 reuse, but it is not part of the active product flow. Reactivation requires a
 separately accepted product decision. Historical bilingual implementation
-remains a completed fact. `PositionManagementPlanResult` is not automatically
-consumed by the current renderer.
+remains a completed fact. The renderer signature is exactly
+`render_candidate_markdown(candidate, locale="en", screening_decision=None,
+position_management_plan_result=None)`. The optional plan result must be a
+completed verified result whose retained candidate is the exact renderer
+candidate; an English locale with a supplied plan is rejected. No-plan report
+behavior remains compatible and does not add an empty plan section.
+
+When supplied, the plan adds Chinese future-condition overview and technical
+sections for verified `WATCH` or `INVESTIGATE` plans only. Conditions are
+declarations, not evaluated triggers. The integration does not screen, monitor,
+alert, schedule, recommend, or execute, and the package-root exports and
+existing producer schemas remain unchanged.
 
 Every active report begins with a short plain-language Chinese overview for a
 user with little option experience:

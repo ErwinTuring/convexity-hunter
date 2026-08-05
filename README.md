@@ -23,10 +23,16 @@ for one already-specified supported structure. This risk-assessment module is
 a standalone capability, not candidate assembly, screening, or report
 integration.
 
+The standalone, unnumbered Position-Management Plan Contract and the separate
+Position-Management Plan Screening and Chinese-Report Integration work unit
+are complete. Deterministic report rendering may optionally receive a verified
+plan result and display it in the active Chinese report. The existing English
+renderer remains compatibility-only.
+
 Active discovery, Skill integration, real option-chain candidate generation,
 production candidate assembly, non-expiration pricing production,
-position-management plan integration, and the complete application flow
-remain future work.
+and the complete application flow remain future work. Monitoring, alerts,
+scheduling, recommendations, and execution remain absent.
 
 The active product output is Chinese only. An English renderer remains
 implemented for compatibility and possible future reuse, but English is not

@@ -286,8 +286,10 @@ The implemented transformation produces expiration payoff-threshold evidence
 only. It
 calculates no probability, expected return, direction forecast,
 recommendation, position sizing, automatic exit advice, or screening or
-report consequence. Candidate assembly, screening and reporting integration,
-position-management integration, and services remain later work. The complete
+report consequence. Candidate assembly, screening, reporting integration, and
+services remain separate layers; this transformation does not perform them.
+The completed downstream position-management integration consumes a separately
+verified result at the renderer boundary. The complete
 public artifact, exact mathematics, validation, lineage, and export contract
 is frozen in
 [Milestone 4 of the market-data specification](market-data-contracts.md#1323-milestone-4-deterministic-expiration-payoff-threshold-evidence).
@@ -408,7 +410,12 @@ existing `CalculationLineage`. It is implemented in
 `tests/test_position_management.py`; the exact records and four-parameter
 producer are frozen by the canonical contract. The work unit was independently
 reviewed, corrected, and passed targeted re-review. It remains unnumbered;
-screening and Chinese-report integration remain later work.
+screening and Chinese-report integration are now complete as a separate
+downstream work unit. The renderer accepts exactly
+`render_candidate_markdown(candidate, locale="en", screening_decision=None,
+position_management_plan_result=None)`. A supplied plan is optional, must be
+verified, is rendered only for Chinese `WATCH` or `INVESTIGATE` reports, and
+does not change research or screening state.
 
 ## 13. Chinese report and simplified overview
 
@@ -428,6 +435,15 @@ little option experience:
 4. the main uncertainty, missing evidence, false-positive risk, or
    human-review question; and
 5. concise future monetization, reassessment, and exit conditions.
+
+When a verified plan result is supplied, the Chinese report adds future
+condition declaration and technical detail sections. The renderer requires the
+candidate object retained by the verified result, preserves stored condition
+order, and states that conditions have not been evaluated. With no plan, the
+existing English and Chinese output remains byte-compatible and no empty plan
+section is added. English plan rendering is unsupported. The integration is
+declaration-only and does not create, screen, monitor, alert, schedule,
+recommend, or execute a position-management plan.
 
 Necessary option terms are explained briefly. The overview contains no
 unexplained jargon, long methodology, full metric/provenance tables,
@@ -472,14 +488,14 @@ Convexity Hunter has largely completed the auditable numerical and evidence
 foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
 generation, broader discovery/application-flow candidate production,
-non-expiration pricing production, screening/report integration, or the
-complete application flow. Standalone prospective plan construction is
-implemented and complete under [the canonical contract](position-management-contracts.md),
-but it is not wired into screening or report flows. Reviewed-artifact candidate
-assembly is complete:
+non-expiration pricing production, or the complete application flow. Standalone
+prospective plan construction is implemented and complete under [the canonical
+contract](position-management-contracts.md), and the separate downstream
+screening and Chinese-report integration is also complete for optional,
+verified Chinese rendering. Reviewed-artifact candidate assembly is complete:
 Milestone 6A provides the prerequisite wrapper verifiability and Milestone 6B
 assembles the reviewed artifacts without adding screening or reporting
-integration.
+behavior of its own.
 Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence
 implements exact-rational expiration 1x/2x/5x/10x thresholds. Milestone 5 —
 Standalone Structure Affordability Evidence implements reviewed standalone
@@ -505,9 +521,10 @@ complete application workflow.
 6. Completed standalone Position-Management Plan Contract implementation. The
    work unit remains unnumbered; independent review, correction, and targeted
    re-review are complete.
-7. Fresh formal read-only preflight for separate screening and Chinese-report
-   integration.
-8. Later deterministic offline single-structure service.
+7. Completed separate, unnumbered Position-Management Plan Screening and
+   Chinese-Report Integration work unit.
+8. Fresh formal read-only preflight for the deterministic offline
+   single-structure service.
 9. Subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
 
@@ -535,8 +552,9 @@ complete application workflow.
 - Milestone 6A — Reviewed Artifact Verifiability and Milestone 6B —
   Reviewed-Artifact Candidate Assembly are complete. The standalone,
   unnumbered Position-Management Plan Contract is also complete after
-  correction and targeted re-review. The next gate is a fresh formal
-  read-only preflight for separate screening and Chinese-report integration.
+  correction and targeted re-review. Its separate downstream screening and
+  Chinese-report integration is complete, and the next gate is a fresh formal
+  read-only preflight for the deterministic offline single-structure service.
   The canonical Milestone 6 contract is
   [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md), while
   [`position-management-contracts.md`](position-management-contracts.md) is
@@ -556,8 +574,6 @@ The following are unresolved future contracts, not blockers for this alignment:
 - the annual convexity-budget contract decision;
 - actual mature Skills, their gaps, adapters, and compositions;
 - provider versus internal non-expiration pricing;
-- the exact Python API, annotations, validation, and exports for the clarified
-  position-management plan;
 - final event-to-underlying accepted contract;
 - direct-entry resolution of incomplete structure descriptions; and
-- code changes required for the Chinese beginner overview.
+- the future deterministic offline single-structure service contract.

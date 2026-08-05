@@ -52,10 +52,10 @@ The standalone, unnumbered Position-Management Plan Contract is also
 implemented, independently reviewed, corrected, targeted re-reviewed, and
 complete. It is not Milestone 6C.
 
-The position-management contract is now complete. The next gate is a fresh
-formal read-only preflight for separate screening and Chinese-report
-integration; no implementation work for that integration begins before its
-scope and compatibility are evaluated.
+The standalone position-management contract is complete. Its separate,
+unnumbered Position-Management Plan Screening and Chinese-Report Integration
+work unit is also complete. The next gate is a fresh formal read-only
+preflight for the deterministic offline single-structure service.
 
 ## Position-management completion checkpoint
 
@@ -83,9 +83,40 @@ parameters.
 
 The implementation passed independent review after correction and targeted
 re-review. No package-root, scanner, renderer, fixture, persisted-record, or
-existing-producer change was made. Screening/report integration, monitoring,
-and execution remain absent. The work unit remains unnumbered and is not
-Milestone 6C.
+existing-producer change was made by the standalone contract. The downstream
+integration changes only the renderer and its authorized tests. Monitoring and
+execution remain absent. Both work units remain unnumbered and are not
+Milestone 6C or Milestone 7.
+
+## Position-management plan screening and Chinese-report integration checkpoint
+
+Committed base:
+
+- HEAD: `ab904d65c6d768b9db9df774621692a39245915f`
+- subject: `Implement prospective position management plan`
+
+Current finalized work-unit subject:
+
+`Integrate position management plan into Chinese reports`
+
+Do not guess the final work-unit commit SHA before committing. The work unit is
+standalone and unnumbered, not Milestone 6C or Milestone 7. Its implementation
+and test files are `src/convexity_hunter/report.py`,
+`tests/test_report_rendering.py`, and `tests/test_candidate_assembly.py`.
+The six finalized documentation files are `README.md`,
+`docs/current-checkpoint.md`, `docs/mvp-spec.md`,
+`docs/position-management-contracts.md`, `docs/product-direction.md`, and
+`docs/project-state.md`.
+
+The renderer has four parameters and accepts an optional verified plan result.
+Plan rendering is Chinese-only for verified `WATCH` and `INVESTIGATE` plans;
+the no-plan path remains compatible, and screening state remains separate from
+research state. The final confirmation review passed. Final validation passed
+55 report-rendering tests, 50 candidate-assembly tests, 48 scanner tests, 60
+position-management tests, 366 market-data tests, 181 market-data
+transformation tests, 32 risk-assessment tests, and 1026 full-suite tests.
+Package-root exports and existing producer schemas remain unchanged. Monitoring,
+alerts, scheduling, recommendations, and execution remain absent.
 
 ### Completed Milestone 6A implementation
 
@@ -916,7 +947,7 @@ The standalone position-management plan implementation is complete in
 the reviewed module. It remains separate from screening, report rendering,
 monitoring, and execution, without assigning a milestone number.
 
-## Last completed checkpoint
+## Previous implementation checkpoint
 
 - Commit: current finalization commit with subject
   `Implement prospective position management plan`
@@ -1158,11 +1189,9 @@ do not override the current Milestone 6A completion checkpoint above.
 
 ## Next task
 
-The next repository workflow gate is a fresh formal read-only preflight for
-separate screening and Chinese-report integration. Its exact scope, input
-authority, rendering behavior, screening interaction, localization, and
-compatibility must be frozen before implementation. Do not authorize or begin
-that work here.
+The next repository workflow gate is a fresh formal read-only preflight for the
+deterministic offline single-structure service. Do not begin that preflight in
+this work unit.
 
 ## Current capability and roadmap
 
@@ -1170,8 +1199,9 @@ Convexity Hunter has largely completed the auditable numerical and evidence
 foundation for researching one already-specified option structure. It has not
 yet completed the active-discovery front end, real option-structure
 generation, broader discovery/application-flow candidate production,
-position-management-plan integration, non-expiration pricing production, or
-the complete application flow. Reviewed-artifact candidate assembly is
+non-expiration pricing production, or the complete application flow. The
+standalone position-management plan and its separate downstream Chinese
+report integration are complete. Reviewed-artifact candidate assembly is
 complete: 6A strengthens three existing wrappers and 6B assembles reviewed
 artifacts into the existing `CandidateResearchRecord` plus a
 provenance-retaining sidecar. Deterministic
@@ -1192,9 +1222,10 @@ The accepted post-Milestone-3 sequence is:
 4. completed Milestone 6A — Reviewed Artifact Verifiability;
 5. completed Milestone 6B — Reviewed-Artifact Candidate Assembly;
 6. completed standalone, unnumbered Position-Management Plan Contract;
-7. fresh formal read-only preflight for separate screening and Chinese-report
-   integration;
-8. later deterministic offline single-structure service; and
+7. completed separate, unnumbered Position-Management Plan Screening and
+   Chinese-Report Integration;
+8. fresh formal read-only preflight for the deterministic offline
+   single-structure service; and
 9. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
 

@@ -4,34 +4,41 @@ Repository: `ErwinTuring/convexity-hunter`
 
 Previous committed checkpoint:
 
-- HEAD: `a41b35df797c0720410c548841c5bb456b20f2ce`
-- subject: `Define prospective position management contract`
+- HEAD: `ab904d65c6d768b9db9df774621692a39245915f`
+- subject: `Implement prospective position management plan`
 
 Current finalized work-unit subject:
 
-`Implement prospective position management plan`
+`Integrate position management plan into Chinese reports`
 
-Milestones 1–5, 6A, and 6B remain complete. The standalone
-Position-Management Plan Contract is complete after independent review,
-correction, and targeted re-review. The work unit remains unnumbered and is
-not Milestone 6C.
+This is a standalone, unnumbered work unit. It is not Milestone 6C or
+Milestone 7. The standalone Position-Management Plan Contract remains the
+authoritative producer contract; this downstream work unit optionally
+integrates a verified result into Chinese report rendering.
 
-Implementation:
+Implementation and test files:
 
-- module: `src/convexity_hunter/position_management.py`
-- tests: `tests/test_position_management.py`
-- public module exports: 11
-- position-management tests: 60
-- full-suite tests: 998
-- review status: final targeted re-review passed
+- `src/convexity_hunter/report.py`
+- `tests/test_report_rendering.py`
+- `tests/test_candidate_assembly.py`
 
-The plan is not integrated into screening or report rendering. Monitoring,
-alerts, and execution remain absent.
+Finalized documentation files:
+
+- `README.md`
+- `docs/current-checkpoint.md`
+- `docs/mvp-spec.md`
+- `docs/position-management-contracts.md`
+- `docs/product-direction.md`
+- `docs/project-state.md`
+
+The renderer has four parameters and accepts an optional verified plan result.
+Plan rendering is Chinese-only and applies to verified WATCH or INVESTIGATE
+plans. No-plan compatibility is preserved. Final confirmation review passed;
+report-rendering validation passed 55 tests and the full suite passed 1026
+tests. Monitoring, alerting, scheduling, and execution remain absent.
 
 The next repository workflow gate is a fresh formal read-only preflight for
-separate screening and Chinese-report integration. Its exact scope, input
-authority, rendering behavior, screening interaction, localization, and
-compatibility must be frozen before implementation.
+the deterministic offline single-structure service.
 
 This file is a concise navigation map, not a complete specification or
 history.

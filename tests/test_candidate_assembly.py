@@ -8296,7 +8296,12 @@ class NoCallApiAndImportProtectionTests(unittest.TestCase):
             tuple(inspect.signature(
                 report_module.render_candidate_markdown
             ).parameters),
-            ("candidate", "locale", "screening_decision"),
+            (
+                "candidate",
+                "locale",
+                "screening_decision",
+                "position_management_plan_result",
+            ),
         )
 
     def test_fresh_interpreter_import_order_matrix(self):
