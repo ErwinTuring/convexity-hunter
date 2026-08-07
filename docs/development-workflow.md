@@ -3,10 +3,29 @@
 ## Source of truth
 
 - Git repository documentation and committed code are the durable source of truth.
-- ChatGPT/Codex conversation history is not authoritative project memory.
-- Old BUILD/REVIEW chats may be archived after the corresponding work is reviewed, committed, and pushed.
-- A fresh session must reconstruct state from the repository rather than depend on old chat context.
+- The Codex Main Architect is the only user-facing development thread. Its
+  conversation history and child-agent context are not authoritative project
+  memory.
+- The main thread is disposable; repository state is durable memory.
+- A fresh Main Architect thread reconstructs state from the repository rather
+  than depending on old chat context or copied reports.
 - If repository contracts conflict with a prompt or remembered context, stop and report the conflict rather than silently choosing an interpretation.
+
+## Main Architect and execution model
+
+The Codex Main Architect is the only user-facing development thread. It owns
+Repository Grounding, risk classification, sequencing, contract synthesis and
+freeze, child-agent dispatch, review decisions, fixes, validation, checkpoint
+maintenance, and ordinary commit/push actions.
+
+Execution is autonomous within the accepted product direction. The user owns
+product goals, major architecture, governance principles, MVP scope, external
+credentials or authority, and genuinely blocking product decisions. Do not
+ask the user to approve ordinary gates, fixes, commits, or pushes. Escalate by
+exception when one of those user-owned decisions is required.
+
+The default execution flow is serial. Use child agents only when they provide
+clear value; do not add parallelism or governance machinery for its own sake.
 
 ## Repository grounding
 
@@ -20,18 +39,16 @@ Do not reread the whole repository by default. Verify exact fields, enum order, 
 
 ## Execution roles
 
-The ChatGPT main conversation performs Repository Grounding, plans the work,
-authors prompts for separate Codex sessions, evaluates their returned reports,
-and freezes an accepted contract after formal preflight. It does not execute
-the formal preflight or return its `READY` or `BLOCKED` result.
+The Main Architect may dispatch separate child-agent contexts for formal
+PREFLIGHT, BUILD, REVIEW, fixes, or targeted re-review. Child agents return
+evidence to the Main Architect; the user does not manually create sessions or
+copy reports between them. The canonical role boundaries are in
+[`context-governance.md`](context-governance.md#codex-main-architect-and-child-agent-boundaries).
 
-Codex PREFLIGHT executes the formal read-only preflight in a separate session.
-Codex BUILD implements the accepted contract, validates it, applies accepted
-corrections, and performs the final commit and push when instructed. Codex
-REVIEW independently reads the contracts and actual diff, reports findings,
-and never implements fixes. See
-[`context-governance.md`](context-governance.md#chatgpt-and-codex-execution-role-boundaries)
-for the canonical detailed definitions.
+PREFLIGHT is read-only. BUILD implements only the accepted contract. REVIEW
+independently reads the authoritative contracts and actual diff and never
+implements fixes. The Main Architect accepts findings, directs fixes, and
+decides whether targeted re-review is sufficient.
 
 ## Risk tiers
 
@@ -42,27 +59,21 @@ Examples include public contracts, market-data identity and provenance, freshnes
 Required workflow:
 
 ```text
-ChatGPT Repository Grounding
-→ ChatGPT authors Codex PREFLIGHT prompt
-→ Codex PREFLIGHT performs formal read-only preflight
-→ ChatGPT evaluates the report and resolves specification blockers
-→ contract clarification is committed first when required
-→ ChatGPT authors Codex BUILD prompt
-→ Codex BUILD implements without commit
-→ ChatGPT authors independent REVIEW prompt
-→ Codex REVIEW performs one broad independent review
-→ Codex BUILD fixes accepted concrete findings
-→ Codex REVIEW performs targeted re-review only for those findings
-→ Codex BUILD runs final validation
-→ Codex BUILD creates one commit and pushes
+Repository Grounding
+→ formal read-only PREFLIGHT
+→ Main Architect synthesis and contract freeze
+→ BUILD
+→ independent REVIEW
+→ accepted fixes and targeted re-review
+→ validation
 ```
 
-Implementation does not start while formal preflight has unresolved blockers.
-The `READY` or `BLOCKED` decision belongs to the Codex PREFLIGHT report, which
-ChatGPT evaluates before any contract freeze or BUILD prompt. REVIEW must not
-rely on BUILD's summary: it reads the authoritative repository contracts and
-actual diff. After a targeted fix, re-review only the original finding unless
-the fix creates a concrete new concern.
+Implementation does not start while the formal read-only PREFLIGHT has
+unresolved blockers. The Main Architect evaluates the PREFLIGHT evidence and
+freezes the accepted boundary before BUILD. REVIEW must not rely on BUILD's
+summary: it reads the authoritative repository contracts and actual diff.
+After a targeted fix, re-review only the original finding unless the fix
+creates a concrete new concern.
 
 ### B — Ordinary implementation against an already locked contract
 
@@ -71,12 +82,11 @@ Examples include renderer integration, CLI wiring, known-schema serialization, s
 Required workflow:
 
 ```text
-ChatGPT Repository Grounding and Codex BUILD prompt
-→ Codex BUILD implements without commit
-→ Codex REVIEW performs independent review
-→ Codex BUILD applies accepted fixes
-→ Codex REVIEW performs targeted re-review if needed
-→ Codex BUILD validates, creates one commit, and pushes
+Repository Grounding
+→ BUILD
+→ independent REVIEW
+→ accepted fixes and targeted re-review
+→ validation
 ```
 
 No separate formal preflight is required unless implementation reveals a
@@ -89,76 +99,64 @@ Examples include documentation, copy, comments, test names, typos, checkpoint up
 Required workflow:
 
 ```text
-lightweight ChatGPT Repository Grounding
-→ direct Codex BUILD or documentation session
-→ appropriate tests/diff validation
-→ one commit and push
+lightweight Repository Grounding
+→ direct documentation or maintenance work
+→ proportional validation and review
 ```
 
-No formal preflight or independent review is required unless scope or risk
-grows. If a task initially classified B or C reveals contract ambiguity,
-architecture impact, or meaningful behavioral risk, escalate it to A.
+No formal PREFLIGHT or independent review is required unless scope or risk
+justifies it. If a task initially classified B or C reveals contract
+ambiguity, architecture impact, or meaningful behavioral risk, escalate it to
+A.
 
-## Codex session naming and separation
+## Child-agent separation and runtime evidence
 
-- When a Codex work unit belongs to a numbered milestone, every PREFLIGHT,
-  BUILD, and REVIEW session name must include that milestone number and a
-  stable task title, using these canonical templates:
+- Use a fresh child-agent context for an independent REVIEW; the Builder must
+  not review its own work.
+- Continue the BUILD context for accepted fixes and the REVIEW context for
+  targeted re-review of the original findings when that is useful.
+- REVIEW never implements fixes, and fixes never introduce unrelated
+  requirements.
+- Do not commit implementation before the required review and validation
+  gates pass.
+- Child-agent work is serial by default. Dispatch separate child agents only
+  when the role separation or a genuinely independent task provides clear
+  value.
 
-  ```text
-  PREFLIGHT｜Milestone <N> — <task-title>
-  BUILD｜Milestone <N> — <task-title>
-  REVIEW｜Milestone <N> — <task-title>
-  ```
+## Child-agent model and recovery
 
-  For example:
+PREFLIGHT, BUILD, REVIEW, targeted fixes, targeted re-review, and other
+execution child agents default to `gpt-5.6-luna` with `max` reasoning effort.
+The requested model or a child's self-report is not evidence of actual
+execution. Claim the model and effort only when runtime metadata binds the
+child context to the actual values. Do not add a custom telemetry or audit
+framework to establish this.
 
-  ```text
-  PREFLIGHT｜Milestone 6 — Reviewed-Artifact Candidate Assembly
-  BUILD｜Milestone 6 — Reviewed-Artifact Candidate Assembly
-  REVIEW｜Milestone 6 — Reviewed-Artifact Candidate Assembly
-  ```
-
-- A contract-clarification session belonging to a numbered milestone uses
-  `BUILD｜Milestone <N> — Contract Clarification`, or a more specific title
-  that still includes `Milestone <N>`.
-- Use a separate formal PREFLIGHT session, a fresh BUILD session for each new
-  sub-milestone or independent work unit, and a separate fresh REVIEW session
-  for A/B independent review. A new sub-milestone or independent work unit
-  gets a fresh appropriately numbered session.
-- Continue the same BUILD session for fixes arising from that work unit.
-- Continue the same REVIEW session for targeted re-review of its original findings.
-- Do not use REVIEW to implement fixes.
-- Do not commit implementation before required review passes.
-- Task-only Codex names without a milestone number are permitted only when the
-  work is genuinely outside any numbered milestone, such as repository-wide
-  governance maintenance, emergency repository repair, or exploratory work
-  before milestone assignment.
-- A ChatGPT main conversation is not a Codex session and must not use the
-  `PREFLIGHT｜`, `BUILD｜`, or `REVIEW｜` prefixes.
-- A ChatGPT conversation must not describe itself as already inside a Codex
-  PREFLIGHT, BUILD, or REVIEW task.
-- Every Codex prompt must identify the separate existing Codex session into
-  which the user will paste it.
+If the same substantive blocker survives two Luna/max fix-and-re-review
+rounds, enter temporary recovery mode with `gpt-5.6-sol` and `medium` effort
+for at most two rounds. If it still survives, the Main Architect performs a
+root-cause replan. Escalate to the user only if the replan becomes a product,
+architecture, contract, or scope decision; do not mechanically repeat the
+same loop.
 
 ## Token and context cost control
 
-1. Prompts reference repository contracts instead of pasting entire specifications unless a small exact excerpt is necessary.
+1. Child contexts reference repository contracts instead of duplicating entire specifications unless a small exact excerpt is necessary.
 2. Grounding reads project state, the relevant contract section, and necessary code only.
 3. Re-review targets previous findings instead of repeating a full review.
 4. Checkpoints store navigation facts, not duplicate entire specifications.
-5. Machine-check invariants with tests whenever practical instead of repeatedly restating them in prompts.
-6. Optimize for minimum total cost, including errors and rework, not simply minimum token count.
+5. Machine-check invariants with tests whenever practical instead of repeatedly restating them in dispatch context.
+6. Governance cost must match risk and MVP value; optimize total cost, including errors and rework, rather than maximizing process.
 
 ## Repository grounding and token discipline
 
-- All code-related Codex prompts begin from the current repository state, and
-  exact contracts are reread from current files.
+- Main Architect and child-agent work begins from the current repository
+  state, and exact contracts are reread from current files.
 - Grounding depth is lightweight, standard, or high-risk as defined in
   `context-governance.md`; no task is high-risk without a material reason.
 - Read only task-relevant sections, source files, direct dependencies, and
   tests.
-- Prompts reference repository contracts instead of copying them
+- Dispatch context references repository contracts instead of copying them
   unnecessarily.
 - Exact current facts never rely on conversation memory.
 - `current-checkpoint.md` is navigation only, not a contract or full history.
@@ -169,18 +167,21 @@ architecture impact, or meaningful behavioral risk, escalate it to A.
 
 ## Commit discipline
 
-- One logical approved work unit produces one implementation commit unless a separate contract-clarification commit is intentionally required first.
+- One logical work unit accepted by the Main Architect produces one implementation commit unless a separate contract-clarification commit is intentionally required first.
 - Commit A-level contract clarifications before implementation when they resolve preflight blockers.
 - Review the working tree for exact scope before staging.
 - Run relevant tests, compile checks when applicable, and `git diff --check`.
-- Commit only after the required workflow gate passes.
-- Push and verify clean, up-to-date status.
+- After the required tests and review for the applicable tier pass, the Main
+  Architect may commit and push an ordinary completed work unit automatically.
+- Force pushes, history rewrites, releases, destructive external operations,
+  credentials, and destructive migrations require user approval.
+- After commit/push, verify clean and up-to-date status.
 
 ## Milestone checkpoints
 
 At meaningful milestone boundaries, `docs/project-state.md` should retain compact navigation facts: milestone status, checkpoint commit, test count, public API count when relevant, current task, and next task. Do not duplicate full contracts in checkpoint state.
 
-At a broad milestone boundary, a new ChatGPT main conversation reconstructs
-state from the repository and authors the next Codex prompt. When the next
-gate is formal preflight, its first artifact is the Codex PREFLIGHT prompt, not
-a self-authored preflight report.
+At a broad milestone boundary, a new Main Architect thread reconstructs state
+from the repository. When the next gate is formal preflight, the Main
+Architect dispatches the formal read-only PREFLIGHT before synthesis or BUILD;
+Repository Grounding is not itself the preflight result.
