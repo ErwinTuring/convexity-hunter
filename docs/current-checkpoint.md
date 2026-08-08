@@ -2,43 +2,33 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-Previous committed checkpoint:
+Required base for this contract freeze:
 
-- HEAD: `ab904d65c6d768b9db9df774621692a39245915f`
-- subject: `Implement prospective position management plan`
+- branch: `main`
+- HEAD: `8d743c517650d5bd3330e46240ed3c2ce7bec891`
+- working tree: clean before this documentation-only change
 
-Current finalized work-unit subject:
+Current work-unit subject:
 
-`Integrate position management plan into Chinese reports`
+`Freeze deterministic offline single-structure service contract`
 
-This is a standalone, unnumbered work unit. It is not Milestone 6C or
-Milestone 7. The standalone Position-Management Plan Contract remains the
-authoritative producer contract; this downstream work unit optionally
-integrates a verified result into Chinese report rendering.
+This is an A-level documentation-only contract freeze. It does not implement
+Python code or tests, change the package root, or authorize staging, commits,
+or pushes.
 
-Implementation and test files:
+Canonical contract:
 
-- `src/convexity_hunter/report.py`
-- `tests/test_report_rendering.py`
-- `tests/test_candidate_assembly.py`
+- [`docs/offline-single-structure-service-contract.md`](offline-single-structure-service-contract.md)
 
-Finalized documentation files:
+The frozen service consumes one already-reviewed assembly result, always
+screens it, optionally creates a caller-requested plan, and always renders the
+Chinese report in the exact order defined by the canonical contract. Screening
+and plan state remain separate; monitoring, alerting, scheduling, persistence,
+and execution remain absent.
 
-- `README.md`
-- `docs/current-checkpoint.md`
-- `docs/mvp-spec.md`
-- `docs/position-management-contracts.md`
-- `docs/product-direction.md`
-- `docs/project-state.md`
-
-The renderer has four parameters and accepts an optional verified plan result.
-Plan rendering is Chinese-only and applies to verified WATCH or INVESTIGATE
-plans. No-plan compatibility is preserved. Final confirmation review passed;
-report-rendering validation passed 55 tests and the full suite passed 1026
-tests. Monitoring, alerting, scheduling, and execution remain absent.
-
-The next repository workflow gate is a fresh formal read-only preflight for
-the deterministic offline single-structure service.
+The next repository workflow gate is BUILD implementation and independent
+focused testing of the frozen service contract. This freeze does not authorize
+that implementation.
 
 This file is a concise navigation map, not a complete specification or
 history.

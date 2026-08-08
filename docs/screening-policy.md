@@ -14,9 +14,9 @@ The policy searches for potentially cheap positive convexity rather than market 
 
 The policy does not price options, generate market data, generate evidence, use an LLM, calculate a Convexity Score, predict returns or probabilities, recommend or execute a trade, or modify `CandidateResearchRecord`.
 
-## 2. Planned API contract
+## 2. Implemented API contract
 
-The future evaluator is planned to expose:
+The implemented evaluator exposes:
 
 ```python
 screen_candidate(
@@ -25,7 +25,8 @@ screen_candidate(
 ) -> ScreeningDecision
 ```
 
-This document specifies that contract but does not implement it.
+The implementation is in `src/convexity_hunter/scanner.py`, and focused
+screening tests cover its frozen behavior.
 
 ### 2.1 CandidateResearchRecord
 
@@ -46,7 +47,7 @@ The record may already contain a human-supplied or fixture-supplied `state` and 
 
 `CandidateResearchRecord.state` and `state_rationale` are supplied research-record fields. `ScreeningDecision.proposed_state` is an independently calculated deterministic result. Policy v0.1 must carry them as separate objects: the evaluator must not mutate the candidate or create a replacement `CandidateResearchRecord` merely by copying `proposed_state` into `state`.
 
-Purpose-built screening fixtures may use any valid supplied candidate state, commonly `WATCH`; the evaluator must still produce its result independently. A future report may display both:
+Purpose-built screening fixtures may use any valid supplied candidate state, commonly `WATCH`; the evaluator must still produce its result independently. A report may display both:
 
 - the supplied research-record state;
 - the deterministic proposed state.
@@ -57,7 +58,7 @@ This is an integration constraint, not a change to policy thresholds, precedence
 
 ### 2.2 ScreeningPolicy
 
-`ScreeningPolicy` will contain:
+`ScreeningPolicy` contains:
 
 - `policy_id`;
 - `policy_version`;
@@ -68,7 +69,7 @@ This is an integration constraint, not a change to policy thresholds, precedence
 
 ### 2.3 ScreeningDecision
 
-`ScreeningDecision` is planned to contain:
+`ScreeningDecision` contains:
 
 ```text
 proposed_state: CandidateState
@@ -98,7 +99,7 @@ policy_version = 0.1
 - reason-code values;
 - canonical reason-code ordering.
 
-Once a policy version has been used to produce a `ScreeningDecision`, it must never be edited in place. Changing any decision-affecting rule requires a new policy version. Documentation-only wording changes that do not affect behavior may retain the same version. The future `ScreeningPolicy` object should be immutable.
+Once a policy version has been used to produce a `ScreeningDecision`, it must never be edited in place. Changing any decision-affecting rule requires a new policy version. Documentation-only wording changes that do not affect behavior may retain the same version. `ScreeningPolicy` is immutable.
 
 ## 4. Derived metrics
 
@@ -194,7 +195,7 @@ All policy-critical scenarios use:
 valuation_time = holding_horizon
 ```
 
-They use the structure's declared expected holding period, the per-leg starting IVs stored in `ScenarioResult`, and the supplied `pnl_after_costs`, with no probability weighting. Future scenario matching must use `math.isclose` for floating-point underlying moves and IV shocks with these provisional comparison tolerances:
+They use the structure's declared expected holding period, the per-leg starting IVs stored in `ScenarioResult`, and the supplied `pnl_after_costs`, with no probability weighting. Scenario matching uses `math.isclose` for floating-point underlying moves and IV shocks with these provisional comparison tolerances:
 
 ```text
 rel_tol = 1e-9
@@ -275,7 +276,7 @@ Return `WATCH` when there is no rejection, policy-critical data is complete, and
 
 ## 10. Exact reason codes
 
-The future enum is named `ScreeningReasonCode`. It uses exactly the following string values.
+The enum is named `ScreeningReasonCode`. It uses exactly the following string values.
 
 ### 10.1 Reject reasons
 
@@ -336,7 +337,7 @@ The fixed order is:
 3. Watch reasons;
 4. Investigate reasons.
 
-Within each group, preserve the exact listed order from Section 10. The future implementation must never rely on set ordering, never alphabetically sort reason codes, and always return a deterministic ordered tuple.
+Within each group, preserve the exact listed order from Section 10. The implementation must never rely on set ordering, never alphabetically sort reason codes, and always return a deterministic ordered tuple.
 
 ### Final-state reason-code isolation
 
@@ -365,7 +366,7 @@ Reason codes from different state groups must not be mixed in one decision. Know
 
 ## 13. Relationship to the existing bilingual fixture
 
-The current SPY bilingual fixture exists to validate rendering. Its supplied `WATCH` state is not a policy result. The future evaluator must ignore that state, and the fixture is not required to produce any specific deterministic classification.
+The current SPY bilingual fixture exists to validate rendering. Its supplied `WATCH` state is not a policy result. The implemented evaluator ignores that state, and the fixture is not required to produce any specific deterministic classification.
 
 Purpose-built Reject, Data insufficient, Watch, and Investigate fixtures will be created during implementation. The existing fixture is unchanged by this policy task.
 

@@ -54,8 +54,11 @@ complete. It is not Milestone 6C.
 
 The standalone position-management contract is complete. Its separate,
 unnumbered Position-Management Plan Screening and Chinese-Report Integration
-work unit is also complete. The next gate is a fresh formal read-only
-preflight for the deterministic offline single-structure service.
+work unit is also complete. The deterministic offline single-structure service
+contract is now frozen as a documentation-only A-level work unit in
+[`offline-single-structure-service-contract.md`](offline-single-structure-service-contract.md).
+The next gate is BUILD implementation and independent focused testing of that
+frozen contract; this work unit does not implement it.
 
 ## Position-management completion checkpoint
 
@@ -935,17 +938,17 @@ checkpoints; they are not active Milestone 6A implementation targets.
 
 ## Current task
 
-Milestone 6B — Reviewed-Artifact Candidate Assembly is complete. Its initial
-formal preflight blocker was the zero-artifact lineage representation conflict;
-the clarified zero-or-more generic `CalculationLineage.inputs` contract was
-implemented. Independent review initially found one accepted MAJOR
-direct-construction error-taxonomy defect; narrow required-field validation
-corrected it, and targeted re-review passed with no remaining finding.
+The documentation-only A-level freeze for the deterministic offline
+single-structure service is complete in
+[`offline-single-structure-service-contract.md`](offline-single-structure-service-contract.md).
+It freezes the direct module, exactly three public names, the request/result
+field schemas, exact orchestration order, validation/error order, determinism,
+and BUILD/test acceptance criteria. No Python or test file is part of this
+work unit.
 
-The standalone position-management plan implementation is complete in
-[`position-management-contracts.md`](position-management-contracts.md) and
-the reviewed module. It remains separate from screening, report rendering,
-monitoring, and execution, without assigning a milestone number.
+The existing screening, candidate-assembly, position-management, and report
+producers remain the delegated authorities. The service does not add
+calculation or lineage authority and does not replay candidate assembly.
 
 ## Previous implementation checkpoint
 
@@ -1189,9 +1192,9 @@ do not override the current Milestone 6A completion checkpoint above.
 
 ## Next task
 
-The next repository workflow gate is a fresh formal read-only preflight for the
-deterministic offline single-structure service. Do not begin that preflight in
-this work unit.
+The next repository workflow gate is BUILD implementation and independent
+focused testing for the frozen deterministic offline single-structure service.
+Do not begin that implementation in this documentation-only work unit.
 
 ## Current capability and roadmap
 
@@ -1224,8 +1227,9 @@ The accepted post-Milestone-3 sequence is:
 6. completed standalone, unnumbered Position-Management Plan Contract;
 7. completed separate, unnumbered Position-Management Plan Screening and
    Chinese-Report Integration;
-8. fresh formal read-only preflight for the deterministic offline
-   single-structure service; and
+8. documentation-only A-level freeze of the deterministic offline
+   single-structure service contract; the next gate is BUILD implementation
+   and independent focused testing; and
 9. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
 
