@@ -67,6 +67,14 @@ It adds exactly two direct-module public names and zero package-root exports,
 retains authentic reviewed cost and liquidity proofs for one exact caller
 structure, and passed 10 focused tests and the 1,048-test full suite.
 
+The Deterministic Direct-Entry Reviewed-Research Service is implemented and
+independently reviewed under
+[`direct-entry-reviewed-research-service-contract.md`](direct-entry-reviewed-research-service-contract.md).
+It adds exactly two direct-module public names and zero package-root exports,
+delegates exact verification, candidate assembly, screening, optional plan
+creation, and Chinese reporting to their existing authorities, and passed 11
+focused tests and the 1,059-test full suite.
+
 ## Position-management completion checkpoint
 
 The base clarification commit is
@@ -945,21 +953,21 @@ checkpoints; they are not active Milestone 6A implementation targets.
 
 ## Current task
 
-Deterministic Direct-Entry Exact-Structure Verification is implemented and
+The Deterministic Direct-Entry Reviewed-Research Service is implemented and
 independently reviewed under
-[`direct-entry-exact-structure-verification-contract.md`](direct-entry-exact-structure-verification-contract.md).
+[`direct-entry-reviewed-research-service-contract.md`](direct-entry-reviewed-research-service-contract.md).
 The direct module has exactly two public names and zero package-root exports.
 Its implementation and focused tests are
-`src/convexity_hunter/direct_entry_verification.py` and
-`tests/test_direct_entry_verification.py`.
+`src/convexity_hunter/direct_entry_reviewed_research_service.py` and
+`tests/test_direct_entry_reviewed_research_service.py`.
 
-The verifier reconstructs the existing exact cost and liquidity wrappers for
-intrinsic authentication, then verifies exact structure correspondence and a
-shared observation date while retaining the caller's original objects. It adds
-no provider, retrieval, eligibility, selection, transformation, calculation,
-or lineage authority. Independent review returned
-`IMPLEMENTATION REVIEW RESULT: PASS`; validation passed 10 focused tests and
-1,048 full-suite tests.
+The service delegates in exact order to direct-entry verification, candidate
+assembly, and the offline single-structure service, retaining all delegated
+results and propagating failures unchanged. It adds no provider, retrieval,
+eligibility, selection, transformation, calculation, lineage, screening,
+plan, or report authority. Independent review returned
+`IMPLEMENTATION REVIEW RESULT: PASS`; validation passed 11 focused tests and
+1,059 full-suite tests.
 
 ## Previous implementation checkpoint
 
@@ -1240,8 +1248,10 @@ The accepted post-Milestone-3 sequence is:
 8. completed deterministic offline single-structure service contract,
    implementation, focused tests, and independent review;
 9. completed deterministic direct-entry exact-structure verification contract,
-   implementation, focused tests, and independent review; and
-10. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
+   implementation, focused tests, and independent review;
+10. completed deterministic direct-entry reviewed-research service contract,
+    implementation, focused tests, and independent review; and
+11. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
 
 ## Deferred

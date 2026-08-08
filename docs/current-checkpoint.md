@@ -5,30 +5,30 @@ Repository: `ErwinTuring/convexity-hunter`
 Contract base:
 
 - branch: `main`
-- commit: `08b4509`
-- subject: `Define direct-entry structure verification contract`
+- commit: `74f2698`
+- subject: `Define direct-entry reviewed research service contract`
 
 Finalized work-unit subject:
 
-`Implement direct-entry structure verification`
+`Implement direct-entry reviewed research service`
 
-Deterministic Direct-Entry Exact-Structure Verification is implemented and
+The Deterministic Direct-Entry Reviewed-Research Service is implemented and
 independently reviewed. Its direct module and focused tests are:
 
-- `src/convexity_hunter/direct_entry_verification.py`
-- `tests/test_direct_entry_verification.py`
+- `src/convexity_hunter/direct_entry_reviewed_research_service.py`
+- `tests/test_direct_entry_reviewed_research_service.py`
 
 Canonical contract:
 
-- [`docs/direct-entry-exact-structure-verification-contract.md`](direct-entry-exact-structure-verification-contract.md)
+- [`docs/direct-entry-reviewed-research-service-contract.md`](direct-entry-reviewed-research-service-contract.md)
 
-The verifier retains one complete caller-supplied exact `OptionStructure` and
-authentic reviewed cost and liquidity wrappers. It verifies their intrinsic
-record-to-lineage contracts, exact structure correspondence, and shared
-observation date without replaying upstream proof or transformation logic.
+The service composes exact-structure verification, the existing 21-argument
+candidate assembler, and the existing offline screening/plan/Chinese-report
+service. It preserves delegated object identities and error order without
+adding local eligibility, numerical, lineage, or policy authority.
 
 Independent review returned `IMPLEMENTATION REVIEW RESULT: PASS`. Final
-validation passed 10 focused tests, 1,048 full-suite tests, compilation, and
+validation passed 11 focused tests, 1,059 full-suite tests, compilation, and
 `git diff --check`. The package root and all existing producer APIs remain
 unchanged. Provider access, chain retrieval, incomplete-description resolution,
 eligibility policy, generation, monitoring, and execution remain absent.
