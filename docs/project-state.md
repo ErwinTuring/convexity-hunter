@@ -55,10 +55,10 @@ complete. It is not Milestone 6C.
 The standalone position-management contract is complete. Its separate,
 unnumbered Position-Management Plan Screening and Chinese-Report Integration
 work unit is also complete. The deterministic offline single-structure service
-contract is now frozen as a documentation-only A-level work unit in
+is implemented and independently reviewed under the A-level contract in
 [`offline-single-structure-service-contract.md`](offline-single-structure-service-contract.md).
-The next gate is BUILD implementation and independent focused testing of that
-frozen contract; this work unit does not implement it.
+It adds exactly three direct-module public names and zero package-root exports.
+Its 12 focused tests and the 1,038-test full suite pass.
 
 ## Position-management completion checkpoint
 
@@ -938,17 +938,19 @@ checkpoints; they are not active Milestone 6A implementation targets.
 
 ## Current task
 
-The documentation-only A-level freeze for the deterministic offline
-single-structure service is complete in
+The deterministic offline single-structure service is implemented and
+independently reviewed under
 [`offline-single-structure-service-contract.md`](offline-single-structure-service-contract.md).
-It freezes the direct module, exactly three public names, the request/result
-field schemas, exact orchestration order, validation/error order, determinism,
-and BUILD/test acceptance criteria. No Python or test file is part of this
-work unit.
+The direct module has exactly three public names, preserves the frozen
+request/result schemas and orchestration/error order, and adds zero
+package-root exports. Its implementation and focused tests are
+`src/convexity_hunter/offline_service.py` and `tests/test_offline_service.py`.
 
 The existing screening, candidate-assembly, position-management, and report
 producers remain the delegated authorities. The service does not add
 calculation or lineage authority and does not replay candidate assembly.
+Independent review returned `IMPLEMENTATION REVIEW RESULT: PASS`; validation
+passed 12 focused tests and 1,038 full-suite tests.
 
 ## Previous implementation checkpoint
 
@@ -1192,9 +1194,8 @@ do not override the current Milestone 6A completion checkpoint above.
 
 ## Next task
 
-The next repository workflow gate is BUILD implementation and independent
-focused testing for the frozen deterministic offline single-structure service.
-Do not begin that implementation in this documentation-only work unit.
+Any subsequent capability requires fresh repository grounding, formal
+preflight, and a separately frozen contract before implementation.
 
 ## Current capability and roadmap
 
@@ -1227,9 +1228,8 @@ The accepted post-Milestone-3 sequence is:
 6. completed standalone, unnumbered Position-Management Plan Contract;
 7. completed separate, unnumbered Position-Management Plan Screening and
    Chinese-Report Integration;
-8. documentation-only A-level freeze of the deterministic offline
-   single-structure service contract; the next gate is BUILD implementation
-   and independent focused testing; and
+8. completed deterministic offline single-structure service contract,
+   implementation, focused tests, and independent review; and
 9. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
 

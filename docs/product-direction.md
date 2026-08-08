@@ -496,9 +496,10 @@ verified Chinese rendering. Reviewed-artifact candidate assembly is complete:
 Milestone 6A provides the prerequisite wrapper verifiability and Milestone 6B
 assembles the reviewed artifacts without adding screening or reporting
 behavior of its own.
-The deterministic offline single-structure service contract is frozen in the
-[canonical service contract](offline-single-structure-service-contract.md);
-its implementation and independent focused tests remain the next BUILD gate.
+The deterministic offline single-structure service is implemented and
+independently reviewed under the
+[canonical service contract](offline-single-structure-service-contract.md),
+with exactly three direct-module public names and zero package-root exports.
 Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence
 implements exact-rational expiration 1x/2x/5x/10x thresholds. Milestone 5 —
 Standalone Structure Affordability Evidence implements reviewed standalone
@@ -526,9 +527,8 @@ complete application workflow.
    re-review are complete.
 7. Completed separate, unnumbered Position-Management Plan Screening and
    Chinese-Report Integration work unit.
-8. Documentation-only A-level freeze of the deterministic offline
-   single-structure service contract. The next gate is BUILD implementation
-   and independent focused testing under that contract.
+8. Completed deterministic offline single-structure service contract,
+   implementation, focused tests, and independent review.
 9. Subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
    generation, and complete-flow work.
 
@@ -558,9 +558,8 @@ complete application workflow.
   unnumbered Position-Management Plan Contract is also complete after
   correction and targeted re-review. Its separate downstream screening and
   Chinese-report integration is complete. The deterministic offline
-  single-structure service contract is frozen as a documentation-only A-level
-  work unit, and its next gate is BUILD implementation and independent focused
-  testing.
+  single-structure service is implemented and independently reviewed under its
+  A-level contract, with zero package-root exports.
   The canonical Milestone 6 contract is
   [`candidate-assembly-contracts.md`](candidate-assembly-contracts.md), while
   [`position-management-contracts.md`](position-management-contracts.md) is

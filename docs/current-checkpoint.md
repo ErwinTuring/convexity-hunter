@@ -2,33 +2,36 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-Required base for this contract freeze:
+Contract base:
 
 - branch: `main`
-- HEAD: `8d743c517650d5bd3330e46240ed3c2ce7bec891`
-- working tree: clean before this documentation-only change
+- commit: `d34dd01e050b7f2d37624ef34f3293dd87db4fb1`
+- subject: `Define offline single-structure service contract`
 
-Current work-unit subject:
+Finalized work-unit subject:
 
-`Freeze deterministic offline single-structure service contract`
+`Implement offline single-structure service`
 
-This is an A-level documentation-only contract freeze. It does not implement
-Python code or tests, change the package root, or authorize staging, commits,
-or pushes.
+The deterministic offline single-structure service is implemented and
+independently reviewed. Its direct module and focused tests are:
+
+- `src/convexity_hunter/offline_service.py`
+- `tests/test_offline_service.py`
 
 Canonical contract:
 
 - [`docs/offline-single-structure-service-contract.md`](offline-single-structure-service-contract.md)
 
-The frozen service consumes one already-reviewed assembly result, always
+The service consumes one already-reviewed assembly result, always
 screens it, optionally creates a caller-requested plan, and always renders the
 Chinese report in the exact order defined by the canonical contract. Screening
 and plan state remain separate; monitoring, alerting, scheduling, persistence,
 and execution remain absent.
 
-The next repository workflow gate is BUILD implementation and independent
-focused testing of the frozen service contract. This freeze does not authorize
-that implementation.
+Independent review returned `IMPLEMENTATION REVIEW RESULT: PASS`. Final
+validation passed 12 focused tests, 1,038 full-suite tests, compilation, and
+`git diff --check`. The package root and all existing producer APIs remain
+unchanged.
 
 This file is a concise navigation map, not a complete specification or
 history.

@@ -2,10 +2,10 @@
 
 ## 1. Status and authority
 
-This document is the canonical A-level contract freeze for the deterministic
-offline single-structure service. It is documentation-only. It does not
-authorize implementation, test changes, package-root exports, staging,
-committing, or pushing.
+This document is the canonical A-level contract for the implemented
+deterministic offline single-structure service. The implementation and focused
+tests were independently reviewed with no findings. The service remains a
+standalone, unnumbered capability and adds no package-root exports.
 
 The service is a narrow orchestration boundary for one already-reviewed
 `CandidateResearchRecordAssemblyResult`. It combines the existing screening,
@@ -270,12 +270,9 @@ to the existing contracts:
 the existing report contract. This service introduces no new calculation or
 lineage authority.
 
-## 10. BUILD and test acceptance criteria
+## 10. BUILD and test acceptance
 
-This section defines the later BUILD gate. It is not implementation work in
-this documentation-only freeze.
-
-The BUILD implementation and focused tests are accepted only when they prove
+The implementation and focused tests are accepted because they prove
 all of the following with independent fixed fixtures and call-trace spies:
 
 - the direct module, `__all__` order/count, three public names, result/request
@@ -302,6 +299,12 @@ all of the following with independent fixed fixtures and call-trace spies:
 - the focused tests, the existing full suite, API/export checks, and
   `git diff --check` pass without changing README, source outside the later
   service implementation, or unrelated tests.
+
+The accepted implementation is
+`src/convexity_hunter/offline_service.py`; its focused contract suite is
+`tests/test_offline_service.py`. Independent implementation review returned
+`IMPLEMENTATION REVIEW RESULT: PASS`. Final validation passed all 12 focused
+tests and all 1,038 repository tests.
 
 ## 11. Explicit non-goals
 
