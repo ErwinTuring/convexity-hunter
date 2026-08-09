@@ -127,5 +127,16 @@ Frozen next Tiger work unit:
   focused Tiger tests, 1,129 full-suite tests, compileall, `git diff --check`,
   and a sanitized live four-row SPY smoke check passed.
 
+Frozen Tiger historical option-bar work unit:
+
+- Canonical contract:
+  [`tiger-historical-option-bar-evidence-contract.md`](tiger-historical-option-bar-evidence-contract.md).
+- A Tier-A preflight and sanitized live probe establish populated Tiger daily
+  OHLC, volume, and open-interest fields for one exact verified option, but no
+  historical bid/ask, IV, or Greeks.
+- The bounded unit retains provider-native evidence only. It does not invent a
+  historical option-OHLC core record or overstate open-interest timing.
+- Contract implementation and independent review are pending.
+
 This file is a concise navigation map, not a complete specification or
 history.

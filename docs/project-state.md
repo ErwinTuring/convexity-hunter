@@ -1358,6 +1358,17 @@ Implementation and independent review are complete with no findings. Validation
 passed 70 focused Tiger tests, 1,129 full-suite tests, compileall, `git diff --check`,
 and a sanitized live four-row SPY evidence smoke check.
 
+The next separately contracted unit is
+[`tiger-historical-option-bar-evidence-contract.md`](tiger-historical-option-bar-evidence-contract.md).
+A focused Tier-A preflight and sanitized live probe verified 60 daily rows with
+all documented fields populated for one explicitly monthly 103-DTE SPY
+contract. Tiger supplies exact
+contract identity, bar-start time, OHLC, volume, and open interest, but this
+response has no historical bid/ask, IV, or Greeks and does not define the
+within-bar applicability time of open interest. The frozen boundary therefore
+retains Tiger-native evidence only. Implementation and independent review are
+pending.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
