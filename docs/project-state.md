@@ -1380,6 +1380,16 @@ DTE term input, so no Tiger `RateCurvePoint` normalization or provider-native
 rate adapter is authorized. ADR-008's bounded external USD term curve remains
 the intended future boundary.
 
+The next separately contracted unit is
+[`tiger-exact-option-analytics-activity-evidence-contract.md`](tiger-exact-option-analytics-activity-evidence-contract.md).
+A focused Tier-A preflight and sanitized live 103-DTE SPY probe verified
+populated volume, open interest, IV, Delta, Gamma, Theta, Vega, Rho, and
+last-trade fields. Tiger supplies no analytics timestamp/session, model or
+rate/dividend input descriptions, or Theta day basis, and last-trade time does
+not timestamp the other fields. The frozen boundary therefore retains exact-
+contract provider-native evidence only. Implementation and independent review
+are pending.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local

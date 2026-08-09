@@ -150,5 +150,16 @@ Completed Tiger rate-input preflight:
 - No Tiger rate adapter is authorized. The 30–150 DTE pricing path still needs
   the bounded external USD term curve already anticipated by ADR-008.
 
+Frozen Tiger exact-option analytics/activity work unit:
+
+- Canonical contract:
+  [`tiger-exact-option-analytics-activity-evidence-contract.md`](tiger-exact-option-analytics-activity-evidence-contract.md).
+- A sanitized live 103-DTE probe populated exact-contract activity and all
+  documented analytics, but supplied no analytics timestamp/session,
+  model/input descriptions, or Theta day basis.
+- The bounded unit retains provider-native evidence only and does not misuse
+  last-trade time as the analytics timestamp. Implementation and independent
+  review are pending.
+
 This file is a concise navigation map, not a complete specification or
 history.
