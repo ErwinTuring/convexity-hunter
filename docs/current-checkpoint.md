@@ -33,14 +33,19 @@ validation passed 11 focused tests, 1,059 full-suite tests, compilation, and
 unchanged. Provider access, chain retrieval, incomplete-description resolution,
 eligibility policy, generation, monitoring, and execution remain absent.
 
-Current Tier-A work unit:
+Completed Tiger local runtime work unit:
 
 - Tiger OpenAPI is selected as the MVP primary market-data provider.
 - Canonical contract: [`tiger-provider-contract.md`](tiger-provider-contract.md).
-- First boundary is local configuration discovery and non-networking,
-  non-preempting SDK client initialization only.
+- Contract base: `2da29f2` (`Define Tiger local runtime boundary`).
+- Finalized work-unit subject: `Implement Tiger local runtime boundary`.
+- The implementation adds exact path-only local configuration discovery and
+  non-networking, non-preempting SDK client initialization.
 - No credential content, market-data retrieval, provider normalization, or
   downstream service modification is in scope.
+- Independent review findings were corrected and targeted re-review passed.
+  Final validation passed 26 focused tests, 1,085 full-suite tests, compileall,
+  `git diff --check`, and a sanitized local external-config smoke check.
 
 This file is a concise navigation map, not a complete specification or
 history.

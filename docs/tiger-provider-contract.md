@@ -16,6 +16,8 @@ This work unit does not retrieve market data, normalize provider fields, scan
 an option chain, select a contract, calculate analytics, or change any
 provider-neutral market-data record.
 
+Implementation status: complete and independently reviewed.
+
 ## Credential boundary
 
 Tiger credentials are per-user, local-only runtime state. They are never

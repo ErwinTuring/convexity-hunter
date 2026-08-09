@@ -1264,16 +1264,27 @@ option-chain facts, option and underlying history, and historical dividends.
 Known gaps remain explicit: historical option IV/Greeks, a 30–150 DTE USD term
 curve, forward-dividend completeness, and some quote/analytics semantics.
 
-The active Tier-A work unit is the local Tiger runtime boundary in
+The local Tiger runtime boundary is defined in
 [`tiger-provider-contract.md`](tiger-provider-contract.md). It adds only
 deterministic external configuration-path resolution and non-networking,
 non-preempting SDK client initialization. It does not retrieve or normalize
 market data. Credentials remain outside the repository and model context.
 
+This work unit is implemented and independently reviewed. It adds exactly two
+direct-module public functions under `convexity_hunter.providers.tiger`, zero
+package-root or provider-package re-exports, a lazy optional
+`tigeropen==3.7.0` extra, and defense-in-depth credential ignore rules. The
+initial independent review found four accepted security/test findings covering
+SDK import sanitization, pre-construction root logging, adjacent-token error
+handling, and actual-SDK isolation coverage. All were corrected, and targeted
+re-review passed. Final validation passed 26 focused tests, 1,085 full-suite
+tests, compileall, `git diff --check`, and a local external-config smoke check
+that returned a `QuoteClient` without a market request or permission grab.
+
 ## Deferred
 
-- Tiger market-data retrieval and normalization beyond the local runtime
-  boundary until separately contracted work units
+- Tiger market-data retrieval and normalization beyond the completed local
+  runtime boundary until separately contracted work units
 - additional or fallback market-data providers unless a concrete Tiger blocker
   appears
 - mature news, search, knowledge, and world-event Skill capability research

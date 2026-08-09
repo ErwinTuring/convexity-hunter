@@ -14,5 +14,8 @@ authors = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+tiger = ["tigeropen==3.7.0"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
