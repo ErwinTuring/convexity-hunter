@@ -83,10 +83,16 @@ Completed Tiger exact option-quote evidence work unit:
   re-review passed. Final validation passed 51 focused tests, 1,110 full-suite
   tests, compileall, `git diff --check`, and a sanitized live SPY exact-contract
   permission/bid/ask evidence smoke check.
-- Follow-up decision: quote evidence remains transient until authoritative
-  Tiger documentation establishes REST-chain quote scope and timestamp/session
-  semantics. No provider-composite inference or unknown-scope pipeline bypass
-  is authorized.
+- Follow-up decision: REST quote evidence remains transient. The next
+  feasibility unit validates Tiger option Push BBO timestamps, event time, and
+  session binding. If reliable, Push BBO becomes the canonical current-quote
+  source with conservative `PROVIDER_COMPOSITE` scope; REST remains the source
+  for contract reference, activity, and provider analytics.
+- SDK 3.7.0 inspection confirms the raw Push event has the required candidate
+  fields, split by Python into Basic and BBO callbacks sharing event timestamp.
+  A non-trading-day live probe authenticated and acknowledged the subscription
+  without errors but produced no quote event, so regular-session field
+  population and pairing remain the next required live check.
 
 Completed Tiger underlying daily-bars work unit:
 

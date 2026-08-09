@@ -1306,12 +1306,24 @@ types; targeted re-review passed. Final validation passed 51 focused tests,
 1,110 full-suite tests, compileall, `git diff --check`, and a sanitized live
 SPY exact-contract permission/bid/ask evidence smoke check.
 
-The accepted follow-up decision keeps that quote evidence transient. No
-`OptionQuoteObservation` will be constructed until authoritative Tiger material
-establishes REST-chain aggregation scope and quote timestamp/session semantics.
-The project will not infer `PROVIDER_COMPOSITE`, force `UNKNOWN` evidence into
-the strict pipeline, or use last-trade time as quote time. Workstream A
-continues with established underlying daily-bar and historical-dividend facts.
+The accepted follow-up decision keeps REST-chain quote evidence transient. The
+project will not force `UNKNOWN` evidence into the strict pipeline, use
+last-trade time as quote time, or claim consolidated REST semantics. The next
+quote-semantics feasibility unit validates Tiger's official option Push BBO. If
+its bid/ask timestamps, event time, and session status bind reliably, Push BBO
+becomes the canonical current-option-quote source with conservative
+`PROVIDER_COMPOSITE` scope. REST chain remains responsible for contract
+discovery/reference, activity, and provider analytics. Tiger support is the
+fallback only if Push retains an unresolved semantic gap.
+
+Local Tiger SDK 3.7.0 inspection confirms that the raw option Push event carries
+event/server timestamps, side timestamps, market status, extended-hours tag,
+identifier, and BBO fields. The Python SDK derives Basic and BBO callbacks from
+that same event, retaining session/status evidence in Basic and quote evidence
+in BBO. A non-trading-day live probe connected and received a successful
+subscription acknowledgement with no error, but no quote callback arrived in
+the bounded window. No normalizer is authorized before a regular-session live
+probe verifies exact callback pairing and actual field population.
 
 The next separately contracted unit is
 [`tiger-underlying-daily-bars-contract.md`](tiger-underlying-daily-bars-contract.md).

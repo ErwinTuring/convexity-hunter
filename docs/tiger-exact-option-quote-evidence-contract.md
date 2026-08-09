@@ -133,17 +133,25 @@ auditable option-session context.
 
 ## Accepted normalization decision
 
-Provider-neutral option-quote normalization remains deferred until
-authoritative Tiger evidence establishes the REST chain quote's aggregation
-scope, quote timestamp/session association, and any required latency meaning.
-The product will not infer `PROVIDER_COMPOSITE` from adjacent BBO subscription
-documentation, assign `CONSOLIDATED`, derive a session from last-trade time, or
-create an `OptionQuoteObservation` with `QuoteScope.UNKNOWN` merely to move an
-otherwise ineligible/unknown record into the strict research pipeline.
+REST option-chain bid/ask remains transient because the response does not bind
+quote timestamp and session semantics tightly enough for strict freshness. It
+must not become an `OptionQuoteObservation`, derive quote time from last-trade
+time, claim `CONSOLIDATED`, or use `QuoteScope.UNKNOWN` to bypass eligibility.
 
-Development continues through other Tiger facts whose semantics are already
-established. This is a bounded deferral, not a reversal of Tiger's primary-
-provider decision.
+The next quote-semantics feasibility step is Tiger's official option Push BBO.
+If live Push evidence reliably binds bid/ask timestamps, event time, and session
+status, Push BBO will become the canonical current-option-quote source with the
+initial conservative scope `PROVIDER_COMPOSITE`. REST chain remains responsible
+for contract discovery/reference, activity, and provider analytics. Tiger
+support is consulted only if the Push path retains a material semantic gap.
+
+Tiger SDK 3.7.0 structurally supports this spike: one option `QuoteData` carries
+an event `timestamp`, optional `serverTimestamp`, `askTimestamp`,
+`bidTimestamp`, `marketStatus`, `hourTradingTag`, and `identifier`. The Python
+SDK emits Basic and BBO callbacks from that same event; the Basic callback
+retains session/status fields, while the BBO callback retains bid/ask fields and
+side timestamps. A normalizer is not authorized until a live regular-session
+event proves exact event pairing and actual field population.
 
 ## Failure precedence
 
