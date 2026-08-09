@@ -3,7 +3,7 @@
 ## Status and purpose
 
 This Tier-A contract freezes a bounded read-only Tiger adapter for historical
-corporate-dividend evidence. Implementation and independent review are pending.
+corporate-dividend evidence. Implementation and independent review are complete.
 
 Tiger SDK 3.7.0 documents `amount` only as a dividend amount. It does not state
 that the value is per underlying share and does not classify regular versus

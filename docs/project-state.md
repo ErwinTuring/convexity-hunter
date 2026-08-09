@@ -1344,6 +1344,9 @@ Tiger documents only a provider `amount`, without an authoritative per-share
 unit or regular/special classification. The frozen unit therefore retains all
 returned corporate-action fields in immutable Tiger-specific evidence and
 makes no provider-neutral dividend, forecast, or pricing-input claim.
+Implementation and independent review are complete with no findings. Validation
+passed 70 focused Tiger tests, 1,129 full-suite tests, compileall, `git diff --check`,
+and a sanitized live four-row SPY evidence smoke check.
 
 ## Deferred
 

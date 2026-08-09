@@ -36,6 +36,8 @@ __all__ = (
     "verify_tiger_monthly_option_contract",
     "retrieve_tiger_exact_option_quote_evidence",
     "retrieve_tiger_underlying_daily_bars",
+    "TigerHistoricalDividendEvidence",
+    "retrieve_tiger_historical_dividend_evidence",
 )
 
 
@@ -95,6 +97,15 @@ _QUOTE_MATCH_MESSAGE = (
 _BAR_RETRIEVAL_MESSAGE = "Tiger underlying daily-bar retrieval failed."
 _BAR_RESPONSE_MESSAGE = "Tiger underlying daily-bar response is invalid."
 _BAR_PAIRING_MESSAGE = "Tiger NR and BR daily-bar series do not pair exactly."
+_DIVIDEND_RETRIEVAL_MESSAGE = (
+    "Tiger historical-dividend retrieval failed."
+)
+_DIVIDEND_RESPONSE_MESSAGE = (
+    "Tiger historical-dividend response is invalid."
+)
+_DIVIDEND_DUPLICATE_MESSAGE = (
+    "Tiger historical-dividend response contains duplicate rows."
+)
 
 _EXPIRATION_COLUMNS = frozenset(("symbol", "date", "timestamp", "period_tag"))
 _CHAIN_COLUMNS = frozenset(
@@ -104,6 +115,19 @@ _QUOTE_COLUMNS = _CHAIN_COLUMNS | frozenset(
     ("bid_price", "ask_price", "bid_size", "ask_size")
 )
 _BAR_COLUMNS = frozenset(("symbol", "time", "open", "high", "low", "close", "volume"))
+_DIVIDEND_COLUMNS = (
+    "symbol",
+    "action_type",
+    "amount",
+    "currency",
+    "announced_date",
+    "execute_date",
+    "record_date",
+    "pay_date",
+    "market",
+    "exchange",
+)
+_DIVIDEND_COLUMN_SET = frozenset(_DIVIDEND_COLUMNS)
 _TIGER_NORMALIZATION_VERSION = "tiger-option-contract-v0.1"
 _TIGER_DAILY_BAR_NORMALIZATION_VERSION = "tiger-underlying-daily-bar-v0.1"
 _US_EASTERN = _ZoneInfo("America/New_York")
@@ -1241,3 +1265,304 @@ def retrieve_tiger_underlying_daily_bars(
             )
         )
     return tuple(observations)
+
+
+def _parse_dividend_date(
+    name: str,
+    value: object,
+    *,
+    optional: bool,
+) -> _Optional[_datetime.date]:
+    if value is None:
+        if optional:
+            return None
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+    if type(value) is not str:
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+    try:
+        parsed = _datetime.date.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE) from None
+    if parsed.isoformat() != value:
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+    return parsed
+
+
+def _validate_dividend_date(
+    name: str,
+    value: object,
+    *,
+    optional: bool,
+) -> _Optional[_datetime.date]:
+    if value is None:
+        if optional:
+            return None
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+    if type(value) is not _datetime.date:
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+    return value
+
+
+def _dividend_amount(value: object) -> _decimal.Decimal:
+    if isinstance(value, bool):
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+    try:
+        normalized = _decimal.Decimal(str(value))
+    except Exception:
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE) from None
+    if not normalized.is_finite() or normalized < 0:
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+    return normalized
+
+
+def _dividend_table_records(table: object) -> tuple:
+    if table is None:
+        return ()
+    try:
+        to_dict = getattr(table, "to_dict", None)
+        if not callable(to_dict):
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        records = to_dict("records")
+        if not isinstance(records, (list, tuple)):
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        if not records:
+            return ()
+        copied = []
+        for record in records:
+            if not isinstance(record, _Mapping):
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            if set(record.keys()) != _DIVIDEND_COLUMN_SET:
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            copied.append(tuple(record[name] for name in _DIVIDEND_COLUMNS))
+        return tuple(copied)
+    except Exception:
+        raise ValueError(_DIVIDEND_RESPONSE_MESSAGE) from None
+
+
+def _dividend_sort_date(
+    value: _Optional[_datetime.date],
+) -> _Tuple[int, _datetime.date]:
+    if value is None:
+        return (0, _datetime.date.min)
+    return (1, value)
+
+
+@_dataclass(frozen=True)
+class TigerHistoricalDividendEvidence:
+    """Immutable Tiger-native evidence for one historical dividend row."""
+
+    underlying_key: _UnderlyingKey
+    action_type: str
+    provider_amount: _decimal.Decimal
+    currency: str
+    announced_date: _Optional[_datetime.date]
+    execute_date: _datetime.date
+    record_date: _Optional[_datetime.date]
+    pay_date: _Optional[_datetime.date]
+    market: str
+    exchange: str
+    retrieved_at: _datetime.datetime
+
+    def __post_init__(self) -> None:
+        if type(self.underlying_key) is not _UnderlyingKey:
+            raise TypeError("underlying_key must be an UnderlyingKey")
+        if type(self.action_type) is not str or self.action_type != "DIVIDEND":
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        if type(self.provider_amount) is not _decimal.Decimal:
+            raise TypeError("provider_amount must be a Decimal")
+        if not self.provider_amount.is_finite() or self.provider_amount < 0:
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        if type(self.currency) is not str:
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        if self.currency != self.underlying_key.currency:
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        announced_date = _validate_dividend_date(
+            "announced_date", self.announced_date, optional=True
+        )
+        execute_date = _validate_dividend_date(
+            "execute_date", self.execute_date, optional=False
+        )
+        record_date = _validate_dividend_date(
+            "record_date", self.record_date, optional=True
+        )
+        pay_date = _validate_dividend_date(
+            "pay_date", self.pay_date, optional=True
+        )
+        if type(self.market) is not str or self.market != "US":
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        if type(self.exchange) is not str or not self.exchange.strip():
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        if announced_date is not None and announced_date > execute_date:
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        if record_date is not None and record_date < execute_date:
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        if pay_date is not None and pay_date < execute_date:
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+        retrieved_at = _normalize_utc_runtime_timestamp(
+            "retrieved_at", self.retrieved_at
+        )
+        object.__setattr__(self, "announced_date", announced_date)
+        object.__setattr__(self, "execute_date", execute_date)
+        object.__setattr__(self, "record_date", record_date)
+        object.__setattr__(self, "pay_date", pay_date)
+        object.__setattr__(self, "retrieved_at", retrieved_at)
+
+
+def retrieve_tiger_historical_dividend_evidence(
+    quote_client: object,
+    *,
+    underlying_key: _UnderlyingKey,
+    begin_date: _datetime.date,
+    end_date: _datetime.date,
+    latest_completed_date: _datetime.date,
+) -> _Tuple[TigerHistoricalDividendEvidence, ...]:
+    """Retrieve one bounded, provider-native Tiger dividend response."""
+
+    if type(underlying_key) is not _UnderlyingKey:
+        raise TypeError("underlying_key must be an UnderlyingKey")
+    for name, value in (
+        ("begin_date", begin_date),
+        ("end_date", end_date),
+        ("latest_completed_date", latest_completed_date),
+    ):
+        if type(value) is not _datetime.date:
+            raise TypeError(f"{name} must be a date without a time component")
+    if begin_date > end_date:
+        raise ValueError("begin_date must not follow end_date")
+    if (end_date - begin_date).days > 370:
+        raise ValueError("dividend range must not exceed 370 calendar days")
+    if end_date > latest_completed_date:
+        raise ValueError(
+            "end_date must not follow latest_completed_date"
+        )
+
+    try:
+        get_dividend = getattr(quote_client, "get_corporate_dividend", None)
+    except Exception:
+        raise TypeError("quote_client must provide Tiger quote methods") from None
+    if not callable(get_dividend):
+        raise TypeError("quote_client must provide Tiger quote methods")
+
+    try:
+        table = get_dividend(
+            [underlying_key.symbol],
+            "US",
+            begin_date.isoformat(),
+            end_date.isoformat(),
+            timezone="US/Eastern",
+        )
+    except Exception:
+        raise RuntimeError(_DIVIDEND_RETRIEVAL_MESSAGE) from None
+    retrieved_at = _normalize_utc_runtime_timestamp("retrieved_at", _utc_now())
+    rows = _dividend_table_records(table)
+    if not rows:
+        return ()
+
+    evidence = []
+    for row in rows:
+        try:
+            (
+                symbol,
+                action_type,
+                amount,
+                currency,
+                announced_date,
+                execute_date,
+                record_date,
+                pay_date,
+                market,
+                exchange,
+            ) = row
+            if type(symbol) is not str or symbol != underlying_key.symbol:
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            if type(action_type) is not str or action_type != "DIVIDEND":
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            if type(currency) is not str or currency != underlying_key.currency:
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            if type(market) is not str or market != "US":
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            if type(exchange) is not str or not exchange.strip():
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            normalized_announced = _parse_dividend_date(
+                "announced_date", announced_date, optional=True
+            )
+            normalized_execute = _parse_dividend_date(
+                "execute_date", execute_date, optional=False
+            )
+            normalized_record = _parse_dividend_date(
+                "record_date", record_date, optional=True
+            )
+            normalized_pay = _parse_dividend_date(
+                "pay_date", pay_date, optional=True
+            )
+            if (
+                normalized_execute < begin_date
+                or normalized_execute > end_date
+                or normalized_execute > latest_completed_date
+            ):
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            if (
+                normalized_announced is not None
+                and normalized_announced > normalized_execute
+            ):
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            if (
+                normalized_record is not None
+                and normalized_record < normalized_execute
+            ):
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            if normalized_pay is not None and normalized_pay < normalized_execute:
+                raise ValueError(_DIVIDEND_RESPONSE_MESSAGE)
+            evidence.append(
+                TigerHistoricalDividendEvidence(
+                    underlying_key=underlying_key,
+                    action_type=action_type,
+                    provider_amount=_dividend_amount(amount),
+                    currency=currency,
+                    announced_date=normalized_announced,
+                    execute_date=normalized_execute,
+                    record_date=normalized_record,
+                    pay_date=normalized_pay,
+                    market=market,
+                    exchange=exchange,
+                    retrieved_at=retrieved_at,
+                )
+            )
+        except Exception:
+            raise ValueError(_DIVIDEND_RESPONSE_MESSAGE) from None
+
+    seen = set()
+    for item in evidence:
+        duplicate_key = (
+            item.underlying_key.symbol,
+            item.action_type,
+            item.provider_amount.as_tuple(),
+            item.currency,
+            item.announced_date,
+            item.execute_date,
+            item.record_date,
+            item.pay_date,
+            item.market,
+            item.exchange,
+        )
+        if duplicate_key in seen:
+            raise ValueError(_DIVIDEND_DUPLICATE_MESSAGE)
+        seen.add(duplicate_key)
+
+    return tuple(
+        sorted(
+            evidence,
+            key=lambda item: (
+                item.execute_date,
+                _dividend_sort_date(item.announced_date),
+                _dividend_sort_date(item.record_date),
+                _dividend_sort_date(item.pay_date),
+                item.action_type,
+                item.provider_amount,
+                item.provider_amount.as_tuple(),
+                item.currency,
+                item.market,
+                item.exchange,
+            ),
+        )
+    )

@@ -66,7 +66,7 @@ class TigerProviderTestCase(unittest.TestCase):
 
 
 class PublicBoundaryTests(TigerProviderTestCase):
-    def test_exact_seven_name_api_and_no_root_or_package_reexport(self):
+    def test_exact_nine_name_api_and_no_root_or_package_reexport(self):
         self.assertEqual(
             tiger.__all__,
             (
@@ -77,6 +77,8 @@ class PublicBoundaryTests(TigerProviderTestCase):
                 "verify_tiger_monthly_option_contract",
                 "retrieve_tiger_exact_option_quote_evidence",
                 "retrieve_tiger_underlying_daily_bars",
+                "TigerHistoricalDividendEvidence",
+                "retrieve_tiger_historical_dividend_evidence",
             ),
         )
         self.assertEqual(
@@ -540,6 +542,43 @@ class SyntheticQuoteClient:
         self.calls.append(("bars", kwargs))
         rows = self.nr_bar_rows if kwargs["right"] == "nr" else self.br_bar_rows
         return SyntheticTable(rows)
+
+
+class SyntheticDividendQuoteClient:
+    def __init__(self, rows=None):
+        if rows is None:
+            rows = [
+                {
+                    "symbol": "SPY",
+                    "action_type": "DIVIDEND",
+                    "amount": "1.2300",
+                    "currency": "USD",
+                    "announced_date": "2030-01-01",
+                    "execute_date": "2030-01-15",
+                    "record_date": "2030-01-20",
+                    "pay_date": "2030-01-25",
+                    "market": "US",
+                    "exchange": "NASDAQ",
+                },
+                {
+                    "symbol": "SPY",
+                    "action_type": "DIVIDEND",
+                    "amount": decimal.Decimal("0.500"),
+                    "currency": "USD",
+                    "announced_date": None,
+                    "execute_date": "2030-01-10",
+                    "record_date": "2030-01-15",
+                    "pay_date": None,
+                    "market": "US",
+                    "exchange": "NYSE",
+                },
+            ]
+        self.response = SyntheticTable(rows)
+        self.calls = []
+
+    def get_corporate_dividend(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return self.response
 
 
 class ExactContractVerificationTests(TigerProviderTestCase):
@@ -1149,6 +1188,295 @@ class ExactOptionQuoteEvidenceTests(TigerProviderTestCase):
         self.assertEqual(result.bid_premium, decimal.Decimal("10.25"))
         self.assertEqual(result.ask_premium, decimal.Decimal("10.35"))
         self.assertEqual((result.bid_size, result.ask_size), (None, 14))
+
+
+class HistoricalDividendEvidenceTests(TigerProviderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.underlying = UnderlyingKey(
+            symbol="SPY",
+            listing_mic="ARCX",
+            security_type=UnderlyingSecurityType.ETF,
+            currency="USD",
+        )
+        self.begin_date = datetime.date(2030, 1, 1)
+        self.end_date = datetime.date(2030, 1, 31)
+        self.latest_completed_date = datetime.date(2030, 1, 31)
+        self.retrieved_at = datetime.datetime(
+            2030,
+            2,
+            1,
+            12,
+            tzinfo=datetime.timezone(datetime.timedelta(hours=8)),
+        )
+
+    def retrieve(self, client=None, **overrides):
+        values = {
+            "underlying_key": self.underlying,
+            "begin_date": self.begin_date,
+            "end_date": self.end_date,
+            "latest_completed_date": self.latest_completed_date,
+        }
+        values.update(overrides)
+        client = SyntheticDividendQuoteClient() if client is None else client
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            return_value=self.retrieved_at,
+        ):
+            return tiger.retrieve_tiger_historical_dividend_evidence(
+                client,
+                **values,
+            )
+
+    def test_exact_request_row_mapping_and_utc_receipt(self):
+        client = SyntheticDividendQuoteClient()
+        result = self.retrieve(client)
+
+        self.assertEqual(
+            client.calls,
+            [
+                (
+                    (["SPY"], "US", "2030-01-01", "2030-01-31"),
+                    {"timezone": "US/Eastern"},
+                )
+            ],
+        )
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(
+            tuple(item.execute_date for item in result),
+            (datetime.date(2030, 1, 10), datetime.date(2030, 1, 15)),
+        )
+        first, second = result
+        self.assertIs(first.underlying_key, self.underlying)
+        self.assertEqual(first.action_type, "DIVIDEND")
+        self.assertEqual(first.provider_amount.as_tuple(), (0, (5, 0, 0), -3))
+        self.assertEqual(first.currency, "USD")
+        self.assertIsNone(first.announced_date)
+        self.assertEqual(first.record_date, datetime.date(2030, 1, 15))
+        self.assertIsNone(first.pay_date)
+        self.assertEqual(first.market, "US")
+        self.assertEqual(first.exchange, "NYSE")
+        self.assertEqual(
+            first.retrieved_at,
+            self.retrieved_at.astimezone(datetime.timezone.utc),
+        )
+        self.assertEqual(second.provider_amount.as_tuple(), (0, (1, 2, 3, 0, 0), -4))
+        self.assertEqual(second.announced_date, datetime.date(2030, 1, 1))
+        self.assertEqual(second.pay_date, datetime.date(2030, 1, 25))
+        self.assertEqual(second.exchange, "NASDAQ")
+
+    def test_none_and_empty_tables_are_valid_no_data(self):
+        for response in (None, SyntheticTable([])):
+            with self.subTest(response=response):
+                client = SyntheticDividendQuoteClient()
+                client.response = response
+                self.assertEqual(self.retrieve(client), ())
+                self.assertEqual(len(client.calls), 1)
+
+    def test_frozen_record_has_exact_fields_and_no_provider_neutral_dividend(self):
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(
+                tiger.TigerHistoricalDividendEvidence
+            )),
+            (
+                "underlying_key",
+                "action_type",
+                "provider_amount",
+                "currency",
+                "announced_date",
+                "execute_date",
+                "record_date",
+                "pay_date",
+                "market",
+                "exchange",
+                "retrieved_at",
+            ),
+        )
+        result = self.retrieve()
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            result[0].exchange = "NYSE"
+        self.assertNotIn("DividendObservation", tiger.__dict__)
+
+    def test_caller_bounds_and_identity_fail_before_request(self):
+        cases = (
+            {"underlying_key": object()},
+            {"begin_date": datetime.datetime(2030, 1, 1)},
+            {
+                "begin_date": datetime.date(2030, 2, 1),
+                "end_date": datetime.date(2030, 1, 31),
+            },
+            {
+                "begin_date": datetime.date(2029, 1, 1),
+                "end_date": datetime.date(2030, 1, 7),
+                "latest_completed_date": datetime.date(2030, 1, 7),
+            },
+            {"latest_completed_date": datetime.date(2030, 1, 30)},
+        )
+        for values in cases:
+            with self.subTest(values=tuple(values)):
+                client = SyntheticDividendQuoteClient()
+                with self.assertRaises((TypeError, ValueError)):
+                    self.retrieve(client, **values)
+                self.assertEqual(client.calls, [])
+
+    def test_method_availability_and_sdk_failure_are_sanitized(self):
+        class MissingMethod:
+            pass
+
+        with self.assertRaisesRegex(TypeError, "must provide Tiger quote methods"):
+            self.retrieve(MissingMethod())
+
+        secret = "synthetic-dividend-sdk-secret"
+        client = SyntheticDividendQuoteClient()
+        client.get_corporate_dividend = mock.Mock(
+            side_effect=RuntimeError(secret)
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "historical-dividend retrieval failed"
+        ) as raised:
+            self.retrieve(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+        class ExplodingMethod:
+            @property
+            def get_corporate_dividend(self):
+                raise RuntimeError(secret)
+
+        with self.assertRaisesRegex(TypeError, "must provide Tiger quote methods") as raised:
+            self.retrieve(ExplodingMethod())
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_table_shape_and_scalar_failures_are_sanitized(self):
+        base = SyntheticDividendQuoteClient().response.records[0]
+        responses = (
+            SyntheticTable([{"symbol": "SPY"}]),
+            SyntheticTable([dict(base, extra="synthetic-secret")]),
+            object(),
+        )
+        for response in responses:
+            with self.subTest(response_type=type(response).__name__):
+                client = SyntheticDividendQuoteClient()
+                client.response = response
+                with self.assertRaisesRegex(ValueError, "response is invalid"):
+                    self.retrieve(client)
+
+        secret = "synthetic-dividend-payload-secret"
+
+        class ExplodingScalar:
+            def __str__(self):
+                raise RuntimeError(secret)
+
+        client = SyntheticDividendQuoteClient(
+            rows=[dict(base, amount=ExplodingScalar())]
+        )
+        with self.assertRaisesRegex(ValueError, "response is invalid") as raised:
+            self.retrieve(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+        class ExplodingTable:
+            @property
+            def to_dict(self):
+                raise RuntimeError(secret)
+
+        client = SyntheticDividendQuoteClient()
+        client.response = ExplodingTable()
+        with self.assertRaisesRegex(ValueError, "response is invalid") as raised:
+            self.retrieve(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_identity_classification_amount_and_date_validation(self):
+        base = SyntheticDividendQuoteClient().response.records[0]
+        changes = (
+            {"symbol": "QQQ"},
+            {"action_type": "dividend"},
+            {"amount": True},
+            {"amount": -decimal.Decimal("0.01")},
+            {"amount": decimal.Decimal("NaN")},
+            {"currency": "EUR"},
+            {"market": "EU"},
+            {"exchange": "   "},
+            {"execute_date": "2030-1-15"},
+            {"announced_date": "2030-01-01T00:00:00"},
+        )
+        for change in changes:
+            with self.subTest(field=tuple(change)):
+                client = SyntheticDividendQuoteClient(
+                    rows=[dict(base, **change)]
+                )
+                with self.assertRaisesRegex(ValueError, "response is invalid"):
+                    self.retrieve(client)
+                self.assertEqual(len(client.calls), 1)
+
+    def test_execute_bounds_and_date_chronology_fail_closed(self):
+        base = SyntheticDividendQuoteClient().response.records[0]
+        changes = (
+            {"announced_date": "2030-01-16"},
+            {"record_date": "2030-01-14"},
+            {"pay_date": "2030-01-14"},
+            {"execute_date": "2029-12-31"},
+            {"execute_date": "2030-02-01"},
+        )
+        for change in changes:
+            with self.subTest(field=tuple(change)):
+                client = SyntheticDividendQuoteClient(
+                    rows=[dict(base, **change)]
+                )
+                with self.assertRaisesRegex(ValueError, "response is invalid"):
+                    self.retrieve(client)
+
+    def test_exact_duplicates_fail_but_same_execute_date_distributions_remain(self):
+        base = SyntheticDividendQuoteClient().response.records[0]
+        duplicate_client = SyntheticDividendQuoteClient(
+            rows=[dict(base), dict(base)]
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate rows"):
+            self.retrieve(duplicate_client)
+        self.assertEqual(len(duplicate_client.calls), 1)
+
+        first = dict(
+            base,
+            amount="1.00",
+            execute_date="2030-01-12",
+            announced_date="2030-01-01",
+            exchange="NASDAQ",
+        )
+        second = dict(
+            base,
+            amount="0.50",
+            execute_date="2030-01-12",
+            announced_date="2030-01-01",
+            exchange="NYSE",
+        )
+        result = self.retrieve(
+            SyntheticDividendQuoteClient(rows=[first, second])
+        )
+        self.assertEqual(
+            tuple(item.provider_amount for item in result),
+            (decimal.Decimal("0.50"), decimal.Decimal("1.00")),
+        )
+        self.assertEqual(len(result), 2)
+
+        reversed_result = self.retrieve(
+            SyntheticDividendQuoteClient(rows=[second, first])
+        )
+        self.assertEqual(result, reversed_result)
+
+    def test_direct_record_validation_and_frozen_utc_timestamp(self):
+        valid = self.retrieve()[0]
+        self.assertEqual(
+            valid.retrieved_at.tzinfo,
+            datetime.timezone.utc,
+        )
+        with self.assertRaises(TypeError):
+            dataclasses.replace(valid, provider_amount=1)
+        with self.assertRaises(ValueError):
+            dataclasses.replace(valid, action_type="OTHER")
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                valid,
+                announced_date=datetime.date(2030, 1, 20),
+            )
 
 
 class UnderlyingDailyBarsTests(TigerProviderTestCase):
