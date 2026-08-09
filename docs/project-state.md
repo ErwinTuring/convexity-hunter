@@ -1294,11 +1294,19 @@ direct-result provenance invariants; final targeted re-review passed. Final
 validation passed 39 focused tests, 1,098 full-suite tests, compileall,
 `git diff --check`, and a sanitized live SPY monthly exact-contract smoke check.
 
+The next separately contracted work unit is
+[`tiger-exact-option-quote-evidence-contract.md`](tiger-exact-option-quote-evidence-contract.md).
+It is limited to active `usOptionQuote` entitlement proof plus transient
+bid/ask/size evidence for one already verified exact contract. Tiger supplies
+no quote timestamp or quote session date, so this unit intentionally does not
+construct `OptionQuoteObservation`; contract status is frozen, with
+implementation and independent review pending.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
-  runtime boundary and the separately contracted exact-option verification
-  work unit
+  runtime boundary, completed exact-option verification, and separately
+  contracted transient exact-quote evidence work unit
 - additional or fallback market-data providers unless a concrete Tiger blocker
   appears
 - mature news, search, knowledge, and world-event Skill capability research
