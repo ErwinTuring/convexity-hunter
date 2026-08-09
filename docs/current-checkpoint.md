@@ -150,6 +150,19 @@ Completed Tiger rate-input preflight:
 - No Tiger rate adapter is authorized. The 30–150 DTE pricing path still needs
   the bounded external USD term curve already anticipated by ADR-008.
 
+Frozen U.S. Treasury daily par-yield work unit:
+
+- Canonical contract:
+  [`us-treasury-daily-par-yield-curve-contract.md`](us-treasury-daily-par-yield-curve-contract.md).
+- U.S. Treasury direct is selected as the primary provider for the USD rate
+  category only; Tiger remains the MVP primary option/underlying provider.
+- The bounded adapter will retrieve one exact effective-date CSV row and
+  normalize the official 1M, 1.5M, 2M, 3M, 4M, and 6M par yields into the
+  existing `RateCurvePointObservation` without interpolation or a zero/OIS
+  claim.
+- Formal Tier-A preflight and a public sanitized CSV/XML probe are complete.
+  Implementation, independent review, and validation are next.
+
 Frozen Tiger exact-option analytics/activity work unit:
 
 - Canonical contract:

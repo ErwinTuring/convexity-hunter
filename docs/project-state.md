@@ -1378,7 +1378,19 @@ and 131 DTE contracts found the field populated but identical, with no rate
 observation timestamp, tenor, or curve points. It is not an adequate 30–150
 DTE term input, so no Tiger `RateCurvePoint` normalization or provider-native
 rate adapter is authorized. ADR-008's bounded external USD term curve remains
-the intended future boundary.
+the intended external boundary.
+
+The U.S. Treasury Daily Treasury Par Yield Curve is now selected as the MVP
+primary provider for the USD rate category only. A formal Tier-A preflight and
+sanitized public endpoint probe verified the official year-specific CSV/XML
+boundary and the populated 1M, 1.5M, 2M, 3M, 4M, and 6M points. The frozen
+contract is
+[`us-treasury-daily-par-yield-curve-contract.md`](us-treasury-daily-par-yield-curve-contract.md).
+It preserves the provider-native nominal par, bond-equivalent semantics,
+assigns and discloses the provider-described nominal 3:30 PM Eastern input
+time, maps named maturities to declared 30/45/60/90/120/180-day normalized
+tenors, and creates no zero/OIS/SOFR, interpolation, fallback, or pricing-rate
+claim. Implementation and independent review are next.
 
 The next separately contracted unit is
 [`tiger-exact-option-analytics-activity-evidence-contract.md`](tiger-exact-option-analytics-activity-evidence-contract.md).
