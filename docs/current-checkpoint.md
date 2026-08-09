@@ -140,5 +140,15 @@ Frozen Tiger historical option-bar work unit:
   validation passed 80 focused Tiger tests, 1,139 full-suite tests, compileall,
   `git diff --check`, and a sanitized live 60-row SPY adapter smoke check.
 
+Completed Tiger rate-input preflight:
+
+- Tiger officially defines option-brief `rates_bonds` as a one-year US
+  Treasury rate updated daily, not a contract-tenor-matched curve.
+- A sanitized live probe across 40, 103, and 131 DTE monthly contracts returned
+  one common populated value and no rate observation timestamp, tenor, or curve
+  fields.
+- No Tiger rate adapter is authorized. The 30–150 DTE pricing path still needs
+  the bounded external USD term curve already anticipated by ADR-008.
+
 This file is a concise navigation map, not a complete specification or
 history.

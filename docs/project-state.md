@@ -1371,6 +1371,15 @@ complete with no findings. Validation passed 80 focused Tiger tests, 1,139
 full-suite tests, compileall, `git diff --check`, and a sanitized live 60-row
 SPY adapter smoke check covering 2026-05-13 through 2026-08-07.
 
+A focused Tiger rate-input preflight is complete without an implementation
+work unit. Tiger officially defines option-brief `rates_bonds` as a one-year
+US Treasury rate updated daily. A sanitized live probe across monthly 40, 103,
+and 131 DTE contracts found the field populated but identical, with no rate
+observation timestamp, tenor, or curve points. It is not an adequate 30–150
+DTE term input, so no Tiger `RateCurvePoint` normalization or provider-native
+rate adapter is authorized. ADR-008's bounded external USD term curve remains
+the intended future boundary.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
