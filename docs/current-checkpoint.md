@@ -88,5 +88,20 @@ Completed Tiger exact option-quote evidence work unit:
   semantics. No provider-composite inference or unknown-scope pipeline bypass
   is authorized.
 
+Completed Tiger underlying daily-bars work unit:
+
+- Canonical contract:
+  [`tiger-underlying-daily-bars-contract.md`](tiger-underlying-daily-bars-contract.md).
+- Contract base: `e7b23ef` (`Define Tiger underlying daily bars`).
+- Finalized work-unit subject: `Implement Tiger underlying daily bars`.
+- The direct Tiger module pairs exact unadjusted `NR` daily OHLC/volume with
+  `BR` forward-adjusted close for a bounded completed-session range and returns
+  the existing provider-neutral `UnderlyingDailyBarObservation`.
+- Two accepted failure-precedence findings were corrected so invalid, empty,
+  or core-inconsistent NR material fails before the BR request; final targeted
+  re-review passed.
+- Final validation passed 60 focused tests, 1,119 full-suite tests, compileall,
+  `git diff --check`, and a sanitized live five-session SPY smoke check.
+
 This file is a concise navigation map, not a complete specification or
 history.

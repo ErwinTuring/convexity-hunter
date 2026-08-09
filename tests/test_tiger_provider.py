@@ -11,6 +11,7 @@ import stat
 import sys
 import tempfile
 import unittest
+import zoneinfo
 from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -18,8 +19,10 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import convexity_hunter
 from convexity_hunter.market_data import (
+    DataOrigin,
     NormalizationQualityFlag,
     OptionContractReference,
+    UnderlyingDailyBarObservation,
     UnderlyingKey,
     UnderlyingSecurityType,
 )
@@ -63,7 +66,7 @@ class TigerProviderTestCase(unittest.TestCase):
 
 
 class PublicBoundaryTests(TigerProviderTestCase):
-    def test_exact_six_name_api_and_no_root_or_package_reexport(self):
+    def test_exact_seven_name_api_and_no_root_or_package_reexport(self):
         self.assertEqual(
             tiger.__all__,
             (
@@ -73,6 +76,7 @@ class PublicBoundaryTests(TigerProviderTestCase):
                 "TigerExactOptionQuoteEvidence",
                 "verify_tiger_monthly_option_contract",
                 "retrieve_tiger_exact_option_quote_evidence",
+                "retrieve_tiger_underlying_daily_bars",
             ),
         )
         self.assertEqual(
@@ -451,7 +455,14 @@ class SyntheticTable:
 
 
 class SyntheticQuoteClient:
-    def __init__(self, expiration_rows=None, chain_rows=None, permissions=None):
+    def __init__(
+        self,
+        expiration_rows=None,
+        chain_rows=None,
+        permissions=None,
+        nr_bar_rows=None,
+        br_bar_rows=None,
+    ):
         self.expiration_rows = (
             [
                 {
@@ -487,6 +498,30 @@ class SyntheticQuoteClient:
             if permissions is None
             else permissions
         )
+        bar_time = int(
+            datetime.datetime(
+                2030,
+                1,
+                2,
+                tzinfo=zoneinfo.ZoneInfo("America/New_York"),
+            ).timestamp()
+            * 1000
+        )
+        default_bar = {
+            "symbol": "SPY",
+            "time": bar_time,
+            "open": 500.0,
+            "high": 505.0,
+            "low": 498.0,
+            "close": 503.0,
+            "volume": 1000000,
+        }
+        self.nr_bar_rows = [default_bar] if nr_bar_rows is None else nr_bar_rows
+        self.br_bar_rows = (
+            [dict(default_bar, open=495.0, high=500.0, low=493.0, close=498.0)]
+            if br_bar_rows is None
+            else br_bar_rows
+        )
         self.calls = []
 
     def get_quote_permission(self):
@@ -500,6 +535,11 @@ class SyntheticQuoteClient:
     def get_option_chain(self, symbol, expiry, **kwargs):
         self.calls.append(("chain", symbol, expiry, kwargs))
         return SyntheticTable(self.chain_rows)
+
+    def get_bars_by_page(self, **kwargs):
+        self.calls.append(("bars", kwargs))
+        rows = self.nr_bar_rows if kwargs["right"] == "nr" else self.br_bar_rows
+        return SyntheticTable(rows)
 
 
 class ExactContractVerificationTests(TigerProviderTestCase):
@@ -1109,6 +1149,251 @@ class ExactOptionQuoteEvidenceTests(TigerProviderTestCase):
         self.assertEqual(result.bid_premium, decimal.Decimal("10.25"))
         self.assertEqual(result.ask_premium, decimal.Decimal("10.35"))
         self.assertEqual((result.bid_size, result.ask_size), (None, 14))
+
+
+class UnderlyingDailyBarsTests(TigerProviderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.underlying = UnderlyingKey(
+            symbol="SPY",
+            listing_mic="ARCX",
+            security_type=UnderlyingSecurityType.ETF,
+            currency="USD",
+        )
+        self.nr_received = datetime.datetime(
+            2030, 1, 5, 12, tzinfo=datetime.timezone.utc
+        )
+        self.br_received = self.nr_received + datetime.timedelta(seconds=1)
+        self.normalized = self.br_received + datetime.timedelta(seconds=1)
+
+    def retrieve(self, client=None, **overrides):
+        values = {
+            "underlying_key": self.underlying,
+            "begin_date": datetime.date(2030, 1, 1),
+            "end_date": datetime.date(2030, 1, 4),
+            "latest_completed_session_date": datetime.date(2030, 1, 3),
+        }
+        values.update(overrides)
+        client = SyntheticQuoteClient() if client is None else client
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(self.nr_received, self.br_received, self.normalized),
+        ):
+            return tiger.retrieve_tiger_underlying_daily_bars(client, **values)
+
+    def test_exact_nr_br_pair_builds_existing_daily_bar(self):
+        client = SyntheticQuoteClient()
+        result = self.retrieve(client)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(
+            client.calls,
+            [
+                (
+                    "bars",
+                    {
+                        "symbol": "SPY",
+                        "period": "day",
+                        "begin_time": "2030-01-01",
+                        "end_time": "2030-01-04",
+                        "total": 1000,
+                        "page_size": 1000,
+                        "time_interval": 0,
+                        "trade_session": None,
+                        "with_fundamental": False,
+                        "sec_type": None,
+                        "right": "nr",
+                    },
+                ),
+                (
+                    "bars",
+                    {
+                        "symbol": "SPY",
+                        "period": "day",
+                        "begin_time": "2030-01-01",
+                        "end_time": "2030-01-04",
+                        "total": 1000,
+                        "page_size": 1000,
+                        "time_interval": 0,
+                        "trade_session": None,
+                        "with_fundamental": False,
+                        "sec_type": None,
+                        "right": "br",
+                    },
+                ),
+            ],
+        )
+        bar = result[0]
+        self.assertIsInstance(bar, UnderlyingDailyBarObservation)
+        self.assertEqual(bar.session_date, datetime.date(2030, 1, 2))
+        self.assertEqual(bar.open_price, decimal.Decimal("500.0"))
+        self.assertEqual(bar.high_price, decimal.Decimal("505.0"))
+        self.assertEqual(bar.low_price, decimal.Decimal("498.0"))
+        self.assertEqual(bar.close_price, decimal.Decimal("503.0"))
+        self.assertEqual(bar.adjusted_close_price, decimal.Decimal("498.0"))
+        self.assertEqual(bar.volume, 1000000)
+        self.assertTrue(bar.is_session_complete)
+        self.assertIn("QuoteRight.BR", bar.adjustment_methodology)
+        self.assertEqual(bar.metadata.record_origin, DataOrigin.SYSTEM_COMPOSITE)
+        self.assertEqual(
+            bar.metadata.quality_flags,
+            (NormalizationQualityFlag.COMPOSITE_SOURCE,),
+        )
+        sources = {source.dataset_name: source for source in bar.metadata.source_references}
+        self.assertEqual(
+            set(sources),
+            {"underlying_daily_bars_nr", "underlying_daily_bars_br"},
+        )
+        self.assertEqual(sources["underlying_daily_bars_nr"].retrieved_at, self.nr_received)
+        self.assertEqual(sources["underlying_daily_bars_br"].retrieved_at, self.br_received)
+        self.assertIn("not asserted", sources["underlying_daily_bars_nr"].timestamp_methodology)
+
+    def test_input_range_fails_before_requests(self):
+        cases = (
+            {"begin_date": datetime.date(2030, 1, 4)},
+            {"end_date": datetime.date(2031, 2, 1)},
+            {"end_date": datetime.date(2030, 1, 5)},
+            {"begin_date": datetime.datetime(2030, 1, 1)},
+        )
+        for values in cases:
+            with self.subTest(values=tuple(values)):
+                client = SyntheticQuoteClient()
+                with self.assertRaises((TypeError, ValueError)):
+                    self.retrieve(client, **values)
+                self.assertEqual(client.calls, [])
+
+    def test_empty_mismatched_or_duplicate_series_fails(self):
+        row = SyntheticQuoteClient().nr_bar_rows[0]
+        next_day = dict(row, time=row["time"] + 86_400_000)
+        cases = (
+            SyntheticQuoteClient(nr_bar_rows=[], br_bar_rows=[]),
+            SyntheticQuoteClient(br_bar_rows=[next_day]),
+            SyntheticQuoteClient(nr_bar_rows=[row, dict(row)]),
+        )
+        for client in cases:
+            with self.subTest(calls=len(client.calls)):
+                with self.assertRaisesRegex(ValueError, "daily-bar"):
+                    self.retrieve(client)
+        empty_nr = SyntheticQuoteClient(nr_bar_rows=[])
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            self.retrieve(empty_nr)
+        self.assertEqual(len(empty_nr.calls), 1)
+
+    def test_out_of_range_symbol_and_invalid_numbers_fail_safely(self):
+        changes = (
+            {"symbol": "QQQ"},
+            {"open": 0},
+            {"high": float("nan")},
+            {"volume": -1},
+        )
+        for change in changes:
+            with self.subTest(field=tuple(change)):
+                row = dict(SyntheticQuoteClient().nr_bar_rows[0], **change)
+                client = SyntheticQuoteClient(nr_bar_rows=[row])
+                with self.assertRaisesRegex(ValueError, "response is invalid"):
+                    self.retrieve(client)
+                self.assertEqual(len(client.calls), 1)
+
+        invalid_ohlc = dict(
+            SyntheticQuoteClient().nr_bar_rows[0],
+            high=499.0,
+        )
+        client = SyntheticQuoteClient(nr_bar_rows=[invalid_ohlc])
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            self.retrieve(client)
+        self.assertEqual(len(client.calls), 1)
+
+        br_row = dict(SyntheticQuoteClient().br_bar_rows[0], close=float("nan"))
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            self.retrieve(SyntheticQuoteClient(br_bar_rows=[br_row]))
+
+    def test_same_session_different_timestamp_and_future_row_fail(self):
+        nr_row = SyntheticQuoteClient().nr_bar_rows[0]
+        br_row = dict(
+            SyntheticQuoteClient().br_bar_rows[0],
+            time=nr_row["time"] + 3_600_000,
+        )
+        with self.assertRaisesRegex(ValueError, "do not pair exactly"):
+            self.retrieve(SyntheticQuoteClient(br_bar_rows=[br_row]))
+
+        future = dict(nr_row, time=nr_row["time"] + 2 * 86_400_000)
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            self.retrieve(SyntheticQuoteClient(nr_bar_rows=[future]))
+
+    def test_session_date_conversion_is_dst_safe(self):
+        eastern = zoneinfo.ZoneInfo("America/New_York")
+        dates = (datetime.date(2030, 3, 8), datetime.date(2030, 3, 11))
+        self.nr_received = datetime.datetime(
+            2030, 3, 12, 12, tzinfo=datetime.timezone.utc
+        )
+        self.br_received = self.nr_received + datetime.timedelta(seconds=1)
+        self.normalized = self.br_received + datetime.timedelta(seconds=1)
+        nr_rows = []
+        br_rows = []
+        template_nr = SyntheticQuoteClient().nr_bar_rows[0]
+        template_br = SyntheticQuoteClient().br_bar_rows[0]
+        for session_date in dates:
+            timestamp = int(
+                datetime.datetime.combine(
+                    session_date,
+                    datetime.time(0),
+                    tzinfo=eastern,
+                ).timestamp()
+                * 1000
+            )
+            nr_rows.append(dict(template_nr, time=timestamp))
+            br_rows.append(dict(template_br, time=timestamp))
+        result = self.retrieve(
+            SyntheticQuoteClient(nr_bar_rows=nr_rows, br_bar_rows=br_rows),
+            begin_date=datetime.date(2030, 3, 8),
+            end_date=datetime.date(2030, 3, 12),
+            latest_completed_session_date=datetime.date(2030, 3, 11),
+        )
+        self.assertEqual(tuple(bar.session_date for bar in result), dates)
+
+    def test_retrieval_failure_is_sanitized(self):
+        secret = "synthetic-bar-secret"
+        client = SyntheticQuoteClient()
+        client.get_bars_by_page = mock.Mock(side_effect=RuntimeError(secret))
+        with self.assertRaisesRegex(RuntimeError, "daily-bar retrieval failed") as raised:
+            self.retrieve(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_output_is_chronological_and_deterministic(self):
+        first = SyntheticQuoteClient().nr_bar_rows[0]
+        second = dict(first, time=first["time"] + 86_400_000, close=504.0)
+        first_br = SyntheticQuoteClient().br_bar_rows[0]
+        second_br = dict(first_br, time=second["time"], close=499.0)
+        client = SyntheticQuoteClient(
+            nr_bar_rows=[second, first],
+            br_bar_rows=[second_br, first_br],
+        )
+        result = self.retrieve(client)
+        self.assertEqual(
+            tuple(bar.session_date for bar in result),
+            (datetime.date(2030, 1, 2), datetime.date(2030, 1, 3)),
+        )
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("pandas") is not None,
+        "optional pandas dependency is not installed",
+    )
+    def test_actual_pandas_numpy_rows_are_supported(self):
+        import numpy
+        import pandas
+
+        class PandasBarsClient(SyntheticQuoteClient):
+            def get_bars_by_page(self, **kwargs):
+                self.calls.append(("bars", kwargs))
+                rows = self.nr_bar_rows if kwargs["right"] == "nr" else self.br_bar_rows
+                row = dict(rows[0])
+                row["time"] = numpy.int64(row["time"])
+                row["volume"] = numpy.int64(row["volume"])
+                row["close"] = numpy.float64(row["close"])
+                return pandas.DataFrame([row])
+
+        result = self.retrieve(PandasBarsClient())
+        self.assertEqual(result[0].volume, 1000000)
 
 
 if __name__ == "__main__":

@@ -1317,14 +1317,19 @@ The next separately contracted unit is
 [`tiger-underlying-daily-bars-contract.md`](tiger-underlying-daily-bars-contract.md).
 It pairs Tiger's unadjusted `NR` daily OHLC/volume with the exact `BR`
 forward-adjusted close over one bounded completed-session range and returns the
-existing provider-neutral `UnderlyingDailyBarObservation`; contract status is
-frozen, with implementation and independent review pending.
+existing provider-neutral `UnderlyingDailyBarObservation`. Implementation and
+independent review are complete. The first accepted failure-precedence finding
+was corrected, targeted re-review exposed the remaining empty/core-OHLC NR
+path, and the final correction now rejects all invalid NR material before the
+BR request. Final targeted re-review passed. Validation passed 60 focused tests,
+1,119 full-suite tests, compileall, `git diff --check`, and a sanitized live
+five-session SPY smoke check.
 
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
-  runtime boundary, completed exact-option verification, and separately
-  contracted transient exact-quote evidence work unit
+  runtime, exact-option verification, transient exact-quote evidence, and
+  underlying daily-bars work units
 - additional or fallback market-data providers unless a concrete Tiger blocker
   appears
 - mature news, search, knowledge, and world-event Skill capability research

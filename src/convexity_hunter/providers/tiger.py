@@ -10,6 +10,7 @@ import re as _re
 import stat as _stat
 from dataclasses import dataclass as _dataclass
 from pathlib import Path as _Path
+from zoneinfo import ZoneInfo as _ZoneInfo
 from typing import Mapping as _Mapping
 from typing import Optional as _Optional
 from typing import Tuple as _Tuple
@@ -22,6 +23,7 @@ from convexity_hunter.market_data import (
     OptionContractKey as _OptionContractKey,
     OptionContractReference as _OptionContractReference,
     SourceReference as _SourceReference,
+    UnderlyingDailyBarObservation as _UnderlyingDailyBarObservation,
     UnderlyingKey as _UnderlyingKey,
 )
 
@@ -33,6 +35,7 @@ __all__ = (
     "TigerExactOptionQuoteEvidence",
     "verify_tiger_monthly_option_contract",
     "retrieve_tiger_exact_option_quote_evidence",
+    "retrieve_tiger_underlying_daily_bars",
 )
 
 
@@ -89,6 +92,9 @@ _QUOTE_RESPONSE_MESSAGE = "Tiger exact option quote response is invalid."
 _QUOTE_MATCH_MESSAGE = (
     "Tiger option-chain response must contain exactly one verified contract row."
 )
+_BAR_RETRIEVAL_MESSAGE = "Tiger underlying daily-bar retrieval failed."
+_BAR_RESPONSE_MESSAGE = "Tiger underlying daily-bar response is invalid."
+_BAR_PAIRING_MESSAGE = "Tiger NR and BR daily-bar series do not pair exactly."
 
 _EXPIRATION_COLUMNS = frozenset(("symbol", "date", "timestamp", "period_tag"))
 _CHAIN_COLUMNS = frozenset(
@@ -97,7 +103,10 @@ _CHAIN_COLUMNS = frozenset(
 _QUOTE_COLUMNS = _CHAIN_COLUMNS | frozenset(
     ("bid_price", "ask_price", "bid_size", "ask_size")
 )
+_BAR_COLUMNS = frozenset(("symbol", "time", "open", "high", "low", "close", "volume"))
 _TIGER_NORMALIZATION_VERSION = "tiger-option-contract-v0.1"
+_TIGER_DAILY_BAR_NORMALIZATION_VERSION = "tiger-underlying-daily-bar-v0.1"
+_US_EASTERN = _ZoneInfo("America/New_York")
 
 
 def _home_directory() -> _Path:
@@ -356,6 +365,62 @@ def _provider_optional_size(value: object) -> _Optional[int]:
     if normalized < 0 or normalized != normalized.to_integral_value():
         raise ValueError(_QUOTE_RESPONSE_MESSAGE)
     return int(normalized)
+
+
+def _bar_decimal(value: object) -> _decimal.Decimal:
+    if isinstance(value, bool):
+        raise ValueError(_BAR_RESPONSE_MESSAGE)
+    try:
+        normalized = _decimal.Decimal(str(value))
+    except Exception:
+        raise ValueError(_BAR_RESPONSE_MESSAGE) from None
+    if not normalized.is_finite() or normalized <= 0:
+        raise ValueError(_BAR_RESPONSE_MESSAGE)
+    return normalized
+
+
+def _bar_volume(value: object) -> int:
+    try:
+        if isinstance(value, bool) or not isinstance(value, _numbers.Integral):
+            normalized = _decimal.Decimal(str(value))
+            if (
+                not normalized.is_finite()
+                or normalized < 0
+                or normalized != normalized.to_integral_value()
+            ):
+                raise ValueError(_BAR_RESPONSE_MESSAGE)
+            return int(normalized)
+        normalized_integer = int(value)
+    except Exception:
+        raise ValueError(_BAR_RESPONSE_MESSAGE) from None
+    if normalized_integer < 0:
+        raise ValueError(_BAR_RESPONSE_MESSAGE)
+    return normalized_integer
+
+
+def _bar_ohlc(row: dict) -> _Tuple[_decimal.Decimal, ...]:
+    prices = tuple(
+        _bar_decimal(row[name]) for name in ("open", "high", "low", "close")
+    )
+    open_price, high_price, low_price, close_price = prices
+    if (
+        low_price > min(open_price, close_price)
+        or high_price < max(open_price, close_price)
+        or high_price < low_price
+    ):
+        raise ValueError(_BAR_RESPONSE_MESSAGE)
+    return prices
+
+
+def _provider_bar_datetime(value: object) -> _Tuple[int, _datetime.datetime]:
+    timestamp = _provider_integer(value, _BAR_RESPONSE_MESSAGE)
+    try:
+        observed_at = _datetime.datetime(
+            1970, 1, 1, tzinfo=_datetime.timezone.utc
+        ) + _datetime.timedelta(milliseconds=timestamp)
+    except (OverflowError, ValueError):
+        raise ValueError(_BAR_RESPONSE_MESSAGE) from None
+    return timestamp, observed_at
 
 
 def _permission_expiry(value: object) -> int:
@@ -976,3 +1041,203 @@ def retrieve_tiger_exact_option_quote_evidence(
         permission_received_at=permission_received_at,
         quote_received_at=quote_received_at,
     )
+
+
+def retrieve_tiger_underlying_daily_bars(
+    quote_client: object,
+    *,
+    underlying_key: _UnderlyingKey,
+    begin_date: _datetime.date,
+    end_date: _datetime.date,
+    latest_completed_session_date: _datetime.date,
+) -> _Tuple[_UnderlyingDailyBarObservation, ...]:
+    """Retrieve paired Tiger NR/BR daily bars for completed US sessions."""
+
+    if type(underlying_key) is not _UnderlyingKey:
+        raise TypeError("underlying_key must be an UnderlyingKey")
+    begin_date = _validate_expiration(begin_date)
+    end_date = _validate_expiration(end_date)
+    latest_completed_session_date = _validate_expiration(
+        latest_completed_session_date
+    )
+    if begin_date >= end_date:
+        raise ValueError("begin_date must precede end_date")
+    if (end_date - begin_date).days > 370:
+        raise ValueError("daily-bar range must not exceed 370 calendar days")
+    if end_date > latest_completed_session_date + _datetime.timedelta(days=1):
+        raise ValueError("end_date must not include an incomplete session")
+    try:
+        get_bars = getattr(quote_client, "get_bars_by_page", None)
+    except Exception:
+        raise TypeError("quote_client must provide Tiger quote methods") from None
+    if not callable(get_bars):
+        raise TypeError("quote_client must provide Tiger quote methods")
+
+    common = {
+        "symbol": underlying_key.symbol,
+        "period": "day",
+        "begin_time": begin_date.isoformat(),
+        "end_time": end_date.isoformat(),
+        "total": 1000,
+        "page_size": 1000,
+        "time_interval": 0,
+        "trade_session": None,
+        "with_fundamental": False,
+        "sec_type": None,
+    }
+
+    def normalize(rows: tuple) -> dict:
+        normalized = {}
+        timestamps = set()
+        for row in rows:
+            if type(row["symbol"]) is not str or row["symbol"] != underlying_key.symbol:
+                raise ValueError(_BAR_RESPONSE_MESSAGE)
+            timestamp, observed_at = _provider_bar_datetime(row["time"])
+            session_date = observed_at.astimezone(_US_EASTERN).date()
+            if (
+                session_date < begin_date
+                or session_date >= end_date
+                or session_date > latest_completed_session_date
+                or session_date in normalized
+                or timestamp in timestamps
+            ):
+                raise ValueError(_BAR_RESPONSE_MESSAGE)
+            prices = _bar_ohlc(row)
+            volume = _bar_volume(row["volume"])
+            normalized[session_date] = (
+                timestamp,
+                observed_at,
+                prices,
+                volume,
+            )
+            timestamps.add(timestamp)
+        return normalized
+
+    try:
+        nr_table = get_bars(right="nr", **common)
+    except Exception:
+        raise RuntimeError(_BAR_RETRIEVAL_MESSAGE) from None
+    nr_retrieved_at = _utc_now()
+    nr_rows = _table_records(
+        nr_table,
+        columns=_BAR_COLUMNS,
+        message=_BAR_RESPONSE_MESSAGE,
+    )
+    nr = normalize(nr_rows)
+    if not nr:
+        raise ValueError(_BAR_RESPONSE_MESSAGE)
+
+    try:
+        br_table = get_bars(right="br", **common)
+    except Exception:
+        raise RuntimeError(_BAR_RETRIEVAL_MESSAGE) from None
+    br_retrieved_at = _utc_now()
+    br_rows = _table_records(
+        br_table,
+        columns=_BAR_COLUMNS,
+        message=_BAR_RESPONSE_MESSAGE,
+    )
+    br = normalize(br_rows)
+    if not br or set(nr) != set(br):
+        raise ValueError(_BAR_PAIRING_MESSAGE)
+    if any(nr[date][0] != br[date][0] for date in nr):
+        raise ValueError(_BAR_PAIRING_MESSAGE)
+    normalized_at = _utc_now()
+
+    observations = []
+    for session_date in sorted(nr):
+        timestamp, observed_at, nr_prices, volume = nr[session_date]
+        _, _, br_prices, _ = br[session_date]
+        material = (
+            _TIGER_DAILY_BAR_NORMALIZATION_VERSION
+            + "\x00"
+            + underlying_key.symbol
+            + "\x00"
+            + str(timestamp)
+            + "\x00"
+            + nr_retrieved_at.isoformat()
+            + "\x00"
+            + br_retrieved_at.isoformat()
+        ).encode("utf-8")
+        digest = _hashlib.sha256(material).hexdigest()
+        sources = (
+            _SourceReference(
+                source_id="tiger-underlying-bars-nr:" + digest,
+                provider_name="Tiger OpenAPI",
+                dataset_name="underlying_daily_bars_nr",
+                provider_record_id=(underlying_key.symbol + ":" + str(timestamp) + ":nr"),
+                provider_request_id=None,
+                source_symbol=underlying_key.symbol,
+                source_uri=None,
+                observed_at=observed_at,
+                retrieved_at=nr_retrieved_at,
+                provider_timezone="America/New_York",
+                timestamp_methodology=(
+                    "Tiger daily-bar millisecond session marker; not asserted "
+                    "to be the exchange close time."
+                ),
+                origin=_DataOrigin.EXCHANGE_OBSERVED,
+                is_delayed=False,
+                declared_delay_seconds=None,
+                payload_sha256=None,
+                revision_number=None,
+                provider_correction_id=None,
+                quality_flags=(),
+            ),
+            _SourceReference(
+                source_id="tiger-underlying-bars-br:" + digest,
+                provider_name="Tiger OpenAPI",
+                dataset_name="underlying_daily_bars_br",
+                provider_record_id=(underlying_key.symbol + ":" + str(timestamp) + ":br"),
+                provider_request_id=None,
+                source_symbol=underlying_key.symbol,
+                source_uri=None,
+                observed_at=observed_at,
+                retrieved_at=br_retrieved_at,
+                provider_timezone="America/New_York",
+                timestamp_methodology=(
+                    "Tiger daily-bar millisecond session marker; not asserted "
+                    "to be the exchange close time."
+                ),
+                origin=_DataOrigin.PROVIDER_CALCULATED,
+                is_delayed=False,
+                declared_delay_seconds=None,
+                payload_sha256=None,
+                revision_number=None,
+                provider_correction_id=None,
+                quality_flags=(),
+            ),
+        )
+        metadata = _NormalizationMetadata(
+            record_id="tiger-underlying-daily-bar:" + digest,
+            source_references=sources,
+            effective_observed_at=observed_at,
+            normalized_at=normalized_at,
+            record_origin=_DataOrigin.SYSTEM_COMPOSITE,
+            normalization_methodology=(
+                "Tiger NR supplied unadjusted OHLC and volume; Tiger BR "
+                "supplied the forward-adjusted close for the exact session."
+            ),
+            unit_convention="USD per share prices; volume in shares.",
+            normalization_version=_TIGER_DAILY_BAR_NORMALIZATION_VERSION,
+            quality_flags=(_NormalizationQualityFlag.COMPOSITE_SOURCE,),
+        )
+        observations.append(
+            _UnderlyingDailyBarObservation(
+                underlying_key=underlying_key,
+                session_date=session_date,
+                open_price=nr_prices[0],
+                high_price=nr_prices[1],
+                low_price=nr_prices[2],
+                close_price=nr_prices[3],
+                adjusted_close_price=br_prices[3],
+                volume=volume,
+                is_session_complete=True,
+                adjustment_methodology=(
+                    "Tiger QuoteRight.BR forward-adjusted close paired with "
+                    "Tiger QuoteRight.NR unadjusted OHLC and volume."
+                ),
+                metadata=metadata,
+            )
+        )
+    return tuple(observations)

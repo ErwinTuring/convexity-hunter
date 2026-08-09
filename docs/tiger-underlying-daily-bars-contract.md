@@ -6,6 +6,8 @@ This Tier-A contract freezes a bounded Tiger adapter from one caller-specified
 US underlying/date range to the existing provider-neutral
 `UnderlyingDailyBarObservation`.
 
+Implementation status: complete and independently reviewed.
+
 ```text
 UnderlyingKey + inclusive begin date + exclusive end date
     -> Tiger unadjusted daily bars (NR)
