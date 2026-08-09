@@ -38,6 +38,8 @@ __all__ = (
     "retrieve_tiger_underlying_daily_bars",
     "TigerHistoricalDividendEvidence",
     "retrieve_tiger_historical_dividend_evidence",
+    "TigerHistoricalOptionBarEvidence",
+    "retrieve_tiger_historical_option_bar_evidence",
 )
 
 
@@ -106,6 +108,15 @@ _DIVIDEND_RESPONSE_MESSAGE = (
 _DIVIDEND_DUPLICATE_MESSAGE = (
     "Tiger historical-dividend response contains duplicate rows."
 )
+_OPTION_BAR_RETRIEVAL_MESSAGE = (
+    "Tiger historical option-bar retrieval failed."
+)
+_OPTION_BAR_RESPONSE_MESSAGE = (
+    "Tiger historical option-bar response is invalid."
+)
+_OPTION_BAR_DUPLICATE_MESSAGE = (
+    "Tiger historical option-bar response contains duplicate rows."
+)
 
 _EXPIRATION_COLUMNS = frozenset(("symbol", "date", "timestamp", "period_tag"))
 _CHAIN_COLUMNS = frozenset(
@@ -128,6 +139,21 @@ _DIVIDEND_COLUMNS = (
     "exchange",
 )
 _DIVIDEND_COLUMN_SET = frozenset(_DIVIDEND_COLUMNS)
+_OPTION_BAR_COLUMNS = (
+    "identifier",
+    "symbol",
+    "expiry",
+    "put_call",
+    "strike",
+    "time",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "open_interest",
+)
+_OPTION_BAR_COLUMN_SET = frozenset(_OPTION_BAR_COLUMNS)
 _TIGER_NORMALIZATION_VERSION = "tiger-option-contract-v0.1"
 _TIGER_DAILY_BAR_NORMALIZATION_VERSION = "tiger-underlying-daily-bar-v0.1"
 _US_EASTERN = _ZoneInfo("America/New_York")
@@ -460,6 +486,65 @@ def _us_session_boundary_ms(value: _datetime.date) -> int:
     return ((delta.days * 86400) + delta.seconds) * 1000 + (
         delta.microseconds // 1000
     )
+
+
+def _historical_option_bar_ohlc(
+    values: _Tuple[object, object, object, object],
+) -> _Tuple[_decimal.Decimal, ...]:
+    prices = []
+    for value in values:
+        if isinstance(value, bool):
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+        try:
+            price = _decimal.Decimal(str(value))
+        except Exception:
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE) from None
+        if not price.is_finite() or price <= 0:
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+        prices.append(price)
+    open_price, high_price, low_price, close_price = prices
+    if (
+        low_price > min(open_price, close_price)
+        or high_price < max(open_price, close_price)
+        or high_price < low_price
+    ):
+        raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+    return tuple(prices)
+
+
+def _historical_option_bar_count(value: object) -> int:
+    try:
+        if isinstance(value, bool) or not isinstance(value, _numbers.Integral):
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+        count = int(value)
+    except Exception:
+        raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE) from None
+    if count < 0:
+        raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+    return count
+
+
+def _historical_option_bar_table_records(table: object) -> tuple:
+    if table is None:
+        return ()
+    try:
+        to_dict = getattr(table, "to_dict", None)
+        if not callable(to_dict):
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+        records = to_dict("records")
+        if not isinstance(records, (list, tuple)):
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+        copied = []
+        for record in records:
+            if (
+                not isinstance(record, _Mapping)
+                or set(record.keys()) != _OPTION_BAR_COLUMN_SET
+            ):
+                raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+            copied.append({name: record[name] for name in _OPTION_BAR_COLUMNS})
+        return tuple(copied)
+    except Exception:
+        raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE) from None
 
 
 def _permission_expiry(value: object) -> int:
@@ -1581,3 +1666,171 @@ def retrieve_tiger_historical_dividend_evidence(
             ),
         )
     )
+
+
+@_dataclass(frozen=True)
+class TigerHistoricalOptionBarEvidence:
+    """Immutable Tiger-native evidence for one historical option daily bar."""
+
+    contract_verification: TigerExactOptionContractVerification
+    bar_started_at: _datetime.datetime
+    session_date: _datetime.date
+    open_premium: _decimal.Decimal
+    high_premium: _decimal.Decimal
+    low_premium: _decimal.Decimal
+    close_premium: _decimal.Decimal
+    volume: int
+    open_interest: int
+    retrieved_at: _datetime.datetime
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.contract_verification)
+            is not TigerExactOptionContractVerification
+        ):
+            raise TypeError(
+                "contract_verification must be a "
+                "TigerExactOptionContractVerification"
+            )
+        bar_started_at = _normalize_utc_runtime_timestamp(
+            "bar_started_at", self.bar_started_at
+        )
+        if type(self.session_date) is not _datetime.date:
+            raise TypeError("session_date must be a date without a time component")
+        if bar_started_at.astimezone(_US_EASTERN).date() != self.session_date:
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+        prices = (
+            self.open_premium,
+            self.high_premium,
+            self.low_premium,
+            self.close_premium,
+        )
+        if any(type(value) is not _decimal.Decimal for value in prices):
+            raise TypeError("option-bar premiums must be Decimal values")
+        normalized_prices = _historical_option_bar_ohlc(prices)
+        if type(self.volume) is not int or self.volume < 0:
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+        if type(self.open_interest) is not int or self.open_interest < 0:
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+        retrieved_at = _normalize_utc_runtime_timestamp(
+            "retrieved_at", self.retrieved_at
+        )
+        if bar_started_at > retrieved_at:
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+        object.__setattr__(self, "bar_started_at", bar_started_at)
+        object.__setattr__(self, "open_premium", normalized_prices[0])
+        object.__setattr__(self, "high_premium", normalized_prices[1])
+        object.__setattr__(self, "low_premium", normalized_prices[2])
+        object.__setattr__(self, "close_premium", normalized_prices[3])
+        object.__setattr__(self, "retrieved_at", retrieved_at)
+
+
+def retrieve_tiger_historical_option_bar_evidence(
+    quote_client: object,
+    contract_verification: TigerExactOptionContractVerification,
+    *,
+    begin_date: _datetime.date,
+    end_date: _datetime.date,
+    latest_completed_session_date: _datetime.date,
+) -> _Tuple[TigerHistoricalOptionBarEvidence, ...]:
+    """Retrieve bounded Tiger-native daily bars for one exact option."""
+
+    if type(contract_verification) is not TigerExactOptionContractVerification:
+        raise TypeError(
+            "contract_verification must be a TigerExactOptionContractVerification"
+        )
+    for name, value in (
+        ("begin_date", begin_date),
+        ("end_date", end_date),
+        ("latest_completed_session_date", latest_completed_session_date),
+    ):
+        if type(value) is not _datetime.date:
+            raise TypeError(f"{name} must be a date without a time component")
+    if begin_date >= end_date:
+        raise ValueError("begin_date must precede end_date")
+    if (end_date - begin_date).days > 370:
+        raise ValueError("option-bar range must not exceed 370 calendar days")
+    if end_date > latest_completed_session_date + _datetime.timedelta(days=1):
+        raise ValueError("end_date must not include an incomplete session")
+
+    try:
+        get_option_bars = getattr(quote_client, "get_option_bars", None)
+    except Exception:
+        raise TypeError("quote_client must provide Tiger quote methods") from None
+    if not callable(get_option_bars):
+        raise TypeError("quote_client must provide Tiger quote methods")
+
+    try:
+        table = get_option_bars(
+            [contract_verification.provider_identifier],
+            begin_time=_us_session_boundary_ms(begin_date),
+            end_time=_us_session_boundary_ms(end_date),
+            period="day",
+            limit=None,
+            sort_dir=None,
+            market="US",
+            timezone="US/Eastern",
+        )
+    except Exception:
+        raise RuntimeError(_OPTION_BAR_RETRIEVAL_MESSAGE) from None
+    retrieved_at = _normalize_utc_runtime_timestamp("retrieved_at", _utc_now())
+    rows = _historical_option_bar_table_records(table)
+    if not rows:
+        return ()
+
+    key = contract_verification.contract_reference.contract_key
+    evidence = []
+    seen_timestamps = set()
+    seen_sessions = set()
+    for row in rows:
+        try:
+            if row["identifier"] != contract_verification.provider_identifier:
+                raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+            if row["symbol"] != key.underlying_key.symbol:
+                raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+            if (
+                _provider_integer(row["expiry"], _OPTION_BAR_RESPONSE_MESSAGE)
+                != contract_verification.provider_expiration_timestamp_ms
+            ):
+                raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+            if row["put_call"] != key.option_type.upper():
+                raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+            if isinstance(row["strike"], bool):
+                raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+            strike = _decimal.Decimal(str(row["strike"]))
+            if not strike.is_finite() or strike != key.strike:
+                raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+            timestamp, bar_started_at = _provider_bar_datetime(row["time"])
+            session_date = bar_started_at.astimezone(_US_EASTERN).date()
+            if (
+                session_date < begin_date
+                or session_date >= end_date
+                or session_date > latest_completed_session_date
+            ):
+                raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE)
+            prices = _historical_option_bar_ohlc(
+                (row["open"], row["high"], row["low"], row["close"])
+            )
+            volume = _historical_option_bar_count(row["volume"])
+            open_interest = _historical_option_bar_count(row["open_interest"])
+            item = TigerHistoricalOptionBarEvidence(
+                contract_verification=contract_verification,
+                bar_started_at=bar_started_at,
+                session_date=session_date,
+                open_premium=prices[0],
+                high_premium=prices[1],
+                low_premium=prices[2],
+                close_premium=prices[3],
+                volume=volume,
+                open_interest=open_interest,
+                retrieved_at=retrieved_at,
+            )
+        except Exception:
+            raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE) from None
+        if timestamp in seen_timestamps or session_date in seen_sessions:
+            raise ValueError(_OPTION_BAR_DUPLICATE_MESSAGE)
+        seen_timestamps.add(timestamp)
+        seen_sessions.add(session_date)
+        evidence.append(item)
+
+    return tuple(sorted(evidence, key=lambda item: item.bar_started_at))

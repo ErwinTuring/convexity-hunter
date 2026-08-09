@@ -1367,13 +1367,16 @@ contract identity, bar-start time, OHLC, volume, and open interest, but this
 response has no historical bid/ask, IV, or Greeks and does not define the
 within-bar applicability time of open interest. The frozen boundary therefore
 retains Tiger-native evidence only. Implementation and independent review are
-pending.
+complete with no findings. Validation passed 80 focused Tiger tests, 1,139
+full-suite tests, compileall, `git diff --check`, and a sanitized live 60-row
+SPY adapter smoke check covering 2026-05-13 through 2026-08-07.
 
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
-  runtime, exact-option verification, transient exact-quote evidence, and
-  underlying daily-bars work units
+  runtime, exact-option verification, transient exact-quote evidence,
+  underlying daily bars, historical-dividend evidence, and historical-option-
+  bar evidence work units
 - additional or fallback market-data providers unless a concrete Tiger blocker
   appears
 - mature news, search, knowledge, and world-event Skill capability research

@@ -66,7 +66,7 @@ class TigerProviderTestCase(unittest.TestCase):
 
 
 class PublicBoundaryTests(TigerProviderTestCase):
-    def test_exact_nine_name_api_and_no_root_or_package_reexport(self):
+    def test_exact_eleven_name_api_and_no_root_or_package_reexport(self):
         self.assertEqual(
             tiger.__all__,
             (
@@ -79,6 +79,8 @@ class PublicBoundaryTests(TigerProviderTestCase):
                 "retrieve_tiger_underlying_daily_bars",
                 "TigerHistoricalDividendEvidence",
                 "retrieve_tiger_historical_dividend_evidence",
+                "TigerHistoricalOptionBarEvidence",
+                "retrieve_tiger_historical_option_bar_evidence",
             ),
         )
         self.assertEqual(
@@ -577,6 +579,48 @@ class SyntheticDividendQuoteClient:
         self.calls = []
 
     def get_corporate_dividend(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return self.response
+
+
+_DEFAULT_OPTION_BAR_RESPONSE = object()
+
+
+class SyntheticOptionBarQuoteClient:
+    def __init__(self, response=_DEFAULT_OPTION_BAR_RESPONSE):
+        bar_time = int(
+            datetime.datetime(
+                2030,
+                1,
+                2,
+                tzinfo=zoneinfo.ZoneInfo("America/New_York"),
+            ).timestamp()
+            * 1000
+        )
+        default = [
+            {
+                "identifier": "SPY   300315C00500000",
+                "symbol": "SPY",
+                "expiry": 1899781200000,
+                "put_call": "CALL",
+                "strike": 500.0,
+                "time": bar_time,
+                "open": 10.1,
+                "high": 10.8,
+                "low": 9.9,
+                "close": 10.5,
+                "volume": 123,
+                "open_interest": 456,
+            }
+        ]
+        self.response = (
+            SyntheticTable(default)
+            if response is _DEFAULT_OPTION_BAR_RESPONSE
+            else response
+        )
+        self.calls = []
+
+    def get_option_bars(self, *args, **kwargs):
         self.calls.append((args, kwargs))
         return self.response
 
@@ -1727,6 +1771,253 @@ class UnderlyingDailyBarsTests(TigerProviderTestCase):
 
         result = self.retrieve(PandasBarsClient())
         self.assertEqual(result[0].volume, 1000000)
+
+
+class HistoricalOptionBarEvidenceTests(TigerProviderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.underlying = UnderlyingKey(
+            symbol="SPY",
+            listing_mic="ARCX",
+            security_type=UnderlyingSecurityType.ETF,
+            currency="USD",
+        )
+        base = datetime.datetime(2030, 1, 1, 12, tzinfo=datetime.timezone.utc)
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(
+                base,
+                base + datetime.timedelta(seconds=1),
+                base + datetime.timedelta(seconds=2),
+            ),
+        ):
+            self.verification = tiger.verify_tiger_monthly_option_contract(
+                SyntheticQuoteClient(),
+                underlying_key=self.underlying,
+                expiration=datetime.date(2030, 3, 15),
+                option_type="call",
+                strike=decimal.Decimal("500"),
+            )
+        self.retrieved_at = datetime.datetime(
+            2030, 1, 5, 12, tzinfo=datetime.timezone.utc
+        )
+
+    def retrieve(self, client=None, **overrides):
+        values = {
+            "begin_date": datetime.date(2030, 1, 1),
+            "end_date": datetime.date(2030, 1, 4),
+            "latest_completed_session_date": datetime.date(2030, 1, 3),
+        }
+        values.update(overrides)
+        client = SyntheticOptionBarQuoteClient() if client is None else client
+        with mock.patch.object(tiger, "_utc_now", return_value=self.retrieved_at):
+            return tiger.retrieve_tiger_historical_option_bar_evidence(
+                client,
+                self.verification,
+                **values,
+            )
+
+    def test_exact_request_builds_frozen_provider_native_evidence(self):
+        client = SyntheticOptionBarQuoteClient()
+        result = self.retrieve(client)
+        self.assertEqual(
+            client.calls,
+            [
+                (
+                    (["SPY   300315C00500000"],),
+                    {
+                        "begin_time": 1893474000000,
+                        "end_time": 1893733200000,
+                        "period": "day",
+                        "limit": None,
+                        "sort_dir": None,
+                        "market": "US",
+                        "timezone": "US/Eastern",
+                    },
+                )
+            ],
+        )
+        self.assertEqual(len(result), 1)
+        item = result[0]
+        self.assertIsInstance(item, tiger.TigerHistoricalOptionBarEvidence)
+        self.assertIs(item.contract_verification, self.verification)
+        self.assertEqual(item.session_date, datetime.date(2030, 1, 2))
+        self.assertEqual(item.open_premium, decimal.Decimal("10.1"))
+        self.assertEqual(item.high_premium, decimal.Decimal("10.8"))
+        self.assertEqual(item.low_premium, decimal.Decimal("9.9"))
+        self.assertEqual(item.close_premium, decimal.Decimal("10.5"))
+        self.assertEqual(item.volume, 123)
+        self.assertEqual(item.open_interest, 456)
+        self.assertEqual(item.retrieved_at, self.retrieved_at)
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            item.volume = 124
+
+    def test_none_or_empty_response_is_valid_no_bar_evidence(self):
+        for response in (None, SyntheticTable([])):
+            with self.subTest(response=type(response).__name__):
+                self.assertEqual(
+                    self.retrieve(SyntheticOptionBarQuoteClient(response)),
+                    (),
+                )
+
+    def test_input_failures_precede_method_access(self):
+        cases = (
+            ({"begin_date": datetime.date(2030, 1, 4)}, None),
+            ({"end_date": datetime.date(2031, 2, 1)}, None),
+            ({"end_date": datetime.date(2030, 1, 5)}, None),
+            ({"begin_date": datetime.datetime(2030, 1, 1)}, None),
+        )
+        for overrides, _ in cases:
+            with self.subTest(overrides=tuple(overrides)):
+                client = SyntheticOptionBarQuoteClient()
+                with self.assertRaises((TypeError, ValueError)):
+                    self.retrieve(client, **overrides)
+                self.assertEqual(client.calls, [])
+        client = SyntheticOptionBarQuoteClient()
+        with self.assertRaisesRegex(TypeError, "contract_verification"):
+            tiger.retrieve_tiger_historical_option_bar_evidence(
+                client,
+                object(),
+                begin_date=datetime.date(2030, 1, 1),
+                end_date=datetime.date(2030, 1, 4),
+                latest_completed_session_date=datetime.date(2030, 1, 3),
+            )
+        self.assertEqual(client.calls, [])
+
+    def test_exact_contract_identity_must_match_every_row(self):
+        changes = (
+            {"identifier": "SPY   300315P00500000"},
+            {"symbol": "QQQ"},
+            {"expiry": 1899867600000},
+            {"put_call": "PUT"},
+            {"strike": 501.0},
+        )
+        for change in changes:
+            with self.subTest(field=tuple(change)):
+                client = SyntheticOptionBarQuoteClient()
+                client.response.records[0].update(change)
+                with self.assertRaisesRegex(ValueError, "response is invalid"):
+                    self.retrieve(client)
+
+    def test_invalid_prices_counts_time_and_shape_fail_closed(self):
+        changes = (
+            {"open": 0},
+            {"high": 10.0},
+            {"low": float("nan")},
+            {"volume": -1},
+            {"open_interest": 1.5},
+            {"time": True},
+        )
+        for change in changes:
+            with self.subTest(field=tuple(change)):
+                client = SyntheticOptionBarQuoteClient()
+                client.response.records[0].update(change)
+                with self.assertRaisesRegex(ValueError, "response is invalid"):
+                    self.retrieve(client)
+        client = SyntheticOptionBarQuoteClient()
+        del client.response.records[0]["open_interest"]
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            self.retrieve(client)
+
+        client = SyntheticOptionBarQuoteClient()
+        client.response.records[0].update(volume=0, open_interest=0)
+        item = self.retrieve(client)[0]
+        self.assertEqual((item.volume, item.open_interest), (0, 0))
+
+    def test_duplicates_fail_and_output_is_chronological(self):
+        client = SyntheticOptionBarQuoteClient()
+        first = client.response.records[0]
+        client.response.records = [dict(first), dict(first)]
+        with self.assertRaisesRegex(ValueError, "duplicate rows"):
+            self.retrieve(client)
+
+        client = SyntheticOptionBarQuoteClient()
+        first = client.response.records[0]
+        second = dict(
+            first,
+            time=first["time"] + 86_400_000,
+            open=10.6,
+            high=11.0,
+            low=10.4,
+            close=10.9,
+        )
+        client.response.records = [second, first]
+        result = self.retrieve(client)
+        self.assertEqual(
+            tuple(item.session_date for item in result),
+            (datetime.date(2030, 1, 2), datetime.date(2030, 1, 3)),
+        )
+
+    def test_est_and_edt_request_boundaries_and_session_conversion(self):
+        eastern = zoneinfo.ZoneInfo("America/New_York")
+        client = SyntheticOptionBarQuoteClient()
+        client.response.records[0]["time"] = int(
+            datetime.datetime(
+                2030, 3, 11, tzinfo=eastern
+            ).timestamp()
+            * 1000
+        )
+        self.retrieved_at = datetime.datetime(
+            2030, 3, 13, 12, tzinfo=datetime.timezone.utc
+        )
+        result = self.retrieve(
+            client,
+            begin_date=datetime.date(2030, 3, 8),
+            end_date=datetime.date(2030, 3, 12),
+            latest_completed_session_date=datetime.date(2030, 3, 11),
+        )
+        self.assertEqual(result[0].session_date, datetime.date(2030, 3, 11))
+        self.assertEqual(client.calls[0][1]["begin_time"], 1899176400000)
+        self.assertEqual(client.calls[0][1]["end_time"], 1899518400000)
+
+    def test_retrieval_and_accessor_failures_are_sanitized(self):
+        secret = "synthetic-option-bar-secret"
+        client = SyntheticOptionBarQuoteClient()
+        client.get_option_bars = mock.Mock(side_effect=RuntimeError(secret))
+        with self.assertRaisesRegex(
+            RuntimeError, "option-bar retrieval failed"
+        ) as raised:
+            self.retrieve(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+        class ExplodingClient:
+            @property
+            def get_option_bars(self):
+                raise RuntimeError(secret)
+
+        with self.assertRaisesRegex(
+            TypeError, "must provide Tiger quote methods"
+        ) as raised:
+            self.retrieve(ExplodingClient())
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_direct_construction_preserves_exact_types_and_time_binding(self):
+        item = self.retrieve()[0]
+        with self.assertRaisesRegex(TypeError, "premiums must be Decimal"):
+            dataclasses.replace(item, open_premium=10.1)
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            dataclasses.replace(item, session_date=datetime.date(2030, 1, 3))
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            dataclasses.replace(item, volume=-1)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("pandas") is not None,
+        "optional pandas dependency is not installed",
+    )
+    def test_actual_pandas_numpy_rows_are_supported(self):
+        import numpy
+        import pandas
+
+        client = SyntheticOptionBarQuoteClient()
+        row = dict(client.response.records[0])
+        row["time"] = numpy.int64(row["time"])
+        row["volume"] = numpy.int64(row["volume"])
+        row["open_interest"] = numpy.int64(row["open_interest"])
+        row["close"] = numpy.float64(row["close"])
+        client.response = pandas.DataFrame([row])
+        result = self.retrieve(client)
+        self.assertEqual(result[0].open_interest, 456)
 
 
 if __name__ == "__main__":

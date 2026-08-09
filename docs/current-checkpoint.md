@@ -136,7 +136,9 @@ Frozen Tiger historical option-bar work unit:
   historical bid/ask, IV, or Greeks.
 - The bounded unit retains provider-native evidence only. It does not invent a
   historical option-OHLC core record or overstate open-interest timing.
-- Contract implementation and independent review are pending.
+- Implementation and independent review are complete with no findings. Final
+  validation passed 80 focused Tiger tests, 1,139 full-suite tests, compileall,
+  `git diff --check`, and a sanitized live 60-row SPY adapter smoke check.
 
 This file is a concise navigation map, not a complete specification or
 history.

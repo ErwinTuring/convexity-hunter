@@ -9,6 +9,8 @@ and a sanitized live SPY probe. The live probe returned 60 daily rows with all
 documented fields populated for one explicitly monthly 103-DTE contract,
 spanning 2026-05-13 through 2026-08-07.
 
+Implementation and independent review are complete.
+
 Tiger supplies daily OHLC, volume, and open interest with a bar-start
 timestamp. It supplies no historical bid/ask, implied volatility, or Greeks in
 this response. The provider-neutral core has no historical option-OHLC record,
