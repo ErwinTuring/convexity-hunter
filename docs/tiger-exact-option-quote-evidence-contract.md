@@ -131,6 +131,20 @@ record, calculation lineage, report input, or permission cache. It may be
 consumed only by a later separately reviewed normalizer that can supply an
 auditable option-session context.
 
+## Accepted normalization decision
+
+Provider-neutral option-quote normalization remains deferred until
+authoritative Tiger evidence establishes the REST chain quote's aggregation
+scope, quote timestamp/session association, and any required latency meaning.
+The product will not infer `PROVIDER_COMPOSITE` from adjacent BBO subscription
+documentation, assign `CONSOLIDATED`, derive a session from last-trade time, or
+create an `OptionQuoteObservation` with `QuoteScope.UNKNOWN` merely to move an
+otherwise ineligible/unknown record into the strict research pipeline.
+
+Development continues through other Tiger facts whose semantics are already
+established. This is a bounded deferral, not a reversal of Tiger's primary-
+provider decision.
+
 ## Failure precedence
 
 ```text

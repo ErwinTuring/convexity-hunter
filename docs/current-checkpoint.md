@@ -83,6 +83,10 @@ Completed Tiger exact option-quote evidence work unit:
   re-review passed. Final validation passed 51 focused tests, 1,110 full-suite
   tests, compileall, `git diff --check`, and a sanitized live SPY exact-contract
   permission/bid/ask evidence smoke check.
+- Follow-up decision: quote evidence remains transient until authoritative
+  Tiger documentation establishes REST-chain quote scope and timestamp/session
+  semantics. No provider-composite inference or unknown-scope pipeline bypass
+  is authorized.
 
 This file is a concise navigation map, not a complete specification or
 history.

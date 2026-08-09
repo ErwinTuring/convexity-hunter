@@ -1306,6 +1306,13 @@ types; targeted re-review passed. Final validation passed 51 focused tests,
 1,110 full-suite tests, compileall, `git diff --check`, and a sanitized live
 SPY exact-contract permission/bid/ask evidence smoke check.
 
+The accepted follow-up decision keeps that quote evidence transient. No
+`OptionQuoteObservation` will be constructed until authoritative Tiger material
+establishes REST-chain aggregation scope and quote timestamp/session semantics.
+The project will not infer `PROVIDER_COMPOSITE`, force `UNKNOWN` evidence into
+the strict pipeline, or use last-trade time as quote time. Workstream A
+continues with established underlying daily-bar and historical-dividend facts.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
