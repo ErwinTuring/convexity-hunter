@@ -109,5 +109,14 @@ Completed Tiger underlying daily-bars work unit:
 - Final validation passed 60 focused tests, 1,119 full-suite tests, compileall,
   `git diff --check`, and a sanitized live five-session SPY smoke check.
 
+Frozen next Tiger work unit:
+
+- Canonical contract:
+  [`tiger-historical-dividend-evidence-contract.md`](tiger-historical-dividend-evidence-contract.md).
+- Direct `DividendObservation` normalization is blocked because Tiger does not
+  authoritatively specify per-share amount units or regular/special type.
+- The bounded unit retains complete provider-native historical evidence only;
+  implementation and independent review are pending.
+
 This file is a concise navigation map, not a complete specification or
 history.

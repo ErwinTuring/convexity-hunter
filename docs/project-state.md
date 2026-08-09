@@ -1337,6 +1337,14 @@ BR request. Final targeted re-review passed. Validation passed 60 focused tests,
 1,119 full-suite tests, compileall, `git diff --check`, and a sanitized live
 five-session SPY smoke check.
 
+The next separately contracted unit is
+[`tiger-historical-dividend-evidence-contract.md`](tiger-historical-dividend-evidence-contract.md).
+A focused Tier-A preflight blocked direct `DividendObservation` normalization:
+Tiger documents only a provider `amount`, without an authoritative per-share
+unit or regular/special classification. The frozen unit therefore retains all
+returned corporate-action fields in immutable Tiger-specific evidence and
+makes no provider-neutral dividend, forecast, or pricing-input claim.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
