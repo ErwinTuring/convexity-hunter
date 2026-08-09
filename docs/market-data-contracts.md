@@ -1,8 +1,11 @@
 # Provider-Neutral Market-Data Contracts v0.1
 
-> **DESIGN SPECIFICATION ONLY — NO LIVE PROVIDER OR NETWORK INTEGRATION IS AUTHORIZED**
-
-No market-data provider has been selected. All examples in this document use synthetic values. This specification defines interfaces, semantics, lineage, and validation boundaries only. No live or delayed market data may be connected until these contracts are implemented and tested with fixed synthetic fixtures.
+Tiger OpenAPI is the separately accepted MVP primary market-data provider.
+These core contracts remain provider-neutral, network-free, and credential-
+free. Provider integration is authorized only through separately reviewed
+provider-boundary contracts, beginning with
+[`tiger-provider-contract.md`](tiger-provider-contract.md). All examples in
+this document remain synthetic.
 
 These contracts establish whether data is structurally usable and auditable. They do not establish whether an option is economically attractive, and they are not investment advice.
 
@@ -84,13 +87,16 @@ src/convexity_hunter/market_data.py
 
 It will contain provider-neutral records only. It is not created by this documentation task.
 
-Provider adapters may eventually live outside the core contract module, for example:
+Provider adapters live outside the core contract module, for example:
 
 ```text
 src/convexity_hunter/providers/
 ```
 
-That directory is also not created by this task. The core contract module must not import a vendor SDK, make HTTP requests, read API credentials, contain provider-specific field names, or depend on the scanner or report renderer. Future adapters may depend on the core contracts; the core contracts must never depend on adapters.
+The core contract module must not import a vendor SDK, make HTTP requests, read
+API credentials, contain provider-specific field names, or depend on the
+scanner or report renderer. Adapters may depend on the core contracts; the
+core contracts must never depend on adapters.
 
 ## 4. Common source-reference contract
 
@@ -5339,15 +5345,14 @@ lineage remain separate responsibilities.
 
 ### Milestone 3D — Provider adapter
 
-Only after the contracts and transformations are stable:
+Tiger OpenAPI is selected as the MVP primary market-data provider after a
+completed live feasibility spike. Milestone 3D begins with the separately
+reviewed local runtime boundary in `tiger-provider-contract.md`, followed by
+bounded Tiger adapters for provider facts whose semantics are established.
+Every network-using work unit remains separately contracted and reviewed.
 
-- evaluate providers;
-- select one provider;
-- add recorded raw fixtures;
-- implement an adapter;
-- separately authorize live-network use.
-
-Live and delayed provider data remain unauthorized until that separate review.
+Committed tests use synthetic material. Real credentials and redistributable-
+status-unknown raw payloads never enter repository fixtures.
 
 The full implementation sequence is:
 
@@ -5371,20 +5376,21 @@ The full implementation sequence is:
     and completeness.
 14. Define, review, then implement Milestone 3C.7 market-data-to-research
     transformations and `CalculationLineage` construction.
-15. Select a provider only after Milestones 3A–3C are stable.
-16. Add recorded provider fixture payloads.
-17. Implement one adapter behind the contracts.
-18. Review licensing and retention constraints.
-19. Separately authorize live-network testing.
+15. Select Tiger after Milestones 3A–3C are stable and verify feasibility.
+16. Implement and review the local Tiger runtime configuration/client boundary.
+17. Implement bounded Tiger adapters behind the core contracts.
+18. Use only synthetic/schema-equivalent committed fixtures unless retention
+    and redistribution rights are established.
+19. Review and authorize each live-network integration boundary separately.
 
 ## 20. Non-goals
 
-Market-data contracts v0.1 do not:
+The provider-neutral market-data core does not:
 
-- select or rank providers;
+- rank, route, arbitrate, or fail over providers;
 - negotiate licensing;
-- make HTTP requests;
-- store credentials;
+- make HTTP requests or import provider SDKs;
+- store or resolve credentials;
 - scan an option chain;
 - calculate volatility percentiles or realized volatility;
 - price options;

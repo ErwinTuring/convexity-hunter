@@ -67,6 +67,20 @@ The MVP excludes:
   recommendations; and
 - LLM-generated numerical market data.
 
+### 2.1 MVP market-data provider
+
+Tiger OpenAPI is the MVP primary market-data provider for a bounded personal
+research universe. This is not a permanent single-vendor core architecture and
+does not authorize provider routing, fallback, arbitration, or broad historical
+scanning.
+
+Tiger credentials are per-user local runtime state held in Tiger's official
+`tiger_openapi_config.properties` outside the repository. Convexity Hunter
+resolves only a local file path; normal product flow never asks a user or an
+LLM to provide Tiger ID, account ID, or private-key contents. The exact local
+runtime boundary is defined in
+[`tiger-provider-contract.md`](tiger-provider-contract.md).
+
 Positive convexity bounds maximum loss for the supported structures but does
 not prove cheapness or bearability.
 

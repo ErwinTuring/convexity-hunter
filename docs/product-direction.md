@@ -512,6 +512,13 @@ contract, transformation requiring caller orchestration, synthetic-only
 integration, and not-yet-implemented work. A domain record alone is not a
 complete application workflow.
 
+Tiger OpenAPI is now the accepted MVP primary market-data provider after a
+successful live feasibility spike. The immediate upstream work begins with a
+local-only provider-native configuration and SDK client boundary, then bounded
+normalization of established Tiger market facts. This does not change the
+reviewed downstream direct-entry service and does not introduce generic
+provider routing.
+
 ## 16. Corrected roadmap
 
 1. Prior documentation alignment.
@@ -529,8 +536,9 @@ complete application workflow.
    Chinese-Report Integration work unit.
 8. Completed deterministic offline single-structure service contract,
    implementation, focused tests, and independent review.
-9. Subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
-   generation, and complete-flow work.
+9. Tiger local runtime boundary and bounded provider adapter work;
+10. subsequent pricing-reference, Skill, Event Intelligence, mapping,
+    discovery, generation, and complete-flow work.
 
 ## 17. Locked principles
 
@@ -551,6 +559,9 @@ complete application workflow.
   conditions under the canonical position-management contract; it does not
   monitor, recommend, or execute.
 - Completed Milestone 1–3 history remains unchanged.
+- Tiger OpenAPI is the MVP primary market-data provider; credentials remain
+  provider-native, per-user, local-only, runtime-resolved, and outside model
+  context and repository state.
 - Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence is complete.
 - Milestone 5 — Standalone Structure Affordability Evidence is complete.
 - Milestone 6A — Reviewed Artifact Verifiability and Milestone 6B —

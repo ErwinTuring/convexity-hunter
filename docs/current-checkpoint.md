@@ -33,5 +33,14 @@ validation passed 11 focused tests, 1,059 full-suite tests, compilation, and
 unchanged. Provider access, chain retrieval, incomplete-description resolution,
 eligibility policy, generation, monitoring, and execution remain absent.
 
+Current Tier-A work unit:
+
+- Tiger OpenAPI is selected as the MVP primary market-data provider.
+- Canonical contract: [`tiger-provider-contract.md`](tiger-provider-contract.md).
+- First boundary is local configuration discovery and non-networking,
+  non-preempting SDK client initialization only.
+- No credential content, market-data retrieval, provider normalization, or
+  downstream service modification is in scope.
+
 This file is a concise navigation map, not a complete specification or
 history.

@@ -1251,12 +1251,31 @@ The accepted post-Milestone-3 sequence is:
    implementation, focused tests, and independent review;
 10. completed deterministic direct-entry reviewed-research service contract,
     implementation, focused tests, and independent review; and
-11. subsequent pricing-provider, Skill, Event Intelligence, mapping, discovery,
-   generation, and complete-flow work.
+11. Tiger local runtime boundary and bounded provider adapter work; and
+12. subsequent pricing-reference, Skill, Event Intelligence, mapping,
+    discovery, generation, and complete-flow work.
+
+## Tiger provider decision and current work unit
+
+Tiger OpenAPI is the accepted MVP primary market-data provider for a bounded
+personal research universe. The feasibility spike verified authentication,
+US-option quote permission, exact monthly contract identification, current
+option-chain facts, option and underlying history, and historical dividends.
+Known gaps remain explicit: historical option IV/Greeks, a 30–150 DTE USD term
+curve, forward-dividend completeness, and some quote/analytics semantics.
+
+The active Tier-A work unit is the local Tiger runtime boundary in
+[`tiger-provider-contract.md`](tiger-provider-contract.md). It adds only
+deterministic external configuration-path resolution and non-networking,
+non-preempting SDK client initialization. It does not retrieve or normalize
+market data. Credentials remain outside the repository and model context.
 
 ## Deferred
 
-- real-time market-data providers
+- Tiger market-data retrieval and normalization beyond the local runtime
+  boundary until separately contracted work units
+- additional or fallback market-data providers unless a concrete Tiger blocker
+  appears
 - mature news, search, knowledge, and world-event Skill capability research
 - Skill adapters and multi-Skill composition
 - last30days-skill or similar narrative integrations
@@ -1281,7 +1300,8 @@ Deferred does not mean rejected. These items remain outside the current mileston
 
 ## Open questions
 
-- Which options data provider can supply reliable historical volatility surfaces?
+- What bounded deterministic reconstruction should produce historical option
+  IV from Tiger option/underlying bars plus explicit rate and dividend inputs?
 - Should non-expiration pricing use an external provider, internal model, or both?
 - What exact historical lookback should be used for IV percentile and skew percentile?
 - How should liquidity thresholds vary by asset class?
