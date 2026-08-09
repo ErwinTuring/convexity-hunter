@@ -1313,6 +1313,13 @@ The project will not infer `PROVIDER_COMPOSITE`, force `UNKNOWN` evidence into
 the strict pipeline, or use last-trade time as quote time. Workstream A
 continues with established underlying daily-bar and historical-dividend facts.
 
+The next separately contracted unit is
+[`tiger-underlying-daily-bars-contract.md`](tiger-underlying-daily-bars-contract.md).
+It pairs Tiger's unadjusted `NR` daily OHLC/volume with the exact `BR`
+forward-adjusted close over one bounded completed-session range and returns the
+existing provider-neutral `UnderlyingDailyBarObservation`; contract status is
+frozen, with implementation and independent review pending.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
