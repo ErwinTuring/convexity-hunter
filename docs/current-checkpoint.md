@@ -47,5 +47,24 @@ Completed Tiger local runtime work unit:
   Final validation passed 26 focused tests, 1,085 full-suite tests, compileall,
   `git diff --check`, and a sanitized local external-config smoke check.
 
+Completed Tiger exact option-contract verification work unit:
+
+- Canonical contract:
+  [`tiger-option-contract-verification-contract.md`](tiger-option-contract-verification-contract.md).
+- Contract base: `81aae8c` (`Define Tiger exact contract verification`).
+- Finalized work-unit subject: `Implement Tiger exact contract verification`.
+- The direct Tiger module verifies one caller-specified underlying, expiration,
+  call/put, and strike against Tiger's explicit `period_tag=m` expiration row
+  and exactly one exact chain row.
+- The frozen result retains Tiger's identifier, expiration timestamp, and
+  provider-supplied multiplier with a provider-neutral
+  `OptionContractReference` and two timestamped source references.
+- It performs no discovery ranking, nearest-contract substitution, quote or
+  analytics normalization, permission grab, credential handling, or trading.
+- Four accepted independent-review findings were corrected; final targeted
+  re-review passed. Final validation passed 39 focused tests, 1,098 full-suite
+  tests, compileall, `git diff --check`, and a sanitized live SPY monthly
+  exact-contract smoke check.
+
 This file is a concise navigation map, not a complete specification or
 history.

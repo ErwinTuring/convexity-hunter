@@ -1287,8 +1287,12 @@ It is limited to verifying one caller-specified exact option identity against
 Tiger's explicit monthly expiration evidence and exact chain row, retaining the
 provider identifier and provider-supplied multiplier in a provider-neutral
 `OptionContractReference`. It does not scan, rank, substitute, generate, or
-normalize quote/analytics fields. Contract status: frozen; implementation and
-independent review pending.
+normalize quote/analytics fields. The implementation and independent review are
+complete. Four accepted review findings corrected receipt-time provenance,
+malformed-adapter exception sanitization, explicit timestamp methodology, and
+direct-result provenance invariants; final targeted re-review passed. Final
+validation passed 39 focused tests, 1,098 full-suite tests, compileall,
+`git diff --check`, and a sanitized live SPY monthly exact-contract smoke check.
 
 ## Deferred
 
@@ -1302,7 +1306,8 @@ independent review pending.
 - last30days-skill or similar narrative integrations
 - Serenity Alpha investigation
 - Event Intelligence and event-to-underlying mapping
-- option-chain access, contract validation, and supported structure generation
+- option-chain discovery, supported structure generation, and contract access
+  beyond one caller-specified exact monthly verification
 - exact standard-monthly-option definition and deterministic Delta/ATM
   resolution contracts
 - non-expiration scenario-pricing production

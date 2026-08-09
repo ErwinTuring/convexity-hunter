@@ -1,5 +1,8 @@
-"""Synthetic tests for the local Tiger runtime boundary."""
+"""Synthetic tests for the bounded Tiger provider boundary."""
 
+import dataclasses
+import datetime
+import decimal
 import logging
 import importlib.util
 import os
@@ -14,6 +17,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 import convexity_hunter
+from convexity_hunter.market_data import (
+    NormalizationQualityFlag,
+    OptionContractReference,
+    UnderlyingKey,
+    UnderlyingSecurityType,
+)
 from convexity_hunter.providers import tiger
 
 
@@ -54,12 +63,14 @@ class TigerProviderTestCase(unittest.TestCase):
 
 
 class PublicBoundaryTests(TigerProviderTestCase):
-    def test_exact_two_name_api_and_no_root_or_package_reexport(self):
+    def test_exact_four_name_api_and_no_root_or_package_reexport(self):
         self.assertEqual(
             tiger.__all__,
             (
                 "resolve_tiger_config_path",
                 "initialize_tiger_quote_client",
+                "TigerExactOptionContractVerification",
+                "verify_tiger_monthly_option_contract",
             ),
         )
         self.assertEqual(
@@ -425,6 +436,364 @@ class ExceptionalPathTests(TigerProviderTestCase):
         del os.environ["TIGEROPEN_ACCOUNT"]
         with self.assertRaisesRegex(ValueError, "outside the repository"):
             tiger.resolve_tiger_config_path()
+
+
+class SyntheticTable:
+    def __init__(self, records):
+        self.records = records
+
+    def to_dict(self, orientation):
+        if orientation != "records":
+            raise AssertionError("unexpected orientation")
+        return self.records
+
+
+class SyntheticQuoteClient:
+    def __init__(self, expiration_rows=None, chain_rows=None):
+        self.expiration_rows = (
+            [
+                {
+                    "symbol": "SPY",
+                    "date": "2030-03-15",
+                    "timestamp": 1899781200000,
+                    "period_tag": "m",
+                }
+            ]
+            if expiration_rows is None
+            else expiration_rows
+        )
+        self.chain_rows = (
+            [
+                {
+                    "identifier": "SPY   300315C00500000",
+                    "symbol": "SPY",
+                    "expiry": 1899781200000,
+                    "strike": 500.0,
+                    "put_call": "CALL",
+                    "multiplier": 100,
+                }
+            ]
+            if chain_rows is None
+            else chain_rows
+        )
+        self.calls = []
+
+    def get_option_expirations(self, symbol, **kwargs):
+        self.calls.append(("expirations", symbol, kwargs))
+        return SyntheticTable(self.expiration_rows)
+
+    def get_option_chain(self, symbol, expiry, **kwargs):
+        self.calls.append(("chain", symbol, expiry, kwargs))
+        return SyntheticTable(self.chain_rows)
+
+
+class ExactContractVerificationTests(TigerProviderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.underlying = UnderlyingKey(
+            symbol="SPY",
+            listing_mic="ARCX",
+            security_type=UnderlyingSecurityType.ETF,
+            currency="USD",
+        )
+        self.expiration = datetime.date(2030, 3, 15)
+        self.strike = decimal.Decimal("500")
+        self.expiration_retrieved_at = datetime.datetime(
+            2030, 1, 2, 15, 30, tzinfo=datetime.timezone.utc
+        )
+        self.chain_retrieved_at = self.expiration_retrieved_at + datetime.timedelta(
+            seconds=1
+        )
+        self.normalized_at = self.chain_retrieved_at + datetime.timedelta(
+            seconds=1
+        )
+
+    def verify(self, client=None, **overrides):
+        values = {
+            "underlying_key": self.underlying,
+            "expiration": self.expiration,
+            "option_type": "call",
+            "strike": self.strike,
+        }
+        values.update(overrides)
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(
+                self.expiration_retrieved_at,
+                self.chain_retrieved_at,
+                self.normalized_at,
+            ),
+        ):
+            return tiger.verify_tiger_monthly_option_contract(
+                SyntheticQuoteClient() if client is None else client,
+                **values,
+            )
+
+    def test_exact_monthly_contract_builds_provider_neutral_reference(self):
+        client = SyntheticQuoteClient()
+        result = self.verify(client)
+
+        self.assertEqual(
+            client.calls,
+            [
+                ("expirations", "SPY", {"market": "US"}),
+                (
+                    "chain",
+                    "SPY",
+                    "2030-03-15",
+                    {"return_greek_value": False, "market": "US"},
+                ),
+            ],
+        )
+        self.assertEqual(result.provider_identifier, "SPY   300315C00500000")
+        self.assertEqual(result.provider_period_tag, "m")
+        self.assertEqual(result.provider_expiration_timestamp_ms, 1899781200000)
+        self.assertIsInstance(result.contract_reference, OptionContractReference)
+        key = result.contract_reference.contract_key
+        self.assertIs(key.underlying_key, self.underlying)
+        self.assertEqual(key.expiration, self.expiration)
+        self.assertEqual(key.option_type, "call")
+        self.assertEqual(key.strike, decimal.Decimal("500"))
+        self.assertEqual(key.contract_multiplier, 100)
+        self.assertEqual(key.currency, "USD")
+        self.assertIsNone(key.deliverable_id)
+
+        reference = result.contract_reference
+        self.assertIsNone(reference.listing_date)
+        self.assertIsNone(reference.last_trade_date)
+        self.assertIsNone(reference.exercise_style)
+        self.assertIsNone(reference.settlement_type)
+        sources = {
+            source.dataset_name: source
+            for source in reference.metadata.source_references
+        }
+        self.assertEqual(set(sources), {"option_expirations", "option_chain"})
+        expiration_source = sources["option_expirations"]
+        self.assertEqual(expiration_source.provider_name, "Tiger OpenAPI")
+        self.assertEqual(expiration_source.provider_record_id, "SPY:2030-03-15")
+        self.assertEqual(expiration_source.source_symbol, "SPY")
+        self.assertEqual(
+            expiration_source.observed_at, self.expiration_retrieved_at
+        )
+        self.assertEqual(
+            expiration_source.retrieved_at, self.expiration_retrieved_at
+        )
+        chain_source = sources["option_chain"]
+        self.assertEqual(chain_source.provider_name, "Tiger OpenAPI")
+        self.assertEqual(chain_source.provider_record_id, result.provider_identifier)
+        self.assertEqual(chain_source.source_symbol, result.provider_identifier)
+        self.assertEqual(chain_source.observed_at, self.chain_retrieved_at)
+        self.assertEqual(chain_source.retrieved_at, self.chain_retrieved_at)
+        self.assertEqual(reference.metadata.normalized_at, self.normalized_at)
+        self.assertIn(
+            "no provider contract-term observation timestamp was supplied",
+            reference.metadata.normalization_methodology,
+        )
+        self.assertEqual(
+            set(reference.metadata.quality_flags),
+            {
+                NormalizationQualityFlag.SYMBOL_MAPPED,
+                NormalizationQualityFlag.TIMESTAMP_ASSIGNED,
+                NormalizationQualityFlag.INCOMPLETE,
+            },
+        )
+
+    def test_result_is_frozen_and_provenance_is_deterministic(self):
+        first = self.verify()
+        second = self.verify()
+        self.assertEqual(first, second)
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            first.provider_period_tag = "w"
+
+    def test_adapter_captures_receipt_and_normalization_times_in_order(self):
+        result = self.verify()
+        metadata = result.contract_reference.metadata
+        sources = {source.dataset_name: source for source in metadata.source_references}
+        self.assertEqual(
+            sources["option_expirations"].retrieved_at,
+            self.expiration_retrieved_at,
+        )
+        self.assertEqual(
+            sources["option_chain"].retrieved_at,
+            self.chain_retrieved_at,
+        )
+        self.assertEqual(metadata.effective_observed_at, self.chain_retrieved_at)
+        self.assertEqual(metadata.normalized_at, self.normalized_at)
+
+    def test_weekly_or_unknown_expiration_fails_before_chain_request(self):
+        for period_tag in ("w", "q", None):
+            with self.subTest(period_tag=period_tag):
+                client = SyntheticQuoteClient()
+                client.expiration_rows[0]["period_tag"] = period_tag
+                with self.assertRaisesRegex(ValueError, "classify.*monthly"):
+                    self.verify(client)
+                self.assertEqual(len(client.calls), 1)
+
+    def test_expiration_match_must_be_unique(self):
+        exact = SyntheticQuoteClient().expiration_rows[0]
+        for rows in ([], [dict(exact), dict(exact)]):
+            with self.subTest(count=len(rows)):
+                client = SyntheticQuoteClient(expiration_rows=rows)
+                with self.assertRaisesRegex(ValueError, "exactly one exact match"):
+                    self.verify(client)
+                self.assertEqual(len(client.calls), 1)
+
+    def test_chain_match_must_be_exact_and_unique_without_substitution(self):
+        exact = SyntheticQuoteClient().chain_rows[0]
+        near = dict(exact, strike=501.0, identifier="SPY   300315C00501000")
+        for rows in ([near], [dict(exact), dict(exact)]):
+            with self.subTest(count=len(rows)):
+                with self.assertRaisesRegex(
+                    ValueError, "exactly one exact contract match"
+                ):
+                    self.verify(SyntheticQuoteClient(chain_rows=rows))
+
+    def test_identifier_must_prove_root_date_type_and_strike(self):
+        identifiers = (
+            "QQQ   300315C00500000",
+            "SPY   300322C00500000",
+            "SPY   300315P00500000",
+            "SPY   300315C00501000",
+            "not-an-identifier",
+        )
+        for identifier in identifiers:
+            with self.subTest(identifier=identifier):
+                row = dict(SyntheticQuoteClient().chain_rows[0])
+                row["identifier"] = identifier
+                with self.assertRaisesRegex(ValueError, "identifier is inconsistent"):
+                    self.verify(SyntheticQuoteClient(chain_rows=[row]))
+
+    def test_multiplier_is_provider_supplied_and_never_defaulted(self):
+        row = dict(SyntheticQuoteClient().chain_rows[0], multiplier=50)
+        result = self.verify(SyntheticQuoteClient(chain_rows=[row]))
+        self.assertEqual(result.contract_reference.contract_key.contract_multiplier, 50)
+
+        for invalid in (None, True, 0, -1, 100.0):
+            with self.subTest(multiplier=invalid):
+                row = dict(SyntheticQuoteClient().chain_rows[0], multiplier=invalid)
+                with self.assertRaisesRegex(ValueError, "multiplier is invalid"):
+                    self.verify(SyntheticQuoteClient(chain_rows=[row]))
+
+    def test_request_failures_are_sanitized(self):
+        secret = "synthetic-provider-secret"
+        for method, expected in (
+            ("get_option_expirations", "expiration retrieval failed"),
+            ("get_option_chain", "chain retrieval failed"),
+        ):
+            with self.subTest(method=method):
+                client = SyntheticQuoteClient()
+                setattr(client, method, mock.Mock(side_effect=RuntimeError(secret)))
+                with self.assertRaisesRegex(RuntimeError, expected) as raised:
+                    self.verify(client)
+                self.assertNotIn(secret, str(raised.exception))
+
+    def test_invalid_inputs_fail_before_network(self):
+        cases = (
+            {"underlying_key": object()},
+            {"expiration": datetime.datetime(2030, 3, 15)},
+            {"option_type": "unknown"},
+            {"strike": decimal.Decimal("NaN")},
+        )
+        for values in cases:
+            with self.subTest(values=tuple(values)):
+                client = SyntheticQuoteClient()
+                with self.assertRaises((TypeError, ValueError)):
+                    self.verify(client, **values)
+                self.assertEqual(client.calls, [])
+
+    def test_malformed_tables_fail_without_raw_values(self):
+        secret = "synthetic-payload-secret"
+        client = SyntheticQuoteClient(
+            expiration_rows=[{"symbol": secret}]
+        )
+        with self.assertRaisesRegex(ValueError, "response is invalid") as raised:
+            self.verify(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+        class ExplodingScalar:
+            def __str__(self):
+                raise RuntimeError(secret)
+
+        row = dict(
+            SyntheticQuoteClient().chain_rows[0],
+            strike=ExplodingScalar(),
+        )
+        with self.assertRaisesRegex(ValueError, "response is invalid") as raised:
+            self.verify(SyntheticQuoteClient(chain_rows=[row]))
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_quote_method_accessor_failure_is_sanitized(self):
+        secret = "synthetic-client-secret"
+
+        class ExplodingClient:
+            @property
+            def get_option_expirations(self):
+                raise RuntimeError(secret)
+
+        with self.assertRaisesRegex(TypeError, "must provide Tiger quote methods") as raised:
+            self.verify(ExplodingClient())
+        self.assertNotIn(secret, str(raised.exception))
+
+        row = dict(SyntheticQuoteClient().chain_rows[0], strike=float("nan"))
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            self.verify(SyntheticQuoteClient(chain_rows=[row]))
+
+        class ExplodingTable:
+            @property
+            def to_dict(self):
+                raise RuntimeError(secret)
+
+        client = SyntheticQuoteClient()
+        client.get_option_expirations = mock.Mock(return_value=ExplodingTable())
+        with self.assertRaisesRegex(ValueError, "response is invalid") as raised:
+            self.verify(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_direct_result_construction_rejects_contradictory_evidence(self):
+        valid = self.verify()
+        with self.assertRaisesRegex(ValueError, "classify.*monthly"):
+            dataclasses.replace(valid, provider_period_tag="w")
+        with self.assertRaisesRegex(ValueError, "identifier is inconsistent"):
+            dataclasses.replace(
+                valid,
+                provider_identifier="SPY   300315P00500000",
+            )
+        source = valid.contract_reference.metadata.source_references[0]
+        contradictory = dataclasses.replace(
+            source,
+            provider_name="Other Provider",
+        )
+        metadata = dataclasses.replace(
+            valid.contract_reference.metadata,
+            source_references=(
+                contradictory,
+                valid.contract_reference.metadata.source_references[1],
+            ),
+        )
+        reference = dataclasses.replace(
+            valid.contract_reference,
+            metadata=metadata,
+        )
+        with self.assertRaisesRegex(ValueError, "identifier is inconsistent"):
+            dataclasses.replace(valid, contract_reference=reference)
+
+        forged_sources = tuple(
+            dataclasses.replace(source, source_id="forged-source-id")
+            if source.dataset_name == "option_expirations"
+            else source
+            for source in valid.contract_reference.metadata.source_references
+        )
+        forged_metadata = dataclasses.replace(
+            valid.contract_reference.metadata,
+            source_references=forged_sources,
+        )
+        forged_reference = dataclasses.replace(
+            valid.contract_reference,
+            metadata=forged_metadata,
+        )
+        with self.assertRaisesRegex(ValueError, "identifier is inconsistent"):
+            dataclasses.replace(valid, contract_reference=forged_reference)
 
 
 if __name__ == "__main__":

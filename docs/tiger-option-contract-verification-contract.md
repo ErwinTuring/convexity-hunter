@@ -8,6 +8,8 @@ the exact expiration's option chain, and returns one verified provider-neutral
 `OptionContractReference` together with the Tiger evidence needed to prove that
 the expiration is provider-classified monthly.
 
+Implementation status: complete and independently reviewed.
+
 The work unit is verification, not discovery or recommendation:
 
 ```text
@@ -48,7 +50,6 @@ verify_tiger_monthly_option_contract(
     expiration,
     option_type,
     strike,
-    retrieved_at,
 ) -> TigerExactOptionContractVerification
 ```
 
@@ -56,8 +57,13 @@ verify_tiger_monthly_option_contract(
 credentials, construct a client, grab quote permission, or call any trading
 API. `underlying_key` must be an `UnderlyingKey`, `expiration` a date-only
 value, `option_type` exactly `call` or `put` after existing core normalization,
-`strike` a positive `Decimal`, and `retrieved_at` an aware datetime normalized
-to UTC.
+and `strike` a positive `Decimal`.
+
+The adapter records an aware UTC receipt timestamp immediately after each SDK
+response returns and records normalization time after exact-row validation. A
+caller cannot supply or override those timestamps because `retrieved_at` means
+when the adapter actually received source material, not request-start time or a
+caller-selected evaluation time.
 
 ## Authorized Tiger requests
 
@@ -140,13 +146,16 @@ The nested provider-neutral record is an `OptionContractReference` whose:
   strike plus the provider-supplied multiplier and underlying currency;
 - `deliverable_id`, listing date, last-trade date, exercise style, and
   settlement type are `None` because this request does not establish them;
-- single `SourceReference` uses provider-reference origin, dataset
-  `option_chain`, and retains the provider identifier as both provider record
-  ID and source symbol;
-- observed and retrieved timestamps both equal caller-supplied `retrieved_at`
-  because Tiger supplies no observation time for these reference terms;
+- two `SourceReference` values use provider-reference origin: dataset
+  `option_expirations` retains the exact underlying/expiration evidence and
+  dataset `option_chain` retains the provider identifier as both provider
+  record ID and source symbol;
+- each source's retrieved timestamp is captured immediately after its SDK
+  response returns, and its observed timestamp equals that receipt timestamp
+  under the declared assignment methodology because Tiger supplies no exact
+  observation time for these reference terms;
 - stable IDs are deterministically derived from the verified provider
-  identifier and canonical retrieval timestamp;
+  identifier and both canonical source-receipt timestamps;
 - normalization methodology states that monthly classification and multiplier
   are provider supplied and that no contract-term timestamp was supplied; and
 - normalization flags are `SYMBOL_MAPPED`, `TIMESTAMP_ASSIGNED`, and
