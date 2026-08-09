@@ -158,8 +158,12 @@ Frozen Tiger exact-option analytics/activity work unit:
   documented analytics, but supplied no analytics timestamp/session,
   model/input descriptions, or Theta day basis.
 - The bounded unit retains provider-native evidence only and does not misuse
-  last-trade time as the analytics timestamp. Implementation and independent
-  review are pending.
+  last-trade time as the analytics timestamp.
+- Independent review found and corrected Decimal zero-scale loss and unrelated-
+  row failure-precedence defects; targeted re-review passed.
+- Final validation passed 89 focused Tiger tests, 1,148 full-suite tests,
+  compileall, `git diff --check`, and a sanitized live 103-DTE SPY adapter
+  smoke check.
 
 This file is a concise navigation map, not a complete specification or
 history.

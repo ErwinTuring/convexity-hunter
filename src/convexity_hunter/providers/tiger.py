@@ -40,6 +40,8 @@ __all__ = (
     "retrieve_tiger_historical_dividend_evidence",
     "TigerHistoricalOptionBarEvidence",
     "retrieve_tiger_historical_option_bar_evidence",
+    "TigerExactOptionAnalyticsActivityEvidence",
+    "retrieve_tiger_exact_option_analytics_activity_evidence",
 )
 
 
@@ -117,6 +119,16 @@ _OPTION_BAR_RESPONSE_MESSAGE = (
 _OPTION_BAR_DUPLICATE_MESSAGE = (
     "Tiger historical option-bar response contains duplicate rows."
 )
+_ANALYTICS_ACTIVITY_RETRIEVAL_MESSAGE = (
+    "Tiger exact option analytics/activity retrieval failed."
+)
+_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE = (
+    "Tiger exact option analytics/activity response is invalid."
+)
+_ANALYTICS_ACTIVITY_MATCH_MESSAGE = (
+    "Tiger option-chain response must contain exactly one verified "
+    "analytics/activity row."
+)
 
 _EXPIRATION_COLUMNS = frozenset(("symbol", "date", "timestamp", "period_tag"))
 _CHAIN_COLUMNS = frozenset(
@@ -154,6 +166,19 @@ _OPTION_BAR_COLUMNS = (
     "open_interest",
 )
 _OPTION_BAR_COLUMN_SET = frozenset(_OPTION_BAR_COLUMNS)
+_ANALYTICS_ACTIVITY_COLUMNS = _CHAIN_COLUMNS | frozenset(
+    (
+        "volume",
+        "open_interest",
+        "last_timestamp",
+        "implied_vol",
+        "delta",
+        "gamma",
+        "theta",
+        "vega",
+        "rho",
+    )
+)
 _TIGER_NORMALIZATION_VERSION = "tiger-option-contract-v0.1"
 _TIGER_DAILY_BAR_NORMALIZATION_VERSION = "tiger-underlying-daily-bar-v0.1"
 _US_EASTERN = _ZoneInfo("America/New_York")
@@ -545,6 +570,59 @@ def _historical_option_bar_table_records(table: object) -> tuple:
         return tuple(copied)
     except Exception:
         raise ValueError(_OPTION_BAR_RESPONSE_MESSAGE) from None
+
+
+def _analytics_activity_decimal(
+    value: object,
+    *,
+    positive: bool = False,
+    nonnegative: bool = False,
+    delta: bool = False,
+) -> _decimal.Decimal:
+    if isinstance(value, bool):
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+    try:
+        normalized = _decimal.Decimal(str(value))
+    except Exception:
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE) from None
+    if not normalized.is_finite():
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+    if positive and normalized <= 0:
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+    if nonnegative and normalized < 0:
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+    if delta and not (_decimal.Decimal("-1") <= normalized <= _decimal.Decimal("1")):
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+    if normalized == 0:
+        return normalized.copy_abs()
+    return normalized
+
+
+def _analytics_activity_count(value: object) -> int:
+    try:
+        if isinstance(value, bool) or not isinstance(value, _numbers.Integral):
+            raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+        normalized = int(value)
+    except Exception:
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE) from None
+    if normalized < 0:
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+    return normalized
+
+
+def _analytics_last_trade_datetime(value: object) -> _datetime.datetime:
+    try:
+        if isinstance(value, bool) or not isinstance(value, _numbers.Integral):
+            raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+        timestamp = int(value)
+        if timestamp <= 0:
+            raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+        observed_at = _datetime.datetime(
+            1970, 1, 1, tzinfo=_datetime.timezone.utc
+        ) + _datetime.timedelta(milliseconds=timestamp)
+    except Exception:
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE) from None
+    return observed_at
 
 
 def _permission_expiry(value: object) -> int:
@@ -1834,3 +1912,152 @@ def retrieve_tiger_historical_option_bar_evidence(
         evidence.append(item)
 
     return tuple(sorted(evidence, key=lambda item: item.bar_started_at))
+
+
+@_dataclass(frozen=True)
+class TigerExactOptionAnalyticsActivityEvidence:
+    """Tiger-native analytics and activity for one exact option contract."""
+
+    contract_verification: TigerExactOptionContractVerification
+    volume: int
+    open_interest: int
+    implied_volatility: _decimal.Decimal
+    delta: _decimal.Decimal
+    gamma: _decimal.Decimal
+    theta: _decimal.Decimal
+    vega: _decimal.Decimal
+    rho: _decimal.Decimal
+    last_trade_at: _datetime.datetime
+    retrieved_at: _datetime.datetime
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.contract_verification)
+            is not TigerExactOptionContractVerification
+        ):
+            raise TypeError(
+                "contract_verification must be a "
+                "TigerExactOptionContractVerification"
+            )
+        if type(self.volume) is not int or self.volume < 0:
+            raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+        if type(self.open_interest) is not int or self.open_interest < 0:
+            raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+        values = (
+            self.implied_volatility,
+            self.delta,
+            self.gamma,
+            self.theta,
+            self.vega,
+            self.rho,
+        )
+        if any(type(value) is not _decimal.Decimal for value in values):
+            raise TypeError("option analytics must be Decimal values")
+        implied_volatility = _analytics_activity_decimal(
+            self.implied_volatility, positive=True
+        )
+        delta = _analytics_activity_decimal(self.delta, delta=True)
+        gamma = _analytics_activity_decimal(self.gamma, nonnegative=True)
+        theta = _analytics_activity_decimal(self.theta)
+        vega = _analytics_activity_decimal(self.vega, nonnegative=True)
+        rho = _analytics_activity_decimal(self.rho)
+        last_trade_at = _normalize_utc_runtime_timestamp(
+            "last_trade_at", self.last_trade_at
+        )
+        retrieved_at = _normalize_utc_runtime_timestamp(
+            "retrieved_at", self.retrieved_at
+        )
+        if last_trade_at > retrieved_at:
+            raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+        object.__setattr__(self, "implied_volatility", implied_volatility)
+        object.__setattr__(self, "delta", delta)
+        object.__setattr__(self, "gamma", gamma)
+        object.__setattr__(self, "theta", theta)
+        object.__setattr__(self, "vega", vega)
+        object.__setattr__(self, "rho", rho)
+        object.__setattr__(self, "last_trade_at", last_trade_at)
+        object.__setattr__(self, "retrieved_at", retrieved_at)
+
+
+def retrieve_tiger_exact_option_analytics_activity_evidence(
+    quote_client: object,
+    contract_verification: TigerExactOptionContractVerification,
+) -> TigerExactOptionAnalyticsActivityEvidence:
+    """Retrieve provider-native activity and analytics for one exact option."""
+
+    if type(contract_verification) is not TigerExactOptionContractVerification:
+        raise TypeError(
+            "contract_verification must be a TigerExactOptionContractVerification"
+        )
+    try:
+        get_chain = getattr(quote_client, "get_option_chain", None)
+    except Exception:
+        raise TypeError("quote_client must provide Tiger quote methods") from None
+    if not callable(get_chain):
+        raise TypeError("quote_client must provide Tiger quote methods")
+
+    key = contract_verification.contract_reference.contract_key
+    try:
+        table = get_chain(
+            key.underlying_key.symbol,
+            key.expiration.isoformat(),
+            return_greek_value=True,
+            market="US",
+        )
+    except Exception:
+        raise RuntimeError(_ANALYTICS_ACTIVITY_RETRIEVAL_MESSAGE) from None
+    retrieved_at = _normalize_utc_runtime_timestamp("retrieved_at", _utc_now())
+    rows = _table_records(
+        table,
+        columns=_ANALYTICS_ACTIVITY_COLUMNS,
+        message=_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE,
+    )
+
+    exact_rows = tuple(
+        row
+        for row in rows
+        if row["identifier"] == contract_verification.provider_identifier
+    )
+    if len(exact_rows) != 1:
+        raise ValueError(_ANALYTICS_ACTIVITY_MATCH_MESSAGE)
+
+    row = exact_rows[0]
+    try:
+        symbol = row["symbol"]
+        put_call = row["put_call"]
+        if not all(type(value) is str for value in (symbol, put_call)):
+            raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+        expiry = _provider_integer(
+            row["expiry"], _ANALYTICS_ACTIVITY_RESPONSE_MESSAGE
+        )
+        strike = _analytics_activity_decimal(row["strike"], positive=True)
+        multiplier = _provider_integer(
+            row["multiplier"], _ANALYTICS_ACTIVITY_RESPONSE_MESSAGE
+        )
+        if (
+            symbol != key.underlying_key.symbol
+            or expiry
+            != contract_verification.provider_expiration_timestamp_ms
+            or strike != key.strike
+            or put_call not in {"CALL", "PUT"}
+            or put_call.lower() != key.option_type
+            or multiplier != key.contract_multiplier
+        ):
+            raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE)
+        return TigerExactOptionAnalyticsActivityEvidence(
+            contract_verification=contract_verification,
+            volume=_analytics_activity_count(row["volume"]),
+            open_interest=_analytics_activity_count(row["open_interest"]),
+            implied_volatility=_analytics_activity_decimal(
+                row["implied_vol"], positive=True
+            ),
+            delta=_analytics_activity_decimal(row["delta"], delta=True),
+            gamma=_analytics_activity_decimal(row["gamma"], nonnegative=True),
+            theta=_analytics_activity_decimal(row["theta"]),
+            vega=_analytics_activity_decimal(row["vega"], nonnegative=True),
+            rho=_analytics_activity_decimal(row["rho"]),
+            last_trade_at=_analytics_last_trade_datetime(row["last_timestamp"]),
+            retrieved_at=retrieved_at,
+        )
+    except Exception:
+        raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE) from None

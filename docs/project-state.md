@@ -1387,15 +1387,19 @@ populated volume, open interest, IV, Delta, Gamma, Theta, Vega, Rho, and
 last-trade fields. Tiger supplies no analytics timestamp/session, model or
 rate/dividend input descriptions, or Theta day basis, and last-trade time does
 not timestamp the other fields. The frozen boundary therefore retains exact-
-contract provider-native evidence only. Implementation and independent review
-are pending.
+contract provider-native evidence only. Implementation is complete. Independent
+review found two accepted defects: Decimal negative-zero normalization discarded
+provider scale, and malformed unrelated rows could preempt exact-row
+cardinality. Both are corrected and targeted re-review passed. Validation
+passed 89 focused Tiger tests, 1,148 full-suite tests, compileall,
+`git diff --check`, and a sanitized live 103-DTE SPY adapter smoke check.
 
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
   runtime, exact-option verification, transient exact-quote evidence,
   underlying daily bars, historical-dividend evidence, and historical-option-
-  bar evidence work units
+  bar evidence, and exact-option analytics/activity evidence work units
 - additional or fallback market-data providers unless a concrete Tiger blocker
   appears
 - mature news, search, knowledge, and world-event Skill capability research

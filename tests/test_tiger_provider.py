@@ -66,7 +66,7 @@ class TigerProviderTestCase(unittest.TestCase):
 
 
 class PublicBoundaryTests(TigerProviderTestCase):
-    def test_exact_eleven_name_api_and_no_root_or_package_reexport(self):
+    def test_exact_thirteen_name_api_and_no_root_or_package_reexport(self):
         self.assertEqual(
             tiger.__all__,
             (
@@ -81,6 +81,8 @@ class PublicBoundaryTests(TigerProviderTestCase):
                 "retrieve_tiger_historical_dividend_evidence",
                 "TigerHistoricalOptionBarEvidence",
                 "retrieve_tiger_historical_option_bar_evidence",
+                "TigerExactOptionAnalyticsActivityEvidence",
+                "retrieve_tiger_exact_option_analytics_activity_evidence",
             ),
         )
         self.assertEqual(
@@ -492,6 +494,15 @@ class SyntheticQuoteClient:
                     "ask_price": 10.35,
                     "bid_size": 12.0,
                     "ask_size": 14.0,
+                    "volume": 123,
+                    "open_interest": 456,
+                    "last_timestamp": 1893589200000,
+                    "implied_vol": 0.25,
+                    "delta": 0.55,
+                    "gamma": 0.012,
+                    "theta": -0.08,
+                    "vega": 0.15,
+                    "rho": 0.10,
                 }
             ]
             if chain_rows is None
@@ -2018,6 +2029,237 @@ class HistoricalOptionBarEvidenceTests(TigerProviderTestCase):
         client.response = pandas.DataFrame([row])
         result = self.retrieve(client)
         self.assertEqual(result[0].open_interest, 456)
+
+
+class ExactOptionAnalyticsActivityEvidenceTests(TigerProviderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.underlying = UnderlyingKey(
+            symbol="SPY",
+            listing_mic="ARCX",
+            security_type=UnderlyingSecurityType.ETF,
+            currency="USD",
+        )
+        base = datetime.datetime(2030, 1, 1, 12, tzinfo=datetime.timezone.utc)
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(
+                base,
+                base + datetime.timedelta(seconds=1),
+                base + datetime.timedelta(seconds=2),
+            ),
+        ):
+            self.verification = tiger.verify_tiger_monthly_option_contract(
+                SyntheticQuoteClient(),
+                underlying_key=self.underlying,
+                expiration=datetime.date(2030, 3, 15),
+                option_type="call",
+                strike=decimal.Decimal("500"),
+            )
+        self.retrieved_at = datetime.datetime(
+            2030, 1, 5, 12, tzinfo=datetime.timezone.utc
+        )
+
+    def retrieve(self, client=None):
+        client = SyntheticQuoteClient() if client is None else client
+        with mock.patch.object(tiger, "_utc_now", return_value=self.retrieved_at):
+            return tiger.retrieve_tiger_exact_option_analytics_activity_evidence(
+                client, self.verification
+            )
+
+    def test_exact_request_builds_frozen_provider_native_evidence(self):
+        client = SyntheticQuoteClient()
+        result = self.retrieve(client)
+        self.assertEqual(
+            client.calls,
+            [
+                (
+                    "chain",
+                    "SPY",
+                    "2030-03-15",
+                    {"return_greek_value": True, "market": "US"},
+                )
+            ],
+        )
+        self.assertIsInstance(
+            result, tiger.TigerExactOptionAnalyticsActivityEvidence
+        )
+        self.assertIs(result.contract_verification, self.verification)
+        self.assertEqual((result.volume, result.open_interest), (123, 456))
+        self.assertEqual(result.implied_volatility, decimal.Decimal("0.25"))
+        self.assertEqual(result.delta, decimal.Decimal("0.55"))
+        self.assertEqual(result.gamma, decimal.Decimal("0.012"))
+        self.assertEqual(result.theta, decimal.Decimal("-0.08"))
+        self.assertEqual(result.vega, decimal.Decimal("0.15"))
+        self.assertEqual(result.rho, decimal.Decimal("0.1"))
+        self.assertEqual(result.retrieved_at, self.retrieved_at)
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            result.volume = 1
+
+    def test_exact_verified_row_is_required_once_without_substitution(self):
+        exact = SyntheticQuoteClient().chain_rows[0]
+        nearby = dict(
+            exact,
+            identifier="SPY   300315C00501000",
+            strike=501.0,
+        )
+        for rows in ([nearby], [dict(exact), dict(exact)]):
+            with self.subTest(count=len(rows)):
+                client = SyntheticQuoteClient(chain_rows=rows)
+                with self.assertRaisesRegex(ValueError, "exactly one verified"):
+                    self.retrieve(client)
+
+    def test_zero_activity_and_negative_zero_analytics_are_preserved_safely(self):
+        row = dict(
+            SyntheticQuoteClient().chain_rows[0],
+            volume=0,
+            open_interest=0,
+            delta="-0.00",
+            gamma="-0.00",
+            theta="-0.00",
+            vega="-0.00",
+            rho="-0.00",
+        )
+        result = self.retrieve(SyntheticQuoteClient(chain_rows=[row]))
+        self.assertEqual((result.volume, result.open_interest), (0, 0))
+        for value in (
+            result.delta,
+            result.gamma,
+            result.theta,
+            result.vega,
+            result.rho,
+        ):
+            self.assertEqual(value, decimal.Decimal(0))
+            self.assertFalse(value.is_signed())
+            self.assertEqual(value.as_tuple().exponent, -2)
+
+    def test_unrelated_malformed_row_does_not_precede_exact_cardinality(self):
+        exact = SyntheticQuoteClient().chain_rows[0]
+        malformed_nearby = dict(
+            exact,
+            identifier="SPY   300315C00501000",
+            strike=object(),
+            expiry=object(),
+            multiplier=object(),
+        )
+        result = self.retrieve(
+            SyntheticQuoteClient(chain_rows=[malformed_nearby, exact])
+        )
+        self.assertEqual(result.implied_volatility, decimal.Decimal("0.25"))
+
+        contradictory_exact = dict(exact, symbol="QQQ")
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            self.retrieve(SyntheticQuoteClient(chain_rows=[contradictory_exact]))
+
+    def test_numeric_domains_fail_closed(self):
+        changes = (
+            {"volume": -1},
+            {"open_interest": 1.5},
+            {"implied_vol": 0},
+            {"delta": 1.01},
+            {"gamma": -0.01},
+            {"theta": float("nan")},
+            {"vega": -0.01},
+            {"rho": float("inf")},
+        )
+        for change in changes:
+            with self.subTest(field=tuple(change)):
+                row = dict(SyntheticQuoteClient().chain_rows[0], **change)
+                with self.assertRaisesRegex(ValueError, "response is invalid"):
+                    self.retrieve(SyntheticQuoteClient(chain_rows=[row]))
+
+    def test_last_trade_time_is_retained_but_not_used_as_analytics_time(self):
+        result = self.retrieve()
+        self.assertEqual(
+            result.last_trade_at,
+            datetime.datetime.fromtimestamp(
+                1893589200, tz=datetime.timezone.utc
+            ),
+        )
+        self.assertLess(result.last_trade_at, result.retrieved_at)
+        future_ms = int(
+            (self.retrieved_at + datetime.timedelta(seconds=1)).timestamp()
+            * 1000
+        )
+        row = dict(
+            SyntheticQuoteClient().chain_rows[0],
+            last_timestamp=future_ms,
+        )
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            self.retrieve(SyntheticQuoteClient(chain_rows=[row]))
+
+    def test_input_method_and_sdk_failures_are_sanitized(self):
+        client = SyntheticQuoteClient()
+        with self.assertRaisesRegex(TypeError, "contract_verification"):
+            tiger.retrieve_tiger_exact_option_analytics_activity_evidence(
+                client, object()
+            )
+        self.assertEqual(client.calls, [])
+
+        secret = "synthetic-analytics-secret"
+        client = SyntheticQuoteClient()
+        client.get_option_chain = mock.Mock(side_effect=RuntimeError(secret))
+        with self.assertRaisesRegex(
+            RuntimeError, "analytics/activity retrieval failed"
+        ) as raised:
+            self.retrieve(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+        class ExplodingClient:
+            @property
+            def get_option_chain(self):
+                raise RuntimeError(secret)
+
+        with self.assertRaisesRegex(
+            TypeError, "must provide Tiger quote methods"
+        ) as raised:
+            self.retrieve(ExplodingClient())
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_malformed_table_and_direct_construction_fail_safely(self):
+        secret = "synthetic-row-secret"
+        row = dict(SyntheticQuoteClient().chain_rows[0])
+        del row["theta"]
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            self.retrieve(SyntheticQuoteClient(chain_rows=[row]))
+
+        class ExplodingScalar:
+            def __str__(self):
+                raise RuntimeError(secret)
+
+        row = dict(SyntheticQuoteClient().chain_rows[0], implied_vol=ExplodingScalar())
+        with self.assertRaisesRegex(ValueError, "response is invalid") as raised:
+            self.retrieve(SyntheticQuoteClient(chain_rows=[row]))
+        self.assertNotIn(secret, str(raised.exception))
+
+        result = self.retrieve()
+        with self.assertRaisesRegex(TypeError, "analytics must be Decimal"):
+            dataclasses.replace(result, delta=0.5)
+        with self.assertRaisesRegex(ValueError, "response is invalid"):
+            dataclasses.replace(result, gamma=decimal.Decimal("-0.1"))
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("pandas") is not None,
+        "optional pandas dependency is not installed",
+    )
+    def test_actual_pandas_numpy_rows_are_supported(self):
+        import numpy
+        import pandas
+
+        row = dict(SyntheticQuoteClient().chain_rows[0])
+        row["volume"] = numpy.int64(row["volume"])
+        row["open_interest"] = numpy.int64(row["open_interest"])
+        row["last_timestamp"] = numpy.int64(row["last_timestamp"])
+        row["implied_vol"] = numpy.float64(row["implied_vol"])
+
+        class PandasClient(SyntheticQuoteClient):
+            def get_option_chain(self, symbol, expiry, **kwargs):
+                self.calls.append(("chain", symbol, expiry, kwargs))
+                return pandas.DataFrame([row])
+
+        result = self.retrieve(PandasClient())
+        self.assertEqual(result.open_interest, 456)
 
 
 if __name__ == "__main__":
