@@ -1281,10 +1281,20 @@ re-review passed. Final validation passed 26 focused tests, 1,085 full-suite
 tests, compileall, `git diff --check`, and a local external-config smoke check
 that returned a `QuoteClient` without a market request or permission grab.
 
+The next separately contracted work unit is
+[`tiger-option-contract-verification-contract.md`](tiger-option-contract-verification-contract.md).
+It is limited to verifying one caller-specified exact option identity against
+Tiger's explicit monthly expiration evidence and exact chain row, retaining the
+provider identifier and provider-supplied multiplier in a provider-neutral
+`OptionContractReference`. It does not scan, rank, substitute, generate, or
+normalize quote/analytics fields. Contract status: frozen; implementation and
+independent review pending.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
-  runtime boundary until separately contracted work units
+  runtime boundary and the separately contracted exact-option verification
+  work unit
 - additional or fallback market-data providers unless a concrete Tiger blocker
   appears
 - mature news, search, knowledge, and world-event Skill capability research
