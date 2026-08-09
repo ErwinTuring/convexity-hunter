@@ -52,10 +52,18 @@ The adapter makes exactly two read-only SDK calls in order:
 1. `get_bars_by_page` with `period="day"`, `right="nr"`;
 2. `get_bars_by_page` with identical bounds and `right="br"`.
 
-Both calls use the exact symbol, ISO begin/end dates, `total=1000`,
+Both calls use the exact symbol, integer Unix-millisecond begin/end boundaries,
+`total=1000`,
 `page_size=1000`, `time_interval=0`, no extended-hours session, no fundamentals,
 and no security-type override. This range cannot contain 1,000 US daily
 sessions, so silent truncation is not accepted.
+
+Each boundary is constructed as midnight for the caller's date in
+`America/New_York`, converted as an aware datetime to UTC, then encoded as an
+exact integer Unix timestamp in milliseconds. This preserves the declared
+inclusive-begin/exclusive-end US-session range independently of Tiger's default
+string timezone and across EST/EDT transitions. The work unit does not alter
+the global Tiger client timezone.
 
 No permission, permission-grab, quote, option, calendar, dividend, rate,
 account, order, or execution request is authorized. SDK failures are sanitized.

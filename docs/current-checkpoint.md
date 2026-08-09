@@ -93,6 +93,9 @@ Completed Tiger exact option-quote evidence work unit:
   A non-trading-day live probe authenticated and acknowledged the subscription
   without errors but produced no quote event, so regular-session field
   population and pairing remain the next required live check.
+- Absolute next Push BBO executable window: no earlier than Beijing time
+  `2026-08-10 21:30` (the next valid US regular-session open). Do not repeat the
+  live option Push probe before this time.
 
 Completed Tiger underlying daily-bars work unit:
 
@@ -108,6 +111,9 @@ Completed Tiger underlying daily-bars work unit:
   re-review passed.
 - Final validation passed 60 focused tests, 1,119 full-suite tests, compileall,
   `git diff --check`, and a sanitized live five-session SPY smoke check.
+- A targeted request-boundary correction is frozen: NR and BR must receive
+  exact Unix-millisecond boundaries derived from `America/New_York` midnight,
+  not timezone-ambiguous ISO date strings. Implementation and review are pending.
 
 Frozen next Tiger work unit:
 

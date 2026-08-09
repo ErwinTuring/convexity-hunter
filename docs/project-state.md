@@ -1324,6 +1324,8 @@ in BBO. A non-trading-day live probe connected and received a successful
 subscription acknowledgement with no error, but no quote callback arrived in
 the bounded window. No normalizer is authorized before a regular-session live
 probe verifies exact callback pairing and actual field population.
+The absolute next executable window is no earlier than Beijing time
+`2026-08-10 21:30`; no earlier non-trading-session retry is authorized.
 
 The next separately contracted unit is
 [`tiger-underlying-daily-bars-contract.md`](tiger-underlying-daily-bars-contract.md).
@@ -1336,6 +1338,11 @@ path, and the final correction now rejects all invalid NR material before the
 BR request. Final targeted re-review passed. Validation passed 60 focused tests,
 1,119 full-suite tests, compileall, `git diff --check`, and a sanitized live
 five-session SPY smoke check.
+
+A targeted correction is frozen for the daily-bar request boundary. Tiger's
+timezone-defaulted string parameters are replaced only in this work unit by
+integer Unix milliseconds calculated from `America/New_York` midnight and
+aware UTC conversion. Global Tiger client timezone remains unchanged.
 
 The next separately contracted unit is
 [`tiger-historical-dividend-evidence-contract.md`](tiger-historical-dividend-evidence-contract.md).
