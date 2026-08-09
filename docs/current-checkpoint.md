@@ -161,7 +161,13 @@ Frozen U.S. Treasury daily par-yield work unit:
   existing `RateCurvePointObservation` without interpolation or a zero/OIS
   claim.
 - Formal Tier-A preflight and a public sanitized CSV/XML probe are complete.
-  Implementation, independent review, and validation are next.
+  Implementation and independent review are complete. Review found and closed
+  redirect-before-validation, ambient Decimal exponent, hostile-value test
+  isolation, and fresh-import test defects; targeted re-review passed.
+- Final validation passed 14 focused Treasury tests, 469 combined
+  Treasury/market-data/Tiger regressions, 1,162 full-suite tests, compileall,
+  and `git diff --check`. A sanitized live 2026-08-07 smoke returned the exact
+  ordered 30/45/60/90/120/180-day normalized curve.
 
 Frozen Tiger exact-option analytics/activity work unit:
 

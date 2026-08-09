@@ -1390,7 +1390,14 @@ It preserves the provider-native nominal par, bond-equivalent semantics,
 assigns and discloses the provider-described nominal 3:30 PM Eastern input
 time, maps named maturities to declared 30/45/60/90/120/180-day normalized
 tenors, and creates no zero/OIS/SOFR, interpolation, fallback, or pricing-rate
-claim. Implementation and independent review are next.
+claim. Implementation and independent review are complete. The initial review
+found one redirect-boundary blocker, one ambient Decimal exponent defect, and
+two test-isolation defects; all were corrected and targeted re-review passed.
+Final validation passed 14 focused Treasury tests, 469 combined
+Treasury/market-data/Tiger regressions, 1,162 full-suite tests, compileall, and
+`git diff --check`. A sanitized live 2026-08-07 probe returned the exact
+30/45/60/90/120/180-day sequence with normalized public rates 0.0379, 0.0379,
+0.0383, 0.0387, 0.0389, and 0.0396.
 
 The next separately contracted unit is
 [`tiger-exact-option-analytics-activity-evidence-contract.md`](tiger-exact-option-analytics-activity-evidence-contract.md).

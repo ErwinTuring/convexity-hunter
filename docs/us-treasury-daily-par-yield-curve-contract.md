@@ -8,6 +8,8 @@ the USD rate category only. Tiger OpenAPI remains the MVP primary provider for
 the option and underlying market-data universe; this unit adds no provider
 routing, fallback, arbitration, or quote-provider substitution.
 
+Implementation and independent review are complete.
+
 ```text
 exact Treasury effective date
     -> official year-specific Daily Treasury Par Yield Curve CSV
