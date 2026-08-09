@@ -63,14 +63,16 @@ class TigerProviderTestCase(unittest.TestCase):
 
 
 class PublicBoundaryTests(TigerProviderTestCase):
-    def test_exact_four_name_api_and_no_root_or_package_reexport(self):
+    def test_exact_six_name_api_and_no_root_or_package_reexport(self):
         self.assertEqual(
             tiger.__all__,
             (
                 "resolve_tiger_config_path",
                 "initialize_tiger_quote_client",
                 "TigerExactOptionContractVerification",
+                "TigerExactOptionQuoteEvidence",
                 "verify_tiger_monthly_option_contract",
+                "retrieve_tiger_exact_option_quote_evidence",
             ),
         )
         self.assertEqual(
@@ -449,7 +451,7 @@ class SyntheticTable:
 
 
 class SyntheticQuoteClient:
-    def __init__(self, expiration_rows=None, chain_rows=None):
+    def __init__(self, expiration_rows=None, chain_rows=None, permissions=None):
         self.expiration_rows = (
             [
                 {
@@ -471,12 +473,25 @@ class SyntheticQuoteClient:
                     "strike": 500.0,
                     "put_call": "CALL",
                     "multiplier": 100,
+                    "bid_price": 10.25,
+                    "ask_price": 10.35,
+                    "bid_size": 12.0,
+                    "ask_size": 14.0,
                 }
             ]
             if chain_rows is None
             else chain_rows
         )
+        self.permissions = (
+            [{"name": "usOptionQuote", "expire_at": -1}]
+            if permissions is None
+            else permissions
+        )
         self.calls = []
+
+    def get_quote_permission(self):
+        self.calls.append(("permission",))
+        return self.permissions
 
     def get_option_expirations(self, symbol, **kwargs):
         self.calls.append(("expirations", symbol, kwargs))
@@ -794,6 +809,306 @@ class ExactContractVerificationTests(TigerProviderTestCase):
         )
         with self.assertRaisesRegex(ValueError, "identifier is inconsistent"):
             dataclasses.replace(valid, contract_reference=forged_reference)
+
+
+class ExactOptionQuoteEvidenceTests(TigerProviderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.underlying = UnderlyingKey(
+            symbol="SPY",
+            listing_mic="ARCX",
+            security_type=UnderlyingSecurityType.ETF,
+            currency="USD",
+        )
+        self.expiration_received_at = datetime.datetime(
+            2030, 1, 2, 15, 30, tzinfo=datetime.timezone.utc
+        )
+        self.chain_received_at = self.expiration_received_at + datetime.timedelta(
+            seconds=1
+        )
+        self.normalized_at = self.chain_received_at + datetime.timedelta(seconds=1)
+        verification_client = SyntheticQuoteClient()
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(
+                self.expiration_received_at,
+                self.chain_received_at,
+                self.normalized_at,
+            ),
+        ):
+            self.verification = tiger.verify_tiger_monthly_option_contract(
+                verification_client,
+                underlying_key=self.underlying,
+                expiration=datetime.date(2030, 3, 15),
+                option_type="call",
+                strike=decimal.Decimal("500"),
+            )
+        self.permission_received_at = self.normalized_at + datetime.timedelta(
+            seconds=1
+        )
+        self.quote_received_at = self.permission_received_at + datetime.timedelta(
+            seconds=1
+        )
+
+    def retrieve(self, client=None):
+        client = SyntheticQuoteClient() if client is None else client
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(self.permission_received_at, self.quote_received_at),
+        ):
+            return tiger.retrieve_tiger_exact_option_quote_evidence(
+                client,
+                self.verification,
+            )
+
+    def test_permanent_permission_and_exact_quote_are_retained(self):
+        client = SyntheticQuoteClient()
+        result = self.retrieve(client)
+        self.assertEqual(
+            client.calls,
+            [
+                ("permission",),
+                (
+                    "chain",
+                    "SPY",
+                    "2030-03-15",
+                    {"return_greek_value": False, "market": "US"},
+                ),
+            ],
+        )
+        self.assertIs(result.contract_verification, self.verification)
+        self.assertEqual(result.bid_premium, decimal.Decimal("10.25"))
+        self.assertEqual(result.ask_premium, decimal.Decimal("10.35"))
+        self.assertEqual(result.bid_size, 12)
+        self.assertEqual(result.ask_size, 14)
+        self.assertEqual(result.permission_expire_at_ms, -1)
+        self.assertEqual(result.permission_received_at, self.permission_received_at)
+        self.assertEqual(result.quote_received_at, self.quote_received_at)
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            result.bid_size = 99
+
+    def test_finite_permission_must_remain_active_through_quote_receipt(self):
+        active = tiger._unix_milliseconds(self.quote_received_at) + 1
+        result = self.retrieve(
+            SyntheticQuoteClient(
+                permissions=[{"name": "usOptionQuote", "expire_at": active}]
+            )
+        )
+        self.assertEqual(result.permission_expire_at_ms, active)
+
+        expired = tiger._unix_milliseconds(self.permission_received_at)
+        client = SyntheticQuoteClient(
+            permissions=[{"name": "usOptionQuote", "expire_at": expired}]
+        )
+        with self.assertRaisesRegex(ValueError, "permission is not active"):
+            self.retrieve(client)
+        self.assertEqual(client.calls, [("permission",)])
+
+        between = tiger._unix_milliseconds(self.quote_received_at)
+        with self.assertRaisesRegex(ValueError, "permission is not active"):
+            self.retrieve(
+                SyntheticQuoteClient(
+                    permissions=[
+                        {"name": "usOptionQuote", "expire_at": between}
+                    ]
+                )
+            )
+
+    def test_permission_must_have_one_exact_valid_entry(self):
+        cases = (
+            [],
+            [{"name": "usQuoteBasic", "expire_at": -1}],
+            [
+                {"name": "usOptionQuote", "expire_at": -1},
+                {"name": "usOptionQuote", "expire_at": -1},
+            ],
+        )
+        for permissions in cases:
+            with self.subTest(count=len(permissions)):
+                client = SyntheticQuoteClient(permissions=permissions)
+                with self.assertRaisesRegex(ValueError, "exactly one"):
+                    self.retrieve(client)
+                self.assertEqual(client.calls, [("permission",)])
+
+    def test_malformed_permission_fails_safely_before_chain(self):
+        secret = "synthetic-permission-secret"
+        cases = (
+            None,
+            [{"name": "usOptionQuote"}],
+            [{"name": "usOptionQuote", "expire_at": True}],
+            [{"name": "usOptionQuote", "expire_at": 0}],
+        )
+        for response in cases:
+            with self.subTest(response_type=type(response).__name__):
+                client = SyntheticQuoteClient()
+                client.permissions = response
+                with self.assertRaisesRegex(ValueError, "response is invalid"):
+                    self.retrieve(client)
+                self.assertEqual(client.calls, [("permission",)])
+
+        client = SyntheticQuoteClient()
+        client.get_quote_permission = mock.Mock(side_effect=RuntimeError(secret))
+        with self.assertRaisesRegex(RuntimeError, "permission retrieval failed") as raised:
+            self.retrieve(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+        class ExplodingString(str):
+            def __eq__(self, other):
+                raise RuntimeError(secret)
+
+        class ExplodingInteger(int):
+            def __int__(self):
+                raise RuntimeError(secret)
+
+        for permission in (
+            {"name": ExplodingString("usOptionQuote"), "expire_at": -1},
+            {"name": "usOptionQuote", "expire_at": ExplodingInteger(-1)},
+        ):
+            with self.assertRaisesRegex(ValueError, "response is invalid") as raised:
+                self.retrieve(SyntheticQuoteClient(permissions=[permission]))
+            self.assertNotIn(secret, str(raised.exception))
+
+    def test_chain_row_must_match_exact_verified_identity_once(self):
+        exact = SyntheticQuoteClient().chain_rows[0]
+        wrong = dict(exact, identifier="SPY   300315C00501000", strike=501.0)
+        for rows in ([wrong], [dict(exact), dict(exact)]):
+            with self.subTest(count=len(rows)):
+                with self.assertRaisesRegex(ValueError, "exactly one verified"):
+                    self.retrieve(SyntheticQuoteClient(chain_rows=rows))
+
+    def test_quote_numeric_conversion_missing_sizes_and_locked_quote(self):
+        row = dict(
+            SyntheticQuoteClient().chain_rows[0],
+            bid_price="10.25",
+            ask_price=decimal.Decimal("10.25"),
+            bid_size=float("nan"),
+            ask_size=None,
+        )
+        result = self.retrieve(SyntheticQuoteClient(chain_rows=[row]))
+        self.assertEqual(result.bid_premium, decimal.Decimal("10.25"))
+        self.assertEqual(result.ask_premium, decimal.Decimal("10.25"))
+        self.assertIsNone(result.bid_size)
+        self.assertIsNone(result.ask_size)
+
+    def test_crossed_or_malformed_quote_fails_safely(self):
+        secret = "synthetic-quote-secret"
+
+        class ExplodingScalar:
+            def __str__(self):
+                raise RuntimeError(secret)
+
+        changes = (
+            {"ask_price": 10.0},
+            {"bid_price": -1},
+            {"ask_price": 0},
+            {"bid_size": 1.5},
+            {"ask_size": -1},
+            {"bid_price": ExplodingScalar()},
+        )
+        for change in changes:
+            with self.subTest(field=tuple(change)):
+                row = dict(SyntheticQuoteClient().chain_rows[0], **change)
+                with self.assertRaisesRegex(ValueError, "response is invalid") as raised:
+                    self.retrieve(SyntheticQuoteClient(chain_rows=[row]))
+                self.assertNotIn(secret, str(raised.exception))
+
+        class ExplodingString(str):
+            def __eq__(self, other):
+                raise RuntimeError(secret)
+
+        row = dict(
+            SyntheticQuoteClient().chain_rows[0],
+            identifier=ExplodingString("SPY   300315C00500000"),
+        )
+        with self.assertRaisesRegex(ValueError, "response is invalid") as raised:
+            self.retrieve(SyntheticQuoteClient(chain_rows=[row]))
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_quote_validation_precedes_permission_expiry_at_quote_receipt(self):
+        expires_at_quote = tiger._unix_milliseconds(self.quote_received_at)
+        row = dict(SyntheticQuoteClient().chain_rows[0], ask_price=0)
+        client = SyntheticQuoteClient(
+            chain_rows=[row],
+            permissions=[
+                {"name": "usOptionQuote", "expire_at": expires_at_quote}
+            ],
+        )
+        with self.assertRaisesRegex(ValueError, "quote response is invalid"):
+            self.retrieve(client)
+
+    def test_chain_request_failure_is_sanitized(self):
+        secret = "synthetic-chain-secret"
+        client = SyntheticQuoteClient()
+        client.get_option_chain = mock.Mock(side_effect=RuntimeError(secret))
+        with self.assertRaisesRegex(RuntimeError, "chain retrieval failed") as raised:
+            self.retrieve(client)
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_invalid_verification_fails_before_permission(self):
+        client = SyntheticQuoteClient()
+        with self.assertRaisesRegex(TypeError, "contract_verification"):
+            tiger.retrieve_tiger_exact_option_quote_evidence(client, object())
+        self.assertEqual(client.calls, [])
+
+    def test_direct_construction_requires_exact_builtin_types(self):
+        result = self.retrieve()
+
+        class DecimalSubclass(decimal.Decimal):
+            pass
+
+        class IntegerSubclass(int):
+            pass
+
+        with self.assertRaisesRegex(TypeError, "bid_premium must be a Decimal"):
+            dataclasses.replace(
+                result,
+                bid_premium=DecimalSubclass("10.25"),
+            )
+        with self.assertRaisesRegex(ValueError, "bid_size"):
+            dataclasses.replace(result, bid_size=IntegerSubclass(12))
+        with self.assertRaisesRegex(TypeError, "permission_expire_at_ms"):
+            dataclasses.replace(
+                result,
+                permission_expire_at_ms=IntegerSubclass(-1),
+            )
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("pandas") is not None,
+        "optional pandas dependency is not installed",
+    )
+    def test_actual_pandas_and_numpy_provider_scalars_are_supported(self):
+        import numpy
+        import pandas
+
+        class PandasClient(SyntheticQuoteClient):
+            def get_quote_permission(self):
+                self.calls.append(("permission",))
+                return [
+                    {
+                        "name": "usOptionQuote",
+                        "expire_at": numpy.int64(-1),
+                    }
+                ]
+
+            def get_option_chain(self, symbol, expiry, **kwargs):
+                self.calls.append(("chain", symbol, expiry, kwargs))
+                row = dict(
+                    self.chain_rows[0],
+                    expiry=numpy.int64(1899781200000),
+                    multiplier=numpy.int64(100),
+                    bid_price=numpy.float64(10.25),
+                    ask_price=numpy.float64(10.35),
+                    bid_size=pandas.NA,
+                    ask_size=numpy.float64(14.0),
+                )
+                return pandas.DataFrame([row])
+
+        result = self.retrieve(PandasClient())
+        self.assertEqual(result.bid_premium, decimal.Decimal("10.25"))
+        self.assertEqual(result.ask_premium, decimal.Decimal("10.35"))
+        self.assertEqual((result.bid_size, result.ask_size), (None, 14))
 
 
 if __name__ == "__main__":

@@ -1299,8 +1299,12 @@ The next separately contracted work unit is
 It is limited to active `usOptionQuote` entitlement proof plus transient
 bid/ask/size evidence for one already verified exact contract. Tiger supplies
 no quote timestamp or quote session date, so this unit intentionally does not
-construct `OptionQuoteObservation`; contract status is frozen, with
-implementation and independent review pending.
+construct `OptionQuoteObservation`. Implementation and independent review are
+complete. Four accepted findings corrected hostile-scalar sanitization,
+failure precedence, pandas nullable-size handling, and exact direct-construction
+types; targeted re-review passed. Final validation passed 51 focused tests,
+1,110 full-suite tests, compileall, `git diff --check`, and a sanitized live
+SPY exact-contract permission/bid/ask evidence smoke check.
 
 ## Deferred
 

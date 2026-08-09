@@ -66,5 +66,23 @@ Completed Tiger exact option-contract verification work unit:
   tests, compileall, `git diff --check`, and a sanitized live SPY monthly
   exact-contract smoke check.
 
+Completed Tiger exact option-quote evidence work unit:
+
+- Canonical contract:
+  [`tiger-exact-option-quote-evidence-contract.md`](tiger-exact-option-quote-evidence-contract.md).
+- Contract base: `69143b4` (`Define Tiger exact option quote evidence`).
+- Finalized work-unit subject: `Implement Tiger exact option quote evidence`.
+- The direct Tiger module proves active `usOptionQuote` entitlement and returns
+  frozen bid/ask/size evidence for one already verified exact contract.
+- Permission and quote receipt times are captured by the adapter; positive
+  permission expiry must remain active through quote receipt.
+- Because Tiger supplies no quote timestamp or quote session date, the unit
+  intentionally creates no `OptionQuoteObservation`, session date, market
+  phase, quote scope, freshness claim, or delayed-status claim.
+- Four accepted independent-review findings were corrected; targeted
+  re-review passed. Final validation passed 51 focused tests, 1,110 full-suite
+  tests, compileall, `git diff --check`, and a sanitized live SPY exact-contract
+  permission/bid/ask evidence smoke check.
+
 This file is a concise navigation map, not a complete specification or
 history.

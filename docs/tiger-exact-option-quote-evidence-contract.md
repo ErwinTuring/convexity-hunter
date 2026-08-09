@@ -7,6 +7,8 @@ one current bid/ask snapshot for an already verified exact Tiger option contract
 and proves that the runtime has active `usOptionQuote` entitlement before the
 quote request.
 
+Implementation status: complete and independently reviewed.
+
 It deliberately returns transient Tiger-specific evidence, not an
 `OptionQuoteObservation`:
 

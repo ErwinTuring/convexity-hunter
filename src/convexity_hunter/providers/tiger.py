@@ -30,7 +30,9 @@ __all__ = (
     "resolve_tiger_config_path",
     "initialize_tiger_quote_client",
     "TigerExactOptionContractVerification",
+    "TigerExactOptionQuoteEvidence",
     "verify_tiger_monthly_option_contract",
+    "retrieve_tiger_exact_option_quote_evidence",
 )
 
 
@@ -77,10 +79,23 @@ _CHAIN_MATCH_MESSAGE = (
 )
 _IDENTIFIER_MESSAGE = "Tiger option identifier is inconsistent."
 _MULTIPLIER_MESSAGE = "Tiger option multiplier is invalid."
+_PERMISSION_RETRIEVAL_MESSAGE = "Tiger quote-permission retrieval failed."
+_PERMISSION_RESPONSE_MESSAGE = "Tiger quote-permission response is invalid."
+_PERMISSION_MATCH_MESSAGE = (
+    "Tiger quote-permission response must contain exactly one usOptionQuote entry."
+)
+_PERMISSION_INACTIVE_MESSAGE = "Tiger usOptionQuote permission is not active."
+_QUOTE_RESPONSE_MESSAGE = "Tiger exact option quote response is invalid."
+_QUOTE_MATCH_MESSAGE = (
+    "Tiger option-chain response must contain exactly one verified contract row."
+)
 
 _EXPIRATION_COLUMNS = frozenset(("symbol", "date", "timestamp", "period_tag"))
 _CHAIN_COLUMNS = frozenset(
     ("identifier", "symbol", "expiry", "strike", "put_call", "multiplier")
+)
+_QUOTE_COLUMNS = _CHAIN_COLUMNS | frozenset(
+    ("bid_price", "ask_price", "bid_size", "ask_size")
 )
 _TIGER_NORMALIZATION_VERSION = "tiger-option-contract-v0.1"
 
@@ -281,9 +296,12 @@ def _validate_strike(value: object) -> _decimal.Decimal:
 
 
 def _provider_integer(value: object, message: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, _numbers.Integral):
-        raise ValueError(message)
-    normalized = int(value)
+    try:
+        if isinstance(value, bool) or not isinstance(value, _numbers.Integral):
+            raise ValueError(message)
+        normalized = int(value)
+    except Exception:
+        raise ValueError(message) from None
     if normalized <= 0:
         raise ValueError(message)
     return normalized
@@ -299,6 +317,79 @@ def _provider_decimal(value: object) -> _decimal.Decimal:
     if not normalized.is_finite() or normalized <= 0:
         raise ValueError(_CHAIN_TABLE_MESSAGE)
     return normalized
+
+
+def _provider_quote_decimal(
+    value: object,
+    *,
+    allow_zero: bool,
+) -> _decimal.Decimal:
+    if isinstance(value, bool):
+        raise ValueError(_QUOTE_RESPONSE_MESSAGE)
+    try:
+        normalized = _decimal.Decimal(str(value))
+    except Exception:
+        raise ValueError(_QUOTE_RESPONSE_MESSAGE) from None
+    if not normalized.is_finite():
+        raise ValueError(_QUOTE_RESPONSE_MESSAGE)
+    if normalized < 0 or (not allow_zero and normalized == 0):
+        raise ValueError(_QUOTE_RESPONSE_MESSAGE)
+    return normalized
+
+
+def _provider_optional_size(value: object) -> _Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(_QUOTE_RESPONSE_MESSAGE)
+    try:
+        text = str(value)
+        if text == "<NA>":
+            return None
+        normalized = _decimal.Decimal(text)
+    except Exception:
+        raise ValueError(_QUOTE_RESPONSE_MESSAGE) from None
+    if not normalized.is_finite():
+        if normalized.is_nan():
+            return None
+        raise ValueError(_QUOTE_RESPONSE_MESSAGE)
+    if normalized < 0 or normalized != normalized.to_integral_value():
+        raise ValueError(_QUOTE_RESPONSE_MESSAGE)
+    return int(normalized)
+
+
+def _permission_expiry(value: object) -> int:
+    try:
+        if isinstance(value, bool) or not isinstance(value, _numbers.Integral):
+            raise ValueError(_PERMISSION_RESPONSE_MESSAGE)
+        normalized = int(value)
+    except Exception:
+        raise ValueError(_PERMISSION_RESPONSE_MESSAGE) from None
+    if normalized != -1 and normalized <= 0:
+        raise ValueError(_PERMISSION_RESPONSE_MESSAGE)
+    return normalized
+
+
+def _normalize_utc_runtime_timestamp(
+    name: str,
+    value: object,
+) -> _datetime.datetime:
+    if type(value) is not _datetime.datetime:
+        raise TypeError(f"{name} must be a datetime")
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{name} must be timezone-aware")
+    return value.astimezone(_datetime.timezone.utc)
+
+
+def _unix_milliseconds(value: _datetime.datetime) -> int:
+    epoch = _datetime.datetime(1970, 1, 1, tzinfo=_datetime.timezone.utc)
+    delta = value - epoch
+    microseconds = (
+        delta.days * 86_400_000_000
+        + delta.seconds * 1_000_000
+        + delta.microseconds
+    )
+    return microseconds // 1000
 
 
 def _table_records(table: object, *, columns: frozenset, message: str) -> tuple:
@@ -324,7 +415,7 @@ def _table_records(table: object, *, columns: frozenset, message: str) -> tuple:
 def _decode_tiger_identifier(
     identifier: object,
 ) -> _Tuple[str, _datetime.date, str, _decimal.Decimal]:
-    if not isinstance(identifier, str) or identifier != identifier.strip():
+    if type(identifier) is not str or identifier != identifier.strip():
         raise ValueError(_IDENTIFIER_MESSAGE)
     if len(identifier) != 21:
         raise ValueError(_IDENTIFIER_MESSAGE)
@@ -427,6 +518,67 @@ class TigerExactOptionContractVerification:
         ):
             raise ValueError(_IDENTIFIER_MESSAGE)
         object.__setattr__(self, "provider_expiration_timestamp_ms", timestamp)
+
+
+@_dataclass(frozen=True)
+class TigerExactOptionQuoteEvidence:
+    """Transient Tiger bid/ask evidence without invented session semantics."""
+
+    contract_verification: TigerExactOptionContractVerification
+    bid_premium: _decimal.Decimal
+    ask_premium: _decimal.Decimal
+    bid_size: _Optional[int]
+    ask_size: _Optional[int]
+    permission_expire_at_ms: int
+    permission_received_at: _datetime.datetime
+    quote_received_at: _datetime.datetime
+
+    def __post_init__(self) -> None:
+        if type(self.contract_verification) is not TigerExactOptionContractVerification:
+            raise TypeError(
+                "contract_verification must be a "
+                "TigerExactOptionContractVerification"
+            )
+        if type(self.bid_premium) is not _decimal.Decimal:
+            raise TypeError("bid_premium must be a Decimal")
+        if type(self.ask_premium) is not _decimal.Decimal:
+            raise TypeError("ask_premium must be a Decimal")
+        if not self.bid_premium.is_finite() or self.bid_premium < 0:
+            raise ValueError("bid_premium must be finite and nonnegative")
+        if not self.ask_premium.is_finite() or self.ask_premium <= 0:
+            raise ValueError("ask_premium must be finite and greater than 0")
+        if self.ask_premium < self.bid_premium:
+            raise ValueError("ask_premium must not be below bid_premium")
+        for name in ("bid_size", "ask_size"):
+            value = getattr(self, name)
+            if value is not None and (
+                type(value) is not int
+                or value < 0
+            ):
+                raise ValueError(f"{name} must be a nonnegative integer or None")
+        if type(self.permission_expire_at_ms) is not int:
+            raise TypeError("permission_expire_at_ms must be an integer")
+        permission_expiry = _permission_expiry(self.permission_expire_at_ms)
+        permission_received = _normalize_utc_runtime_timestamp(
+            "permission_received_at",
+            self.permission_received_at,
+        )
+        quote_received = _normalize_utc_runtime_timestamp(
+            "quote_received_at",
+            self.quote_received_at,
+        )
+        if quote_received < permission_received:
+            raise ValueError(
+                "quote_received_at must not precede permission_received_at"
+            )
+        if (
+            permission_expiry != -1
+            and permission_expiry <= _unix_milliseconds(quote_received)
+        ):
+            raise ValueError(_PERMISSION_INACTIVE_MESSAGE)
+        object.__setattr__(self, "permission_expire_at_ms", permission_expiry)
+        object.__setattr__(self, "permission_received_at", permission_received)
+        object.__setattr__(self, "quote_received_at", quote_received)
 
 
 def _provenance_ids(
@@ -703,4 +855,124 @@ def verify_tiger_monthly_option_contract(
         provider_period_tag="m",
         provider_expiration_timestamp_ms=expiration_timestamp,
         contract_reference=contract_reference,
+    )
+
+
+def retrieve_tiger_exact_option_quote_evidence(
+    quote_client: object,
+    contract_verification: TigerExactOptionContractVerification,
+) -> TigerExactOptionQuoteEvidence:
+    """Retrieve entitled bid/ask evidence without inventing quote sessions."""
+
+    if type(contract_verification) is not TigerExactOptionContractVerification:
+        raise TypeError(
+            "contract_verification must be a "
+            "TigerExactOptionContractVerification"
+        )
+    try:
+        get_permission = getattr(quote_client, "get_quote_permission", None)
+    except Exception:
+        raise TypeError("quote_client must provide Tiger quote methods") from None
+    if not callable(get_permission):
+        raise TypeError("quote_client must provide Tiger quote methods")
+    try:
+        permission_response = get_permission()
+    except Exception:
+        raise RuntimeError(_PERMISSION_RETRIEVAL_MESSAGE) from None
+    permission_received_at = _utc_now()
+
+    try:
+        if not isinstance(permission_response, (list, tuple)):
+            raise ValueError(_PERMISSION_RESPONSE_MESSAGE)
+        permissions = []
+        for entry in permission_response:
+            if not isinstance(entry, _Mapping):
+                raise ValueError(_PERMISSION_RESPONSE_MESSAGE)
+            name = entry["name"]
+            expire_at = _permission_expiry(entry["expire_at"])
+            if type(name) is not str:
+                raise ValueError(_PERMISSION_RESPONSE_MESSAGE)
+            permissions.append((name, expire_at))
+    except Exception:
+        raise ValueError(_PERMISSION_RESPONSE_MESSAGE) from None
+
+    option_permissions = tuple(
+        permission for permission in permissions if permission[0] == "usOptionQuote"
+    )
+    if len(option_permissions) != 1:
+        raise ValueError(_PERMISSION_MATCH_MESSAGE)
+    permission_expire_at = option_permissions[0][1]
+    if (
+        permission_expire_at != -1
+        and permission_expire_at <= _unix_milliseconds(permission_received_at)
+    ):
+        raise ValueError(_PERMISSION_INACTIVE_MESSAGE)
+
+    try:
+        get_chain = getattr(quote_client, "get_option_chain", None)
+    except Exception:
+        raise TypeError("quote_client must provide Tiger quote methods") from None
+    if not callable(get_chain):
+        raise TypeError("quote_client must provide Tiger quote methods")
+    key = contract_verification.contract_reference.contract_key
+    try:
+        chain_table = get_chain(
+            key.underlying_key.symbol,
+            key.expiration.isoformat(),
+            return_greek_value=False,
+            market="US",
+        )
+    except Exception:
+        raise RuntimeError(_CHAIN_RETRIEVAL_MESSAGE) from None
+    quote_received_at = _utc_now()
+    chain_rows = _table_records(
+        chain_table,
+        columns=_QUOTE_COLUMNS,
+        message=_QUOTE_RESPONSE_MESSAGE,
+    )
+    exact_rows = []
+    for row in chain_rows:
+        identifier = row["identifier"]
+        symbol = row["symbol"]
+        put_call = row["put_call"]
+        if not all(type(value) is str for value in (identifier, symbol, put_call)):
+            raise ValueError(_QUOTE_RESPONSE_MESSAGE)
+        expiry = _provider_integer(row["expiry"], _QUOTE_RESPONSE_MESSAGE)
+        strike = _provider_decimal(row["strike"])
+        multiplier = _provider_integer(row["multiplier"], _QUOTE_RESPONSE_MESSAGE)
+        if put_call not in {"CALL", "PUT"}:
+            raise ValueError(_QUOTE_RESPONSE_MESSAGE)
+        if (
+            identifier == contract_verification.provider_identifier
+            and symbol == key.underlying_key.symbol
+            and expiry == contract_verification.provider_expiration_timestamp_ms
+            and strike == key.strike
+            and put_call.lower() == key.option_type
+            and multiplier == key.contract_multiplier
+        ):
+            exact_rows.append(row)
+    if len(exact_rows) != 1:
+        raise ValueError(_QUOTE_MATCH_MESSAGE)
+
+    exact_row = exact_rows[0]
+    bid = _provider_quote_decimal(exact_row["bid_price"], allow_zero=True)
+    ask = _provider_quote_decimal(exact_row["ask_price"], allow_zero=False)
+    if ask < bid:
+        raise ValueError(_QUOTE_RESPONSE_MESSAGE)
+    bid_size = _provider_optional_size(exact_row["bid_size"])
+    ask_size = _provider_optional_size(exact_row["ask_size"])
+    if (
+        permission_expire_at != -1
+        and permission_expire_at <= _unix_milliseconds(quote_received_at)
+    ):
+        raise ValueError(_PERMISSION_INACTIVE_MESSAGE)
+    return TigerExactOptionQuoteEvidence(
+        contract_verification=contract_verification,
+        bid_premium=bid,
+        ask_premium=ask,
+        bid_size=bid_size,
+        ask_size=ask_size,
+        permission_expire_at_ms=permission_expire_at,
+        permission_received_at=permission_received_at,
+        quote_received_at=quote_received_at,
     )
