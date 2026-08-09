@@ -1522,8 +1522,8 @@ class UnderlyingDailyBarsTests(TigerProviderTestCase):
                     {
                         "symbol": "SPY",
                         "period": "day",
-                        "begin_time": "2030-01-01",
-                        "end_time": "2030-01-04",
+                        "begin_time": 1893474000000,
+                        "end_time": 1893733200000,
                         "total": 1000,
                         "page_size": 1000,
                         "time_interval": 0,
@@ -1538,8 +1538,8 @@ class UnderlyingDailyBarsTests(TigerProviderTestCase):
                     {
                         "symbol": "SPY",
                         "period": "day",
-                        "begin_time": "2030-01-01",
-                        "end_time": "2030-01-04",
+                        "begin_time": 1893474000000,
+                        "end_time": 1893733200000,
                         "total": 1000,
                         "page_size": 1000,
                         "time_interval": 0,
@@ -1671,13 +1671,18 @@ class UnderlyingDailyBarsTests(TigerProviderTestCase):
             )
             nr_rows.append(dict(template_nr, time=timestamp))
             br_rows.append(dict(template_br, time=timestamp))
+        client = SyntheticQuoteClient(nr_bar_rows=nr_rows, br_bar_rows=br_rows)
         result = self.retrieve(
-            SyntheticQuoteClient(nr_bar_rows=nr_rows, br_bar_rows=br_rows),
+            client,
             begin_date=datetime.date(2030, 3, 8),
             end_date=datetime.date(2030, 3, 12),
             latest_completed_session_date=datetime.date(2030, 3, 11),
         )
         self.assertEqual(tuple(bar.session_date for bar in result), dates)
+        self.assertEqual(client.calls[0][1]["begin_time"], 1899176400000)
+        self.assertEqual(client.calls[0][1]["end_time"], 1899518400000)
+        self.assertEqual(client.calls[1][1]["begin_time"], 1899176400000)
+        self.assertEqual(client.calls[1][1]["end_time"], 1899518400000)
 
     def test_retrieval_failure_is_sanitized(self):
         secret = "synthetic-bar-secret"

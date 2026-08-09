@@ -113,7 +113,8 @@ Completed Tiger underlying daily-bars work unit:
   `git diff --check`, and a sanitized live five-session SPY smoke check.
 - A targeted request-boundary correction is frozen: NR and BR must receive
   exact Unix-millisecond boundaries derived from `America/New_York` midnight,
-  not timezone-ambiguous ISO date strings. Implementation and review are pending.
+  not timezone-ambiguous ISO date strings. Implementation and targeted review
+  are complete; EST/EDT tests and a live five-session SPY smoke check passed.
 
 Frozen next Tiger work unit:
 

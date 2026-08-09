@@ -1342,7 +1342,10 @@ five-session SPY smoke check.
 A targeted correction is frozen for the daily-bar request boundary. Tiger's
 timezone-defaulted string parameters are replaced only in this work unit by
 integer Unix milliseconds calculated from `America/New_York` midnight and
-aware UTC conversion. Global Tiger client timezone remains unchanged.
+aware UTC conversion. Global Tiger client timezone remains unchanged. Targeted
+review passed with no findings; validation passed 70 focused Tiger tests, 1,129
+full-suite tests, compileall, `git diff --check`, and a live five-session SPY
+boundary smoke check.
 
 The next separately contracted unit is
 [`tiger-historical-dividend-evidence-contract.md`](tiger-historical-dividend-evidence-contract.md).

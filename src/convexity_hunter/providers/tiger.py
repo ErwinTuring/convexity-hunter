@@ -447,6 +447,21 @@ def _provider_bar_datetime(value: object) -> _Tuple[int, _datetime.datetime]:
     return timestamp, observed_at
 
 
+def _us_session_boundary_ms(value: _datetime.date) -> int:
+    local_midnight = _datetime.datetime.combine(
+        value,
+        _datetime.time.min,
+        tzinfo=_US_EASTERN,
+    )
+    utc_midnight = local_midnight.astimezone(_datetime.timezone.utc)
+    delta = utc_midnight - _datetime.datetime(
+        1970, 1, 1, tzinfo=_datetime.timezone.utc
+    )
+    return ((delta.days * 86400) + delta.seconds) * 1000 + (
+        delta.microseconds // 1000
+    )
+
+
 def _permission_expiry(value: object) -> int:
     try:
         if isinstance(value, bool) or not isinstance(value, _numbers.Integral):
@@ -1100,8 +1115,8 @@ def retrieve_tiger_underlying_daily_bars(
     common = {
         "symbol": underlying_key.symbol,
         "period": "day",
-        "begin_time": begin_date.isoformat(),
-        "end_time": end_date.isoformat(),
+        "begin_time": _us_session_boundary_ms(begin_date),
+        "end_time": _us_session_boundary_ms(end_date),
         "total": 1000,
         "page_size": 1000,
         "time_interval": 0,
