@@ -89,6 +89,7 @@ source_curve_id: str
 currency: str
 source_tenors_days: tuple[int, ...]
 source_annualized_par_yields: tuple[Decimal, ...]
+source_input_references: tuple[CalculationInputReference, ...]
 interpolated_annualized_par_yield: Decimal
 continuously_compounded_rate_proxy: Decimal
 interpolation_methodology: str
@@ -96,10 +97,13 @@ compounding_conversion_methodology: str
 economic_semantics: str
 ```
 
-The source tuples always retain all six ordered values. The fixed disclosure
-strings distinguish exact matching from interpolation and state that the
-continuous rate is a calculation proxy derived from a nominal Treasury par
-yield, not a zero/OIS curve.
+The three source tuples always retain all six values in source-tenor order.
+Every retained input reference is independently reconstructed and binds that
+tenor and rate to its normalized record ID, normalized time, and complete
+nonempty source-ID tuple. The fixed disclosure strings distinguish exact
+matching from interpolation and state that the continuous rate is a
+calculation proxy derived from a nominal Treasury par yield, not a zero/OIS
+curve.
 
 ## Tenor selection and interpolation
 
@@ -155,11 +159,14 @@ methodology_id = linear-par-yield-tenor-and-continuous-compounding-proxy
 methodology_version = v0.1
 ```
 
-Inputs are exactly six `CalculationInputReference` objects in source-tenor
-order, each reproducing the normalized record ID, normalized time, and complete
-source-ID tuple. `calculated_at` is aware UTC after every input's normalized
-time. The calculation ID is canonical, differs from every input record ID,
-and is not reused as an input.
+Inputs are exactly the six retained `CalculationInputReference` objects after
+the existing `CalculationLineage` constructor's canonical record-ID ordering.
+The separate canonical normalized-evidence parameter remains in source-tenor
+order and binds each tenor and rate to its exact retained reference. Every
+reference independently reproduces the normalized record ID, normalized time,
+and complete nonempty source-ID tuple. `calculated_at` is aware UTC after every
+input's normalized time. The calculation ID is canonical, differs from every
+input record ID, and is not reused as an input.
 
 Canonical parameters retain the exact curve identity, date, source tenors and
 rates, target tenor, selected bracket, formula declarations, exact calculated
