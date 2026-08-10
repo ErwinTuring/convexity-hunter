@@ -11,6 +11,7 @@ import inspect
 import json
 import math
 import pathlib
+import subprocess
 import sys
 import unittest
 import zlib
@@ -57,6 +58,7 @@ from convexity_hunter.market_data import (
     MarketDataRelationshipSelection,
     MarketDataSelectionStatus,
     MarketPhase,
+    NormalizationMetadata,
     NormalizationQualityFlag,
     OptionContractReference,
     OptionImpliedVolatilityObservation,
@@ -64,8 +66,10 @@ from convexity_hunter.market_data import (
     OptionQuoteObservation,
     OptionOpenInterestObservation,
     OptionVolumeObservation,
+    RateCurvePointObservation,
     SelectedFreshMarketDataBinding,
     SourceQualityFlag,
+    SourceReference,
     UnderlyingDailyBarObservation,
     UnderlyingQuoteObservation,
     assess_market_data_historical_series,
@@ -99,6 +103,9 @@ from convexity_hunter.market_data_transformations import (
     transform_tail_pricing,
     transform_scenario_valuation,
     transform_volatility_environment,
+    TreasuryPricingRateInput,
+    TreasuryPricingRateTransformationResult,
+    transform_treasury_pricing_rate,
 )
 from convexity_hunter.evidence import StructureCosts
 from convexity_hunter.report import StructureLiquidity
@@ -1061,6 +1068,9 @@ class PublicSurfaceTests(unittest.TestCase):
                 "ExpirationPayoffThresholdEvidence",
                 "ExpirationPayoffThresholdTransformationResult",
                 "transform_expiration_payoff_thresholds",
+                "TreasuryPricingRateInput",
+                "TreasuryPricingRateTransformationResult",
+                "transform_treasury_pricing_rate",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -3147,6 +3157,9 @@ class StructureCostsPublicSurfaceTests(unittest.TestCase):
                 "ExpirationPayoffThresholdEvidence",
                 "ExpirationPayoffThresholdTransformationResult",
                 "transform_expiration_payoff_thresholds",
+                "TreasuryPricingRateInput",
+                "TreasuryPricingRateTransformationResult",
+                "transform_treasury_pricing_rate",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -4256,6 +4269,9 @@ class HistoricalRealizedVolatilityPublicContractTests(unittest.TestCase):
                 "ExpirationPayoffThresholdEvidence",
                 "ExpirationPayoffThresholdTransformationResult",
                 "transform_expiration_payoff_thresholds",
+                "TreasuryPricingRateInput",
+                "TreasuryPricingRateTransformationResult",
+                "transform_treasury_pricing_rate",
             ),
         )
         self.assertEqual(
@@ -5007,6 +5023,9 @@ class VolatilityEnvironmentTransformationTests(unittest.TestCase):
                 "ExpirationPayoffThresholdEvidence",
                 "ExpirationPayoffThresholdTransformationResult",
                 "transform_expiration_payoff_thresholds",
+                "TreasuryPricingRateInput",
+                "TreasuryPricingRateTransformationResult",
+                "transform_treasury_pricing_rate",
             ),
         )
         self.assertEqual(len(market_data.__all__), 64)
@@ -5453,6 +5472,9 @@ class TailPricingTransformationTests(unittest.TestCase):
                 "ExpirationPayoffThresholdEvidence",
                 "ExpirationPayoffThresholdTransformationResult",
                 "transform_expiration_payoff_thresholds",
+                "TreasuryPricingRateInput",
+                "TreasuryPricingRateTransformationResult",
+                "transform_treasury_pricing_rate",
             ),
         )
         self.assertEqual(
@@ -6371,7 +6393,7 @@ def rebuild_scenario_pricing_result(
 
 class ScenarioPricingCalculationContractTests(unittest.TestCase):
     def test_exact_public_api_fields_and_root_exclusions(self):
-        self.assertEqual(len(transformations.__all__), 25)
+        self.assertEqual(len(transformations.__all__), 28)
         self.assertEqual(transformations.__all__[12:18], (
             "ScenarioPricingMethodology",
             "ScenarioPricingLegCalculation",
@@ -6437,6 +6459,7 @@ class ScenarioPricingCalculationContractTests(unittest.TestCase):
             "transform_tail_pricing",
             "transform_scenario_valuation",
             "transform_expiration_payoff_thresholds",
+            "transform_treasury_pricing_rate",
         ))
 
     def test_call_put_and_straddle_direct_construction(self):
@@ -7384,7 +7407,7 @@ def make_tail_matching_scenario_valuation_arguments(iv_id, reference_id):
 
 class ScenarioValuationTransformationTests(unittest.TestCase):
     def test_exact_public_surface_fields_signature_and_package_boundary(self):
-        self.assertEqual(len(transformations.__all__), 25)
+        self.assertEqual(len(transformations.__all__), 28)
         self.assertEqual(transformations.__all__[16:18], (
             "ScenarioValuationTransformationResult",
             "transform_scenario_valuation",
@@ -8568,8 +8591,8 @@ def bypass_frozen_dataclass(value, **changes):
 
 class ExpirationPayoffThresholdPublicContractTests(unittest.TestCase):
     def test_exact_public_api_signature_fields_and_boundaries(self):
-        self.assertEqual(len(transformations.__all__), 25)
-        self.assertEqual(transformations.__all__[-7:], (
+        self.assertEqual(len(transformations.__all__), 28)
+        self.assertEqual(transformations.__all__[-10:-3], (
             "ExactRational",
             "ExpirationPayoffThresholdSide",
             "ExpirationPayoffThresholdStatus",
@@ -8629,7 +8652,7 @@ class ExpirationPayoffThresholdPublicContractTests(unittest.TestCase):
             )),
             ("record", "lineage"),
         )
-        for name in transformations.__all__[-7:]:
+        for name in transformations.__all__[-10:-3]:
             self.assertFalse(hasattr(convexity_hunter, name))
 
     def test_direct_imports_are_the_module_objects(self):
@@ -10027,6 +10050,485 @@ class Milestone6AReviewedArtifactVerifiabilityTests(unittest.TestCase):
         ) as tail_producer, self.assertRaises(ValueError):
             transform_scenario_valuation(*scenario_arguments)
         tail_producer.assert_not_called()
+
+
+class TreasuryPricingRateTransformationTests(unittest.TestCase):
+    TENORS = (30, 45, 60, 90, 120, 180)
+    RATES = tuple(decimal.Decimal(value) for value in (
+        "0.0400", "0.0410", "0.0420", "0.0430", "0.0440", "0.0450",
+    ))
+    CURVE_ID = "USD-US-TREASURY-DAILY-PAR-YIELD"
+    COMPOUNDING = (
+        "Bond-equivalent yield; simple annualized with semiannual interest convention"
+    )
+    DAY_COUNT = "Actual days; 365- or 366-day year"
+    NORMALIZATION_VERSION = "us-treasury-daily-par-yield-v0.1"
+
+    @classmethod
+    def _times(cls, effective_date):
+        hour = 20 if effective_date.month == 1 else 19
+        observed = datetime.datetime(
+            effective_date.year, effective_date.month, effective_date.day,
+            hour, 30, tzinfo=datetime.timezone.utc,
+        )
+        return observed, observed + datetime.timedelta(seconds=1), observed + datetime.timedelta(seconds=2)
+
+    @classmethod
+    def _metadata(
+        cls,
+        effective_date,
+        tenor,
+        record_prefix="record",
+        origin=DataOrigin.PROVIDER_CALCULATED,
+        normalization_version=None,
+        source_quality_flags=(),
+    ):
+        observed, retrieved, normalized = cls._times(effective_date)
+        source = SourceReference(
+            source_id=f"{record_prefix}-source-{tenor:03d}",
+            provider_name="U.S. Department of the Treasury",
+            dataset_name="Daily Treasury Par Yield Curve Rates",
+            provider_record_id=f"{effective_date.isoformat()}:{tenor}",
+            provider_request_id=None,
+            source_symbol=None,
+            source_uri=None,
+            observed_at=observed,
+            retrieved_at=retrieved,
+            provider_timezone="America/New_York",
+            timestamp_methodology="synthetic exact effective-date timestamp",
+            origin=origin,
+            is_delayed=False,
+            declared_delay_seconds=None,
+            payload_sha256="a" * 64,
+            revision_number=None,
+            provider_correction_id=None,
+            quality_flags=source_quality_flags,
+        )
+        return NormalizationMetadata(
+            record_id=f"{record_prefix}-{tenor:03d}",
+            source_references=(source,),
+            effective_observed_at=observed,
+            normalized_at=normalized,
+            record_origin=origin,
+            normalization_methodology="synthetic Treasury normalization",
+            unit_convention="annualized decimal par yield",
+            normalization_version=(
+                cls.NORMALIZATION_VERSION
+                if normalization_version is None else normalization_version
+            ),
+            quality_flags=(),
+        )
+
+    @classmethod
+    def _point(
+        cls,
+        effective_date,
+        tenor,
+        rate,
+        **overrides,
+    ):
+        values = {
+            "curve_id": cls.CURVE_ID,
+            "currency": "USD",
+            "tenor_days": tenor,
+            "annualized_rate": rate,
+            "compounding_convention": cls.COMPOUNDING,
+            "day_count_convention": cls.DAY_COUNT,
+            "effective_date": effective_date,
+            "metadata": cls._metadata(effective_date, tenor),
+        }
+        values.update(overrides)
+        return RateCurvePointObservation(**values)
+
+    @classmethod
+    def _curve(
+        cls,
+        effective_date=datetime.date(2030, 1, 2),
+        rates=None,
+        record_prefix="record",
+    ):
+        selected_rates = cls.RATES if rates is None else tuple(rates)
+        return tuple(
+            cls._point(
+                effective_date,
+                tenor,
+                rate,
+                metadata=cls._metadata(
+                    effective_date, tenor, record_prefix=record_prefix
+                ),
+            )
+            for tenor, rate in zip(cls.TENORS, selected_rates)
+        )
+
+    @classmethod
+    def _calculated_at(cls, effective_date=datetime.date(2030, 1, 2)):
+        return cls._times(effective_date)[2] + datetime.timedelta(seconds=1)
+
+    @classmethod
+    def _transform(cls, target=75, curve=None, calculation_id="treasury-calc"):
+        selected_curve = cls._curve() if curve is None else curve
+        return transform_treasury_pricing_rate(
+            calculation_id, selected_curve, target, cls._calculated_at()
+        )
+
+    def test_public_boundary_and_immutable_record_shape(self):
+        self.assertEqual(transformations.__all__[-3:], (
+            "TreasuryPricingRateInput",
+            "TreasuryPricingRateTransformationResult",
+            "transform_treasury_pricing_rate",
+        ))
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(TreasuryPricingRateInput)),
+            (
+                "effective_date", "target_tenor_days", "source_curve_id",
+                "currency", "source_tenors_days", "source_annualized_par_yields",
+                "source_input_references",
+                "interpolated_annualized_par_yield",
+                "continuously_compounded_rate_proxy",
+                "interpolation_methodology", "compounding_conversion_methodology",
+                "economic_semantics",
+            ),
+        )
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(TreasuryPricingRateTransformationResult)),
+            ("record", "lineage"),
+        )
+        self.assertEqual(
+            tuple(inspect.signature(transform_treasury_pricing_rate).parameters),
+            ("calculation_id", "curve_points", "target_tenor_days", "calculated_at"),
+        )
+        self.assertNotIn("TreasuryPricingRateInput", market_data.__all__)
+        self.assertFalse(hasattr(convexity_hunter, "TreasuryPricingRateInput"))
+        result = self._transform()
+        with self.assertRaises(FrozenInstanceError):
+            result.record.target_tenor_days = 60  # type: ignore[misc]
+        with self.assertRaises(FrozenInstanceError):
+            result.lineage.calculation_id = "changed"  # type: ignore[misc]
+
+    def test_exact_matches_all_tenors_and_declared_flags(self):
+        for target, expected in zip(self.TENORS, self.RATES):
+            with self.subTest(target=target):
+                result = self._transform(target=target)
+                self.assertEqual(result.record.target_tenor_days, target)
+                self.assertEqual(result.record.interpolated_annualized_par_yield, expected)
+                self.assertEqual(result.record.interpolation_methodology, "exact_tenor_match")
+                self.assertEqual(
+                    result.record.source_tenors_days,
+                    self.TENORS,
+                )
+                self.assertEqual(
+                    result.record.source_annualized_par_yields,
+                    self.RATES,
+                )
+                self.assertEqual(
+                    result.lineage.quality_flags,
+                    (CalculationQualityFlag.ANNUALIZED,
+                     CalculationQualityFlag.ASSUMPTION_APPLIED),
+                )
+                self.assertEqual(len(result.lineage.inputs), 6)
+
+    def test_est_edt_interpolation_negative_zero_and_literal_formula(self):
+        expected = decimal.Decimal(
+            "0.04205473438415117438838134298088490"
+        )
+        for effective_date in (
+            datetime.date(2030, 1, 2), datetime.date(2030, 7, 1)
+        ):
+            with self.subTest(effective_date=effective_date):
+                result = transform_treasury_pricing_rate(
+                    "interpolation-calc",
+                    self._curve(effective_date=effective_date),
+                    75,
+                    self._calculated_at(effective_date),
+                )
+                self.assertEqual(
+                    result.record.interpolated_annualized_par_yield,
+                    decimal.Decimal("0.0425"),
+                )
+                self.assertEqual(
+                    result.record.continuously_compounded_rate_proxy,
+                    expected,
+                )
+                self.assertEqual(
+                    result.record.interpolation_methodology,
+                    "linear_in_calendar_days_on_provider_native_annualized_par_yields",
+                )
+                self.assertEqual(
+                    result.lineage.quality_flags,
+                    (CalculationQualityFlag.INTERPOLATED,
+                     CalculationQualityFlag.ANNUALIZED,
+                     CalculationQualityFlag.ASSUMPTION_APPLIED),
+                )
+        for rate in (decimal.Decimal("0.01"), decimal.Decimal("0"), decimal.Decimal("-0.01")):
+            with self.subTest(rate=rate):
+                result = self._transform(
+                    target=30,
+                    curve=self._curve(rates=(rate,) * 6),
+                    calculation_id=f"rate-{rate}",
+                )
+                self.assertEqual(
+                    result.record.interpolated_annualized_par_yield,
+                    rate,
+                )
+                self.assertFalse(
+                    result.record.continuously_compounded_rate_proxy.is_zero()
+                    and result.record.continuously_compounded_rate_proxy.is_signed()
+                )
+        with self.assertRaises(ValueError):
+            self._transform(target=30, curve=self._curve(rates=(decimal.Decimal("-2"),) * 6))
+
+    def test_shape_declarations_types_and_no_extrapolation(self):
+        curve = self._curve()
+        for bad_curve in (
+            curve[:5],
+            curve[1:] + curve[:1],
+            (curve[0], curve[0], *curve[2:]),
+        ):
+            with self.subTest(bad_curve=bad_curve):
+                with self.assertRaises(ValueError):
+                    self._transform(curve=bad_curve)
+        mixed_date = list(curve)
+        mixed_date[1] = self._point(datetime.date(2030, 1, 3), 45, self.RATES[1])
+        mixed_curve = list(curve)
+        mixed_curve[1] = self._point(
+            datetime.date(2030, 1, 2), 45, self.RATES[1], curve_id="OTHER"
+        )
+        mixed_convention = list(curve)
+        mixed_convention[1] = self._point(
+            datetime.date(2030, 1, 2), 45, self.RATES[1],
+            compounding_convention="Continuous",
+        )
+        mixed_origin = list(curve)
+        mixed_origin[1] = self._point(
+            datetime.date(2030, 1, 2), 45, self.RATES[1],
+            metadata=self._metadata(
+                datetime.date(2030, 1, 2), 45,
+                origin=DataOrigin.PROVIDER_REFERENCE,
+            ),
+        )
+        mixed_version = list(curve)
+        mixed_version[1] = self._point(
+            datetime.date(2030, 1, 2), 45, self.RATES[1],
+            metadata=self._metadata(
+                datetime.date(2030, 1, 2), 45,
+                normalization_version="other-v1",
+            ),
+        )
+        for bad_curve in (tuple(mixed_date), tuple(mixed_curve), tuple(mixed_convention), tuple(mixed_origin), tuple(mixed_version)):
+            with self.subTest(bad_curve=bad_curve):
+                with self.assertRaises((TypeError, ValueError)):
+                    self._transform(curve=bad_curve)
+        forged = object.__new__(RateCurvePointObservation)
+        for field in dataclasses.fields(RateCurvePointObservation):
+            object.__setattr__(forged, field.name, getattr(curve[1], field.name))
+        object.__setattr__(forged, "currency", "EUR")
+        forged_curve = curve[:1] + (forged,) + curve[2:]
+        with self.assertRaises((TypeError, ValueError)):
+            self._transform(curve=forged_curve)
+        for target in (29, 181):
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                self._transform(target=target)
+        for target in (True, 75.0, decimal.Decimal("75")):
+            with self.subTest(target=target), self.assertRaises(TypeError):
+                self._transform(target=target)
+
+    def test_lineage_parameters_context_preservation_and_direct_guards(self):
+        saved_context = decimal.getcontext().copy()
+        try:
+            context = decimal.getcontext()
+            context.prec = 7
+            context.rounding = decimal.ROUND_DOWN
+            context.Emin = -5
+            context.Emax = 5
+            context.flags[decimal.Inexact] = True
+            context.traps[decimal.InvalidOperation] = True
+            expected_context = context.copy()
+            result = self._transform()
+            actual_context = decimal.getcontext()
+            for attribute in (
+                "prec", "rounding", "Emin", "Emax", "capitals", "clamp",
+            ):
+                self.assertEqual(
+                    getattr(actual_context, attribute),
+                    getattr(expected_context, attribute),
+                )
+            self.assertEqual(actual_context.flags, expected_context.flags)
+            self.assertEqual(actual_context.traps, expected_context.traps)
+        finally:
+            decimal.setcontext(saved_context)
+        self.assertEqual(result.lineage.calculation_type, "treasury_pricing_rate_proxy")
+        self.assertEqual(result.lineage.methodology_version, "v0.1")
+        self.assertEqual(
+            tuple(item.record_id for item in result.lineage.inputs),
+            tuple(f"record-{tenor:03d}" for tenor in self.TENORS),
+        )
+        self.assertIn('"$decimal":"0.0425"', result.lineage.parameters_json)
+        self.assertIn('"$decimal":"0.04205473438415117438838134298088490"', result.lineage.parameters_json)
+        decoded = json.loads(result.lineage.parameters_json)
+
+        def assert_no_float(value):
+            self.assertNotIsInstance(value, float)
+            if isinstance(value, dict):
+                for child in value.values():
+                    assert_no_float(child)
+            elif isinstance(value, list):
+                for child in value:
+                    assert_no_float(child)
+
+        assert_no_float(decoded)
+        with self.assertRaises(TypeError):
+            TreasuryPricingRateInput(
+                result.record.effective_date,
+                result.record.target_tenor_days,
+                result.record.source_curve_id,
+                result.record.currency,
+                list(result.record.source_tenors_days),
+                result.record.source_annualized_par_yields,
+                result.record.source_input_references,
+                result.record.interpolated_annualized_par_yield,
+                result.record.continuously_compounded_rate_proxy,
+                result.record.interpolation_methodology,
+                result.record.compounding_conversion_methodology,
+                result.record.economic_semantics,
+            )
+        forged_record = object.__new__(TreasuryPricingRateInput)
+        for field in dataclasses.fields(TreasuryPricingRateInput):
+            object.__setattr__(forged_record, field.name, getattr(result.record, field.name))
+        object.__setattr__(
+            forged_record,
+            "continuously_compounded_rate_proxy",
+            decimal.Decimal("1"),
+        )
+        with self.assertRaises(ValueError):
+            TreasuryPricingRateTransformationResult(forged_record, result.lineage)
+
+    def test_arbitrary_record_ids_preserve_tenor_binding_and_canonical_lineage(self):
+        record_ids = (
+            "z-record", "a-record", "y-record",
+            "b-record", "x-record", "c-record",
+        )
+        curve = tuple(
+            self._point(
+                datetime.date(2030, 1, 2),
+                tenor,
+                rate,
+                metadata=dataclasses.replace(
+                    self._metadata(datetime.date(2030, 1, 2), tenor),
+                    record_id=record_id,
+                ),
+            )
+            for tenor, rate, record_id in zip(
+                self.TENORS, self.RATES, record_ids
+            )
+        )
+        result = self._transform(curve=curve)
+        self.assertEqual(
+            tuple(
+                reference.record_id
+                for reference in result.record.source_input_references
+            ),
+            record_ids,
+        )
+        self.assertEqual(
+            tuple(reference.record_id for reference in result.lineage.inputs),
+            tuple(sorted(record_ids)),
+        )
+        self.assertIs(
+            TreasuryPricingRateTransformationResult(
+                result.record, result.lineage
+            ).record,
+            result.record,
+        )
+
+    def test_retained_reference_binding_and_nested_integrity(self):
+        result = self._transform()
+        first = result.record.source_input_references[0]
+        changed_reference = dataclasses.replace(
+            first, source_ids=("forged-source",)
+        )
+        changed_record = dataclasses.replace(
+            result.record,
+            source_input_references=(changed_reference,)
+            + result.record.source_input_references[1:],
+        )
+        with self.assertRaises(ValueError):
+            TreasuryPricingRateTransformationResult(
+                changed_record, result.lineage
+            )
+
+        forged_reference = object.__new__(CalculationInputReference)
+        object.__setattr__(forged_reference, "record_id", first.record_id)
+        object.__setattr__(forged_reference, "normalized_at", first.normalized_at)
+        object.__setattr__(forged_reference, "source_ids", ())
+        forged_lineage = object.__new__(CalculationLineage)
+        for field in dataclasses.fields(CalculationLineage):
+            object.__setattr__(
+                forged_lineage, field.name, getattr(result.lineage, field.name)
+            )
+        object.__setattr__(
+            forged_lineage,
+            "inputs",
+            (forged_reference,) + result.lineage.inputs[1:],
+        )
+        with self.assertRaises((TypeError, ValueError)):
+            TreasuryPricingRateTransformationResult(
+                result.record, forged_lineage
+            )
+
+    def test_identity_chronology_extremes_and_decimal_exponent_are_guarded(self):
+        curve = self._curve()
+        with self.assertRaises(ValueError):
+            transform_treasury_pricing_rate(
+                curve[0].metadata.record_id,
+                curve,
+                75,
+                self._calculated_at(),
+            )
+        with self.assertRaises(ValueError):
+            transform_treasury_pricing_rate(
+                "early-calculation",
+                curve,
+                75,
+                curve[0].metadata.normalized_at
+                - datetime.timedelta(microseconds=1),
+            )
+        extreme = decimal.Decimal("1E-999999999999999999")
+        with self.assertRaises(ValueError):
+            self._transform(
+                target=30,
+                curve=self._curve(rates=(extreme,) * 6),
+            )
+        result = self._transform()
+        with self.assertRaises(ValueError):
+            dataclasses.replace(
+                result.record,
+                interpolated_annualized_par_yield=decimal.Decimal("0.04250"),
+            )
+
+    def test_both_import_orders_are_local_and_unexported(self):
+        scripts = (
+            "import convexity_hunter.market_data_transformations as t; "
+            "import convexity_hunter.market_data as m; "
+            "assert t.__all__[-3:] == ('TreasuryPricingRateInput', 'TreasuryPricingRateTransformationResult', 'transform_treasury_pricing_rate'); "
+            "assert 'TreasuryPricingRateInput' not in m.__all__",
+            "import convexity_hunter.market_data as m; "
+            "import convexity_hunter.market_data_transformations as t; "
+            "assert t.__all__[-3:] == ('TreasuryPricingRateInput', 'TreasuryPricingRateTransformationResult', 'transform_treasury_pricing_rate'); "
+            "assert 'TreasuryPricingRateInput' not in m.__all__",
+        )
+        for script in scripts:
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=ROOT,
+                env={
+                    "PYTHONPATH": str(ROOT / "src"),
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                },
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 if __name__ == "__main__":

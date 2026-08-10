@@ -1399,6 +1399,26 @@ Treasury/market-data/Tiger regressions, 1,162 full-suite tests, compileall, and
 30/45/60/90/120/180-day sequence with normalized public rates 0.0379, 0.0379,
 0.0383, 0.0387, 0.0389, and 0.0396.
 
+The bounded Treasury pricing-rate proxy contract is
+[`us-treasury-pricing-rate-proxy-contract.md`](us-treasury-pricing-rate-proxy-contract.md).
+It consumes exactly the complete 30/45/60/90/120/180-day normalized Treasury
+curve, permits only exact-tenor selection or adjacent calendar-day linear
+interpolation within 30–180 days, and converts the provider-native nominal
+semiannual par yield to an explicitly limited continuously compounded Decimal
+proxy. It performs no extrapolation, bootstrapping, discount-factor or
+zero/OIS construction, option pricing, or provider request. Implementation is
+complete. The initial independent review found two MAJOR defects: arbitrary
+record IDs conflicted with the existing canonical `CalculationLineage` order,
+and direct result construction did not retain enough provenance to bind nested
+input references. The contract and implementation now retain source-tenor
+references on the calculated record, preserve canonical lineage order, and
+bind each tenor/rate/reference in canonical parameters. Targeted re-review
+passed with no remaining finding. Final validation passed 9 focused rate tests,
+190 transformation tests, 1,171 full-suite tests, compileall, and
+`git diff --check`. `market_data_transformations.__all__` now has exactly 28
+names; `market_data.__all__` remains exactly 64 names and package-root exports
+remain unchanged.
+
 The next separately contracted unit is
 [`tiger-exact-option-analytics-activity-evidence-contract.md`](tiger-exact-option-analytics-activity-evidence-contract.md).
 A focused Tier-A preflight and sanitized live 103-DTE SPY probe verified

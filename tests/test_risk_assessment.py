@@ -94,7 +94,7 @@ class PublicContractTests(unittest.TestCase):
             "assess_structure_affordability",
         ))
         self.assertEqual(len(market_data.__all__), 64)
-        self.assertEqual(len(market_data_transformations.__all__), 25)
+        self.assertEqual(len(market_data_transformations.__all__), 28)
         self.assertIs(ExactRational, market_data_transformations.ExactRational)
         self.assertFalse(hasattr(convexity_hunter, "PortfolioValueAssumption"))
         self.assertEqual(

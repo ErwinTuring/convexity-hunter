@@ -6830,7 +6830,7 @@ class CandidateAssemblyPublicContractTests(unittest.TestCase):
         self.assertFalse(hasattr(convexity_hunter,
                                  "assemble_candidate_research_record"))
         self.assertEqual(len(market_data.__all__), 64)
-        self.assertEqual(len(market_data_transformations.__all__), 25)
+        self.assertEqual(len(market_data_transformations.__all__), 28)
         self.assertEqual(len(risk_assessment.__all__), 7)
         self.assertEqual(
             tuple(field.name for field in dataclasses.fields(
@@ -8133,6 +8133,9 @@ class NoCallApiAndImportProtectionTests(unittest.TestCase):
             "ExpirationPayoffThresholdEvidence",
             "ExpirationPayoffThresholdTransformationResult",
             "transform_expiration_payoff_thresholds",
+            "TreasuryPricingRateInput",
+            "TreasuryPricingRateTransformationResult",
+            "transform_treasury_pricing_rate",
         ))
         self.assertEqual(risk_assessment.__all__, (
             "PortfolioValueAssumption", "RiskBudgetAssumptions",

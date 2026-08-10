@@ -2,9 +2,11 @@
 
 ## Status and purpose
 
-Formal Tier-A preflight is complete with no unresolved blocker. This contract
-freezes one bounded deterministic calculation between the implemented U.S.
-Treasury Daily Par Yield Curve adapter and a future pricing producer.
+Formal Tier-A preflight, implementation, independent review, targeted
+correction, and targeted re-review are complete with no unresolved blocker.
+This contract freezes one bounded deterministic calculation between the
+implemented U.S. Treasury Daily Par Yield Curve adapter and a future pricing
+producer.
 
 ```text
 six exact normalized Treasury par-yield points

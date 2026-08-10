@@ -1,6 +1,7 @@
 """Deterministic transformations from reviewed market data to research records."""
 
 import datetime
+import dataclasses
 import decimal
 import json
 import math
@@ -47,6 +48,7 @@ from .market_data import (
     OptionOpenInterestObservation,
     OptionQuoteObservation,
     OptionVolumeObservation,
+    RateCurvePointObservation,
     SelectedFreshMarketDataBinding,
     SourceReference,
     SourceQualityFlag,
@@ -91,6 +93,9 @@ __all__ = (
     "ExpirationPayoffThresholdEvidence",
     "ExpirationPayoffThresholdTransformationResult",
     "transform_expiration_payoff_thresholds",
+    "TreasuryPricingRateInput",
+    "TreasuryPricingRateTransformationResult",
+    "transform_treasury_pricing_rate",
 )
 
 
@@ -13372,3 +13377,771 @@ def transform_expiration_payoff_thresholds(
             quality_flags,
         )
         return ExpirationPayoffThresholdTransformationResult(record, lineage)
+
+
+_TREASURY_SOURCE_TENORS = (30, 45, 60, 90, 120, 180)
+_TREASURY_CURVE_ID = "USD-US-TREASURY-DAILY-PAR-YIELD"
+_TREASURY_CURRENCY = "USD"
+_TREASURY_COMPOUNDING_CONVENTION = (
+    "Bond-equivalent yield; simple annualized with semiannual interest convention"
+)
+_TREASURY_DAY_COUNT_CONVENTION = "Actual days; 365- or 366-day year"
+_TREASURY_NORMALIZATION_VERSION = "us-treasury-daily-par-yield-v0.1"
+_TREASURY_EXACT_TENOR_METHOD = "exact_tenor_match"
+_TREASURY_INTERPOLATION_METHOD = (
+    "linear_in_calendar_days_on_provider_native_annualized_par_yields"
+)
+_TREASURY_INTERPOLATION_FORMULA = (
+    "y = y_lower + (y_upper - y_lower) * "
+    "(target_days - lower_days) / (upper_days - lower_days)"
+)
+_TREASURY_COMPOUNDING_FORMULA = "r_continuous = 2 * ln(1 + y / 2)"
+_TREASURY_COMPOUNDING_METHODOLOGY = (
+    "precision-34 round-half-even Decimal arithmetic applied to the "
+    "nominal semiannual-interest convention"
+)
+_TREASURY_ECONOMIC_SEMANTICS = (
+    "continuous-compounding calculation proxy derived from a nominal Treasury "
+    "par yield; not a bootstrapped risk-free zero curve and not a zero/OIS curve"
+)
+_TREASURY_DECIMAL_ERROR = "treasury pricing-rate Decimal calculation failed"
+_TREASURY_RECORD_ERROR = "treasury curve point is not canonical"
+_TREASURY_METADATA_ERROR = "treasury curve point metadata is not canonical"
+_TREASURY_LINEAGE_ERROR = "treasury pricing-rate lineage is not canonical"
+
+
+def _treasury_rebuild_dataclass(value: object, cls: object, label: str) -> object:
+    """Rebuild one immutable input dataclass and reject forged state."""
+
+    if type(value) is not cls:
+        cls_name = getattr(cls, "__name__", "dataclass")
+        raise TypeError(f"{label} must have exact type {cls_name}")
+    try:
+        values = {
+            field.name: getattr(value, field.name)
+            for field in dataclasses.fields(cls)  # type: ignore[arg-type]
+        }
+    except Exception:
+        raise ValueError(f"{label} is not canonical") from None
+    try:
+        rebuilt = cls(**values)  # type: ignore[operator]
+    except TypeError:
+        raise TypeError(f"{label} has invalid field types") from None
+    except Exception:
+        raise ValueError(f"{label} is not canonical") from None
+    try:
+        equal = rebuilt == value
+    except Exception:
+        equal = False
+    if not equal:
+        raise ValueError(f"{label} is not canonical")
+    return rebuilt
+
+
+def _treasury_canonical_source_reference(value: object) -> SourceReference:
+    """Return one canonical source reference without exposing raw failures."""
+
+    return _treasury_rebuild_dataclass(
+        value, SourceReference, "source reference"
+    )  # type: ignore[return-value]
+
+
+def _treasury_canonical_metadata(value: object) -> NormalizationMetadata:
+    """Return canonical metadata, including canonical nested sources."""
+
+    if type(value) is not NormalizationMetadata:
+        raise TypeError(
+            "metadata must have exact type NormalizationMetadata"
+        )
+    try:
+        source_values = value.source_references
+    except Exception:
+        raise ValueError(_TREASURY_METADATA_ERROR) from None
+    if type(source_values) is not tuple:
+        raise ValueError(_TREASURY_METADATA_ERROR)
+    sources = tuple(
+        _treasury_canonical_source_reference(source)
+        for source in source_values
+    )
+    try:
+        values = {
+            field.name: getattr(value, field.name)
+            for field in dataclasses.fields(NormalizationMetadata)
+        }
+        values["source_references"] = sources
+        rebuilt = NormalizationMetadata(**values)
+    except TypeError:
+        raise TypeError("metadata has invalid field types") from None
+    except Exception:
+        raise ValueError(_TREASURY_METADATA_ERROR) from None
+    try:
+        equal = rebuilt == value
+    except Exception:
+        equal = False
+    if not equal:
+        raise ValueError(_TREASURY_METADATA_ERROR)
+    return rebuilt
+
+
+def _treasury_canonical_curve_point(
+    value: object,
+) -> RateCurvePointObservation:
+    """Rebuild a curve point after rebuilding all nested provenance."""
+
+    if type(value) is not RateCurvePointObservation:
+        raise TypeError(
+            "curve point must have exact type RateCurvePointObservation"
+        )
+    try:
+        values = {
+            field.name: getattr(value, field.name)
+            for field in dataclasses.fields(RateCurvePointObservation)
+        }
+        values["metadata"] = _treasury_canonical_metadata(values["metadata"])
+    except (TypeError, ValueError):
+        raise
+    except Exception:
+        raise ValueError(_TREASURY_RECORD_ERROR) from None
+    try:
+        rebuilt = RateCurvePointObservation(**values)
+    except TypeError:
+        raise TypeError("curve point has invalid field types") from None
+    except Exception:
+        raise ValueError(_TREASURY_RECORD_ERROR) from None
+    try:
+        equal = rebuilt == value
+    except Exception:
+        equal = False
+    if not equal:
+        raise ValueError(_TREASURY_RECORD_ERROR)
+    return rebuilt
+
+
+def _treasury_validate_curve_points(value: object) -> Tuple[RateCurvePointObservation, ...]:
+    """Validate the exact six-point Treasury input curve."""
+
+    if type(value) is not tuple:
+        raise TypeError("curve_points must have exact type tuple")
+    if any(type(point) is not RateCurvePointObservation for point in value):
+        raise TypeError(
+            "every curve point must have exact type RateCurvePointObservation"
+        )
+    if len(value) != len(_TREASURY_SOURCE_TENORS):
+        raise ValueError("curve_points must contain exactly six points")
+    points = tuple(_treasury_canonical_curve_point(point) for point in value)
+    tenors = tuple(point.tenor_days for point in points)
+    if tenors != _TREASURY_SOURCE_TENORS:
+        raise ValueError("curve_points must use the exact Treasury tenor order")
+
+    effective_dates = tuple(point.effective_date for point in points)
+    if any(type(effective_date) is not datetime.date for effective_date in effective_dates):
+        raise TypeError("every curve point effective_date must have exact type date")
+    if len(set(effective_dates)) != 1:
+        raise ValueError("curve points must share one effective date")
+    for point in points:
+        if (
+            point.curve_id != _TREASURY_CURVE_ID
+            or point.currency != _TREASURY_CURRENCY
+            or point.compounding_convention != _TREASURY_COMPOUNDING_CONVENTION
+            or point.day_count_convention != _TREASURY_DAY_COUNT_CONVENTION
+        ):
+            raise ValueError("curve points must share the Treasury declarations")
+        if point.metadata.record_origin is not DataOrigin.PROVIDER_CALCULATED:
+            raise ValueError("curve points must be provider_calculated")
+        if point.metadata.normalization_version != _TREASURY_NORMALIZATION_VERSION:
+            raise ValueError("curve points must use the Treasury normalization version")
+        if NormalizationQualityFlag.INCOMPLETE in point.metadata.quality_flags:
+            raise ValueError("incomplete Treasury curve points are prohibited")
+        if any(
+            SourceQualityFlag.PARTIAL in source.quality_flags
+            for source in point.metadata.source_references
+        ):
+            raise ValueError("partial Treasury curve sources are prohibited")
+        if type(point.metadata.record_id) is not str or not point.metadata.record_id:
+            raise ValueError("curve point record IDs must be nonempty")
+        source_ids = tuple(
+            source.source_id for source in point.metadata.source_references
+        )
+        if type(source_ids) is not tuple or not source_ids:
+            raise ValueError("curve point source IDs must be nonempty")
+        if any(type(source_id) is not str or not source_id for source_id in source_ids):
+            raise ValueError("curve point source IDs must be nonempty strings")
+    record_ids = tuple(point.metadata.record_id for point in points)
+    if len(set(record_ids)) != len(record_ids):
+        raise ValueError("curve point record IDs must be unique")
+    return points
+
+
+def _treasury_normalize_calculated_at(value: object) -> datetime.datetime:
+    """Normalize one exact aware calculation time to UTC."""
+
+    if type(value) is not datetime.datetime:
+        raise TypeError("calculated_at must have exact type datetime")
+    try:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("calculated_at must be timezone-aware")
+        return value.astimezone(datetime.timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        raise ValueError("calculated_at must be representable in UTC") from None
+    except Exception:
+        raise ValueError("calculated_at must be representable in UTC") from None
+
+
+def _treasury_validate_target_type(value: object) -> int:
+    """Validate target-tenor type before later range and bracket checks."""
+
+    if type(value) is not int:
+        raise TypeError("target_tenor_days must have exact type int")
+    return value
+
+
+def _treasury_validate_decimal(value: object, label: str) -> decimal.Decimal:
+    """Require one finite, non-negative-zero exact Decimal value."""
+
+    if type(value) is not decimal.Decimal:
+        raise TypeError(f"{label} must have exact type Decimal")
+    if not value.is_finite():
+        raise ValueError(f"{label} must be finite")
+    if value.is_zero() and value.is_signed():
+        raise ValueError(f"{label} must not be negative zero")
+    return value
+
+
+def _treasury_decimal_context() -> decimal.Context:
+    """Return the fixed context used by every Treasury Decimal operation."""
+
+    context = decimal.Context(
+        prec=34,
+        rounding=decimal.ROUND_HALF_EVEN,
+        Emin=decimal.MIN_EMIN,
+        Emax=decimal.MAX_EMAX,
+        capitals=1,
+        clamp=0,
+    )
+    for signal in context.traps:
+        context.traps[signal] = False
+    context.clear_flags()
+    return context
+
+
+def _treasury_decimal_operation(
+    context: decimal.Context,
+    operation: object,
+) -> decimal.Decimal:
+    """Run one context-bound operation and hide all arithmetic failures."""
+
+    context.clear_flags()
+    try:
+        value = operation()  # type: ignore[operator]
+    except Exception:
+        raise ValueError(_TREASURY_DECIMAL_ERROR) from None
+    fatal_signals = (
+        decimal.InvalidOperation,
+        decimal.DivisionByZero,
+        decimal.Overflow,
+        decimal.Underflow,
+        decimal.Subnormal,
+        decimal.Clamped,
+    )
+    if any(context.flags[signal] for signal in fatal_signals):
+        raise ValueError(_TREASURY_DECIMAL_ERROR)
+    if type(value) is not decimal.Decimal or not value.is_finite():
+        raise ValueError(_TREASURY_DECIMAL_ERROR)
+    return value
+
+
+def _treasury_same_decimal(
+    left: decimal.Decimal,
+    right: decimal.Decimal,
+) -> bool:
+    """Compare Decimal coefficient and exponent, not only numeric equality."""
+
+    return left.as_tuple() == right.as_tuple()
+
+
+def _treasury_select_yield(
+    source_tenors: Tuple[int, ...],
+    source_rates: Tuple[decimal.Decimal, ...],
+    target_tenor_days: int,
+) -> Tuple[
+    decimal.Decimal,
+    str,
+    int,
+    int,
+    decimal.Decimal,
+    decimal.Decimal,
+]:
+    """Select an exact tenor or interpolate adjacent source points."""
+
+    try:
+        exact_index = source_tenors.index(target_tenor_days)
+    except ValueError:
+        exact_index = -1
+    if exact_index >= 0:
+        selected = source_rates[exact_index]
+        return (
+            selected,
+            _TREASURY_EXACT_TENOR_METHOD,
+            target_tenor_days,
+            target_tenor_days,
+            selected,
+            selected,
+        )
+
+    lower_index = -1
+    for index, (lower, upper) in enumerate(
+        zip(source_tenors, source_tenors[1:])
+    ):
+        if lower < target_tenor_days < upper:
+            lower_index = index
+            break
+    if lower_index < 0:
+        raise ValueError("target tenor is not bracketed by Treasury points")
+    lower_days = source_tenors[lower_index]
+    upper_days = source_tenors[lower_index + 1]
+    lower_rate = source_rates[lower_index]
+    upper_rate = source_rates[lower_index + 1]
+    context = _treasury_decimal_context()
+    lower_delta = _treasury_decimal_operation(
+        context,
+        lambda: context.subtract(upper_rate, lower_rate),
+    )
+    tenor_delta = decimal.Decimal(target_tenor_days - lower_days)
+    span = decimal.Decimal(upper_days - lower_days)
+    weighted_delta = _treasury_decimal_operation(
+        context,
+        lambda: context.multiply(lower_delta, tenor_delta),
+    )
+    fraction = _treasury_decimal_operation(
+        context,
+        lambda: context.divide(weighted_delta, span),
+    )
+    selected = _treasury_decimal_operation(
+        context,
+        lambda: context.add(lower_rate, fraction),
+    )
+    if selected.is_zero():
+        selected = decimal.Decimal("0")
+    return (
+        selected,
+        _TREASURY_INTERPOLATION_METHOD,
+        lower_days,
+        upper_days,
+        lower_rate,
+        upper_rate,
+    )
+
+
+def _treasury_continuous_rate(value: decimal.Decimal) -> decimal.Decimal:
+    """Convert a nominal semiannual yield using the fixed Decimal context."""
+
+    context = _treasury_decimal_context()
+    half_yield = _treasury_decimal_operation(
+        context,
+        lambda: context.divide(value, decimal.Decimal("2")),
+    )
+    logarithm_argument = _treasury_decimal_operation(
+        context,
+        lambda: context.add(decimal.Decimal("1"), half_yield),
+    )
+    if not logarithm_argument.is_finite() or logarithm_argument <= 0:
+        raise ValueError("Treasury logarithm argument must be finite and positive")
+    logarithm = _treasury_decimal_operation(
+        context,
+        lambda: context.ln(logarithm_argument),
+    )
+    result = _treasury_decimal_operation(
+        context,
+        lambda: context.multiply(decimal.Decimal("2"), logarithm),
+    )
+    return decimal.Decimal("0") if result.is_zero() else result
+
+
+def _treasury_expected_quality_flags(
+    interpolation_methodology: str,
+) -> Tuple[CalculationQualityFlag, ...]:
+    """Return the exact declared quality flags in enum declaration order."""
+
+    selected = {
+        CalculationQualityFlag.ANNUALIZED,
+        CalculationQualityFlag.ASSUMPTION_APPLIED,
+    }
+    if interpolation_methodology != _TREASURY_EXACT_TENOR_METHOD:
+        selected.add(CalculationQualityFlag.INTERPOLATED)
+    return tuple(flag for flag in CalculationQualityFlag if flag in selected)
+
+
+def _treasury_canonical_input_reference(
+    value: object,
+) -> CalculationInputReference:
+    """Independently rebuild one retained normalized-input reference."""
+
+    if type(value) is not CalculationInputReference:
+        raise TypeError(
+            "source input reference must have exact type "
+            "CalculationInputReference"
+        )
+    try:
+        rebuilt = CalculationInputReference(
+            record_id=value.record_id,
+            normalized_at=value.normalized_at,
+            source_ids=value.source_ids,
+        )
+    except TypeError:
+        raise TypeError("source input reference has invalid field types") from None
+    except Exception:
+        raise ValueError("source input reference is not canonical") from None
+    if rebuilt != value:
+        raise ValueError("source input reference is not canonical")
+    return rebuilt
+
+
+@dataclass(frozen=True)
+class TreasuryPricingRateInput:
+    """One deterministic Treasury par-yield pricing-rate proxy input."""
+
+    effective_date: datetime.date
+    target_tenor_days: int
+    source_curve_id: str
+    currency: str
+    source_tenors_days: Tuple[int, ...]
+    source_annualized_par_yields: Tuple[decimal.Decimal, ...]
+    source_input_references: Tuple[CalculationInputReference, ...]
+    interpolated_annualized_par_yield: decimal.Decimal
+    continuously_compounded_rate_proxy: decimal.Decimal
+    interpolation_methodology: str
+    compounding_conversion_methodology: str
+    economic_semantics: str
+
+    def __post_init__(self) -> None:
+        if type(self.effective_date) is not datetime.date:
+            raise TypeError("effective_date must have exact type date")
+        if type(self.target_tenor_days) is not int:
+            raise TypeError("target_tenor_days must have exact type int")
+        if not 30 <= self.target_tenor_days <= 180:
+            raise ValueError("target_tenor_days must be between 30 and 180")
+        if type(self.source_curve_id) is not str:
+            raise TypeError("source_curve_id must have exact type str")
+        if self.source_curve_id != _TREASURY_CURVE_ID:
+            raise ValueError("source_curve_id is not the Treasury curve")
+        if type(self.currency) is not str:
+            raise TypeError("currency must have exact type str")
+        if self.currency != _TREASURY_CURRENCY:
+            raise ValueError("currency must be USD")
+        if type(self.source_tenors_days) is not tuple:
+            raise TypeError("source_tenors_days must have exact type tuple")
+        if any(type(tenor) is not int for tenor in self.source_tenors_days):
+            raise TypeError("every source tenor must have exact type int")
+        if self.source_tenors_days != _TREASURY_SOURCE_TENORS:
+            raise ValueError("source_tenors_days are not the exact Treasury tenors")
+        if type(self.source_annualized_par_yields) is not tuple:
+            raise TypeError(
+                "source_annualized_par_yields must have exact type tuple"
+            )
+        if len(self.source_annualized_par_yields) != len(_TREASURY_SOURCE_TENORS):
+            raise ValueError("source_annualized_par_yields must contain six values")
+        for rate in self.source_annualized_par_yields:
+            _treasury_validate_decimal(rate, "source annualized par yield")
+        if type(self.source_input_references) is not tuple:
+            raise TypeError("source_input_references must have exact type tuple")
+        if len(self.source_input_references) != len(_TREASURY_SOURCE_TENORS):
+            raise ValueError("source_input_references must contain six values")
+        references = tuple(
+            _treasury_canonical_input_reference(reference)
+            for reference in self.source_input_references
+        )
+        if len({reference.record_id for reference in references}) != len(
+            references
+        ):
+            raise ValueError("source input reference record IDs must be unique")
+        _treasury_validate_decimal(
+            self.interpolated_annualized_par_yield,
+            "interpolated annualized par yield",
+        )
+        _treasury_validate_decimal(
+            self.continuously_compounded_rate_proxy,
+            "continuously compounded rate proxy",
+        )
+        if type(self.interpolation_methodology) is not str:
+            raise TypeError("interpolation_methodology must have exact type str")
+        if type(self.compounding_conversion_methodology) is not str:
+            raise TypeError(
+                "compounding_conversion_methodology must have exact type str"
+            )
+        if type(self.economic_semantics) is not str:
+            raise TypeError("economic_semantics must have exact type str")
+        expected_yield, expected_method, _, _, _, _ = _treasury_select_yield(
+            self.source_tenors_days,
+            self.source_annualized_par_yields,
+            self.target_tenor_days,
+        )
+        if self.interpolation_methodology != expected_method:
+            raise ValueError("interpolation_methodology is inconsistent")
+        if self.compounding_conversion_methodology != _TREASURY_COMPOUNDING_METHODOLOGY:
+            raise ValueError("compounding_conversion_methodology is inconsistent")
+        if self.economic_semantics != _TREASURY_ECONOMIC_SEMANTICS:
+            raise ValueError("economic_semantics is inconsistent")
+        if not _treasury_same_decimal(
+            self.interpolated_annualized_par_yield, expected_yield
+        ):
+            raise ValueError("interpolated annualized par yield is inconsistent")
+        expected_proxy = _treasury_continuous_rate(expected_yield)
+        if not _treasury_same_decimal(
+            self.continuously_compounded_rate_proxy, expected_proxy
+        ):
+            raise ValueError("continuously compounded rate proxy is inconsistent")
+
+
+def _treasury_lineage_parameters(
+    record: TreasuryPricingRateInput,
+    calculation_id: str,
+    calculated_at: datetime.datetime,
+    inputs: Tuple[CalculationInputReference, ...],
+) -> str:
+    """Build the complete canonical parameter sidecar for the calculation."""
+
+    (
+        selected_yield,
+        method,
+        lower_days,
+        upper_days,
+        lower_rate,
+        upper_rate,
+    ) = _treasury_select_yield(
+        record.source_tenors_days,
+        record.source_annualized_par_yields,
+        record.target_tenor_days,
+    )
+    if (
+        method != record.interpolation_methodology
+        or not _treasury_same_decimal(
+            selected_yield, record.interpolated_annualized_par_yield
+        )
+    ):
+        raise ValueError(_TREASURY_LINEAGE_ERROR)
+    evidence = tuple(
+        {
+            "role": "rate_curve_point",
+            "tenor_days": tenor,
+            "annualized_par_yield": rate,
+            "record_id": item.record_id,
+            "normalized_at": item.normalized_at,
+            "source_ids": item.source_ids,
+        }
+        for tenor, rate, item in zip(
+            record.source_tenors_days,
+            record.source_annualized_par_yields,
+            inputs,
+        )
+    )
+    return canonicalize_lineage_parameters({
+        "calculation_identity": {
+            "calculation_id": calculation_id,
+            "calculation_type": "treasury_pricing_rate_proxy",
+            "methodology_id": (
+                "linear-par-yield-tenor-and-continuous-compounding-proxy"
+            ),
+            "methodology_version": "v0.1",
+            "calculated_at": calculated_at,
+        },
+        "curve_identity": {
+            "curve_id": record.source_curve_id,
+            "currency": record.currency,
+            "effective_date": record.effective_date,
+            "compounding_convention": _TREASURY_COMPOUNDING_CONVENTION,
+            "day_count_convention": _TREASURY_DAY_COUNT_CONVENTION,
+            "normalization_version": _TREASURY_NORMALIZATION_VERSION,
+        },
+        "source_curve": {
+            "source_tenors_days": record.source_tenors_days,
+            "source_annualized_par_yields": record.source_annualized_par_yields,
+        },
+        "target_tenor_days": record.target_tenor_days,
+        "tenor_selection": {
+            "interpolation_methodology": record.interpolation_methodology,
+            "interpolation_formula": _TREASURY_INTERPOLATION_FORMULA,
+            "lower_tenor_days": lower_days,
+            "upper_tenor_days": upper_days,
+            "lower_annualized_par_yield": lower_rate,
+            "upper_annualized_par_yield": upper_rate,
+        },
+        "compounding_conversion": {
+            "formula": _TREASURY_COMPOUNDING_FORMULA,
+            "methodology": record.compounding_conversion_methodology,
+            "precision": 34,
+            "rounding": "ROUND_HALF_EVEN",
+        },
+        "calculated_values": {
+            "interpolated_annualized_par_yield": (
+                record.interpolated_annualized_par_yield
+            ),
+            "continuously_compounded_rate_proxy": (
+                record.continuously_compounded_rate_proxy
+            ),
+        },
+        "output_semantics": record.economic_semantics,
+        "quality_flags": tuple(
+            flag.value
+            for flag in _treasury_expected_quality_flags(
+                record.interpolation_methodology
+            )
+        ),
+        "normalized_evidence": evidence,
+    })
+
+
+def _treasury_canonical_lineage(
+    value: object,
+) -> CalculationLineage:
+    """Rebuild a lineage sidecar to reject constructor-bypassed state."""
+
+    if type(value) is not CalculationLineage:
+        raise TypeError("lineage must have exact type CalculationLineage")
+    try:
+        values = {
+            field.name: getattr(value, field.name)
+            for field in dataclasses.fields(CalculationLineage)
+        }
+        if type(values["inputs"]) is not tuple:
+            raise TypeError
+        values["inputs"] = tuple(
+            _treasury_canonical_input_reference(reference)
+            for reference in values["inputs"]
+        )
+        rebuilt = CalculationLineage(**values)
+    except TypeError:
+        raise TypeError(_TREASURY_LINEAGE_ERROR) from None
+    except Exception:
+        raise ValueError(_TREASURY_LINEAGE_ERROR) from None
+    try:
+        equal = rebuilt == value
+    except Exception:
+        equal = False
+    if not equal:
+        raise ValueError(_TREASURY_LINEAGE_ERROR)
+    return rebuilt
+
+
+@dataclass(frozen=True)
+class TreasuryPricingRateTransformationResult:
+    """Immutable Treasury pricing-rate input and its auditable lineage."""
+
+    record: TreasuryPricingRateInput
+    lineage: CalculationLineage
+
+    def __post_init__(self) -> None:
+        if type(self.record) is not TreasuryPricingRateInput:
+            raise TypeError(
+                "record must have exact type TreasuryPricingRateInput"
+            )
+        if type(self.lineage) is not CalculationLineage:
+            raise TypeError("lineage must have exact type CalculationLineage")
+        _treasury_rebuild_dataclass(
+            self.record,
+            TreasuryPricingRateInput,
+            "TreasuryPricingRateInput",
+        )
+        _treasury_canonical_lineage(self.lineage)
+        if len(self.lineage.inputs) != len(_TREASURY_SOURCE_TENORS):
+            raise ValueError("Treasury lineage must contain exactly six inputs")
+        expected_inputs = tuple(sorted(
+            self.record.source_input_references,
+            key=lambda item: item.record_id,
+        ))
+        if self.lineage.inputs != expected_inputs:
+            raise ValueError("Treasury lineage inputs do not match the record")
+        if self.lineage.calculation_type != "treasury_pricing_rate_proxy":
+            raise ValueError("Treasury lineage calculation_type is inconsistent")
+        if self.lineage.methodology_id != (
+            "linear-par-yield-tenor-and-continuous-compounding-proxy"
+        ):
+            raise ValueError("Treasury lineage methodology_id is inconsistent")
+        if self.lineage.methodology_version != "v0.1":
+            raise ValueError("Treasury lineage methodology_version is inconsistent")
+        expected_flags = _treasury_expected_quality_flags(
+            self.record.interpolation_methodology
+        )
+        if self.lineage.quality_flags != expected_flags:
+            raise ValueError("Treasury lineage quality_flags are inconsistent")
+        expected_parameters = _treasury_lineage_parameters(
+            self.record,
+            self.lineage.calculation_id,
+            self.lineage.calculated_at,
+            self.record.source_input_references,
+        )
+        if self.lineage.parameters_json != expected_parameters:
+            raise ValueError("Treasury lineage parameters are inconsistent")
+
+
+def transform_treasury_pricing_rate(
+    calculation_id: object,
+    curve_points: object,
+    target_tenor_days: object,
+    calculated_at: object,
+) -> TreasuryPricingRateTransformationResult:
+    """Transform six normalized Treasury points into one rate proxy."""
+
+    if type(calculation_id) is not str:
+        raise TypeError("calculation_id must have exact type str")
+    normalized_id = calculation_id.strip()
+    if not normalized_id:
+        raise ValueError("calculation_id must not be empty")
+    target = _treasury_validate_target_type(target_tenor_days)
+    normalized_at = _treasury_normalize_calculated_at(calculated_at)
+    points = _treasury_validate_curve_points(curve_points)
+
+    record_ids = tuple(point.metadata.record_id for point in points)
+    if normalized_id in record_ids:
+        raise ValueError("calculation_id must differ from every input ID")
+    if any(normalized_at < point.metadata.normalized_at for point in points):
+        raise ValueError("calculation precedes a normalized input")
+    if target < 30 or target > 180:
+        raise ValueError("target_tenor_days must be between 30 and 180")
+
+    source_tenors = tuple(point.tenor_days for point in points)
+    source_rates = tuple(point.annualized_rate for point in points)
+    selected_yield, method, _, _, _, _ = _treasury_select_yield(
+        source_tenors, source_rates, target
+    )
+    continuous_rate = _treasury_continuous_rate(selected_yield)
+    input_references = tuple(
+        CalculationInputReference(
+            record_id=point.metadata.record_id,
+            normalized_at=point.metadata.normalized_at,
+            source_ids=tuple(
+                source.source_id
+                for source in point.metadata.source_references
+            ),
+        )
+        for point in points
+    )
+    record = TreasuryPricingRateInput(
+        effective_date=points[0].effective_date,
+        target_tenor_days=target,
+        source_curve_id=points[0].curve_id,
+        currency=points[0].currency,
+        source_tenors_days=source_tenors,
+        source_annualized_par_yields=source_rates,
+        source_input_references=input_references,
+        interpolated_annualized_par_yield=selected_yield,
+        continuously_compounded_rate_proxy=continuous_rate,
+        interpolation_methodology=method,
+        compounding_conversion_methodology=_TREASURY_COMPOUNDING_METHODOLOGY,
+        economic_semantics=_TREASURY_ECONOMIC_SEMANTICS,
+    )
+    parameters_json = _treasury_lineage_parameters(
+        record, normalized_id, normalized_at, input_references
+    )
+    lineage = CalculationLineage(
+        calculation_id=normalized_id,
+        calculation_type="treasury_pricing_rate_proxy",
+        methodology_id=(
+            "linear-par-yield-tenor-and-continuous-compounding-proxy"
+        ),
+        methodology_version="v0.1",
+        calculated_at=normalized_at,
+        inputs=input_references,
+        parameters_json=parameters_json,
+        quality_flags=_treasury_expected_quality_flags(method),
+    )
+    return TreasuryPricingRateTransformationResult(record, lineage)

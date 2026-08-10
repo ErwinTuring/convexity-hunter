@@ -169,6 +169,22 @@ Frozen U.S. Treasury daily par-yield work unit:
   and `git diff --check`. A sanitized live 2026-08-07 smoke returned the exact
   ordered 30/45/60/90/120/180-day normalized curve.
 
+Completed U.S. Treasury pricing-rate proxy work unit:
+
+- Canonical contract:
+  [`us-treasury-pricing-rate-proxy-contract.md`](us-treasury-pricing-rate-proxy-contract.md).
+- The transformation consumes the complete normalized six-point curve,
+  performs exact-tenor selection or adjacent calendar-day linear interpolation
+  only within 30–180 days, and converts the nominal semiannual par-yield proxy
+  to a continuously compounded Decimal proxy. It never claims zero/OIS
+  semantics, bootstraps discount factors, extrapolates, or prices an option.
+- Independent review found and closed two MAJOR defects covering arbitrary
+  record-ID ordering and direct provenance binding. The record now retains all
+  six source-tenor input references while `CalculationLineage` preserves its
+  existing canonical record-ID order; targeted re-review passed.
+- Validation passed 9 focused pricing-rate tests, 190 transformation tests,
+  1,171 full-suite tests, compileall, and `git diff --check`.
+
 Frozen Tiger exact-option analytics/activity work unit:
 
 - Canonical contract:
