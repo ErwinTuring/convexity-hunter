@@ -12,7 +12,29 @@ entry path converges on the same verified exact structure and Convexity Engine.
 The system identifies structures worthy of further investigation; it does not
 prove opportunities, recommend trades, monitor positions, or execute trades.
 
-## Current milestone
+## Current authoritative product state
+
+The latest grounded implementation baseline is `af857c2d964e5eed23025f520443007fd155683c`
+(`Implement Treasury pricing-rate proxy`). The deterministic Engine,
+reviewed-artifact assembly, screening, offline service, Direct Entry
+composition, and Chinese report exist, but no implemented real-provider bridge
+produces the normalized current records and proofs required by structure
+liquidity and cost transformations. The highest-priority gap is therefore the
+real one-leg Direct Entry vertical slice, not additional market-data
+infrastructure completeness.
+
+The active dependency classification and sequence are authoritative in
+[`real-direct-entry-vertical-slice-plan.md`](real-direct-entry-vertical-slice-plan.md).
+Current hard blockers are authoritative Tiger current option and underlying
+quote semantics plus the provider-neutral activity/Greeks applicability needed
+for existing liquidity and cost transformations. Missing volatility, tail,
+scenario, threshold, and affordability artifacts may remain explicit
+`DATA_INSUFFICIENT` for the first slice. Push BBO remains a bounded pending
+regular-session probe. Additional rate, dividend, historical-IV, surface,
+discovery, generation, and Event Intelligence work is deferred unless the
+vertical slice demonstrates it is the next blocker.
+
+## Historical milestone ledger
 
 Milestones 1–5 are complete. Milestone 4 — Deterministic Expiration
 Payoff-Threshold Evidence implements exact-rational thresholds for the
@@ -1209,7 +1231,11 @@ do not override the current Milestone 6A completion checkpoint above.
 - Milestone 3C.7f remains unimplemented
 - Broad Milestone 3 incomplete
 
-## Next task
+## Historical next-task record — superseded
+
+The historical text below records an earlier transition and is not the active
+roadmap. Use the current authoritative product state above and
+`docs/current-checkpoint.md` for sequencing.
 
 Any subsequent capability requires fresh repository grounding, formal
 preflight, and a separately frozen contract before implementation.
@@ -1281,7 +1307,7 @@ re-review passed. Final validation passed 26 focused tests, 1,085 full-suite
 tests, compileall, `git diff --check`, and a local external-config smoke check
 that returned a `QuoteClient` without a market request or permission grab.
 
-The next separately contracted work unit is
+The subsequently completed work unit is
 [`tiger-option-contract-verification-contract.md`](tiger-option-contract-verification-contract.md).
 It is limited to verifying one caller-specified exact option identity against
 Tiger's explicit monthly expiration evidence and exact chain row, retaining the
@@ -1294,7 +1320,7 @@ direct-result provenance invariants; final targeted re-review passed. Final
 validation passed 39 focused tests, 1,098 full-suite tests, compileall,
 `git diff --check`, and a sanitized live SPY monthly exact-contract smoke check.
 
-The next separately contracted work unit is
+The subsequently completed work unit is
 [`tiger-exact-option-quote-evidence-contract.md`](tiger-exact-option-quote-evidence-contract.md).
 It is limited to active `usOptionQuote` entitlement proof plus transient
 bid/ask/size evidence for one already verified exact contract. Tiger supplies
@@ -1327,7 +1353,7 @@ probe verifies exact callback pairing and actual field population.
 The absolute next executable window is no earlier than Beijing time
 `2026-08-10 21:30`; no earlier non-trading-session retry is authorized.
 
-The next separately contracted unit is
+The subsequently completed unit is
 [`tiger-underlying-daily-bars-contract.md`](tiger-underlying-daily-bars-contract.md).
 It pairs Tiger's unadjusted `NR` daily OHLC/volume with the exact `BR`
 forward-adjusted close over one bounded completed-session range and returns the
@@ -1347,7 +1373,7 @@ review passed with no findings; validation passed 70 focused Tiger tests, 1,129
 full-suite tests, compileall, `git diff --check`, and a live five-session SPY
 boundary smoke check.
 
-The next separately contracted unit is
+The subsequently completed unit is
 [`tiger-historical-dividend-evidence-contract.md`](tiger-historical-dividend-evidence-contract.md).
 A focused Tier-A preflight blocked direct `DividendObservation` normalization:
 Tiger documents only a provider `amount`, without an authoritative per-share
@@ -1358,7 +1384,7 @@ Implementation and independent review are complete with no findings. Validation
 passed 70 focused Tiger tests, 1,129 full-suite tests, compileall, `git diff --check`,
 and a sanitized live four-row SPY evidence smoke check.
 
-The next separately contracted unit is
+The subsequently completed unit is
 [`tiger-historical-option-bar-evidence-contract.md`](tiger-historical-option-bar-evidence-contract.md).
 A focused Tier-A preflight and sanitized live probe verified 60 daily rows with
 all documented fields populated for one explicitly monthly 103-DTE SPY
@@ -1419,7 +1445,7 @@ passed with no remaining finding. Final validation passed 9 focused rate tests,
 names; `market_data.__all__` remains exactly 64 names and package-root exports
 remain unchanged.
 
-The next separately contracted unit is
+The subsequently completed unit is
 [`tiger-exact-option-analytics-activity-evidence-contract.md`](tiger-exact-option-analytics-activity-evidence-contract.md).
 A focused Tier-A preflight and sanitized live 103-DTE SPY probe verified
 populated volume, open interest, IV, Delta, Gamma, Theta, Vega, Rho, and
