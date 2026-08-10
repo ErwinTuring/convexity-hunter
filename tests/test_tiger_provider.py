@@ -3,6 +3,8 @@
 import dataclasses
 import datetime
 import decimal
+import hashlib
+import inspect
 import logging
 import importlib.util
 import os
@@ -66,7 +68,7 @@ class TigerProviderTestCase(unittest.TestCase):
 
 
 class PublicBoundaryTests(TigerProviderTestCase):
-    def test_exact_thirteen_name_api_and_no_root_or_package_reexport(self):
+    def test_exact_fourteen_name_api_and_no_root_or_package_reexport(self):
         self.assertEqual(
             tiger.__all__,
             (
@@ -83,6 +85,7 @@ class PublicBoundaryTests(TigerProviderTestCase):
                 "retrieve_tiger_historical_option_bar_evidence",
                 "TigerExactOptionAnalyticsActivityEvidence",
                 "retrieve_tiger_exact_option_analytics_activity_evidence",
+                "compose_tiger_spy_standard_option_contract_reference",
             ),
         )
         self.assertEqual(
@@ -943,6 +946,675 @@ class ExactContractVerificationTests(TigerProviderTestCase):
         )
         with self.assertRaisesRegex(ValueError, "identifier is inconsistent"):
             dataclasses.replace(valid, contract_reference=forged_reference)
+
+
+class TigerSpyStandardCompositeTests(TigerProviderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.underlying = UnderlyingKey(
+            symbol="SPY",
+            listing_mic="ARCX",
+            security_type=UnderlyingSecurityType.ETF,
+            currency="USD",
+        )
+        self.expiration = datetime.date(2030, 3, 15)
+        self.strike = decimal.Decimal("500")
+        self.expiration_retrieved_at = datetime.datetime(
+            2030, 1, 2, 15, 30, tzinfo=datetime.timezone.utc
+        )
+        self.chain_retrieved_at = self.expiration_retrieved_at + datetime.timedelta(
+            seconds=1
+        )
+        self.normalized_at = self.chain_retrieved_at + datetime.timedelta(
+            seconds=1
+        )
+
+    def verify(self, client=None, **overrides):
+        values = {
+            "underlying_key": self.underlying,
+            "expiration": self.expiration,
+            "option_type": "call",
+            "strike": self.strike,
+        }
+        values.update(overrides)
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(
+                self.expiration_retrieved_at,
+                self.chain_retrieved_at,
+                self.normalized_at,
+            ),
+        ):
+            return tiger.verify_tiger_monthly_option_contract(
+                SyntheticQuoteClient() if client is None else client,
+                **values,
+            )
+
+    def compose(self, verification=None, normalized_at=None):
+        verification = self.verify() if verification is None else verification
+        normalized_at = (
+            self.normalized_at + datetime.timedelta(seconds=10)
+            if normalized_at is None
+            else normalized_at
+        )
+        return tiger.compose_tiger_spy_standard_option_contract_reference(
+            verification,
+            normalized_at=normalized_at,
+        )
+
+    def coherently_retimestamp(self, verification):
+        metadata = verification.contract_reference.metadata
+        sources = {
+            source.dataset_name: source
+            for source in metadata.source_references
+        }
+        expiration_source = sources["option_expirations"]
+        chain_source = sources["option_chain"]
+        expiration_time = expiration_source.retrieved_at - datetime.timedelta(
+            days=1
+        )
+        chain_time = chain_source.retrieved_at - datetime.timedelta(days=1)
+        expiration_id, chain_id, record_id = tiger._provenance_ids(
+            verification.provider_identifier,
+            expiration_time,
+            chain_time,
+        )
+        object.__setattr__(expiration_source, "observed_at", expiration_time)
+        object.__setattr__(expiration_source, "retrieved_at", expiration_time)
+        object.__setattr__(expiration_source, "source_id", expiration_id)
+        object.__setattr__(chain_source, "observed_at", chain_time)
+        object.__setattr__(chain_source, "retrieved_at", chain_time)
+        object.__setattr__(chain_source, "source_id", chain_id)
+        object.__setattr__(metadata, "record_id", record_id)
+        object.__setattr__(metadata, "effective_observed_at", chain_time)
+
+    def test_exact_composition_preserves_key_and_declares_all_metadata(self):
+        verification = self.verify()
+        input_reference = verification.contract_reference
+        result = self.compose(verification)
+
+        self.assertIsInstance(result, OptionContractReference)
+        self.assertIs(result.contract_key, input_reference.contract_key)
+        self.assertIsNone(result.listing_date)
+        self.assertIsNone(result.last_trade_date)
+        self.assertIsNone(result.contract_key.deliverable_id)
+        self.assertEqual(result.exercise_style, "American")
+        self.assertEqual(result.settlement_type, "Physical")
+        self.assertIsNone(input_reference.exercise_style)
+        self.assertIsNone(input_reference.settlement_type)
+        self.assertEqual(
+            result.metadata.normalization_version,
+            "tiger-spy-standard-option-terms-composite-v0.1",
+        )
+        self.assertIs(result.metadata.record_origin, DataOrigin.SYSTEM_COMPOSITE)
+        self.assertEqual(
+            result.metadata.quality_flags,
+            (
+                NormalizationQualityFlag.SYMBOL_MAPPED,
+                NormalizationQualityFlag.COMPOSITE_SOURCE,
+                NormalizationQualityFlag.TIMESTAMP_ASSIGNED,
+            ),
+        )
+        self.assertNotIn(
+            NormalizationQualityFlag.INCOMPLETE,
+            result.metadata.quality_flags,
+        )
+        self.assertEqual(
+            result.metadata.effective_observed_at,
+            self.chain_retrieved_at,
+        )
+        self.assertEqual(
+            result.metadata.normalized_at,
+            self.normalized_at + datetime.timedelta(seconds=10),
+        )
+        self.assertIn("Tiger OpenAPI", result.metadata.normalization_methodology)
+        self.assertIn("Cboe Global Markets", result.metadata.normalization_methodology)
+        self.assertIn("OCC Information Memo 26853", result.metadata.normalization_methodology)
+        self.assertIn("unsuffixed SPY OSI root", result.metadata.normalization_methodology)
+        self.assertIn("No listing date", result.metadata.normalization_methodology)
+
+        expected_digest = hashlib.sha256(
+            (
+                result.metadata.normalization_version
+                + "\x00"
+                + input_reference.metadata.record_id
+                + "\x00"
+                + verification.provider_identifier
+                + "\x00cboe-spy-option-terms:2026-08-10\x00"
+                + "occ-osi-adjusted-symbol-convention:26853"
+            ).encode("utf-8")
+        ).hexdigest()
+        self.assertEqual(
+            result.metadata.record_id,
+            "tiger-spy-standard-option-contract:" + expected_digest,
+        )
+        self.assertEqual(
+            result.metadata.record_id,
+            "tiger-spy-standard-option-contract:"
+            "01685de357ab0a624cf5e43568d52dad2ac92f2b8223efca6c9be0acabcc2e16",
+        )
+
+        sources = {
+            source.source_id: source
+            for source in result.metadata.source_references
+        }
+        self.assertEqual(
+            set(sources),
+            {
+                *(source.source_id for source in input_reference.metadata.source_references),
+                "cboe-spy-option-terms:2026-08-10",
+                "occ-osi-adjusted-symbol-convention:26853",
+            },
+        )
+        self.assertIs(
+            sources[
+                input_reference.metadata.source_references[0].source_id
+            ],
+            input_reference.metadata.source_references[0],
+        )
+        cboe = sources["cboe-spy-option-terms:2026-08-10"]
+        self.assertEqual(cboe.provider_name, "Cboe Global Markets")
+        self.assertEqual(
+            cboe.dataset_name,
+            "S&P Index Options Product Suite Comparison",
+        )
+        self.assertEqual(cboe.provider_record_id, "SPDR ETF (SPY)")
+        self.assertIsNone(cboe.provider_request_id)
+        self.assertEqual(cboe.source_symbol, "SPY")
+        self.assertEqual(
+            cboe.source_uri,
+            "https://www.cboe.com/tradable-products/product-comparison/",
+        )
+        occ = sources["occ-osi-adjusted-symbol-convention:26853"]
+        self.assertEqual(occ.provider_name, "The Options Clearing Corporation")
+        self.assertEqual(occ.dataset_name, "OCC Information Memos")
+        self.assertEqual(occ.provider_record_id, "26853")
+        self.assertIsNone(occ.provider_request_id)
+        self.assertIsNone(occ.source_symbol)
+        self.assertEqual(
+            occ.source_uri,
+            "https://infomemo.theocc.com/infomemos?number=26853",
+        )
+        for source in (cboe, occ):
+            self.assertEqual(
+                source.observed_at,
+                datetime.datetime(2026, 8, 10, tzinfo=datetime.timezone.utc),
+            )
+            self.assertEqual(source.observed_at, source.retrieved_at)
+            self.assertIsNone(source.provider_timezone)
+            self.assertIs(source.origin, DataOrigin.PROVIDER_REFERENCE)
+            self.assertFalse(source.is_delayed)
+            self.assertIsNone(source.declared_delay_seconds)
+            self.assertIsNone(source.payload_sha256)
+            self.assertIsNone(source.revision_number)
+            self.assertIsNone(source.provider_correction_id)
+            self.assertEqual(source.quality_flags, ())
+            self.assertIn("adapter-assigned manual verification-date timestamp", source.timestamp_methodology)
+            self.assertIn("not a provider event/publication time", source.timestamp_methodology)
+
+    def test_static_authority_time_is_used_when_tiger_sources_are_earlier(self):
+        expiration_time = datetime.datetime(
+            2026, 8, 9, 12, tzinfo=datetime.timezone.utc
+        )
+        chain_time = expiration_time + datetime.timedelta(seconds=1)
+        tiger_normalized_at = chain_time + datetime.timedelta(seconds=1)
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(expiration_time, chain_time, tiger_normalized_at),
+        ):
+            verification = tiger.verify_tiger_monthly_option_contract(
+                SyntheticQuoteClient(),
+                underlying_key=self.underlying,
+                expiration=self.expiration,
+                option_type="call",
+                strike=self.strike,
+            )
+        result = self.compose(
+            verification,
+            normalized_at=datetime.datetime(
+                2026, 8, 10, tzinfo=datetime.timezone.utc
+            ),
+        )
+        self.assertEqual(
+            result.metadata.effective_observed_at,
+            datetime.datetime(2026, 8, 10, tzinfo=datetime.timezone.utc),
+        )
+
+    def test_effective_time_is_exact_max_not_chain_time(self):
+        expiration_time = datetime.datetime(
+            2030, 1, 2, 15, 30, 3, tzinfo=datetime.timezone.utc
+        )
+        chain_time = expiration_time - datetime.timedelta(seconds=2)
+        tiger_normalized_at = expiration_time + datetime.timedelta(seconds=1)
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(expiration_time, chain_time, tiger_normalized_at),
+        ):
+            verification = tiger.verify_tiger_monthly_option_contract(
+                SyntheticQuoteClient(),
+                underlying_key=self.underlying,
+                expiration=self.expiration,
+                option_type="call",
+                strike=self.strike,
+            )
+        result = self.compose(
+            verification,
+            normalized_at=tiger_normalized_at + datetime.timedelta(seconds=1),
+        )
+        self.assertEqual(result.metadata.effective_observed_at, expiration_time)
+        self.assertNotEqual(result.metadata.effective_observed_at, chain_time)
+
+    def test_normalized_at_is_aware_utc_and_chronology_is_fail_closed(self):
+        verification = self.verify()
+        for candidate in (
+            self.chain_retrieved_at - datetime.timedelta(microseconds=1),
+            self.normalized_at - datetime.timedelta(microseconds=1),
+            datetime.datetime(2030, 1, 2, 15, 30),
+        ):
+            with self.subTest(candidate=candidate):
+                with self.assertRaisesRegex(ValueError, "chronology"):
+                    self.compose(verification, normalized_at=candidate)
+
+        offset = datetime.timezone(datetime.timedelta(hours=8))
+        result = self.compose(
+            verification,
+            normalized_at=datetime.datetime(2030, 1, 3, tzinfo=offset),
+        )
+        self.assertEqual(
+            result.metadata.normalized_at,
+            datetime.datetime(2030, 1, 2, 16, tzinfo=datetime.timezone.utc),
+        )
+
+    def test_multiplier_and_unsuffixed_root_are_independent_boundaries(self):
+        row = dict(SyntheticQuoteClient().chain_rows[0], multiplier=50)
+        verification = self.verify(SyntheticQuoteClient(chain_rows=[row]))
+        with self.assertRaisesRegex(ValueError, "multiplier"):
+            self.compose(verification)
+
+        for identifier in (
+            "SPY1  300315C00500000",
+            "QQQ   300315C00500000",
+        ):
+            with self.subTest(identifier=identifier):
+                verification = self.verify()
+                object.__setattr__(verification, "provider_identifier", identifier)
+                with self.assertRaises(ValueError):
+                    self.compose(verification)
+
+    def test_exact_scope_terms_provenance_and_tampering_fail_closed(self):
+        scope_changes = (
+            ("underlying_key", "symbol", "QQQ"),
+            ("underlying_key", "listing_mic", "XNAS"),
+            ("underlying_key", "security_type", UnderlyingSecurityType.EQUITY),
+            ("underlying_key", "currency", "EUR"),
+            ("key", "currency", "EUR"),
+        )
+        for target, field, value in scope_changes:
+            with self.subTest(target=target, field=field):
+                verification = self.verify()
+                target_object = (
+                    verification.contract_reference.contract_key.underlying_key
+                    if target == "underlying_key"
+                    else verification.contract_reference.contract_key
+                )
+                original_value = getattr(target_object, field)
+                object.__setattr__(target_object, field, value)
+                try:
+                    with self.assertRaises(ValueError):
+                        self.compose(verification)
+                finally:
+                    object.__setattr__(target_object, field, original_value)
+
+        tamper_changes = (
+            ("contract_reference", "exercise_style", "European"),
+            ("contract_reference", "settlement_type", "Cash"),
+            ("contract_reference", "listing_date", datetime.date(2029, 1, 1)),
+            ("contract_reference", "last_trade_date", datetime.date(2030, 3, 14)),
+            ("key", "deliverable_id", "SPY-shares"),
+            (
+                "metadata",
+                "quality_flags",
+                (
+                    NormalizationQualityFlag.SYMBOL_MAPPED,
+                    NormalizationQualityFlag.TIMESTAMP_ASSIGNED,
+                ),
+            ),
+        )
+        for target, field, value in tamper_changes:
+            with self.subTest(target=target, field=field):
+                verification = self.verify()
+                reference = verification.contract_reference
+                target_object = {
+                    "contract_reference": reference,
+                    "key": reference.contract_key,
+                    "metadata": reference.metadata,
+                }[target]
+                object.__setattr__(target_object, field, value)
+                with self.assertRaises(ValueError):
+                    self.compose(verification)
+
+        verification = self.verify()
+        source = verification.contract_reference.metadata.source_references[0]
+        object.__setattr__(source, "source_uri", "synthetic://tampered")
+        with self.assertRaisesRegex(ValueError, "input"):
+            self.compose(verification)
+
+    def test_hostile_nested_source_string_subclass_is_rejected_before_reuse(self):
+        class EqualString(str):
+            def __eq__(self, other):
+                return str(self) == other
+
+            __hash__ = str.__hash__
+
+        verification = self.verify()
+        source = verification.contract_reference.metadata.source_references[0]
+        original = source.provider_name
+        hostile = EqualString(original)
+        self.assertEqual(hostile, original)
+        object.__setattr__(source, "provider_name", hostile)
+        self.assertEqual(
+            verification._creation_integrity_fingerprint,
+            tiger._tiger_verification_integrity_fingerprint(verification),
+        )
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            self.compose(verification)
+
+    def test_creation_integrity_rejects_coherent_nested_mutation(self):
+        verification = self.verify()
+        original_fingerprint = verification._creation_integrity_fingerprint
+        self.coherently_retimestamp(verification)
+
+        self.assertNotEqual(
+            original_fingerprint,
+            tiger._tiger_verification_integrity_fingerprint(verification),
+        )
+        resealed = tiger.TigerExactOptionContractVerification(
+            verification.provider_identifier,
+            verification.provider_period_tag,
+            verification.provider_expiration_timestamp_ms,
+            verification.contract_reference,
+        )
+        self.assertNotEqual(
+            resealed._creation_integrity_fingerprint,
+            original_fingerprint,
+        )
+        with self.assertRaisesRegex(ValueError, "input"):
+            self.compose(verification)
+
+    def test_normalized_at_validation_precedence_is_exact(self):
+        stale = self.verify()
+        self.coherently_retimestamp(stale)
+        with self.assertRaisesRegex(TypeError, "normalized_at"):
+            self.compose(stale, normalized_at=object())
+        with self.assertRaisesRegex(ValueError, "input"):
+            self.compose(
+                stale,
+                normalized_at=datetime.datetime(2030, 1, 3),
+            )
+
+        out_of_scope = self.verify(
+            underlying_key=UnderlyingKey(
+                symbol="SPY",
+                listing_mic="XNAS",
+                security_type=UnderlyingSecurityType.ETF,
+                currency="USD",
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "scope"):
+            self.compose(
+                out_of_scope,
+                normalized_at=datetime.datetime(2030, 1, 3),
+            )
+
+        class EqualString(str):
+            def __eq__(self, other):
+                return str(self) == other
+
+            __hash__ = str.__hash__
+
+        source_tampered = self.verify()
+        source = source_tampered.contract_reference.metadata.source_references[0]
+        object.__setattr__(
+            source,
+            "provider_name",
+            EqualString(source.provider_name),
+        )
+        source_tampered = tiger.TigerExactOptionContractVerification(
+            source_tampered.provider_identifier,
+            source_tampered.provider_period_tag,
+            source_tampered.provider_expiration_timestamp_ms,
+            source_tampered.contract_reference,
+        )
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            self.compose(
+                source_tampered,
+                normalized_at=datetime.datetime(2030, 1, 3),
+            )
+
+    def test_exact_types_frozen_records_and_direct_api_signature(self):
+        verification = self.verify()
+        result = self.compose(verification)
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(verification)),
+            (
+                "provider_identifier",
+                "provider_period_tag",
+                "provider_expiration_timestamp_ms",
+                "contract_reference",
+            ),
+        )
+        self.assertIs(type(verification._creation_integrity_fingerprint), str)
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            result.exercise_style = "European"
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            result.metadata.record_id = "forged"
+
+        class VerificationSubclass(tiger.TigerExactOptionContractVerification):
+            pass
+
+        subclass = VerificationSubclass(
+            verification.provider_identifier,
+            verification.provider_period_tag,
+            verification.provider_expiration_timestamp_ms,
+            verification.contract_reference,
+        )
+        with self.assertRaises(TypeError):
+            self.compose(subclass)
+
+        class DateTimeSubclass(datetime.datetime):
+            pass
+
+        with self.assertRaises(TypeError):
+            self.compose(
+                verification,
+                normalized_at=DateTimeSubclass(
+                    2030, 1, 3, tzinfo=datetime.timezone.utc
+                ),
+            )
+        signature = inspect.signature(
+            tiger.compose_tiger_spy_standard_option_contract_reference
+        )
+        self.assertEqual(tuple(signature.parameters), ("verification", "normalized_at"))
+        self.assertEqual(
+            signature.parameters["normalized_at"].kind,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+
+    def test_composition_has_no_sdk_network_filesystem_environment_or_clock_use(self):
+        verification = self.verify()
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=AssertionError("clock access forbidden"),
+        ), mock.patch.object(
+            tiger,
+            "_load_tiger_sdk",
+            side_effect=AssertionError("SDK access forbidden"),
+        ), mock.patch.object(
+            tiger,
+            "resolve_tiger_config_path",
+            side_effect=AssertionError("filesystem/credential access forbidden"),
+        ):
+            result = self.compose(verification)
+        self.assertEqual(result.exercise_style, "American")
+
+    def test_composite_reference_reuses_existing_cost_path_and_propagates_quality(self):
+        from tests.market_data_fixtures import (
+            CALCULATED_AT,
+            build_freshness_context,
+            build_freshness_policy,
+        )
+        from tests.test_market_data import (
+            build_resolved_relationship_group,
+            build_timing_binding,
+        )
+        from tests.test_market_data_transformations import (
+            make_cost_selection,
+            make_structure,
+        )
+        import convexity_hunter.market_data as market_data
+        import convexity_hunter.market_data_transformations as transformations
+
+        base = datetime.datetime(
+            2030, 1, 2, 15, 30, tzinfo=datetime.timezone.utc
+        )
+        chain_row = dict(
+            SyntheticQuoteClient().chain_rows[0],
+            identifier="SPY   300315C00100000",
+            strike=100.0,
+        )
+        with mock.patch.object(
+            tiger,
+            "_utc_now",
+            side_effect=(
+                base,
+                base + datetime.timedelta(microseconds=1),
+                base + datetime.timedelta(microseconds=2),
+            ),
+        ):
+            verification = tiger.verify_tiger_monthly_option_contract(
+                SyntheticQuoteClient(chain_rows=[chain_row]),
+                underlying_key=self.underlying,
+                expiration=self.expiration,
+                option_type="call",
+                strike=decimal.Decimal("100"),
+            )
+        composite = tiger.compose_tiger_spy_standard_option_contract_reference(
+            verification,
+            normalized_at=base + datetime.timedelta(microseconds=3),
+        )
+
+        structure = make_structure()
+        _, _, old_underlying, old_leg_bindings = make_cost_selection(structure)
+        policy = build_freshness_policy(
+            allow_assigned_timestamps=True,
+            maximum_reference_age_seconds=200_000_000,
+            maximum_source_observation_span_seconds=200_000_000,
+            maximum_cross_record_skew_seconds=200_000_000,
+        )
+        context = build_freshness_context()
+        underlying_binding = build_timing_binding(
+            old_underlying.selected_record,
+            policy=policy,
+            context=context,
+        )
+        old_bindings = old_leg_bindings[0]
+        quote_binding = build_timing_binding(
+            old_bindings[market_data.MarketDataRelationshipRole.OPTION_QUOTE]
+            .selected_record,
+            policy=policy,
+            context=context,
+        )
+        greeks_binding = build_timing_binding(
+            old_bindings[market_data.MarketDataRelationshipRole.OPTION_GREEKS]
+            .selected_record,
+            policy=policy,
+            context=context,
+        )
+        reference_binding = build_timing_binding(
+            composite,
+            policy=policy,
+            context=context,
+        )
+        self.assertIs(reference_binding.selected_record, composite)
+
+        groups = []
+        role = market_data.MarketDataRelationshipRole
+        kind = market_data.MarketDataRelationshipGroupKind
+        group_specs = (
+            (
+                "snapshot",
+                kind.UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
+                {
+                    role.UNDERLYING_QUOTE: underlying_binding,
+                    role.OPTION_QUOTE: quote_binding,
+                },
+            ),
+            (
+                "analytics",
+                kind.OPTION_QUOTE_ANALYTICS_V0_1,
+                {
+                    role.OPTION_QUOTE: quote_binding,
+                    role.OPTION_GREEKS: greeks_binding,
+                },
+            ),
+            (
+                "reference",
+                kind.OPTION_CONTRACT_REFERENCE_V0_1,
+                {
+                    role.OPTION_QUOTE: quote_binding,
+                    role.OPTION_GREEKS: greeks_binding,
+                    role.OPTION_CONTRACT_REFERENCE: reference_binding,
+                },
+            ),
+        )
+        for group_id, group_kind, bindings in group_specs:
+            group, _ = build_resolved_relationship_group(
+                "composite-cost-" + group_id,
+                group_kind,
+                bindings,
+            )
+            groups.append(group)
+        timing = market_data.assess_market_data_snapshot_timing(
+            (
+                underlying_binding,
+                quote_binding,
+                greeks_binding,
+                reference_binding,
+            )
+        )
+        assessment = market_data.assess_market_data_relationships(
+            market_data.MarketDataRelationshipRequest(tuple(groups)),
+            timing,
+        )
+        selection = market_data.select_market_data_relationship_assessment(
+            (assessment,)
+        )
+        result = transformations.transform_structure_costs(
+            "composite-cost",
+            structure,
+            selection,
+            decimal.Decimal("0"),
+            1,
+            CALCULATED_AT,
+        )
+        self.assertEqual(result.record.quoted_mid_premium, 120.0)
+        self.assertIn(
+            "composite_input_used",
+            {flag.value for flag in result.lineage.quality_flags},
+        )
+        decoded = transformations._decode_cost_parameters(
+            result.lineage.parameters_json
+        )
+        contract_evidence = decoded["normalized_evidence"]["contract_references"][0]
+        self.assertEqual(contract_evidence["record_id"], composite.metadata.record_id)
+        self.assertEqual(
+            contract_evidence["propagated_quality_flags"],
+            ("composite_input_used",),
+        )
 
 
 class ExactOptionQuoteEvidenceTests(TigerProviderTestCase):

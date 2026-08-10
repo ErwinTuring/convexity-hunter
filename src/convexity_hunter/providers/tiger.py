@@ -23,8 +23,11 @@ from convexity_hunter.market_data import (
     OptionContractKey as _OptionContractKey,
     OptionContractReference as _OptionContractReference,
     SourceReference as _SourceReference,
+    SourceQualityFlag as _SourceQualityFlag,
     UnderlyingDailyBarObservation as _UnderlyingDailyBarObservation,
     UnderlyingKey as _UnderlyingKey,
+    UnderlyingSecurityType as _UnderlyingSecurityType,
+    canonicalize_lineage_parameters as _canonicalize_lineage_parameters,
 )
 
 
@@ -42,6 +45,7 @@ __all__ = (
     "retrieve_tiger_historical_option_bar_evidence",
     "TigerExactOptionAnalyticsActivityEvidence",
     "retrieve_tiger_exact_option_analytics_activity_evidence",
+    "compose_tiger_spy_standard_option_contract_reference",
 )
 
 
@@ -181,6 +185,65 @@ _ANALYTICS_ACTIVITY_COLUMNS = _CHAIN_COLUMNS | frozenset(
 )
 _TIGER_NORMALIZATION_VERSION = "tiger-option-contract-v0.1"
 _TIGER_DAILY_BAR_NORMALIZATION_VERSION = "tiger-underlying-daily-bar-v0.1"
+_TIGER_SPY_COMPOSITE_NORMALIZATION_VERSION = (
+    "tiger-spy-standard-option-terms-composite-v0.1"
+)
+_TIGER_SPY_COMPOSITE_CAPTURED_AT = _datetime.datetime(
+    2026,
+    8,
+    10,
+    tzinfo=_datetime.timezone.utc,
+)
+_TIGER_SPY_COMPOSITE_CBOE_SOURCE_ID = "cboe-spy-option-terms:2026-08-10"
+_TIGER_SPY_COMPOSITE_OCC_SOURCE_ID = (
+    "occ-osi-adjusted-symbol-convention:26853"
+)
+_TIGER_SPY_COMPOSITE_CBOE_URI = (
+    "https://www.cboe.com/tradable-products/product-comparison/"
+)
+_TIGER_SPY_COMPOSITE_OCC_URI = (
+    "https://infomemo.theocc.com/infomemos?number=26853"
+)
+_TIGER_SPY_COMPOSITE_TIMESTAMP_METHODOLOGY = (
+    "UTC midnight is an adapter-assigned manual verification-date timestamp, "
+    "not a provider event/publication time."
+)
+_TIGER_REFERENCE_METHODOLOGY = (
+    "Exact Tiger option-chain row normalized after provider monthly "
+    "classification; identifier and multiplier are provider supplied, "
+    "and no provider contract-term observation timestamp was supplied."
+)
+_TIGER_REFERENCE_UNIT_CONVENTION = (
+    "Strike is USD per underlying unit; contract multiplier is provider "
+    "supplied."
+)
+_TIGER_SPY_COMPOSITE_METHODOLOGY = (
+    "Tiger OpenAPI supplies exact monthly contract identity, strike, option "
+    "type, and provider multiplier; Cboe Global Markets supplies invariant "
+    "SPY American/Physical product terms; OCC Information Memo 26853 supplies "
+    "the OSI adjusted-root classification. The exact unsuffixed SPY OSI root "
+    "proves the standard scope. No listing date, last-trade date, quote, "
+    "analytics, or market-session fact was added."
+)
+_TIGER_SPY_COMPOSITE_UNIT_CONVENTION = (
+    "Strike is USD per underlying unit; contract multiplier is provider "
+    "supplied; no unit conversion was applied."
+)
+_TIGER_SPY_COMPOSITE_INPUT_MESSAGE = (
+    "Tiger SPY standard-option composite input is invalid."
+)
+_TIGER_SPY_COMPOSITE_SCOPE_MESSAGE = (
+    "Tiger SPY standard-option composite scope is invalid."
+)
+_TIGER_SPY_COMPOSITE_BOUNDARY_MESSAGE = (
+    "Tiger SPY standard-option multiplier or unadjusted root is invalid."
+)
+_TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE = (
+    "Tiger SPY standard-option composite provenance is invalid."
+)
+_TIGER_SPY_COMPOSITE_CHRONOLOGY_MESSAGE = (
+    "Tiger SPY standard-option composite chronology is invalid."
+)
 _US_EASTERN = _ZoneInfo("America/New_York")
 
 
@@ -714,6 +777,132 @@ def _decode_tiger_identifier(
     return root, expiration, option_type, strike
 
 
+def _tiger_verification_integrity_fingerprint(
+    verification: object,
+) -> str:
+    reference = verification.contract_reference
+    key = reference.contract_key
+    underlying = key.underlying_key
+    metadata = reference.metadata
+    sources = []
+    for source in metadata.source_references:
+        sources.append(
+            {
+                "source_id": str(source.source_id),
+                "provider_name": str(source.provider_name),
+                "dataset_name": str(source.dataset_name),
+                "provider_record_id": (
+                    None
+                    if source.provider_record_id is None
+                    else str(source.provider_record_id)
+                ),
+                "provider_request_id": (
+                    None
+                    if source.provider_request_id is None
+                    else str(source.provider_request_id)
+                ),
+                "source_symbol": (
+                    None
+                    if source.source_symbol is None
+                    else str(source.source_symbol)
+                ),
+                "source_uri": (
+                    None if source.source_uri is None else str(source.source_uri)
+                ),
+                "observed_at": source.observed_at,
+                "retrieved_at": source.retrieved_at,
+                "provider_timezone": (
+                    None
+                    if source.provider_timezone is None
+                    else str(source.provider_timezone)
+                ),
+                "timestamp_methodology": str(source.timestamp_methodology),
+                "origin": str(source.origin.value),
+                "is_delayed": bool(source.is_delayed),
+                "declared_delay_seconds": (
+                    None
+                    if source.declared_delay_seconds is None
+                    else int(source.declared_delay_seconds)
+                ),
+                "payload_sha256": (
+                    None
+                    if source.payload_sha256 is None
+                    else str(source.payload_sha256)
+                ),
+                "revision_number": (
+                    None
+                    if source.revision_number is None
+                    else int(source.revision_number)
+                ),
+                "provider_correction_id": (
+                    None
+                    if source.provider_correction_id is None
+                    else str(source.provider_correction_id)
+                ),
+                "quality_flags": [
+                    str(flag.value) for flag in source.quality_flags
+                ],
+            }
+        )
+    payload = {
+        "fingerprint_version": "tiger-exact-option-verification-integrity-v0.1",
+        "provider_identifier": str(verification.provider_identifier),
+        "provider_period_tag": str(verification.provider_period_tag),
+        "provider_expiration_timestamp_ms": int(
+            verification.provider_expiration_timestamp_ms
+        ),
+        "contract_reference": {
+            "contract_key": {
+                "underlying_key": {
+                    "symbol": str(underlying.symbol),
+                    "listing_mic": str(underlying.listing_mic),
+                    "security_type": str(underlying.security_type.value),
+                    "currency": str(underlying.currency),
+                },
+                "expiration": key.expiration,
+                "option_type": str(key.option_type),
+                "strike": _decimal.Decimal(key.strike),
+                "contract_multiplier": int(key.contract_multiplier),
+                "currency": str(key.currency),
+                "deliverable_id": (
+                    None
+                    if key.deliverable_id is None
+                    else str(key.deliverable_id)
+                ),
+            },
+            "listing_date": reference.listing_date,
+            "last_trade_date": reference.last_trade_date,
+            "exercise_style": (
+                None
+                if reference.exercise_style is None
+                else str(reference.exercise_style)
+            ),
+            "settlement_type": (
+                None
+                if reference.settlement_type is None
+                else str(reference.settlement_type)
+            ),
+            "metadata": {
+                "record_id": str(metadata.record_id),
+                "source_references": sources,
+                "effective_observed_at": metadata.effective_observed_at,
+                "normalized_at": metadata.normalized_at,
+                "record_origin": str(metadata.record_origin.value),
+                "normalization_methodology": str(
+                    metadata.normalization_methodology
+                ),
+                "unit_convention": str(metadata.unit_convention),
+                "normalization_version": str(metadata.normalization_version),
+                "quality_flags": [
+                    str(flag.value) for flag in metadata.quality_flags
+                ],
+            },
+        },
+    }
+    canonical = _canonicalize_lineage_parameters(payload).encode("utf-8")
+    return _hashlib.sha256(canonical).hexdigest()
+
+
 @_dataclass(frozen=True)
 class TigerExactOptionContractVerification:
     """Verified Tiger monthly evidence for one exact normalized contract."""
@@ -785,6 +974,11 @@ class TigerExactOptionContractVerification:
         ):
             raise ValueError(_IDENTIFIER_MESSAGE)
         object.__setattr__(self, "provider_expiration_timestamp_ms", timestamp)
+        object.__setattr__(
+            self,
+            "_creation_integrity_fingerprint",
+            _tiger_verification_integrity_fingerprint(self),
+        )
 
 
 @_dataclass(frozen=True)
@@ -950,15 +1144,8 @@ def _build_contract_reference(
         effective_observed_at=chain_retrieved_at,
         normalized_at=normalized_at,
         record_origin=_DataOrigin.PROVIDER_REFERENCE,
-        normalization_methodology=(
-            "Exact Tiger option-chain row normalized after provider monthly "
-            "classification; identifier and multiplier are provider supplied, "
-            "and no provider contract-term observation timestamp was supplied."
-        ),
-        unit_convention=(
-            "Strike is USD per underlying unit; contract multiplier is "
-            "provider supplied."
-        ),
+        normalization_methodology=_TIGER_REFERENCE_METHODOLOGY,
+        unit_convention=_TIGER_REFERENCE_UNIT_CONVENTION,
         normalization_version=_TIGER_NORMALIZATION_VERSION,
         quality_flags=(
             _NormalizationQualityFlag.SYMBOL_MAPPED,
@@ -1123,6 +1310,384 @@ def verify_tiger_monthly_option_contract(
         provider_expiration_timestamp_ms=expiration_timestamp,
         contract_reference=contract_reference,
     )
+
+
+def _is_canonical_composite_utc(value: object) -> bool:
+    return (
+        type(value) is _datetime.datetime
+        and value.tzinfo is _datetime.timezone.utc
+        and value.utcoffset() == _datetime.timedelta(0)
+    )
+
+
+def _has_exact_source_reference_fields(source: object) -> bool:
+    if type(source) is not _SourceReference:
+        return False
+    required_strings = (
+        source.source_id,
+        source.provider_name,
+        source.dataset_name,
+        source.timestamp_methodology,
+    )
+    optional_strings = (
+        source.provider_record_id,
+        source.provider_request_id,
+        source.source_symbol,
+        source.source_uri,
+        source.provider_timezone,
+        source.payload_sha256,
+        source.provider_correction_id,
+    )
+    optional_integers = (
+        source.declared_delay_seconds,
+        source.revision_number,
+    )
+    return (
+        all(type(value) is str for value in required_strings)
+        and all(value is None or type(value) is str for value in optional_strings)
+        and type(source.observed_at) is _datetime.datetime
+        and type(source.retrieved_at) is _datetime.datetime
+        and type(source.origin) is _DataOrigin
+        and type(source.is_delayed) is bool
+        and all(
+            value is None or type(value) is int
+            for value in optional_integers
+        )
+        and type(source.quality_flags) is tuple
+        and all(
+            type(flag) is _SourceQualityFlag for flag in source.quality_flags
+        )
+    )
+
+
+def _build_tiger_spy_composite_authority_sources() -> _Tuple[
+    _SourceReference, _SourceReference
+]:
+    return (
+        _SourceReference(
+            source_id=_TIGER_SPY_COMPOSITE_CBOE_SOURCE_ID,
+            provider_name="Cboe Global Markets",
+            dataset_name="S&P Index Options Product Suite Comparison",
+            provider_record_id="SPDR ETF (SPY)",
+            provider_request_id=None,
+            source_symbol="SPY",
+            source_uri=_TIGER_SPY_COMPOSITE_CBOE_URI,
+            observed_at=_TIGER_SPY_COMPOSITE_CAPTURED_AT,
+            retrieved_at=_TIGER_SPY_COMPOSITE_CAPTURED_AT,
+            provider_timezone=None,
+            timestamp_methodology=_TIGER_SPY_COMPOSITE_TIMESTAMP_METHODOLOGY,
+            origin=_DataOrigin.PROVIDER_REFERENCE,
+            is_delayed=False,
+            declared_delay_seconds=None,
+            payload_sha256=None,
+            revision_number=None,
+            provider_correction_id=None,
+            quality_flags=(),
+        ),
+        _SourceReference(
+            source_id=_TIGER_SPY_COMPOSITE_OCC_SOURCE_ID,
+            provider_name="The Options Clearing Corporation",
+            dataset_name="OCC Information Memos",
+            provider_record_id="26853",
+            provider_request_id=None,
+            source_symbol=None,
+            source_uri=_TIGER_SPY_COMPOSITE_OCC_URI,
+            observed_at=_TIGER_SPY_COMPOSITE_CAPTURED_AT,
+            retrieved_at=_TIGER_SPY_COMPOSITE_CAPTURED_AT,
+            provider_timezone=None,
+            timestamp_methodology=_TIGER_SPY_COMPOSITE_TIMESTAMP_METHODOLOGY,
+            origin=_DataOrigin.PROVIDER_REFERENCE,
+            is_delayed=False,
+            declared_delay_seconds=None,
+            payload_sha256=None,
+            revision_number=None,
+            provider_correction_id=None,
+            quality_flags=(),
+        ),
+    )
+
+
+def _compose_tiger_spy_standard_option_contract_reference(
+    verification: object,
+    *,
+    normalized_at: object,
+) -> _OptionContractReference:
+    """Compose the frozen standard-SPY option terms from exact Tiger proof."""
+
+    if type(verification) is not TigerExactOptionContractVerification:
+        raise TypeError(
+            "verification must be a TigerExactOptionContractVerification"
+        )
+    if type(normalized_at) is not _datetime.datetime:
+        raise TypeError("normalized_at must be a datetime")
+
+    try:
+        provider_identifier = verification.provider_identifier
+        provider_period_tag = verification.provider_period_tag
+        provider_expiration_timestamp_ms = (
+            verification.provider_expiration_timestamp_ms
+        )
+        contract_reference = verification.contract_reference
+        if (
+            type(provider_identifier) is not str
+            or type(provider_period_tag) is not str
+            or type(provider_expiration_timestamp_ms) is not int
+            or type(contract_reference) is not _OptionContractReference
+        ):
+            raise ValueError(_TIGER_SPY_COMPOSITE_INPUT_MESSAGE)
+        stored_fingerprint = getattr(
+            verification, "_creation_integrity_fingerprint", None
+        )
+        if (
+            type(stored_fingerprint) is not str
+            or stored_fingerprint
+            != _tiger_verification_integrity_fingerprint(verification)
+        ):
+            raise ValueError(_TIGER_SPY_COMPOSITE_INPUT_MESSAGE)
+        TigerExactOptionContractVerification(
+            provider_identifier=provider_identifier,
+            provider_period_tag=provider_period_tag,
+            provider_expiration_timestamp_ms=provider_expiration_timestamp_ms,
+            contract_reference=contract_reference,
+        )
+    except Exception:
+        raise ValueError(_TIGER_SPY_COMPOSITE_INPUT_MESSAGE) from None
+
+    key = contract_reference.contract_key
+    if type(key) is not _OptionContractKey:
+        raise ValueError(_TIGER_SPY_COMPOSITE_SCOPE_MESSAGE)
+    underlying_key = key.underlying_key
+    if (
+        type(underlying_key) is not _UnderlyingKey
+        or type(underlying_key.symbol) is not str
+        or type(underlying_key.listing_mic) is not str
+        or type(underlying_key.security_type) is not _UnderlyingSecurityType
+        or type(underlying_key.currency) is not str
+        or type(key.expiration) is not _datetime.date
+        or type(key.option_type) is not str
+        or type(key.strike) is not _decimal.Decimal
+        or type(key.contract_multiplier) is not int
+        or isinstance(key.contract_multiplier, bool)
+        or type(key.currency) is not str
+    ):
+        raise ValueError(_TIGER_SPY_COMPOSITE_SCOPE_MESSAGE)
+    if (
+        provider_period_tag != "m"
+        or underlying_key.symbol != "SPY"
+        or underlying_key.listing_mic != "ARCX"
+        or underlying_key.security_type is not _UnderlyingSecurityType.ETF
+        or underlying_key.currency != "USD"
+        or key.currency != "USD"
+    ):
+        raise ValueError(_TIGER_SPY_COMPOSITE_SCOPE_MESSAGE)
+
+    if key.contract_multiplier != 100:
+        raise ValueError(_TIGER_SPY_COMPOSITE_BOUNDARY_MESSAGE)
+    try:
+        root, decoded_expiration, decoded_option_type, decoded_strike = (
+            _decode_tiger_identifier(provider_identifier)
+        )
+    except Exception:
+        raise ValueError(_TIGER_SPY_COMPOSITE_BOUNDARY_MESSAGE) from None
+    if (
+        root != "SPY"
+        or decoded_expiration != key.expiration
+        or decoded_option_type != key.option_type
+        or decoded_strike != key.strike
+    ):
+        raise ValueError(_TIGER_SPY_COMPOSITE_BOUNDARY_MESSAGE)
+
+    metadata = contract_reference.metadata
+    if (
+        type(metadata) is not _NormalizationMetadata
+        or contract_reference.listing_date is not None
+        or contract_reference.last_trade_date is not None
+        or contract_reference.exercise_style is not None
+        or contract_reference.settlement_type is not None
+        or key.deliverable_id is not None
+        or type(metadata.record_id) is not str
+        or type(metadata.source_references) is not tuple
+        or type(metadata.effective_observed_at) is not _datetime.datetime
+        or type(metadata.normalized_at) is not _datetime.datetime
+        or type(metadata.record_origin) is not _DataOrigin
+        or type(metadata.normalization_methodology) is not str
+        or type(metadata.unit_convention) is not str
+        or type(metadata.normalization_version) is not str
+        or type(metadata.quality_flags) is not tuple
+        or not all(
+            type(flag) is _NormalizationQualityFlag
+            for flag in metadata.quality_flags
+        )
+    ):
+        raise ValueError(_TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE)
+    if (
+        metadata.record_origin is not _DataOrigin.PROVIDER_REFERENCE
+        or metadata.normalization_version != _TIGER_NORMALIZATION_VERSION
+        or metadata.normalization_methodology != _TIGER_REFERENCE_METHODOLOGY
+        or metadata.unit_convention != _TIGER_REFERENCE_UNIT_CONVENTION
+        or metadata.quality_flags
+        != (
+            _NormalizationQualityFlag.SYMBOL_MAPPED,
+            _NormalizationQualityFlag.TIMESTAMP_ASSIGNED,
+            _NormalizationQualityFlag.INCOMPLETE,
+        )
+        or len(metadata.source_references) != 2
+        or not _is_canonical_composite_utc(metadata.effective_observed_at)
+        or not _is_canonical_composite_utc(metadata.normalized_at)
+    ):
+        raise ValueError(_TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE)
+
+    try:
+        tiger_sources = metadata.source_references
+        if not all(
+            _has_exact_source_reference_fields(source)
+            for source in tiger_sources
+        ):
+            raise ValueError(_TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE)
+        sources_by_dataset = {
+            source.dataset_name: source for source in tiger_sources
+        }
+        if set(sources_by_dataset) != {"option_expirations", "option_chain"}:
+            raise ValueError(_TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE)
+        expiration_source = sources_by_dataset["option_expirations"]
+        chain_source = sources_by_dataset["option_chain"]
+        if not all(
+            _is_canonical_composite_utc(source.observed_at)
+            and _is_canonical_composite_utc(source.retrieved_at)
+            for source in tiger_sources
+        ):
+            raise ValueError(_TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE)
+        expiration_source_id, chain_source_id, tiger_record_id = _provenance_ids(
+            provider_identifier,
+            expiration_source.retrieved_at,
+            chain_source.retrieved_at,
+        )
+        expected_expiration_source = _SourceReference(
+            source_id=expiration_source_id,
+            provider_name="Tiger OpenAPI",
+            dataset_name="option_expirations",
+            provider_record_id=(
+                underlying_key.symbol + ":" + key.expiration.isoformat()
+            ),
+            provider_request_id=None,
+            source_symbol=underlying_key.symbol,
+            source_uri=None,
+            observed_at=expiration_source.retrieved_at,
+            retrieved_at=expiration_source.retrieved_at,
+            provider_timezone=None,
+            timestamp_methodology=(
+                "Tiger supplied no observation timestamp for expiration "
+                "classification; adapter receipt time is assigned."
+            ),
+            origin=_DataOrigin.PROVIDER_REFERENCE,
+            is_delayed=False,
+            declared_delay_seconds=None,
+            payload_sha256=None,
+            revision_number=None,
+            provider_correction_id=None,
+            quality_flags=(),
+        )
+        expected_chain_source = _SourceReference(
+            source_id=chain_source_id,
+            provider_name="Tiger OpenAPI",
+            dataset_name="option_chain",
+            provider_record_id=provider_identifier,
+            provider_request_id=None,
+            source_symbol=provider_identifier,
+            source_uri=None,
+            observed_at=chain_source.retrieved_at,
+            retrieved_at=chain_source.retrieved_at,
+            provider_timezone=None,
+            timestamp_methodology=(
+                "Tiger supplied no observation timestamp for option contract "
+                "terms; adapter receipt time is assigned."
+            ),
+            origin=_DataOrigin.PROVIDER_REFERENCE,
+            is_delayed=False,
+            declared_delay_seconds=None,
+            payload_sha256=None,
+            revision_number=None,
+            provider_correction_id=None,
+            quality_flags=(),
+        )
+        expected_tiger_sources = tuple(
+            sorted(
+                (expected_expiration_source, expected_chain_source),
+                key=lambda source: source.source_id,
+            )
+        )
+        if (
+            tiger_sources != expected_tiger_sources
+            or metadata.record_id != tiger_record_id
+            or metadata.effective_observed_at != chain_source.retrieved_at
+        ):
+            raise ValueError(_TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE)
+    except Exception:
+        raise ValueError(_TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE) from None
+
+    try:
+        normalized_at_utc = _normalize_utc_runtime_timestamp(
+            "normalized_at", normalized_at
+        )
+    except Exception:
+        raise ValueError(_TIGER_SPY_COMPOSITE_CHRONOLOGY_MESSAGE) from None
+
+    if (
+        normalized_at_utc < _TIGER_SPY_COMPOSITE_CAPTURED_AT
+        or normalized_at_utc < metadata.normalized_at
+        or any(
+            normalized_at_utc < source.retrieved_at
+            for source in metadata.source_references
+        )
+    ):
+        raise ValueError(_TIGER_SPY_COMPOSITE_CHRONOLOGY_MESSAGE)
+
+    try:
+        cboe_source, occ_source = _build_tiger_spy_composite_authority_sources()
+        all_sources = tuple(metadata.source_references) + (
+            cboe_source,
+            occ_source,
+        )
+        effective_observed_at = max(
+            source.observed_at for source in all_sources
+        )
+        digest_material = (
+            _TIGER_SPY_COMPOSITE_NORMALIZATION_VERSION
+            + "\x00"
+            + metadata.record_id
+            + "\x00"
+            + provider_identifier
+            + "\x00"
+            + _TIGER_SPY_COMPOSITE_CBOE_SOURCE_ID
+            + "\x00"
+            + _TIGER_SPY_COMPOSITE_OCC_SOURCE_ID
+        ).encode("utf-8")
+        digest = _hashlib.sha256(digest_material).hexdigest()
+        composite_metadata = _NormalizationMetadata(
+            record_id="tiger-spy-standard-option-contract:" + digest,
+            source_references=all_sources,
+            effective_observed_at=effective_observed_at,
+            normalized_at=normalized_at_utc,
+            record_origin=_DataOrigin.SYSTEM_COMPOSITE,
+            normalization_methodology=_TIGER_SPY_COMPOSITE_METHODOLOGY,
+            unit_convention=_TIGER_SPY_COMPOSITE_UNIT_CONVENTION,
+            normalization_version=_TIGER_SPY_COMPOSITE_NORMALIZATION_VERSION,
+            quality_flags=(
+                _NormalizationQualityFlag.SYMBOL_MAPPED,
+                _NormalizationQualityFlag.COMPOSITE_SOURCE,
+                _NormalizationQualityFlag.TIMESTAMP_ASSIGNED,
+            ),
+        )
+        return _OptionContractReference(
+            contract_key=key,
+            listing_date=None,
+            last_trade_date=None,
+            exercise_style="American",
+            settlement_type="Physical",
+            metadata=composite_metadata,
+        )
+    except Exception:
+        raise ValueError(_TIGER_SPY_COMPOSITE_INPUT_MESSAGE) from None
 
 
 def retrieve_tiger_exact_option_quote_evidence(
@@ -2061,3 +2626,16 @@ def retrieve_tiger_exact_option_analytics_activity_evidence(
         )
     except Exception:
         raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE) from None
+
+
+def compose_tiger_spy_standard_option_contract_reference(
+    verification: object,
+    *,
+    normalized_at: object,
+) -> _OptionContractReference:
+    """Compose the frozen standard-SPY option terms from exact Tiger proof."""
+
+    return _compose_tiger_spy_standard_option_contract_reference(
+        verification,
+        normalized_at=normalized_at,
+    )

@@ -31,6 +31,9 @@ only after the one-leg path proves its semantics and product value.
 - Tiger local-only configuration discovery and `QuoteClient` initialization.
 - Exact caller-specified monthly option verification with provider identifier,
   provider multiplier, and provider-neutral `OptionContractReference`.
+- Narrow standard-SPY contract-term completion using Tiger exact identity and
+  multiplier plus OCC OSI adjusted-root rules and Cboe SPY American/Physical
+  product terms; adjusted and non-SPY contracts remain unsupported.
 - Transient entitled REST bid/ask/size evidence, retained only as
   provider-native evidence.
 - Provider-neutral underlying completed daily bars.
@@ -63,8 +66,12 @@ and market/session status. Only proven Push evidence may enter a future
 
 `StructureCosts` requires an exact current underlying bid/ask midpoint, but no
 Tiger current-underlying `UnderlyingQuoteObservation` adapter exists. A
-bounded feasibility unit must establish a Tiger current underlying quote path
-with authoritative timestamp, session, market phase, and quote-scope semantics.
+bounded feasibility review rejected REST `get_stock_briefs`: its
+`latest_time` is a last-trade timestamp, not an event/bid/ask timestamp. The
+same regular-session probe must instead test one atomic raw Push `QuoteData`
+`ALL` frame for exact `SPY`, including event/bid/ask timestamps, Basic session
+status/hour tag, and BBO values/sizes. Public Basic/BBO callback pairing is
+insufficient. No normalized record is authorized before that evidence exists.
 
 ### B3. Activity and Greeks normalization
 

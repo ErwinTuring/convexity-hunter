@@ -5,11 +5,11 @@ Repository: `ErwinTuring/convexity-hunter`
 ## Grounded state
 
 - Branch: `main`
-- Latest grounded implementation baseline:
-  `af857c2d964e5eed23025f520443007fd155683c`
-  (`Implement Treasury pricing-rate proxy`)
-- At that baseline `HEAD == main == origin/main` and the worktree/index were
-  clean.
+- Grounded parent baseline for this checkpoint:
+  `f1e4c3a5dd9e844371f606e60554742d1c959ff5`
+  (`Recenter roadmap on real Direct Entry`). This checkpoint and the bounded
+  SPY standard-option terms composite are committed together after that base;
+  `git rev-parse HEAD` remains the authoritative current SHA.
 - A fresh thread must still run `git fetch origin main`, `git rev-parse HEAD`,
   and `git status --short --branch`; this file does not replace Git.
 
@@ -29,6 +29,9 @@ Repository: `ErwinTuring/convexity-hunter`
   analytics/activity evidence are implemented.
 - U.S. Treasury daily par-yield retrieval and the bounded 30–180-day
   par-yield-derived pricing-rate proxy are implemented.
+- Exact Tiger-verified standard monthly SPY contracts can be completed with
+  authoritative American/Physical terms by the narrow OCC/Cboe system
+  composite; adjusted/numeric-root and non-SPY contracts fail closed.
 
 These are components, not yet a usable real-market Direct Entry workflow.
 
@@ -62,6 +65,9 @@ The durable dependency classification and bounded sequence are in
    `OptionQuoteObservation`.
 2. The scheduled regular-session Tiger Option Push BBO probe must prove event,
    bid, ask, exact-contract, and session/status binding before normalization.
+   Its next executable window is **2026-08-10 21:30 Asia/Shanghai**
+   (2026-08-10 09:30 America/New_York); a fresh thread must not repeat the
+   probe before that regular-session window.
 3. The same vertical slice also needs an authoritative current underlying
    bid/ask path with timestamp/session semantics; no such Tiger adapter exists.
 4. Tiger REST analytics/activity evidence does not authoritatively supply an
