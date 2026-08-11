@@ -5,22 +5,19 @@ Repository: `ErwinTuring/convexity-hunter`
 ## Grounded state
 
 - Branch: `main`
-- Grounded parent baseline for this checkpoint:
-  `263a712699b3b993defb294217d64371016211bc`
-  (`Add authoritative SPY option terms composite`). The current correction is
-  committed after that parent; `git rev-parse HEAD` remains the authoritative
-  current SHA.
-- A fresh thread must still run `git fetch origin main`, `git rev-parse HEAD`,
-  and `git status --short --branch`; this file does not replace Git.
+- This checkpoint intentionally stores no static HEAD or parent SHA. A fresh
+  thread must run `git fetch origin main`, `git rev-parse HEAD`, and
+  `git status --short --branch`; Git is the sole code-state authority.
 
 ## Product capability that exists
 
 - The deterministic Convexity Engine, reviewed-artifact candidate assembler,
   screening policy, optional position-management plan, offline
   single-structure service, and Chinese report renderer are implemented.
-- Direct Entry can verify and process one already-reviewed exact structure
-  when authentic `StructureCostsTransformationResult` and
-  `StructureLiquidityTransformationResult` artifacts already exist.
+- Direct Entry separately verifies source-backed exact contract identity and
+  complete research readiness. It can process an exact structure when costs,
+  liquidity, or other reviewed artifacts are unavailable, while retaining a
+  readiness proof only when authentic costs and liquidity both exist.
 - The candidate assembler and scanner support truthful partial research and a
   deterministic `DATA_INSUFFICIENT` outcome for omitted downstream artifacts.
 - Tiger local credential resolution, exact monthly contract verification,
@@ -35,24 +32,27 @@ Repository: `ErwinTuring/convexity-hunter`
   contract has a standard, unadjusted deliverable, so the existing cost path
   rejects it.
 
-These are components, not yet a usable real-market Direct Entry workflow.
+These components now provide a minimal real-market Direct Entry workflow that
+honestly terminates at `DATA_INSUFFICIENT`; they do not yet provide complete
+research-ready costs or liquidity.
 
 ## Highest-priority product gap
 
-There is no implemented bridge from one real Tiger-verified exact structure to
-the provider-neutral current records and relationship proofs consumed by
-`transform_structure_liquidity` and `transform_structure_costs`. Consequently
-the current Direct-Entry Reviewed-Research Service still requires artifacts
-that no real-provider orchestration path produces.
+The architectural deadlock is removed: a real Tiger-verified exact contract can
+be represented by its provider-neutral `OptionContractReference`, enter the
+Direct-Entry Reviewed-Research Service with unavailable reviewed artifacts as
+`None`, and reach deterministic `DATA_INSUFFICIENT` plus a Chinese report.
+There is still no bridge that can produce complete real-provider
+`StructureLiquidity` or `StructureCosts` artifacts.
 
 The active product objective is the shortest auditable path:
 
 ```text
 one caller-specified real Long Call or Long Put
     -> exact Tiger monthly contract verification
-    -> authoritative current snapshot records and proofs
-    -> existing liquidity and cost transformations
-    -> existing Direct Entry verification and candidate assembly
+    -> provider-neutral exact-contract verification
+    -> available reviewed evidence plus explicit missing_data / None artifacts
+    -> existing Direct Entry candidate assembly
     -> deterministic screening
     -> Chinese report
 ```
@@ -60,7 +60,7 @@ one caller-specified real Long Call or Long Put
 The durable dependency classification and bounded sequence are in
 [`real-direct-entry-vertical-slice-plan.md`](real-direct-entry-vertical-slice-plan.md).
 
-## Active blockers
+## Active research-readiness gaps
 
 1. Tiger REST option-chain bid/ask has no adequate quote timestamp/session
    semantics and remains transient. It must not become
@@ -70,7 +70,7 @@ The durable dependency classification and bounded sequence are in
    Run it only during the next valid U.S. regular session and re-confirm market
    status at execution; no one-time wall-clock date in this checkpoint is
    authoritative.
-3. The same vertical slice also needs an authoritative current underlying
+3. Complete costs also need an authoritative current underlying
    bid/ask path with timestamp/session semantics; no such Tiger adapter exists.
 4. The exact SPY contract's standard/adjusted deliverable status is unresolved.
    OCC explicitly allows rare unsuffixed non-standard options, so absence of a
@@ -87,6 +87,22 @@ The durable dependency classification and bounded sequence are in
 Push BBO is a bounded parallel blocker, not permission to weaken semantics or
 to resume unrelated market-data infrastructure.
 
+## Real partial-loop validation
+
+On 2026-08-11, one repository-external sanitized live check used the user's
+external Tiger configuration and retained no raw payload. It confirmed:
+
+- authentication and exact provider-monthly contract verification succeeded;
+- the provider-neutral contract reference remained `INCOMPLETE`;
+- exact-contract verification succeeded without research-readiness proof;
+- zero reviewed numerical artifacts entered Candidate Assembly;
+- both candidate and screening states were `DATA_INSUFFICIENT`;
+- no position-management plan was created; and
+- a nonempty `zh-CN` report was rendered.
+
+No account identifier, contract identifier, raw market payload, credential,
+or secret was persisted or added to the repository.
+
 ## Next work
 
 1. During a valid U.S. regular session, complete the bounded Option Push BBO
@@ -95,15 +111,10 @@ to resume unrelated market-data infrastructure.
 2. If authoritative quote semantics are proven, freeze only the smallest
    option/underlying quote normalization boundary; activity/Greeks remain
    unavailable unless separate authoritative semantics emerge.
-3. Keep the cost path closed until an authoritative exact-contract deliverable
-   source is available; do not infer standard status from OSI root syntax.
-4. Build no thin liquidity/cost bridge until quote, exact-deliverable,
-   activity, and Greeks inputs all satisfy their existing authorities.
-5. Reuse existing Direct Entry, assembly, screening, and report authorities
+3. Keep the cost and liquidity paths closed until each existing input authority
+   is satisfied; do not infer deliverable, activity, or Greek semantics.
+4. Reuse existing Direct Entry, assembly, screening, and report authorities
    without duplicating numerical or policy logic.
-6. Permit honest `DATA_INSUFFICIENT` for volatility environment, tail pricing,
-   scenarios, expiration thresholds, and affordability until a concrete
-   vertical-slice need justifies their missing real producers.
 
 ## Explicitly deferred
 

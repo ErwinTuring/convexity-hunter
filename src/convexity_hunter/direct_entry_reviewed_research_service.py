@@ -7,8 +7,10 @@ from .candidate_assembly import (
     assemble_candidate_research_record as _assemble_candidate_research_record,
 )
 from .direct_entry_verification import (
-    DirectEntryExactStructureVerification as _DirectEntryExactStructureVerification,
-    verify_direct_entry_exact_structure as _verify_direct_entry_exact_structure,
+    DirectEntryExactContractVerification as _DirectEntryExactContractVerification,
+    DirectEntryResearchReadinessVerification as _DirectEntryResearchReadinessVerification,
+    verify_direct_entry_exact_contracts as _verify_direct_entry_exact_contracts,
+    verify_direct_entry_research_readiness as _verify_direct_entry_research_readiness,
 )
 from .offline_service import (
     OfflineSingleStructureServiceResult as _OfflineSingleStructureServiceResult,
@@ -26,7 +28,10 @@ __all__ = (
 
 @_dataclass(frozen=True)
 class DirectEntryReviewedResearchServiceResult:
-    direct_entry_verification: _DirectEntryExactStructureVerification
+    exact_contract_verification: _DirectEntryExactContractVerification
+    research_readiness_verification: _Optional[
+        _DirectEntryResearchReadinessVerification
+    ]
     offline_service_result: _OfflineSingleStructureServiceResult
 
 
@@ -38,6 +43,7 @@ def run_direct_entry_reviewed_research_service(
     as_of_date: object,
     hypothesis: object,
     structure: object,
+    contract_references: object,
     volatility_environment_result: object,
     tail_pricing_result: object,
     structure_liquidity_result: object,
@@ -55,11 +61,22 @@ def run_direct_entry_reviewed_research_service(
     screening_policy: _ScreeningPolicy,
     position_management_plan_request: _Optional[_PositionManagementPlanRequest] = None,
 ) -> DirectEntryReviewedResearchServiceResult:
-    direct_entry_verification = _verify_direct_entry_exact_structure(
+    exact_contract_verification = _verify_direct_entry_exact_contracts(
         structure,
-        structure_costs_result,
-        structure_liquidity_result,
+        contract_references,
     )
+    research_readiness_verification = None
+    if (
+        structure_costs_result is not None
+        and structure_liquidity_result is not None
+    ):
+        research_readiness_verification = (
+            _verify_direct_entry_research_readiness(
+                exact_contract_verification.structure,
+                structure_costs_result,
+                structure_liquidity_result,
+            )
+        )
     assembly_result = _assemble_candidate_research_record(
         calculation_id,
         candidate_id,
@@ -67,11 +84,11 @@ def run_direct_entry_reviewed_research_service(
         state_rationale,
         as_of_date,
         hypothesis,
-        direct_entry_verification.structure,
+        exact_contract_verification.structure,
         volatility_environment_result,
         tail_pricing_result,
-        direct_entry_verification.liquidity_result,
-        direct_entry_verification.costs_result,
+        structure_liquidity_result,
+        structure_costs_result,
         scenario_valuation_result,
         expiration_payoff_threshold_result,
         structure_affordability_result,
@@ -89,6 +106,7 @@ def run_direct_entry_reviewed_research_service(
         position_management_plan_request,
     )
     return DirectEntryReviewedResearchServiceResult(
-        direct_entry_verification,
+        exact_contract_verification,
+        research_readiness_verification,
         offline_service_result,
     )

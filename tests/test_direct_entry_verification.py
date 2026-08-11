@@ -3,6 +3,7 @@
 import copy
 import dataclasses
 import datetime
+import decimal
 import inspect
 import pathlib
 import sys
@@ -46,7 +47,229 @@ def _bypassed_dataclass(instance, **overrides):
     return forged
 
 
-class DirectEntryExactStructureVerificationTests(unittest.TestCase):
+def _reference_for_leg(leg, **overrides):
+    key = market_data_fixtures.build_option_contract_key(
+        expiration=leg.expiration,
+        option_type=leg.option_type,
+        strike=decimal.Decimal(str(leg.strike)),
+        contract_multiplier=leg.contract_multiplier,
+    )
+    values = {"contract_key": key}
+    values.update(overrides)
+    return market_data_fixtures.build_option_contract_reference(**values)
+
+
+class DirectEntryExactContractVerificationTests(unittest.TestCase):
+    def setUp(self):
+        self.structure = transformation_tests.make_structure()
+        self.references = tuple(
+            _reference_for_leg(leg) for leg in self.structure.legs
+        )
+
+    def test_result_shape_signature_and_identity_retention(self):
+        result_type = (
+            direct_entry_verification.DirectEntryExactContractVerification
+        )
+        self.assertTrue(dataclasses.is_dataclass(result_type))
+        self.assertTrue(result_type.__dataclass_params__.frozen)
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(result_type)),
+            ("structure", "contract_references"),
+        )
+        signature = inspect.signature(
+            direct_entry_verification.verify_direct_entry_exact_contracts
+        )
+        self.assertEqual(
+            tuple(signature.parameters),
+            ("structure", "contract_references"),
+        )
+        result = direct_entry_verification.verify_direct_entry_exact_contracts(
+            self.structure,
+            self.references,
+        )
+        self.assertIs(result.structure, self.structure)
+        self.assertIs(result.contract_references, self.references)
+        with self.assertRaises(FrozenInstanceError):
+            result.structure = self.structure
+
+    def test_exact_top_level_types_and_one_to_one_cardinality(self):
+        with self.assertRaisesRegex(TypeError, "exact type OptionStructure"):
+            direct_entry_verification.verify_direct_entry_exact_contracts(
+                object(), self.references
+            )
+        with self.assertRaisesRegex(TypeError, "exact type tuple"):
+            direct_entry_verification.verify_direct_entry_exact_contracts(
+                self.structure, list(self.references)
+            )
+        with self.assertRaisesRegex(TypeError, "every contract reference"):
+            direct_entry_verification.verify_direct_entry_exact_contracts(
+                self.structure, (object(),)
+            )
+        with self.assertRaisesRegex(ValueError, "one-to-one"):
+            direct_entry_verification.verify_direct_entry_exact_contracts(
+                self.structure, ()
+            )
+
+    def test_nested_structure_constructor_bypass_is_rejected(self):
+        leg = self.structure.legs[0]
+        forged_leg = _bypassed_dataclass(leg, quantity=0)
+        forged_structure = _bypassed_dataclass(
+            self.structure,
+            legs=(forged_leg,),
+        )
+        with self.assertRaisesRegex(ValueError, "structure is intrinsically invalid"):
+            direct_entry_verification.verify_direct_entry_exact_contracts(
+                forged_structure,
+                self.references,
+            )
+
+    def test_every_economic_identity_field_is_fail_closed(self):
+        leg = self.structure.legs[0]
+        mismatches = (
+            {"underlying_key": market_data_fixtures.build_underlying_key(symbol="QQQ")},
+            {"expiration": leg.expiration + datetime.timedelta(days=1)},
+            {"option_type": "put"},
+            {"strike": decimal.Decimal(str(leg.strike + 1))},
+            {"contract_multiplier": leg.contract_multiplier + 1},
+        )
+        for key_overrides in mismatches:
+            with self.subTest(key_overrides=key_overrides):
+                key_values = {
+                    "expiration": leg.expiration,
+                    "option_type": leg.option_type,
+                    "strike": decimal.Decimal(str(leg.strike)),
+                    "contract_multiplier": leg.contract_multiplier,
+                }
+                key_values.update(key_overrides)
+                key = market_data_fixtures.build_option_contract_key(**key_values)
+                reference = market_data_fixtures.build_option_contract_reference(
+                    contract_key=key
+                )
+                with self.assertRaisesRegex(ValueError, "does not match"):
+                    direct_entry_verification.verify_direct_entry_exact_contracts(
+                        self.structure, (reference,)
+                    )
+
+    def test_incomplete_reference_remains_eligible_for_identity_only(self):
+        reference = self.references[0]
+        metadata = dataclasses.replace(
+            reference.metadata,
+            quality_flags=(market_data.NormalizationQualityFlag.INCOMPLETE,),
+        )
+        incomplete = dataclasses.replace(
+            reference,
+            listing_date=None,
+            last_trade_date=None,
+            exercise_style=None,
+            settlement_type=None,
+            metadata=metadata,
+        )
+        result = direct_entry_verification.verify_direct_entry_exact_contracts(
+            self.structure,
+            (incomplete,),
+        )
+        self.assertIs(result.contract_references[0], incomplete)
+        self.assertIn(
+            market_data.NormalizationQualityFlag.INCOMPLETE,
+            result.contract_references[0].metadata.quality_flags,
+        )
+
+    def test_straddle_requires_leg_order_and_distinct_reference_identity(self):
+        structure = transformation_tests.make_structure(("call", "put"))
+        references = tuple(
+            dataclasses.replace(
+                _reference_for_leg(leg),
+                metadata=dataclasses.replace(
+                    _reference_for_leg(leg).metadata,
+                    record_id=f"straddle-reference-{index}",
+                ),
+            )
+            for index, leg in enumerate(structure.legs)
+        )
+        result = direct_entry_verification.verify_direct_entry_exact_contracts(
+            structure,
+            references,
+        )
+        self.assertIs(result.contract_references, references)
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            direct_entry_verification.verify_direct_entry_exact_contracts(
+                structure,
+                tuple(reversed(references)),
+            )
+        duplicate_ids = tuple(
+            dataclasses.replace(
+                reference,
+                metadata=dataclasses.replace(
+                    reference.metadata,
+                    record_id="duplicate-reference",
+                ),
+            )
+            for reference in references
+        )
+        with self.assertRaisesRegex(ValueError, "pairwise distinct"):
+            direct_entry_verification.verify_direct_entry_exact_contracts(
+                structure,
+                duplicate_ids,
+            )
+
+    def test_rejects_non_provider_source_and_constructor_bypass(self):
+        reference = self.references[0]
+        bad_source = dataclasses.replace(
+            reference.metadata.source_references[0],
+            origin=market_data.DataOrigin.EXCHANGE_OBSERVED,
+        )
+        bad_metadata = _bypassed_dataclass(
+            reference.metadata,
+            source_references=(bad_source,),
+        )
+        forged = _bypassed_dataclass(reference, metadata=bad_metadata)
+        with self.assertRaises((TypeError, ValueError)):
+            direct_entry_verification.DirectEntryExactContractVerification(
+                self.structure,
+                (forged,),
+            )
+
+    def test_recursive_reconstruction_rejects_nested_constructor_bypasses(self):
+        reference = self.references[0]
+        key = reference.contract_key
+        source = reference.metadata.source_references[0]
+        forged_underlying = _bypassed_dataclass(
+            key.underlying_key,
+            currency="EUR",
+        )
+        forged_key = _bypassed_dataclass(
+            key,
+            underlying_key=forged_underlying,
+            currency="EUR",
+        )
+        forged_source = _bypassed_dataclass(
+            source,
+            is_delayed=True,
+            declared_delay_seconds=None,
+        )
+        forged_source_metadata = _bypassed_dataclass(
+            reference.metadata,
+            source_references=(forged_source,),
+        )
+        forged_composite_metadata = _bypassed_dataclass(
+            reference.metadata,
+            record_origin=market_data.DataOrigin.SYSTEM_COMPOSITE,
+        )
+        forged_values = (
+            _bypassed_dataclass(reference, contract_key=forged_key),
+            _bypassed_dataclass(reference, metadata=forged_source_metadata),
+            _bypassed_dataclass(reference, metadata=forged_composite_metadata),
+        )
+        for forged in forged_values:
+            with self.subTest(forged=forged):
+                with self.assertRaisesRegex(ValueError, "intrinsically invalid"):
+                    direct_entry_verification.verify_direct_entry_exact_contracts(
+                        self.structure,
+                        (forged,),
+                    )
+
+
+class DirectEntryResearchReadinessVerificationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.structure = transformation_tests.make_structure()
@@ -115,16 +338,18 @@ class DirectEntryExactStructureVerificationTests(unittest.TestCase):
 
     def _constructors(self):
         return (
-            direct_entry_verification.DirectEntryExactStructureVerification,
-            direct_entry_verification.verify_direct_entry_exact_structure,
+            direct_entry_verification.DirectEntryResearchReadinessVerification,
+            direct_entry_verification.verify_direct_entry_research_readiness,
         )
 
     def test_public_api_and_frozen_result_shape(self):
         self.assertEqual(
             direct_entry_verification.__all__,
             (
-                "DirectEntryExactStructureVerification",
-                "verify_direct_entry_exact_structure",
+                "DirectEntryExactContractVerification",
+                "verify_direct_entry_exact_contracts",
+                "DirectEntryResearchReadinessVerification",
+                "verify_direct_entry_research_readiness",
             ),
         )
         self.assertEqual(
@@ -138,14 +363,14 @@ class DirectEntryExactStructureVerificationTests(unittest.TestCase):
         self.assertFalse(
             hasattr(
                 convexity_hunter,
-                "DirectEntryExactStructureVerification",
+                "DirectEntryResearchReadinessVerification",
             )
         )
         self.assertFalse(
-            hasattr(convexity_hunter, "verify_direct_entry_exact_structure")
+            hasattr(convexity_hunter, "verify_direct_entry_research_readiness")
         )
 
-        result_type = direct_entry_verification.DirectEntryExactStructureVerification
+        result_type = direct_entry_verification.DirectEntryResearchReadinessVerification
         self.assertTrue(dataclasses.is_dataclass(result_type))
         self.assertEqual(
             tuple(field.name for field in dataclasses.fields(result_type)),
@@ -161,7 +386,7 @@ class DirectEntryExactStructureVerificationTests(unittest.TestCase):
         )
 
         signature = inspect.signature(
-            direct_entry_verification.verify_direct_entry_exact_structure
+            direct_entry_verification.verify_direct_entry_research_readiness
         )
         self.assertEqual(
             tuple(signature.parameters),
@@ -181,10 +406,10 @@ class DirectEntryExactStructureVerificationTests(unittest.TestCase):
         )
         self.assertIs(
             signature.return_annotation,
-            direct_entry_verification.DirectEntryExactStructureVerification,
+            direct_entry_verification.DirectEntryResearchReadinessVerification,
         )
 
-        result = direct_entry_verification.verify_direct_entry_exact_structure(
+        result = direct_entry_verification.verify_direct_entry_research_readiness(
             self.structure,
             self.costs_result,
             self.liquidity_result,
@@ -208,7 +433,7 @@ class DirectEntryExactStructureVerificationTests(unittest.TestCase):
             self.liquidity_result.lineage.calculated_at,
         )
 
-        result = direct_entry_verification.verify_direct_entry_exact_structure(
+        result = direct_entry_verification.verify_direct_entry_research_readiness(
             self.structure,
             self.costs_result,
             self.liquidity_result,
@@ -415,7 +640,7 @@ class DirectEntryExactStructureVerificationTests(unittest.TestCase):
                         side_effect=AssertionError("upstream call"),
                     )
                 )
-            result = direct_entry_verification.verify_direct_entry_exact_structure(
+            result = direct_entry_verification.verify_direct_entry_research_readiness(
                 self.structure,
                 self.costs_result,
                 self.liquidity_result,
@@ -426,12 +651,12 @@ class DirectEntryExactStructureVerificationTests(unittest.TestCase):
         before = copy.deepcopy(
             (self.structure, self.costs_result, self.liquidity_result)
         )
-        first = direct_entry_verification.verify_direct_entry_exact_structure(
+        first = direct_entry_verification.verify_direct_entry_research_readiness(
             self.structure,
             self.costs_result,
             self.liquidity_result,
         )
-        second = direct_entry_verification.verify_direct_entry_exact_structure(
+        second = direct_entry_verification.verify_direct_entry_research_readiness(
             self.structure,
             self.costs_result,
             self.liquidity_result,

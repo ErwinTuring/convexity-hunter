@@ -45,7 +45,7 @@ __all__ = (
     "retrieve_tiger_historical_option_bar_evidence",
     "TigerExactOptionAnalyticsActivityEvidence",
     "retrieve_tiger_exact_option_analytics_activity_evidence",
-    "compose_tiger_spy_standard_option_contract_reference",
+    "compose_tiger_spy_option_product_terms_reference",
 )
 
 
@@ -186,7 +186,7 @@ _ANALYTICS_ACTIVITY_COLUMNS = _CHAIN_COLUMNS | frozenset(
 _TIGER_NORMALIZATION_VERSION = "tiger-option-contract-v0.1"
 _TIGER_DAILY_BAR_NORMALIZATION_VERSION = "tiger-underlying-daily-bar-v0.1"
 _TIGER_SPY_COMPOSITE_NORMALIZATION_VERSION = (
-    "tiger-spy-standard-option-terms-composite-v0.2"
+    "tiger-spy-option-product-terms-composite-v0.1"
 )
 _TIGER_SPY_COMPOSITE_CAPTURED_AT = _datetime.datetime(
     2026,
@@ -223,7 +223,7 @@ _TIGER_SPY_COMPOSITE_METHODOLOGY = (
     "SPY American/Physical product terms; OCC Information Memo 26853 supplies "
     "the OSI symbol convention. A numeric suffix identifies a non-standard "
     "contract, but an unsuffixed SPY root and multiplier 100 do not prove the "
-    "exact contract has a standard, unadjusted deliverable. Exact deliverable "
+    "exact contract's adjusted or standard deliverable. Exact deliverable "
     "status remains unresolved. No listing date, last-trade date, quote, "
     "analytics, or market-session fact was added."
 )
@@ -232,19 +232,20 @@ _TIGER_SPY_COMPOSITE_UNIT_CONVENTION = (
     "supplied; no unit conversion was applied."
 )
 _TIGER_SPY_COMPOSITE_INPUT_MESSAGE = (
-    "Tiger SPY standard-option composite input is invalid."
+    "Tiger SPY option-product-terms composite input is invalid."
 )
 _TIGER_SPY_COMPOSITE_SCOPE_MESSAGE = (
-    "Tiger SPY standard-option composite scope is invalid."
+    "Tiger SPY option-product-terms composite scope is invalid."
 )
 _TIGER_SPY_COMPOSITE_BOUNDARY_MESSAGE = (
-    "Tiger SPY standard-option multiplier or symbol root boundary is invalid."
+    "Tiger SPY option-product-terms multiplier or symbol root "
+    "boundary is invalid."
 )
 _TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE = (
-    "Tiger SPY standard-option composite provenance is invalid."
+    "Tiger SPY option-product-terms composite provenance is invalid."
 )
 _TIGER_SPY_COMPOSITE_CHRONOLOGY_MESSAGE = (
-    "Tiger SPY standard-option composite chronology is invalid."
+    "Tiger SPY option-product-terms composite chronology is invalid."
 )
 _US_EASTERN = _ZoneInfo("America/New_York")
 
@@ -1409,7 +1410,7 @@ def _build_tiger_spy_composite_authority_sources() -> _Tuple[
     )
 
 
-def _compose_tiger_spy_standard_option_contract_reference(
+def _compose_tiger_spy_option_product_terms_reference(
     verification: object,
     *,
     normalized_at: object,
@@ -2631,14 +2632,14 @@ def retrieve_tiger_exact_option_analytics_activity_evidence(
         raise ValueError(_ANALYTICS_ACTIVITY_RESPONSE_MESSAGE) from None
 
 
-def compose_tiger_spy_standard_option_contract_reference(
+def compose_tiger_spy_option_product_terms_reference(
     verification: object,
     *,
     normalized_at: object,
 ) -> _OptionContractReference:
     """Compose product-level SPY terms without claiming exact deliverable proof."""
 
-    return _compose_tiger_spy_standard_option_contract_reference(
+    return _compose_tiger_spy_option_product_terms_reference(
         verification,
         normalized_at=normalized_at,
     )

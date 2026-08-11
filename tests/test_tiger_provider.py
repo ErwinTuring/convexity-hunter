@@ -85,7 +85,7 @@ class PublicBoundaryTests(TigerProviderTestCase):
                 "retrieve_tiger_historical_option_bar_evidence",
                 "TigerExactOptionAnalyticsActivityEvidence",
                 "retrieve_tiger_exact_option_analytics_activity_evidence",
-                "compose_tiger_spy_standard_option_contract_reference",
+                "compose_tiger_spy_option_product_terms_reference",
             ),
         )
         self.assertEqual(
@@ -948,7 +948,7 @@ class ExactContractVerificationTests(TigerProviderTestCase):
             dataclasses.replace(valid, contract_reference=forged_reference)
 
 
-class TigerSpyStandardCompositeTests(TigerProviderTestCase):
+class TigerSpyOptionProductTermsCompositeTests(TigerProviderTestCase):
     def setUp(self):
         super().setUp()
         self.underlying = UnderlyingKey(
@@ -998,7 +998,7 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
             if normalized_at is None
             else normalized_at
         )
-        return tiger.compose_tiger_spy_standard_option_contract_reference(
+        return tiger.compose_tiger_spy_option_product_terms_reference(
             verification,
             normalized_at=normalized_at,
         )
@@ -1045,7 +1045,7 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
         self.assertIsNone(input_reference.settlement_type)
         self.assertEqual(
             result.metadata.normalization_version,
-            "tiger-spy-standard-option-terms-composite-v0.2",
+            "tiger-spy-option-product-terms-composite-v0.1",
         )
         self.assertIs(result.metadata.record_origin, DataOrigin.SYSTEM_COMPOSITE)
         self.assertEqual(
@@ -1100,7 +1100,7 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
         self.assertEqual(
             result.metadata.record_id,
             "tiger-spy-option-terms:"
-            "27f0dc7763346f181ec5427e273ee412d166620d037fa538811ff7144a15882f",
+            "cfca47f32388d18b3c412ff57928a68642603aa8c6b63dc47bb858472c0f8b10",
         )
 
         sources = {
@@ -1443,7 +1443,7 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
                 ),
             )
         signature = inspect.signature(
-            tiger.compose_tiger_spy_standard_option_contract_reference
+            tiger.compose_tiger_spy_option_product_terms_reference
         )
         self.assertEqual(tuple(signature.parameters), ("verification", "normalized_at"))
         self.assertEqual(
@@ -1500,7 +1500,7 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
                 option_type="call",
                 strike=decimal.Decimal("100"),
             )
-        composite = tiger.compose_tiger_spy_standard_option_contract_reference(
+        composite = tiger.compose_tiger_spy_option_product_terms_reference(
             verification,
             normalized_at=base + datetime.timedelta(microseconds=3),
         )

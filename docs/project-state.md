@@ -14,24 +14,26 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current authoritative product state
 
-The grounded parent baseline for the current correction is
-`082e288a322710af4f7a4fd7d7c4d8a0f2abac09`
-(`Record Tiger analytics applicability limits`); `git rev-parse HEAD` is the
-authoritative current implementation SHA. The deterministic Engine,
+Git is the only authority for current code state. Every fresh thread must run
+`git fetch origin main`, `git rev-parse HEAD`, and
+`git status --short --branch`; this document intentionally stores no static
+HEAD or parent SHA. The deterministic Engine,
 reviewed-artifact assembly, screening, offline service, Direct Entry
-composition, and Chinese report exist, but no implemented real-provider bridge
-produces the normalized current records and proofs required by structure
-liquidity and cost transformations. The highest-priority gap is therefore the
-real one-leg Direct Entry vertical slice, not additional market-data
-infrastructure completeness.
+composition, and Chinese report exist. Direct Entry now separates exact listed
+contract identity from complete cost/liquidity research readiness. One
+source-backed exact contract can therefore enter partial candidate assembly
+with unavailable artifacts represented as `None`, produce deterministic
+`DATA_INSUFFICIENT`, and render the Chinese report without weakening any
+downstream evidence standard.
 
 The active dependency classification and sequence are authoritative in
 [`real-direct-entry-vertical-slice-plan.md`](real-direct-entry-vertical-slice-plan.md).
-Current hard blockers are authoritative Tiger current option and underlying
-quote semantics, exact-contract standard-deliverable proof, and authoritative
-provider-neutral activity/Greeks inputs needed for existing liquidity and cost
-transformations. The bounded REST applicability review authorizes no such
-normalization. Missing volatility, tail,
+Current gaps to a complete research-ready costs/liquidity result remain
+authoritative Tiger current option and underlying quote semantics,
+exact-contract standard-deliverable proof, and authoritative provider-neutral
+activity/Greeks inputs. They no longer block the honest partial Direct Entry
+loop. The bounded REST applicability review authorizes no such normalization.
+Missing volatility, tail,
 scenario, threshold, and affordability artifacts may remain explicit
 `DATA_INSUFFICIENT` for the first slice. Push BBO remains a bounded pending
 regular-session probe. Additional rate, dividend, historical-IV, surface,
@@ -86,20 +88,23 @@ is implemented and independently reviewed under the A-level contract in
 It adds exactly three direct-module public names and zero package-root exports.
 Its 12 focused tests and the 1,038-test full suite pass.
 
-Deterministic Direct-Entry Exact-Structure Verification is also implemented
+Deterministic Direct-Entry Verification is also implemented
 and independently reviewed under
 [`direct-entry-exact-structure-verification-contract.md`](direct-entry-exact-structure-verification-contract.md).
-It adds exactly two direct-module public names and zero package-root exports,
-retains authentic reviewed cost and liquidity proofs for one exact caller
-structure, and passed 10 focused tests and the 1,048-test full suite.
+Its corrected v0.2 boundary exposes separate exact-contract and
+research-readiness proofs with zero package-root exports. Source-backed exact
+identity does not upgrade incomplete deliverable evidence; research readiness
+still requires authentic reviewed cost and liquidity proofs. The corrected
+boundary has 18 focused tests.
 
 The Deterministic Direct-Entry Reviewed-Research Service is implemented and
 independently reviewed under
 [`direct-entry-reviewed-research-service-contract.md`](direct-entry-reviewed-research-service-contract.md).
 It adds exactly two direct-module public names and zero package-root exports,
-delegates exact verification, candidate assembly, screening, optional plan
-creation, and Chinese reporting to their existing authorities, and passed 11
-focused tests and the 1,059-test full suite.
+delegates exact-contract verification, optional research-readiness
+verification, candidate assembly, screening, optional plan
+creation, and Chinese reporting to their existing authorities. Its v0.2 path
+has 7 focused tests; final repository validation passed 1,187 tests.
 
 ## Position-management completion checkpoint
 
