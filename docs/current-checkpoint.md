@@ -65,13 +65,18 @@ The durable dependency classification and bounded sequence are in
 1. Tiger REST option-chain bid/ask has no adequate quote timestamp/session
    semantics and remains transient. It must not become
    `OptionQuoteObservation`.
-2. The scheduled regular-session Tiger Option Push BBO probe must prove event,
-   bid, ask, exact-contract, and session/status binding before normalization.
-   Run it only during the next valid U.S. regular session and re-confirm market
-   status at execution; no one-time wall-clock date in this checkpoint is
+2. A regular-session Tiger Push BBO probe reached the subscription boundary:
+   the exact option subscription was accepted, while the SPY underlying
+   subscription was rejected with provider code 4000 (permission denied).
+   Explicit quote-permission acquisition did not expose a U.S. stock quote
+   entitlement. Because the probe received no qualifying atomic `ALL` frame,
+   neither option nor underlying quote normalization is authorized.
+3. The Push probe must not be repeated merely because another session opens.
+   First establish a U.S. stock Push quote entitlement; then rerun during the
+   next valid U.S. regular session after re-confirming market status. The rerun
+   must still prove event, bid, ask, exact identity, and session/status binding
+   within each atomic frame. No one-time wall-clock date in this checkpoint is
    authoritative.
-3. Complete costs also need an authoritative current underlying
-   bid/ask path with timestamp/session semantics; no such Tiger adapter exists.
 4. The exact SPY contract's standard/adjusted deliverable status is unresolved.
    OCC explicitly allows rare unsuffixed non-standard options, so absence of a
    numeric suffix or adjustment memo cannot complete the contract reference.
@@ -103,11 +108,32 @@ external Tiger configuration and retained no raw payload. It confirmed:
 No account identifier, contract identifier, raw market payload, credential,
 or secret was persisted or added to the repository.
 
+## Regular-session Push BBO validation
+
+On 2026-08-11, a repository-external sanitized probe first confirmed both the
+U.S. regular-session clock window and Tiger's `TRADING` market status. The
+exact-option subscription acknowledgement succeeded. The SPY underlying
+subscription acknowledgement returned code 4000, which Tiger documents as
+permission denied. An explicit local quote-permission acquisition succeeded
+but exposed no U.S. stock quote entitlement, and an immediate retry produced
+the same result.
+
+The probe stopped at the subscription boundary with no qualifying atomic
+`ALL` event and shut down cleanly. It persisted no raw frame, symbol,
+credential, account identifier, or market payload. Consequently:
+
+- `OptionQuoteObservation` normalization remains unauthorized;
+- `UnderlyingQuoteObservation` normalization remains unauthorized;
+- quote scope remains unset (not even `PROVIDER_COMPOSITE` is authorized);
+- option open-interest and Greeks normalization remain paused; and
+- the remaining external blocker is U.S. stock Push quote entitlement before
+  another next-valid-regular-session probe can be informative.
+
 ## Next work
 
-1. During a valid U.S. regular session, complete the bounded Option Push BBO
-   probe and separately establish the viable Tiger current-underlying quote
-   path.
+1. Establish U.S. stock Push quote entitlement, then during the next valid
+   U.S. regular session complete the bounded atomic Option/underlying Push BBO
+   probe.
 2. If authoritative quote semantics are proven, freeze only the smallest
    option/underlying quote normalization boundary; activity/Greeks remain
    unavailable unless separate authoritative semantics emerge.
