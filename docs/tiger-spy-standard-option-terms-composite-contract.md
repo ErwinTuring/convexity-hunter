@@ -1,9 +1,10 @@
-# Tiger + OCC/Cboe SPY Standard Option Terms Composite v0.1
+# Tiger + OCC/Cboe SPY Option Terms Composite v0.2
 
 ## Status and purpose
 
-Formal Tier-A preflight is complete and this contract freezes one narrow
-reference-data composition required by the first real SPY Direct Entry slice.
+Formal Tier-A correction preflight is complete. This contract freezes one
+narrow, fail-closed reference-data composition required by the first real SPY
+Direct Entry slice and supersedes the invalid exact-standard proof in v0.1.
 
 Tiger's exact monthly-contract verification authoritatively supplies the
 listed contract identity, monthly classification, strike, option type, and
@@ -13,13 +14,18 @@ reference and requires exact `American` / `Physical` terms.
 
 Cboe's public S&P option-product comparison identifies standard SPDR ETF
 (`SPY`) options as American-style contracts settled by delivery of underlying
-shares. OCC Information Memo 26853 establishes the OSI symbol boundary: an
-adjusted non-standard contract uses a numeric root suffix, while an unchanged
-root denotes the standard contract; adjustments that retain the unchanged root
-also retain standard contract terms. This unit combines only those invariant
-SPY product and OSI terms with one already verified exact Tiger monthly
-contract. It does not weaken any core validation or alter the original Tiger
-verification.
+shares. OCC Information Memo 26853 establishes only a one-way OSI symbol
+boundary: a numeric suffix identifies a non-standard option, while a symbol
+without a numeric suffix is only *almost always* standard and may rarely still
+represent a non-standard option. OCC Information Memo 51326 also records
+specific SPY FLEX series consolidated from `1SPY` to unsuffixed `SPY`.
+
+Therefore unsuffixed `SPY` plus provider multiplier 100 is not authoritative
+proof that one exact contract has the standard, unadjusted deliverable. This
+unit retains the Cboe product-level American/Physical terms but keeps the exact
+reference `INCOMPLETE`; it cannot enter `StructureCosts` until separate
+authoritative exact-contract deliverable evidence exists. It does not weaken
+core validation or alter the original Tiger verification.
 
 ## Public boundary
 
@@ -67,10 +73,11 @@ exactly the verified option_expirations and option_chain Tiger sources
 The multiplier is validated, preserved, and never defaulted. The provider
 identifier must decode to the exact unsuffixed OSI root `SPY`; padded spaces in
 the six-character root field are permitted, but any digit, alternate root, or
-other non-space suffix fails closed. This explicit root proof, not the input's
-`deliverable_id=None` by itself, establishes the standard-deliverable boundary.
-Any nonstandard, adjusted, alternate-root, nonmonthly, non-SPY, or already
-completed/conflicting reference fails closed.
+other non-space suffix fails closed. This is a narrow eligibility guard, not a
+standard-deliverable proof. Any known adjusted/numeric-root, alternate-root,
+nonmonthly, non-SPY, or already completed/conflicting reference fails closed;
+an accepted unsuffixed input remains incomplete because its exact adjusted or
+standard status is unresolved.
 
 `normalized_at` must be an aware datetime, normalize to UTC, and not precede
 the Tiger sources, original Tiger normalization, or either frozen authority
@@ -102,11 +109,12 @@ verified date = 2026-08-10
 assigned source time = 2026-08-10T00:00:00Z
 ```
 
-It establishes the OSI adjusted-root boundary. The exact Tiger identifier is
-decoded using the already frozen Tiger verifier; an unsuffixed `SPY` root is
-therefore standard, while a numeric suffix is adjusted/non-standard. The
-provider-supplied multiplier must independently equal 100. Neither authority
-overrides a contradictory Tiger identity.
+It establishes the OSI symbol boundary. The exact Tiger identifier is decoded
+using the already frozen Tiger verifier; a numeric suffix is evidence of a
+non-standard contract, but an unsuffixed root is not conclusive evidence of a
+standard contract. The provider-supplied multiplier must independently equal
+100 and is likewise not deliverable proof. Neither authority overrides a
+contradictory Tiger identity.
 
 The Cboe page has no machine-readable publication or effective timestamp for
 these terms. The OCC memo has a publication date but no timestamp. Each nominal
@@ -163,7 +171,7 @@ digest = sha256(
     + Cboe source_id + NUL
     + OCC source_id
 )
-record_id = tiger-spy-standard-option-contract: + digest
+record_id = tiger-spy-option-terms: + digest
 ```
 
 `normalized_at` must be no earlier than all four `retrieved_at` values and the
@@ -176,25 +184,26 @@ The returned exact `OptionContractReference`:
 
 - reuses the identical `OptionContractKey` object from the Tiger reference;
 - preserves `listing_date=None` and `last_trade_date=None`;
-- preserves `deliverable_id=None`, now positively established as the canonical
-  standard-deliverable identity by the exact unsuffixed root proof;
+- preserves `deliverable_id=None`, because the exact contract's standard or
+  adjusted deliverable remains unresolved;
 - sets only `exercise_style="American"` and
   `settlement_type="Physical"`;
 - contains the two unchanged Tiger sources plus the frozen Cboe and OCC
   sources;
 - has `record_origin=SYSTEM_COMPOSITE`;
-- has exact quality flags `SYMBOL_MAPPED`, `COMPOSITE_SOURCE`, and
-  `TIMESTAMP_ASSIGNED` in enum order;
-- removes `INCOMPLETE` because the two terms required by the supported cost
-  boundary are now authoritative for this exact standard SPY scope; and
+- has exact quality flags `SYMBOL_MAPPED`, `COMPOSITE_SOURCE`,
+  `TIMESTAMP_ASSIGNED`, and `INCOMPLETE` in enum order;
+- is rejected by the existing `StructureCosts` complete-evidence boundary;
+  and
 - uses a deterministic record ID and normalization version
-  `tiger-spy-standard-option-terms-composite-v0.1`.
+  `tiger-spy-standard-option-terms-composite-v0.2`.
 
 The effective observation time is the latest `observed_at` across all four
 sources, never blindly the Tiger chain receipt time. The methodology explicitly
 states which provider supplies identity/multiplier, which authority supplies
-invariant product terms and adjusted-root classification, and that no listing
-date, last-trade date, quote, analytics, or market-session fact was added.
+product-level terms and the non-conclusive OSI symbol convention, and that
+exact deliverable status remains unresolved. No listing date, last-trade date,
+quote, analytics, or market-session fact was added.
 
 ## Failure precedence
 
@@ -202,7 +211,7 @@ date, last-trade date, quote, analytics, or market-session fact was added.
 exact argument types
 -> intrinsic Tiger verification
 -> exact monthly/SPY/ARCX/ETF/USD scope
--> exact standard multiplier and unadjusted key boundary
+-> exact multiplier and unsuffixed-root eligibility boundary
 -> unchanged incomplete Tiger reference and provenance
 -> normalized-at chronology
 -> frozen Cboe and OCC sources
@@ -218,8 +227,9 @@ Synthetic deterministic tests cover:
 
 - exact successful composition, object identity, fields, sources, record ID,
   methodology, version, flags, and chronology;
-- multiplier preservation and rejection of non-100/adjusted inputs;
-- exact unsuffixed-root acceptance and numeric/alternate-root rejection;
+- multiplier preservation and rejection of non-100/known-adjusted inputs;
+- exact unsuffixed-root acceptance as an incomplete scope guard and
+  numeric/alternate-root rejection;
 - non-SPY, non-ARCX, non-ETF, non-USD, nonmonthly, conflicting-term, malformed
   source, metadata, and chronology rejection;
 - exact Python types, frozen records, direct-construction/tampering resistance,
@@ -228,8 +238,8 @@ Synthetic deterministic tests cover:
   time, including Tiger source times later than the frozen authority captures;
 - no SDK import, network, credential, filesystem, environment, wall-clock,
   randomness, or LLM access; and
-- successful reuse by the existing cost path with composite-input quality
-  propagation, using synthetic quote/Greeks evidence only.
+- deterministic rejection by the existing cost path because exact deliverable
+  evidence remains incomplete, using synthetic quote/Greeks evidence only.
 
 ## Explicit exclusions
 
@@ -237,6 +247,11 @@ This unit adds no generic option-terms framework, non-SPY symbol, adjusted or
 FLEX contract support, runtime Cboe scraper, current quote, activity, IV,
 Greeks, pricing model, dividend/rate logic, relationship binding, report
 change, recommendation, account operation, order, or execution behavior.
+
+No bounded public OCC/Cboe source identified by this correction proves the
+standard deliverable of every exact unsuffixed SPY series. Absence of a
+contract-adjustment memo is not proof. A future exact-contract source may close
+this one gap, but this work unit does not build an OCC reference-data platform.
 
 The real Direct Entry slice remains blocked on authoritative option and
 underlying current quotes, activity-session semantics, and usable Gamma/Theta

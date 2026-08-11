@@ -186,7 +186,7 @@ _ANALYTICS_ACTIVITY_COLUMNS = _CHAIN_COLUMNS | frozenset(
 _TIGER_NORMALIZATION_VERSION = "tiger-option-contract-v0.1"
 _TIGER_DAILY_BAR_NORMALIZATION_VERSION = "tiger-underlying-daily-bar-v0.1"
 _TIGER_SPY_COMPOSITE_NORMALIZATION_VERSION = (
-    "tiger-spy-standard-option-terms-composite-v0.1"
+    "tiger-spy-standard-option-terms-composite-v0.2"
 )
 _TIGER_SPY_COMPOSITE_CAPTURED_AT = _datetime.datetime(
     2026,
@@ -221,8 +221,10 @@ _TIGER_SPY_COMPOSITE_METHODOLOGY = (
     "Tiger OpenAPI supplies exact monthly contract identity, strike, option "
     "type, and provider multiplier; Cboe Global Markets supplies invariant "
     "SPY American/Physical product terms; OCC Information Memo 26853 supplies "
-    "the OSI adjusted-root classification. The exact unsuffixed SPY OSI root "
-    "proves the standard scope. No listing date, last-trade date, quote, "
+    "the OSI symbol convention. A numeric suffix identifies a non-standard "
+    "contract, but an unsuffixed SPY root and multiplier 100 do not prove the "
+    "exact contract has a standard, unadjusted deliverable. Exact deliverable "
+    "status remains unresolved. No listing date, last-trade date, quote, "
     "analytics, or market-session fact was added."
 )
 _TIGER_SPY_COMPOSITE_UNIT_CONVENTION = (
@@ -236,7 +238,7 @@ _TIGER_SPY_COMPOSITE_SCOPE_MESSAGE = (
     "Tiger SPY standard-option composite scope is invalid."
 )
 _TIGER_SPY_COMPOSITE_BOUNDARY_MESSAGE = (
-    "Tiger SPY standard-option multiplier or unadjusted root is invalid."
+    "Tiger SPY standard-option multiplier or symbol root boundary is invalid."
 )
 _TIGER_SPY_COMPOSITE_PROVENANCE_MESSAGE = (
     "Tiger SPY standard-option composite provenance is invalid."
@@ -1412,7 +1414,7 @@ def _compose_tiger_spy_standard_option_contract_reference(
     *,
     normalized_at: object,
 ) -> _OptionContractReference:
-    """Compose the frozen standard-SPY option terms from exact Tiger proof."""
+    """Compose product-level SPY terms without claiming exact deliverable proof."""
 
     if type(verification) is not TigerExactOptionContractVerification:
         raise TypeError(
@@ -1664,7 +1666,7 @@ def _compose_tiger_spy_standard_option_contract_reference(
         ).encode("utf-8")
         digest = _hashlib.sha256(digest_material).hexdigest()
         composite_metadata = _NormalizationMetadata(
-            record_id="tiger-spy-standard-option-contract:" + digest,
+            record_id="tiger-spy-option-terms:" + digest,
             source_references=all_sources,
             effective_observed_at=effective_observed_at,
             normalized_at=normalized_at_utc,
@@ -1676,6 +1678,7 @@ def _compose_tiger_spy_standard_option_contract_reference(
                 _NormalizationQualityFlag.SYMBOL_MAPPED,
                 _NormalizationQualityFlag.COMPOSITE_SOURCE,
                 _NormalizationQualityFlag.TIMESTAMP_ASSIGNED,
+                _NormalizationQualityFlag.INCOMPLETE,
             ),
         )
         return _OptionContractReference(
@@ -2633,7 +2636,7 @@ def compose_tiger_spy_standard_option_contract_reference(
     *,
     normalized_at: object,
 ) -> _OptionContractReference:
-    """Compose the frozen standard-SPY option terms from exact Tiger proof."""
+    """Compose product-level SPY terms without claiming exact deliverable proof."""
 
     return _compose_tiger_spy_standard_option_contract_reference(
         verification,

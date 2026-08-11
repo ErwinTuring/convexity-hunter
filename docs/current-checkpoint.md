@@ -6,10 +6,10 @@ Repository: `ErwinTuring/convexity-hunter`
 
 - Branch: `main`
 - Grounded parent baseline for this checkpoint:
-  `f1e4c3a5dd9e844371f606e60554742d1c959ff5`
-  (`Recenter roadmap on real Direct Entry`). This checkpoint and the bounded
-  SPY standard-option terms composite are committed together after that base;
-  `git rev-parse HEAD` remains the authoritative current SHA.
+  `263a712699b3b993defb294217d64371016211bc`
+  (`Add authoritative SPY option terms composite`). The current correction is
+  committed after that parent; `git rev-parse HEAD` remains the authoritative
+  current SHA.
 - A fresh thread must still run `git fetch origin main`, `git rev-parse HEAD`,
   and `git status --short --branch`; this file does not replace Git.
 
@@ -29,9 +29,11 @@ Repository: `ErwinTuring/convexity-hunter`
   analytics/activity evidence are implemented.
 - U.S. Treasury daily par-yield retrieval and the bounded 30–180-day
   par-yield-derived pricing-rate proxy are implemented.
-- Exact Tiger-verified standard monthly SPY contracts can be completed with
-  authoritative American/Physical terms by the narrow OCC/Cboe system
-  composite; adjusted/numeric-root and non-SPY contracts fail closed.
+- A narrow OCC/Cboe composite retains Cboe's American/Physical product-level
+  terms for eligible Tiger-verified monthly SPY contracts. It remains
+  `INCOMPLETE`: unsuffixed `SPY` plus multiplier 100 does not prove the exact
+  contract has a standard, unadjusted deliverable, so the existing cost path
+  rejects it.
 
 These are components, not yet a usable real-market Direct Entry workflow.
 
@@ -65,12 +67,15 @@ The durable dependency classification and bounded sequence are in
    `OptionQuoteObservation`.
 2. The scheduled regular-session Tiger Option Push BBO probe must prove event,
    bid, ask, exact-contract, and session/status binding before normalization.
-   Its next executable window is **2026-08-10 21:30 Asia/Shanghai**
-   (2026-08-10 09:30 America/New_York); a fresh thread must not repeat the
-   probe before that regular-session window.
+   Run it only during the next valid U.S. regular session and re-confirm market
+   status at execution; no one-time wall-clock date in this checkpoint is
+   authoritative.
 3. The same vertical slice also needs an authoritative current underlying
    bid/ask path with timestamp/session semantics; no such Tiger adapter exists.
-4. Tiger REST analytics/activity evidence does not authoritatively supply an
+4. The exact SPY contract's standard/adjusted deliverable status is unresolved.
+   OCC explicitly allows rare unsuffixed non-standard options, so absence of a
+   numeric suffix or adjustment memo cannot complete the contract reference.
+5. Tiger REST analytics/activity evidence does not authoritatively supply an
    analytics observation time/session, model/rate/dividend descriptions, or
    Theta day basis. It cannot yet be promoted to provider-neutral IV/Greeks
    records by inference.
@@ -85,9 +90,11 @@ to resume unrelated market-data infrastructure.
    path.
 2. If authoritative semantics are proven, freeze the smallest one-leg Tiger
    current-snapshot normalization/relationship bridge.
-3. Reuse existing liquidity, cost, Direct Entry, assembly, screening, and
+3. Keep the cost path closed until an authoritative exact-contract deliverable
+   source is available; do not infer standard status from OSI root syntax.
+4. Reuse existing liquidity, cost, Direct Entry, assembly, screening, and
    report authorities without duplicating numerical or policy logic.
-4. Permit honest `DATA_INSUFFICIENT` for volatility environment, tail pricing,
+5. Permit honest `DATA_INSUFFICIENT` for volatility environment, tail pricing,
    scenarios, expiration thresholds, and affordability until a concrete
    vertical-slice need justifies their missing real producers.
 

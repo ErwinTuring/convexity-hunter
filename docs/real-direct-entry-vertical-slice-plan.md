@@ -31,9 +31,11 @@ only after the one-leg path proves its semantics and product value.
 - Tiger local-only configuration discovery and `QuoteClient` initialization.
 - Exact caller-specified monthly option verification with provider identifier,
   provider multiplier, and provider-neutral `OptionContractReference`.
-- Narrow standard-SPY contract-term completion using Tiger exact identity and
-  multiplier plus OCC OSI adjusted-root rules and Cboe SPY American/Physical
-  product terms; adjusted and non-SPY contracts remain unsupported.
+- Narrow SPY product-term enrichment using Tiger exact identity plus Cboe
+  American/Physical terms. The reference remains `INCOMPLETE`: OCC's OSI
+  convention does not make unsuffixed `SPY` plus multiplier 100 exact
+  standard-deliverable proof, and known-adjusted and non-SPY contracts remain
+  unsupported.
 - Transient entitled REST bid/ask/size evidence, retained only as
   provider-native evidence.
 - Provider-neutral underlying completed daily bars.
@@ -73,7 +75,16 @@ same regular-session probe must instead test one atomic raw Push `QuoteData`
 status/hour tag, and BBO values/sizes. Public Basic/BBO callback pairing is
 insufficient. No normalized record is authorized before that evidence exists.
 
-### B3. Activity and Greeks normalization
+### B3. Exact-contract deliverable completeness
+
+`StructureCosts` requires complete exact-contract reference evidence. OCC
+explicitly permits rare unsuffixed non-standard options, including SPY FLEX
+series consolidated to unsuffixed `SPY`; absence of an adjustment memo is not
+proof. The current product-term composite remains incomplete until a bounded
+authoritative source proves the selected exact contract's deliverable. Do not
+build a generic OCC platform solely to close this gap.
+
+### B4. Activity and Greeks normalization
 
 Liquidity requires provider-neutral current volume and open-interest records;
 costs require provider-neutral Greeks with disclosed model, rate/dividend
@@ -83,9 +94,9 @@ methodology semantics. These records must not be invented. After the live
 quote path is proven, perform one narrow applicability preflight to determine
 which fields can be normalized and which remain unavailable.
 
-### B4. Thin current-snapshot composition
+### B5. Thin current-snapshot composition
 
-Once B1–B3 are authoritatively available, one thin bridge must build the
+Once B1–B4 are authoritatively available, one thin bridge must build the
 existing selected/fresh bindings and relationship selections for one exact
 leg, then delegate to:
 

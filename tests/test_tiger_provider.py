@@ -1045,7 +1045,7 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
         self.assertIsNone(input_reference.settlement_type)
         self.assertEqual(
             result.metadata.normalization_version,
-            "tiger-spy-standard-option-terms-composite-v0.1",
+            "tiger-spy-standard-option-terms-composite-v0.2",
         )
         self.assertIs(result.metadata.record_origin, DataOrigin.SYSTEM_COMPOSITE)
         self.assertEqual(
@@ -1054,9 +1054,10 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
                 NormalizationQualityFlag.SYMBOL_MAPPED,
                 NormalizationQualityFlag.COMPOSITE_SOURCE,
                 NormalizationQualityFlag.TIMESTAMP_ASSIGNED,
+                NormalizationQualityFlag.INCOMPLETE,
             ),
         )
-        self.assertNotIn(
+        self.assertIn(
             NormalizationQualityFlag.INCOMPLETE,
             result.metadata.quality_flags,
         )
@@ -1071,7 +1072,14 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
         self.assertIn("Tiger OpenAPI", result.metadata.normalization_methodology)
         self.assertIn("Cboe Global Markets", result.metadata.normalization_methodology)
         self.assertIn("OCC Information Memo 26853", result.metadata.normalization_methodology)
-        self.assertIn("unsuffixed SPY OSI root", result.metadata.normalization_methodology)
+        self.assertIn(
+            "do not prove the exact contract",
+            result.metadata.normalization_methodology,
+        )
+        self.assertIn(
+            "Exact deliverable status remains unresolved",
+            result.metadata.normalization_methodology,
+        )
         self.assertIn("No listing date", result.metadata.normalization_methodology)
 
         expected_digest = hashlib.sha256(
@@ -1087,12 +1095,12 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
         ).hexdigest()
         self.assertEqual(
             result.metadata.record_id,
-            "tiger-spy-standard-option-contract:" + expected_digest,
+            "tiger-spy-option-terms:" + expected_digest,
         )
         self.assertEqual(
             result.metadata.record_id,
-            "tiger-spy-standard-option-contract:"
-            "01685de357ab0a624cf5e43568d52dad2ac92f2b8223efca6c9be0acabcc2e16",
+            "tiger-spy-option-terms:"
+            "27f0dc7763346f181ec5427e273ee412d166620d037fa538811ff7144a15882f",
         )
 
         sources = {
@@ -1461,22 +1469,12 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
             result = self.compose(verification)
         self.assertEqual(result.exercise_style, "American")
 
-    def test_composite_reference_reuses_existing_cost_path_and_propagates_quality(self):
+    def test_incomplete_composite_cannot_enter_existing_cost_path(self):
         from tests.market_data_fixtures import (
-            CALCULATED_AT,
             build_freshness_context,
             build_freshness_policy,
         )
-        from tests.test_market_data import (
-            build_resolved_relationship_group,
-            build_timing_binding,
-        )
-        from tests.test_market_data_transformations import (
-            make_cost_selection,
-            make_structure,
-        )
-        import convexity_hunter.market_data as market_data
-        import convexity_hunter.market_data_transformations as transformations
+        from tests.test_market_data import build_timing_binding
 
         base = datetime.datetime(
             2030, 1, 2, 15, 30, tzinfo=datetime.timezone.utc
@@ -1507,8 +1505,6 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
             normalized_at=base + datetime.timedelta(microseconds=3),
         )
 
-        structure = make_structure()
-        _, _, old_underlying, old_leg_bindings = make_cost_selection(structure)
         policy = build_freshness_policy(
             allow_assigned_timestamps=True,
             maximum_reference_age_seconds=200_000_000,
@@ -1516,105 +1512,15 @@ class TigerSpyStandardCompositeTests(TigerProviderTestCase):
             maximum_cross_record_skew_seconds=200_000_000,
         )
         context = build_freshness_context()
-        underlying_binding = build_timing_binding(
-            old_underlying.selected_record,
-            policy=policy,
-            context=context,
-        )
-        old_bindings = old_leg_bindings[0]
-        quote_binding = build_timing_binding(
-            old_bindings[market_data.MarketDataRelationshipRole.OPTION_QUOTE]
-            .selected_record,
-            policy=policy,
-            context=context,
-        )
-        greeks_binding = build_timing_binding(
-            old_bindings[market_data.MarketDataRelationshipRole.OPTION_GREEKS]
-            .selected_record,
-            policy=policy,
-            context=context,
-        )
-        reference_binding = build_timing_binding(
-            composite,
-            policy=policy,
-            context=context,
-        )
-        self.assertIs(reference_binding.selected_record, composite)
-
-        groups = []
-        role = market_data.MarketDataRelationshipRole
-        kind = market_data.MarketDataRelationshipGroupKind
-        group_specs = (
-            (
-                "snapshot",
-                kind.UNDERLYING_OPTION_QUOTE_SNAPSHOT_V0_1,
-                {
-                    role.UNDERLYING_QUOTE: underlying_binding,
-                    role.OPTION_QUOTE: quote_binding,
-                },
-            ),
-            (
-                "analytics",
-                kind.OPTION_QUOTE_ANALYTICS_V0_1,
-                {
-                    role.OPTION_QUOTE: quote_binding,
-                    role.OPTION_GREEKS: greeks_binding,
-                },
-            ),
-            (
-                "reference",
-                kind.OPTION_CONTRACT_REFERENCE_V0_1,
-                {
-                    role.OPTION_QUOTE: quote_binding,
-                    role.OPTION_GREEKS: greeks_binding,
-                    role.OPTION_CONTRACT_REFERENCE: reference_binding,
-                },
-            ),
-        )
-        for group_id, group_kind, bindings in group_specs:
-            group, _ = build_resolved_relationship_group(
-                "composite-cost-" + group_id,
-                group_kind,
-                bindings,
+        with self.assertRaisesRegex(
+            ValueError,
+            "selected candidate must be fresh within policy",
+        ):
+            build_timing_binding(
+                composite,
+                policy=policy,
+                context=context,
             )
-            groups.append(group)
-        timing = market_data.assess_market_data_snapshot_timing(
-            (
-                underlying_binding,
-                quote_binding,
-                greeks_binding,
-                reference_binding,
-            )
-        )
-        assessment = market_data.assess_market_data_relationships(
-            market_data.MarketDataRelationshipRequest(tuple(groups)),
-            timing,
-        )
-        selection = market_data.select_market_data_relationship_assessment(
-            (assessment,)
-        )
-        result = transformations.transform_structure_costs(
-            "composite-cost",
-            structure,
-            selection,
-            decimal.Decimal("0"),
-            1,
-            CALCULATED_AT,
-        )
-        self.assertEqual(result.record.quoted_mid_premium, 120.0)
-        self.assertIn(
-            "composite_input_used",
-            {flag.value for flag in result.lineage.quality_flags},
-        )
-        decoded = transformations._decode_cost_parameters(
-            result.lineage.parameters_json
-        )
-        contract_evidence = decoded["normalized_evidence"]["contract_references"][0]
-        self.assertEqual(contract_evidence["record_id"], composite.metadata.record_id)
-        self.assertEqual(
-            contract_evidence["propagated_quality_flags"],
-            ("composite_input_used",),
-        )
 
 
 class ExactOptionQuoteEvidenceTests(TigerProviderTestCase):

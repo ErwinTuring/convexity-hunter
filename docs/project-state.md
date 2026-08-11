@@ -14,8 +14,10 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current authoritative product state
 
-The latest grounded implementation baseline is `af857c2d964e5eed23025f520443007fd155683c`
-(`Implement Treasury pricing-rate proxy`). The deterministic Engine,
+The grounded parent baseline for the current correction is
+`263a712699b3b993defb294217d64371016211bc`
+(`Add authoritative SPY option terms composite`); `git rev-parse HEAD` is the
+authoritative current implementation SHA. The deterministic Engine,
 reviewed-artifact assembly, screening, offline service, Direct Entry
 composition, and Chinese report exist, but no implemented real-provider bridge
 produces the normalized current records and proofs required by structure
@@ -26,8 +28,9 @@ infrastructure completeness.
 The active dependency classification and sequence are authoritative in
 [`real-direct-entry-vertical-slice-plan.md`](real-direct-entry-vertical-slice-plan.md).
 Current hard blockers are authoritative Tiger current option and underlying
-quote semantics plus the provider-neutral activity/Greeks applicability needed
-for existing liquidity and cost transformations. Missing volatility, tail,
+quote semantics, exact-contract standard-deliverable proof, and the
+provider-neutral activity/Greeks applicability needed for existing liquidity
+and cost transformations. Missing volatility, tail,
 scenario, threshold, and affordability artifacts may remain explicit
 `DATA_INSUFFICIENT` for the first slice. Push BBO remains a bounded pending
 regular-session probe. Additional rate, dividend, historical-IV, surface,
@@ -1350,8 +1353,9 @@ in BBO. A non-trading-day live probe connected and received a successful
 subscription acknowledgement with no error, but no quote callback arrived in
 the bounded window. No normalizer is authorized before a regular-session live
 probe verifies exact callback pairing and actual field population.
-The absolute next executable window is no earlier than Beijing time
-`2026-08-10 21:30`; no earlier non-trading-session retry is authorized.
+The probe runs only during the next valid U.S. regular session, with market
+status re-confirmed at execution. Durable state intentionally contains no
+one-time wall-clock date that can become stale.
 
 The subsequently completed unit is
 [`tiger-underlying-daily-bars-contract.md`](tiger-underlying-daily-bars-contract.md).
@@ -1458,6 +1462,18 @@ provider scale, and malformed unrelated rows could preempt exact-row
 cardinality. Both are corrected and targeted re-review passed. Validation
 passed 89 focused Tiger tests, 1,148 full-suite tests, compileall,
 `git diff --check`, and a sanitized live 103-DTE SPY adapter smoke check.
+
+The latest SPY option-terms composite has been corrected after an authoritative
+boundary review. OCC Information Memo 26853 explicitly states that an option
+symbol without a numeric suffix may rarely still represent a non-standard
+option, and OCC Information Memo 51326 records specific SPY FLEX series
+consolidated to unsuffixed `SPY`. Therefore unsuffixed `SPY` plus Tiger's
+provider-supplied multiplier 100 does not prove the exact contract has a
+standard, unadjusted deliverable. The narrow composite still retains Cboe's
+American/Physical product-level terms but preserves `INCOMPLETE`; the existing
+`StructureCosts` complete-evidence boundary rejects it. No generic OCC
+reference-data platform, runtime scraper, or lowered evidence standard was
+added.
 
 ## Deferred
 
