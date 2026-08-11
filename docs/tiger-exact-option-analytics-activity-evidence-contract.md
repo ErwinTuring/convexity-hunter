@@ -17,6 +17,46 @@ does not timestamp provider analytics or activity fields. This unit therefore
 retains immutable Tiger-native evidence and makes no provider-neutral
 normalization claim.
 
+## Provider-neutral applicability review
+
+A bounded follow-up Tier-A applicability review is complete as of 2026-08-11.
+It reread Tiger SDK 3.7.0, Tiger's official
+[`get_option_chain`](https://quant.itigerup.com/openapi/en/python/operation/quotation/option.html#get-option-chain-get-option-chain)
+documentation, the provider-neutral record schemas, and the existing
+liquidity/cost consumers. No additional live payload was required because the
+missing semantics are absent from both the documented response and local SDK
+mapping.
+
+The result is fail closed:
+
+- `volume` cannot become `OptionVolumeObservation`: Tiger does not bind it to
+  a session date or state whether the returned cumulative count is a completed
+  session. The liquidity transformation requires the quote and volume to share
+  one session and requires `is_session_complete=True`.
+- `open_interest` cannot become `OptionOpenInterestObservation`: Tiger
+  describes the count but does not bind the returned row to an exact open-
+  interest session date.
+- `implied_vol` cannot become `OptionImpliedVolatilityObservation`: Tiger does
+  not disclose the analytics observation/session time, model identity or
+  version, rate input, or dividend input.
+- `delta`, `gamma`, `theta`, and `vega` cannot become
+  `OptionGreeksObservation`: the same time/model/input gaps remain, and Tiger
+  does not document the unit conventions required by the core, including Vega
+  scaling and Theta day basis. The cost transformation additionally requires
+  usable Gamma and Theta plus the complete methodology tuple.
+
+The local SDK names `last_timestamp` as the last-trade timestamp; it is not an
+analytics, volume, or open-interest timestamp. Adapter receipt time cannot be
+substituted for any provider observation/session time. Atomic Push BBO evidence,
+if proven later, timestamps quotes only and does not retroactively timestamp or
+define these REST fields.
+
+No provider-neutral activity/IV/Greeks normalizer or relationship bridge is
+authorized by this review. Reconsideration requires new authoritative provider
+semantics or a separately approved deterministic calculation source; absence
+of such evidence remains an explicit vertical-slice blocker rather than a
+reason to invent metadata.
+
 ## Public boundary
 
 The direct module `convexity_hunter.providers.tiger` adds exactly:

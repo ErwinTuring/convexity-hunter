@@ -75,10 +75,12 @@ The durable dependency classification and bounded sequence are in
 4. The exact SPY contract's standard/adjusted deliverable status is unresolved.
    OCC explicitly allows rare unsuffixed non-standard options, so absence of a
    numeric suffix or adjustment memo cannot complete the contract reference.
-5. Tiger REST analytics/activity evidence does not authoritatively supply an
-   analytics observation time/session, model/rate/dividend descriptions, or
-   Theta day basis. It cannot yet be promoted to provider-neutral IV/Greeks
-   records by inference.
+5. The bounded REST activity/Greeks applicability review is complete and
+   authorizes no provider-neutral normalization. Volume lacks a session date
+   and completed-session status; open interest lacks its effective session
+   date; IV/Greeks lack analytics time, model/rate/dividend descriptions, Vega
+   scaling, and Theta day basis. Push quote timestamps cannot fill these REST
+   semantic gaps.
 
 Push BBO is a bounded parallel blocker, not permission to weaken semantics or
 to resume unrelated market-data infrastructure.
@@ -88,13 +90,16 @@ to resume unrelated market-data infrastructure.
 1. During a valid U.S. regular session, complete the bounded Option Push BBO
    probe and separately establish the viable Tiger current-underlying quote
    path.
-2. If authoritative semantics are proven, freeze the smallest one-leg Tiger
-   current-snapshot normalization/relationship bridge.
+2. If authoritative quote semantics are proven, freeze only the smallest
+   option/underlying quote normalization boundary; activity/Greeks remain
+   unavailable unless separate authoritative semantics emerge.
 3. Keep the cost path closed until an authoritative exact-contract deliverable
    source is available; do not infer standard status from OSI root syntax.
-4. Reuse existing liquidity, cost, Direct Entry, assembly, screening, and
-   report authorities without duplicating numerical or policy logic.
-5. Permit honest `DATA_INSUFFICIENT` for volatility environment, tail pricing,
+4. Build no thin liquidity/cost bridge until quote, exact-deliverable,
+   activity, and Greeks inputs all satisfy their existing authorities.
+5. Reuse existing Direct Entry, assembly, screening, and report authorities
+   without duplicating numerical or policy logic.
+6. Permit honest `DATA_INSUFFICIENT` for volatility environment, tail pricing,
    scenarios, expiration thresholds, and affordability until a concrete
    vertical-slice need justifies their missing real producers.
 

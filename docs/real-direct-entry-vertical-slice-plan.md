@@ -90,13 +90,17 @@ Liquidity requires provider-neutral current volume and open-interest records;
 costs require provider-neutral Greeks with disclosed model, rate/dividend
 inputs, unit convention, and Theta day basis. Current Tiger provider-native
 analytics/activity evidence lacks sufficient observation/session and
-methodology semantics. These records must not be invented. After the live
-quote path is proven, perform one narrow applicability preflight to determine
-which fields can be normalized and which remain unavailable.
+methodology semantics. The bounded applicability review is complete and
+authorizes no normalization: volume lacks a session date and completed-session
+status, open interest lacks its effective session date, and IV/Greeks lack the
+required analytics time, model/input descriptions, Vega scaling, and Theta day
+basis. `last_timestamp` is only the last-trade timestamp, and future Push BBO
+quote evidence cannot fill these REST gaps. These records remain unavailable
+unless new authoritative provider semantics emerge.
 
 ### B5. Thin current-snapshot composition
 
-Once B1–B4 are authoritatively available, one thin bridge must build the
+Only after B1–B4 are authoritatively available may one thin bridge build the
 existing selected/fresh bindings and relationship selections for one exact
 leg, then delegate to:
 

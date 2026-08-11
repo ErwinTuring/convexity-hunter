@@ -15,8 +15,8 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 ## Current authoritative product state
 
 The grounded parent baseline for the current correction is
-`263a712699b3b993defb294217d64371016211bc`
-(`Add authoritative SPY option terms composite`); `git rev-parse HEAD` is the
+`5627d5d58a1da8cbe10100c2b0675db918fb26af`
+(`Fail closed on SPY exact deliverable status`); `git rev-parse HEAD` is the
 authoritative current implementation SHA. The deterministic Engine,
 reviewed-artifact assembly, screening, offline service, Direct Entry
 composition, and Chinese report exist, but no implemented real-provider bridge
@@ -28,9 +28,10 @@ infrastructure completeness.
 The active dependency classification and sequence are authoritative in
 [`real-direct-entry-vertical-slice-plan.md`](real-direct-entry-vertical-slice-plan.md).
 Current hard blockers are authoritative Tiger current option and underlying
-quote semantics, exact-contract standard-deliverable proof, and the
-provider-neutral activity/Greeks applicability needed for existing liquidity
-and cost transformations. Missing volatility, tail,
+quote semantics, exact-contract standard-deliverable proof, and authoritative
+provider-neutral activity/Greeks inputs needed for existing liquidity and cost
+transformations. The bounded REST applicability review authorizes no such
+normalization. Missing volatility, tail,
 scenario, threshold, and affordability artifacts may remain explicit
 `DATA_INSUFFICIENT` for the first slice. Push BBO remains a bounded pending
 regular-session probe. Additional rate, dividend, historical-IV, surface,
@@ -1474,6 +1475,18 @@ American/Physical product-level terms but preserves `INCOMPLETE`; the existing
 `StructureCosts` complete-evidence boundary rejects it. No generic OCC
 reference-data platform, runtime scraper, or lowered evidence standard was
 added.
+
+The bounded Tiger REST activity/Greeks applicability review is also complete.
+Official `get_option_chain` documentation and Tiger SDK 3.7.0 expose the values
+but do not bind volume to a session date/completed-session state, open interest
+to an effective session date, or IV/Greeks to an analytics timestamp, model,
+rate/dividend inputs, Vega convention, or Theta day basis. The SDK explicitly
+labels `last_timestamp` as the last-trade timestamp. It cannot timestamp the
+other fields, and future Push BBO quote evidence cannot retroactively supply
+REST analytics/activity semantics. No `OptionVolumeObservation`,
+`OptionOpenInterestObservation`, `OptionImpliedVolatilityObservation`, or
+`OptionGreeksObservation` normalizer is authorized; provider-native evidence
+remains available and the thin liquidity/cost bridge stays blocked.
 
 ## Deferred
 
