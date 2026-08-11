@@ -80,9 +80,11 @@ insufficient. No normalized record is authorized before that evidence exists.
 `StructureCosts` requires complete exact-contract reference evidence. OCC
 explicitly permits rare unsuffixed non-standard options, including SPY FLEX
 series consolidated to unsuffixed `SPY`; absence of an adjustment memo is not
-proof. The current product-term composite remains incomplete until a bounded
-authoritative source proves the selected exact contract's deliverable. Do not
-build a generic OCC platform solely to close this gap.
+proof. Cboe's public All Series data has no exact deliverable/adjusted/FLEX
+field, while its Cash-Settled FLEX ETF file is underlying-level only. The
+current product-term composite remains incomplete until a bounded authoritative
+source proves the selected exact contract's deliverable. Do not build a generic
+OCC platform solely to close this gap.
 
 ### B4. Activity and Greeks normalization
 

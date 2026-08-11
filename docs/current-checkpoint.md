@@ -75,6 +75,8 @@ The durable dependency classification and bounded sequence are in
 4. The exact SPY contract's standard/adjusted deliverable status is unresolved.
    OCC explicitly allows rare unsuffixed non-standard options, so absence of a
    numeric suffix or adjustment memo cannot complete the contract reference.
+   Cboe's public All Series CSV has no deliverable/adjusted/FLEX field, and its
+   Cash-Settled FLEX ETF file lists only eligible underlyings, not exact series.
 5. The bounded REST activity/Greeks applicability review is complete and
    authorizes no provider-neutral normalization. Volume lacks a session date
    and completed-session status; open interest lacks its effective session

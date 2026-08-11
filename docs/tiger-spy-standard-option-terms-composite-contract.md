@@ -253,6 +253,16 @@ standard deliverable of every exact unsuffixed SPY series. Absence of a
 contract-adjustment memo is not proof. A future exact-contract source may close
 this one gap, but this work unit does not build an OCC reference-data platform.
 
+A bounded 2026-08-11 check of Cboe's official
+[U.S. Options Reference Data](https://www.cboe.com/markets/us/options/market-statistics/reference-data)
+did not close the gap. The public All Series CSV exposes only `Cboe Symbol`, `OSI
+Symbol`, `Underlying`, `Matching Unit`, and `Closing Only`; it has no exact-
+series adjusted, FLEX, deliverable, exercise-style, or settlement field. The
+public Cash-Settled FLEX ETF Symbols CSV includes `SPY` only at underlying
+eligibility level and does not identify individual FLEX series. Neither file
+can prove that a selected exact unsuffixed SPY series is standard/non-adjusted,
+and absence from an underlying-level list cannot be used as negative proof.
+
 The real Direct Entry slice remains blocked on authoritative option and
 underlying current quotes, activity-session semantics, and usable Gamma/Theta
 analytics after this unit.

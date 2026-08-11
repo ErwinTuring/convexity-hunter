@@ -15,8 +15,8 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 ## Current authoritative product state
 
 The grounded parent baseline for the current correction is
-`5627d5d58a1da8cbe10100c2b0675db918fb26af`
-(`Fail closed on SPY exact deliverable status`); `git rev-parse HEAD` is the
+`082e288a322710af4f7a4fd7d7c4d8a0f2abac09`
+(`Record Tiger analytics applicability limits`); `git rev-parse HEAD` is the
 authoritative current implementation SHA. The deterministic Engine,
 reviewed-artifact assembly, screening, offline service, Direct Entry
 composition, and Chinese report exist, but no implemented real-provider bridge
@@ -1475,6 +1475,13 @@ American/Physical product-level terms but preserves `INCOMPLETE`; the existing
 `StructureCosts` complete-evidence boundary rejects it. No generic OCC
 reference-data platform, runtime scraper, or lowered evidence standard was
 added.
+
+A follow-up check of Cboe's public All Series and Cash-Settled FLEX ETF
+reference CSVs did not provide exact-contract deliverable proof. All Series
+contains only symbol, underlying, matching-unit, and closing-only fields; the
+FLEX file lists `SPY` only at underlying eligibility level. Neither identifies
+the selected exact series as standard/non-adjusted, so no composite or cost-
+path boundary changes.
 
 The bounded Tiger REST activity/Greeks applicability review is also complete.
 Official `get_option_chain` documentation and Tiger SDK 3.7.0 expose the values
