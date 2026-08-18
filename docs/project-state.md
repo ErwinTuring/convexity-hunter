@@ -1519,6 +1519,15 @@ closes it on every post-validation path; targeted re-review passed. Final
 validation passed 22 focused Futu tests, 1,209 full-suite tests, compileall,
 `git diff --check`, and the sanitized live adapter smoke.
 
+A subsequent repository-external sanitized live composition passed one real
+Futu exact monthly SPY contract directly into the existing Direct Entry
+Reviewed-Research Service. Exact-contract verification succeeded; the
+incomplete contract reference was not upgraded; research readiness remained
+absent; Candidate Assembly and screening both produced `DATA_INSUFFICIENT`
+with explicit missing costs/liquidity; no position-management plan was created;
+and a nonempty Chinese report was rendered. No provider-specific orchestration
+layer or new numerical path was needed.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local

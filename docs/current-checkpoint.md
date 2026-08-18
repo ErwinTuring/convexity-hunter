@@ -49,6 +49,11 @@ OpenD and persisted no raw payload. They confirmed:
   sizes, and separate raw Futu-server bid/ask receipt timestamps; and
 - a measured sub-second OpenD/local clock lead handled by a bounded one-second
   tolerance without rewriting provider timestamps.
+- the exact Futu contract entered the existing Direct Entry service without a
+  new provider orchestration layer; exact-contract verification succeeded,
+  research readiness remained absent, both candidate and screening states were
+  `DATA_INSUFFICIENT`, missing costs/liquidity were explicit, no position plan
+  was created, and a nonempty Chinese report was rendered.
 
 No credential, account identifier, raw market payload, or secret entered the
 repository or model output.
@@ -77,16 +82,14 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Integrate only the proven Futu exact-contract and completed-history evidence
-   into the thinnest real Direct Entry path that reuses existing authorities.
-2. Preserve provider-native BBO evidence while seeking authoritative
+1. Preserve provider-native BBO evidence while seeking authoritative
    same-frame event/session semantics; do not normalize current quotes by
    inference.
-3. Keep costs and liquidity closed until every existing input authority is
+2. Keep costs and liquidity closed until every existing input authority is
    satisfied; do not infer deliverable, activity, OI, IV, or Greek semantics.
-4. Produce the real Futu-backed partial CandidateResearchRecord,
-   deterministic `DATA_INSUFFICIENT`, and Chinese report before expanding
-   unrelated infrastructure.
+3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
+   minimum slice; add only the next demonstrated blocker rather than unrelated
+   infrastructure.
 
 ## Explicitly deferred
 
