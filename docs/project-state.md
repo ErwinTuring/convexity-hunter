@@ -28,15 +28,15 @@ downstream evidence standard.
 
 The active dependency classification and sequence are authoritative in
 [`real-direct-entry-vertical-slice-plan.md`](real-direct-entry-vertical-slice-plan.md).
-Current gaps to a complete research-ready costs/liquidity result remain
-authoritative Tiger current option and underlying quote semantics,
-exact-contract standard-deliverable proof, and authoritative provider-neutral
-activity/Greeks inputs. They no longer block the honest partial Direct Entry
-loop. The bounded REST applicability review authorizes no such normalization.
-Missing volatility, tail,
+Futu is now the preferred MVP U.S. market-data provider, with Tiger retained as
+an unchanged fallback capability and no automatic router or blending. Current
+gaps to a complete research-ready costs/liquidity result remain authoritative
+same-frame current-quote event/session semantics, exact-contract deliverable
+proof, and authoritative provider-neutral activity/Greeks inputs. They no
+longer block the honest partial Direct Entry loop. Missing volatility, tail,
 scenario, threshold, and affordability artifacts may remain explicit
-`DATA_INSUFFICIENT` for the first slice. Push BBO remains a bounded pending
-regular-session probe. Additional rate, dividend, historical-IV, surface,
+`DATA_INSUFFICIENT` for the first slice. Additional rate, dividend,
+historical-IV, surface,
 discovery, generation, and Event Intelligence work is deferred unless the
 vertical slice demonstrates it is the next blocker.
 
@@ -1500,14 +1500,32 @@ REST analytics/activity semantics. No `OptionVolumeObservation`,
 `OptionGreeksObservation` normalizer is authorized; provider-native evidence
 remains available and the thin liquidity/cost bridge stays blocked.
 
+The bounded Futu provider work unit is implemented under
+[`futu-provider-contract.md`](futu-provider-contract.md) and ADR-009. Futu is
+the preferred MVP U.S. market-data provider; Tiger remains a frozen fallback,
+with no routing, arbitration, or blending. The provider connects only to an
+already-authenticated local OpenD instance and reads no credentials. It
+implements exact caller-specified monthly/provider-standard contract
+verification, completed unadjusted underlying daily-bar normalization, and
+provider-native exact-option historical OHLCV, analytics/activity, and paired
+atomic BBO evidence. Live sanitized adapter validation confirmed every path.
+The contract reference remains `INCOMPLETE`, and atomic BBO does not become a
+provider-neutral quote because one event timestamp and same-frame
+market/session status are absent. Activity and analytics remain provider-native
+for the same applicability gaps already enforced elsewhere. Independent review
+found one MAJOR shared-context handler-lifecycle defect. The corrected BBO path
+now accepts only a dedicated unsubscribed/default-handler QuoteContext and
+closes it on every post-validation path; targeted re-review passed. Final
+validation passed 22 focused Futu tests, 1,209 full-suite tests, compileall,
+`git diff --check`, and the sanitized live adapter smoke.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
   runtime, exact-option verification, transient exact-quote evidence,
   underlying daily bars, historical-dividend evidence, and historical-option-
   bar evidence, and exact-option analytics/activity evidence work units
-- additional or fallback market-data providers unless a concrete Tiger blocker
-  appears
+- additional market-data providers and generic provider routing/arbitration
 - mature news, search, knowledge, and world-event Skill capability research
 - Skill adapters and multi-Skill composition
 - last30days-skill or similar narrative integrations

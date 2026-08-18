@@ -559,9 +559,11 @@ provider routing.
   conditions under the canonical position-management contract; it does not
   monitor, recommend, or execute.
 - Completed Milestone 1–3 history remains unchanged.
-- Tiger OpenAPI is the MVP primary market-data provider; credentials remain
-  provider-native, per-user, local-only, runtime-resolved, and outside model
-  context and repository state.
+- Futu OpenAPI is the preferred MVP U.S. market-data provider through an
+  already-authenticated local OpenD instance. Tiger remains a frozen fallback
+  capability. Provider credentials remain provider-native, per-user,
+  local-only, runtime-resolved, and outside model context and repository state;
+  no provider router or blending is authorized.
 - Milestone 4 — Deterministic Expiration Payoff-Threshold Evidence is complete.
 - Milestone 5 — Standalone Structure Affordability Evidence is complete.
 - Milestone 6A — Reviewed Artifact Verifiability and Milestone 6B —

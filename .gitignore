@@ -4,6 +4,7 @@
 !.env.example
 tiger_openapi_config.properties
 tiger_openapi_token.properties
+futu_api_config.properties
 *.pem
 *.key
 .secrets/

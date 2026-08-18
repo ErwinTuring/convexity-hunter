@@ -16,6 +16,7 @@ dependencies = []
 
 [project.optional-dependencies]
 tiger = ["tigeropen==3.7.0"]
+futu = ["futu-api==10.10.7008"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

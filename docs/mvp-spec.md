@@ -69,16 +69,17 @@ The MVP excludes:
 
 ### 2.1 MVP market-data provider
 
-Tiger OpenAPI is the MVP primary market-data provider for a bounded personal
-research universe. This is not a permanent single-vendor core architecture and
-does not authorize provider routing, fallback, arbitration, or broad historical
-scanning.
+Futu OpenAPI is the preferred MVP U.S. market-data provider for a bounded
+personal research universe. Tiger remains a frozen fallback capability. This
+does not authorize automatic provider routing, failover, arbitration, blending,
+or broad historical scanning.
 
-Tiger credentials are per-user local runtime state held in Tiger's official
-`tiger_openapi_config.properties` outside the repository. Convexity Hunter
-resolves only a local file path; normal product flow never asks a user or an
-LLM to provide Tiger ID, account ID, or private-key contents. The exact local
-runtime boundary is defined in
+Futu authentication is owned by an already-running local OpenD instance;
+Convexity Hunter reads no Futu credentials. Tiger credentials remain per-user
+local runtime state in Tiger's official external configuration. Normal product
+flow never asks a user or an LLM for provider credential contents. The exact
+runtime boundaries are defined in
+[`futu-provider-contract.md`](futu-provider-contract.md) and
 [`tiger-provider-contract.md`](tiger-provider-contract.md).
 
 Positive convexity bounds maximum loss for the supported structures but does

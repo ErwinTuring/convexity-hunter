@@ -15,7 +15,7 @@ frozen contract.
 
 ```text
 one exact caller-specified Long Call or Long Put
-    -> Tiger exact monthly contract verification
+    -> Futu exact monthly contract verification
     -> available authoritative evidence
     -> explicit None for unavailable reviewed artifacts
     -> reviewed candidate assembly
@@ -28,19 +28,23 @@ only after the one-leg path proves its semantics and product value.
 
 ## A — Already producible and reusable
 
-- Tiger local-only configuration discovery and `QuoteClient` initialization.
-- Exact caller-specified monthly option verification with provider identifier,
-  provider multiplier, and provider-neutral `OptionContractReference`.
+- Connection to an already-authenticated local Futu OpenD quote context.
+- Exact caller-specified Futu monthly/provider-standard option verification
+  with provider identifier, provider multiplier, and provider-neutral
+  `OptionContractReference`.
+- Tiger local-only configuration and completed evidence capabilities retained
+  unchanged as fallback, without automatic routing or blending.
 - Narrow SPY product-term enrichment using Tiger exact identity plus Cboe
   American/Physical terms. The reference remains `INCOMPLETE`: OCC's OSI
   convention does not make unsuffixed `SPY` plus multiplier 100 exact
   standard-deliverable proof, and known-adjusted and non-SPY contracts remain
   unsupported.
-- Transient entitled REST bid/ask/size evidence, retained only as
-  provider-native evidence.
-- Provider-neutral underlying completed daily bars.
-- Provider-native historical dividend, historical option-bar, and exact-option
-  analytics/activity evidence.
+- Atomic Futu option/underlying BBO with exact identity and separate raw
+  provider-server bid/ask receipt timestamps, retained provider-natively only.
+- Futu provider-neutral underlying completed unadjusted daily bars.
+- Futu provider-native exact-option historical OHLCV and current
+  analytics/activity evidence; Tiger provider-native dividends remain
+  available as fallback evidence.
 - U.S. Treasury six-point daily par-yield curve and bounded pricing-rate proxy.
 - Existing selected/fresh binding, timing, relationship, selection,
   liquidity, cost, realized-volatility, volatility-environment, tail-pricing,
@@ -62,23 +66,18 @@ producing `DATA_INSUFFICIENT`.
 
 ### B1. Current option quote semantics
 
-REST-chain quote evidence lacks authoritative quote timestamp and session
-binding. The pending regular-session Option Push BBO probe must prove exact
-contract identity, event time, bid time, ask time, bid/ask values and sizes,
-and market/session status. Only proven Push evidence may enter a future
-`OptionQuoteObservation`, initially with conservative
-`QuoteScope.PROVIDER_COMPOSITE`.
+Futu atomic Order Book Push proves exact contract identity, bid/ask values and
+sizes, and separate provider-server bid/ask receipt timestamps. It does not
+supply one authoritative event timestamp or bind market/session status inside
+that same frame. Separate `get_market_state` reads do not repair this gap.
+No `OptionQuoteObservation` or quote-scope claim is authorized.
 
 ### B2. Current underlying quote semantics
 
-`StructureCosts` requires an exact current underlying bid/ask midpoint, but no
-Tiger current-underlying `UnderlyingQuoteObservation` adapter exists. A
-bounded feasibility review rejected REST `get_stock_briefs`: its
-`latest_time` is a last-trade timestamp, not an event/bid/ask timestamp. The
-same regular-session probe must instead test one atomic raw Push `QuoteData`
-`ALL` frame for exact `SPY`, including event/bid/ask timestamps, Basic session
-status/hour tag, and BBO values/sizes. Public Basic/BBO callback pairing is
-insufficient. No normalized record is authorized before that evidence exists.
+Futu atomic Order Book Push supplies exact underlying identity, BBO values and
+sizes, and separate provider-server bid/ask receipt timestamps. As with the
+option frame, it lacks one authoritative event timestamp and same-frame
+market/session status. No `UnderlyingQuoteObservation` is authorized.
 
 ### B3. Exact-contract deliverable completeness
 
@@ -95,15 +94,14 @@ OCC platform solely to close this gap.
 
 Liquidity requires provider-neutral current volume and open-interest records;
 costs require provider-neutral Greeks with disclosed model, rate/dividend
-inputs, unit convention, and Theta day basis. Current Tiger provider-native
-analytics/activity evidence lacks sufficient observation/session and
-methodology semantics. The bounded applicability review is complete and
-authorizes no normalization: volume lacks a session date and completed-session
-status, open interest lacks its effective session date, and IV/Greeks lack the
-required analytics time, model/input descriptions, Vega scaling, and Theta day
-basis. `last_timestamp` is only the last-trade timestamp, and future Push BBO
-quote evidence cannot fill these REST gaps. These records remain unavailable
-unless new authoritative provider semantics emerge.
+inputs, unit convention, and Theta day basis. Current Futu and Tiger
+provider-native analytics/activity evidence lacks sufficient
+observation/session and methodology semantics. Volume lacks a session date and
+completed-session status; open interest lacks its effective session date; and
+IV/Greeks lack the required analytics time, model/input descriptions, Vega
+scaling, and Theta day basis. Snapshot update time is a last-trade timestamp
+and cannot timestamp the other fields. These records remain unavailable unless
+new authoritative provider semantics emerge.
 
 ### B5. Thin current-snapshot composition
 
@@ -137,7 +135,7 @@ The exact-contract verifier and service now expose the first minimal loop
 without waiting for B1-B4:
 
 ```text
-Tiger exact OptionContractReference
+Futu exact OptionContractReference
     -> verify_direct_entry_exact_contracts
     -> run_direct_entry_reviewed_research_service with None artifacts
     -> DATA_INSUFFICIENT
@@ -167,11 +165,11 @@ silently generated by the generic assembler.
 ## Work-unit order and gate
 
 ```text
-exact Tiger monthly contract verification
+exact Futu monthly contract verification
     -> provider-neutral exact-contract verification
     -> first real Direct Entry DATA_INSUFFICIENT report
-    -> regular-session Option Push BBO evidence
-    + current-underlying quote feasibility
+    -> retain proven provider-native Futu atomic BBO evidence
+    -> resolve only the remaining same-frame quote/session semantic gap
     -> only proven normalized current-snapshot inputs
     -> liquidity and costs when every existing authority is satisfied
     -> evaluate product learning

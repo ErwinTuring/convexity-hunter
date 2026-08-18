@@ -1,6 +1,6 @@
 # ADR-008: Tiger primary provider with local provider-native credentials
 
-Status: Accepted
+Status: Superseded by ADR-009
 Decision date: 2026-08-09
 
 ## Context
