@@ -43,7 +43,6 @@ __all__ = (
 
 _US_EASTERN = _ZoneInfo("America/New_York")
 _UTC = _datetime.timezone.utc
-_MAX_SERVER_CLOCK_LEAD = _datetime.timedelta(seconds=1)
 _NORMALIZATION_VERSION = "futu-option-contract-v0.1"
 _DAILY_BAR_NORMALIZATION_VERSION = "futu-underlying-daily-bar-v0.1"
 _SDK_UNAVAILABLE_MESSAGE = (
@@ -642,9 +641,9 @@ class FutuBboEvidence:
     ask_price: _decimal.Decimal
     bid_size: int
     ask_size: int
-    bid_observed_at: _datetime.datetime
-    ask_observed_at: _datetime.datetime
     received_at: _datetime.datetime
+    provider_bid_timestamp_value: _Optional[_decimal.Decimal] = None
+    provider_ask_timestamp_value: _Optional[_decimal.Decimal] = None
 
     def __post_init__(self) -> None:
         if type(self.provider_identifier) is not str or not self.provider_identifier:
@@ -661,24 +660,23 @@ class FutuBboEvidence:
             raise ValueError(_BBO_RESPONSE_MESSAGE)
         if type(self.ask_size) is not int or self.ask_size <= 0:
             raise ValueError(_BBO_RESPONSE_MESSAGE)
-        bid_at = _checked_runtime_timestamp(
-            "bid_observed_at", self.bid_observed_at, _BBO_RESPONSE_MESSAGE
-        )
-        ask_at = _checked_runtime_timestamp(
-            "ask_observed_at", self.ask_observed_at, _BBO_RESPONSE_MESSAGE
-        )
         received_at = _checked_runtime_timestamp(
             "received_at", self.received_at, _BBO_RESPONSE_MESSAGE
         )
-        if (
-            bid_at > received_at + _MAX_SERVER_CLOCK_LEAD
-            or ask_at > received_at + _MAX_SERVER_CLOCK_LEAD
+        for name in (
+            "provider_bid_timestamp_value",
+            "provider_ask_timestamp_value",
         ):
-            raise ValueError(_BBO_RESPONSE_MESSAGE)
+            value = getattr(self, name)
+            if value is not None:
+                if type(value) is not _decimal.Decimal:
+                    raise TypeError(
+                        "provider timestamp values must be Decimal values or None"
+                    )
+                if not value.is_finite():
+                    raise ValueError(_BBO_RESPONSE_MESSAGE)
         object.__setattr__(self, "bid_price", bid)
         object.__setattr__(self, "ask_price", ask)
-        object.__setattr__(self, "bid_observed_at", bid_at)
-        object.__setattr__(self, "ask_observed_at", ask_at)
         object.__setattr__(self, "received_at", received_at)
 
 
@@ -801,17 +799,16 @@ def _bbo_from_atomic_frame(
         s2c = rsp_pb.s2c
         bid_present = s2c.HasField("svrRecvTimeBidTimestamp")
         ask_present = s2c.HasField("svrRecvTimeAskTimestamp")
-        bid_seconds = float(s2c.svrRecvTimeBidTimestamp) if bid_present else 0.0
-        ask_seconds = float(s2c.svrRecvTimeAskTimestamp) if ask_present else 0.0
-        if (
-            not bid_present
-            or not ask_present
-            or not _math.isfinite(bid_seconds)
-            or not _math.isfinite(ask_seconds)
-            or bid_seconds <= 0
-            or ask_seconds <= 0
-        ):
-            return None
+        bid_value = (
+            _provider_decimal(s2c.svrRecvTimeBidTimestamp, _BBO_RESPONSE_MESSAGE)
+            if bid_present
+            else None
+        )
+        ask_value = (
+            _provider_decimal(s2c.svrRecvTimeAskTimestamp, _BBO_RESPONSE_MESSAGE)
+            if ask_present
+            else None
+        )
         bids = data.get("Bid") or []
         asks = data.get("Ask") or []
         if len(bids) < 1 or len(asks) < 1 or len(bids[0]) < 2 or len(asks[0]) < 2:
@@ -823,9 +820,9 @@ def _bbo_from_atomic_frame(
             ask_price=_positive_decimal(asks[0][0], _BBO_RESPONSE_MESSAGE),
             bid_size=_provider_integer(bids[0][1], _BBO_RESPONSE_MESSAGE),
             ask_size=_provider_integer(asks[0][1], _BBO_RESPONSE_MESSAGE),
-            bid_observed_at=_datetime.datetime.fromtimestamp(bid_seconds, _UTC),
-            ask_observed_at=_datetime.datetime.fromtimestamp(ask_seconds, _UTC),
             received_at=received_at,
+            provider_bid_timestamp_value=bid_value,
+            provider_ask_timestamp_value=ask_value,
         )
     except ValueError:
         raise

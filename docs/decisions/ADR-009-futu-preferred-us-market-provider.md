@@ -40,10 +40,11 @@ avoiding a premature multi-provider framework.
 
 Futu's explicit `STANDARD` classification is retained provider-natively but
 does not prove exact OCC deliverable contents. Atomic BBO retains separate
-Futu-server bid/ask receipt timestamps, but absent a same-frame event timestamp
-and session/status binding it does not authorize provider-neutral current quote
-records or any quote-scope claim. Tiger code and external local configuration
-remain unchanged and available as fallback evidence.
+opaque provider timestamp-field values when populated, but Futu explicitly
+does not support their server-receive-time capability for U.S. securities.
+They authorize no time, freshness, session, provider-neutral current-quote, or
+quote-scope claim. Tiger code and external local configuration remain
+unchanged and available as fallback evidence.
 
 ## Related documents
 

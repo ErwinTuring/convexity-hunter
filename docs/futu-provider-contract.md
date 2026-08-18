@@ -87,16 +87,15 @@ A qualifying frame must contain, in the same protobuf frame:
 
 - exact provider identity;
 - non-crossed positive bid/ask values;
-- positive bid/ask sizes;
-- positive finite numeric svrRecvTimeBidTimestamp;
-- positive finite numeric svrRecvTimeAskTimestamp; and
-- timestamps no more than one second later than adapter receipt, solely to
-  accommodate bounded independent-clock skew between OpenD and the local
-  process; the raw provider timestamps are retained without rewriting.
+- positive bid/ask sizes.
 
-An initial cached frame with absent or zero timestamps is ignored. Timeout,
-subscription, schema, identity, crossed-market, timestamp, or disconnect
-failure is sanitized and fails closed.
+The protobuf fields `svrRecvTimeBidTimestamp` and
+`svrRecvTimeAskTimestamp` are optional evidence only. When present and finite,
+their numeric values are retained as opaque provider-native `Decimal` values;
+when absent, they remain `None`. They are not converted to datetimes, compared
+with the adapter clock, or used to qualify a frame. Timeout, subscription,
+schema, identity, crossed-market, or disconnect failure is sanitized and fails
+closed.
 
 Because Futu's public context API has no handler getter and targeted
 unsubscribe is not reliable enough to protect a shared context, the BBO
@@ -106,18 +105,16 @@ handler must still be installed. It then closes that context on every success
 or failure path. A shared, subscribed, or custom-handler context fails before
 mutation. Failure to validate, install, or close fails closed.
 
-The one-second clock-skew tolerance does not establish freshness and does not
-authorize canonical quote normalization. A larger server-clock lead fails
-closed.
+A scoped Futu support response confirms that U.S. real-time bid, ask, and size
+values are supported, but explicitly states that the server-receive-time
+capability represented by those two fields is not supported for U.S.
+securities. Populated U.S. values therefore have no authorized time meaning.
+This is a settled provider boundary, not unresolved documentation ambiguity.
 
-The result retains separate bid and ask server-receive timestamps and the
-provider market state observed immediately before and after collection. It
-does not claim those separate state reads were bound inside the BBO frame.
-
-Official Futu documentation describes the numeric fields as Futu-server
-receipt timestamps for bid and ask, while its interface limitations still
-contain conflicting market-support wording. Futu also provides no single
-event timestamp or authoritative quote-scope field in this frame. Therefore:
+The result also retains the provider market state observed immediately before
+and after collection, but does not bind those separate reads to the BBO frame.
+Neither the opaque numeric fields nor the separate state reads establish an
+event time, freshness, session status, or quote scope. Therefore:
 
 - no UnderlyingQuoteObservation is constructed;
 - no OptionQuoteObservation is constructed;
@@ -126,6 +123,9 @@ event timestamp or authoritative quote-scope field in this frame. Therefore:
 - last-trade or snapshot update time never substitutes for BBO time.
 
 This is immutable provider-native evidence only.
+
+No further BBO timestamp probe is authorized unless Futu publishes new
+official U.S. time semantics or supplies a new authoritative support answer.
 
 ## Completed underlying daily bars
 

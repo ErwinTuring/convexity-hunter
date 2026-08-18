@@ -512,12 +512,12 @@ contract, transformation requiring caller orchestration, synthetic-only
 integration, and not-yet-implemented work. A domain record alone is not a
 complete application workflow.
 
-Tiger OpenAPI is now the accepted MVP primary market-data provider after a
-successful live feasibility spike. The immediate upstream work begins with a
-local-only provider-native configuration and SDK client boundary, then bounded
-normalization of established Tiger market facts. This does not change the
-reviewed downstream direct-entry service and does not introduce generic
-provider routing.
+Futu OpenAPI is the preferred MVP U.S. market-data provider, with Tiger frozen
+as fallback and no router or blending. One real Futu exact contract has passed
+the partial Direct Entry loop through deterministic `DATA_INSUFFICIENT` and a
+Chinese report without weakening missing-evidence boundaries. Provider
+timestamp, exact-deliverable, activity, and Greeks gaps remain fail-closed;
+they are not the current roadmap priority.
 
 ## 16. Corrected roadmap
 
@@ -536,9 +536,13 @@ provider routing.
    Chinese-Report Integration work unit.
 8. Completed deterministic offline single-structure service contract,
    implementation, focused tests, and independent review.
-9. Tiger local runtime boundary and bounded provider adapter work;
-10. subsequent pricing-reference, Skill, Event Intelligence, mapping,
-    discovery, generation, and complete-flow work.
+9. Completed Tiger local runtime and bounded provider evidence work, retained
+   as fallback.
+10. Completed bounded Futu provider and real Direct Entry partial-loop proof.
+11. Current: bounded Hunter/Event Intelligence capability research and the
+    source-backed event-to-underlying acceptance contract.
+12. Later: discovery, exact structure generation, and complete-flow work only
+    after that Event Intelligence boundary is frozen.
 
 ## 17. Locked principles
 

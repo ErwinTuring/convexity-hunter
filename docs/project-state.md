@@ -36,9 +36,10 @@ proof, and authoritative provider-neutral activity/Greeks inputs. They no
 longer block the honest partial Direct Entry loop. Missing volatility, tail,
 scenario, threshold, and affordability artifacts may remain explicit
 `DATA_INSUFFICIENT` for the first slice. Additional rate, dividend,
-historical-IV, surface,
-discovery, generation, and Event Intelligence work is deferred unless the
-vertical slice demonstrates it is the next blocker.
+historical-IV, surface, provider, and Greeks infrastructure is deferred. The
+proven Direct Entry partial loop now returns the roadmap to bounded
+Hunter/Event Intelligence capability research and a source-backed
+event-to-underlying acceptance boundary before discovery generation.
 
 ## Historical milestone ledger
 
@@ -1528,6 +1529,33 @@ with explicit missing costs/liquidity; no position-management plan was created;
 and a nonempty Chinese report was rendered. No provider-specific orchestration
 layer or new numerical path was needed.
 
+A subsequent Futu support clarification confirms U.S. real-time bid/ask and
+sizes while explicitly stating that the Order Book server-receive-time
+capability is unsupported for U.S. securities. The adapter therefore retains
+those optional numeric fields opaquely, without datetime conversion, clock
+comparison, freshness, session, canonical-quote, NBBO, or scope semantics.
+Further BBO timestamp probes are frozen unless new official provider semantics
+emerge.
+
+A bounded exact-deliverable applicability review also remains fail-closed.
+Futu's exact `STANDARD` classification is stronger than symbol syntax, but its
+official enum does not disclose exact deliverable composition or
+corporate-action lineage. Exact size/multiplier and exercise type plus Cboe's
+product-level SPY American/physical terms do not prove that the selected exact
+series is unadjusted. The provider-neutral reference remains `INCOMPLETE` and
+the complete `StructureCosts` path remains closed.
+Independent semantic review passed with no findings. Validation passed 23
+focused Futu tests, 1,210 full-suite tests, compileall, and `git diff --check`.
+
+## Current next priority
+
+Begin bounded Hunter/Event Intelligence capability research. Prefer mature
+Skills where they can satisfy the source, observation-time,
+fact-versus-inference, impact-path, distribution-hypothesis, event-window,
+uncertainty, identity/version, and incomplete-result boundaries already
+defined in `product-direction.md`. Do not reopen market-data infrastructure as
+a substitute for this product path.
+
 ## Deferred
 
 - Tiger market-data retrieval and normalization beyond the completed local
@@ -1535,11 +1563,6 @@ layer or new numerical path was needed.
   underlying daily bars, historical-dividend evidence, and historical-option-
   bar evidence, and exact-option analytics/activity evidence work units
 - additional market-data providers and generic provider routing/arbitration
-- mature news, search, knowledge, and world-event Skill capability research
-- Skill adapters and multi-Skill composition
-- last30days-skill or similar narrative integrations
-- Serenity Alpha investigation
-- Event Intelligence and event-to-underlying mapping
 - option-chain discovery, supported structure generation, and contract access
   beyond one caller-specified exact monthly verification
 - exact standard-monthly-option definition and deterministic Delta/ATM

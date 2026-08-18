@@ -262,8 +262,14 @@ FAKE_SDK = types.SimpleNamespace(
 
 
 class BboContext:
-    def __init__(self, option_identifier="US.SPY260918C768000"):
+    def __init__(
+        self,
+        option_identifier="US.SPY260918C768000",
+        *,
+        include_populated_timestamp_values=True,
+    ):
         self.option_identifier = option_identifier
+        self.include_populated_timestamp_values = include_populated_timestamp_values
         self.handler = None
         self.previous_handler = FakeHandlerBase()
         self._handler_ctx = types.SimpleNamespace(
@@ -304,13 +310,14 @@ class BboContext:
                     {"code": code, "Bid": [(1.0, 2)], "Ask": [(1.1, 3)]}
                 )
             )
-            self.handler.on_recv_rsp(
-                FakeRsp(
-                    {"code": code, "Bid": [(1.0, 2)], "Ask": [(1.1, 3)]},
-                    timestamp,
-                    timestamp,
+            if self.include_populated_timestamp_values:
+                self.handler.on_recv_rsp(
+                    FakeRsp(
+                        {"code": code, "Bid": [(1.0, 2)], "Ask": [(1.1, 3)]},
+                        timestamp,
+                        timestamp,
+                    )
                 )
-            )
         return 0, ""
 
     def unsubscribe(self, codes, subtypes):
@@ -325,7 +332,7 @@ class BboContext:
 
 
 class BboTests(unittest.TestCase):
-    def test_atomic_bbo_retains_per_side_timestamps_without_quote_normalization(self):
+    def test_atomic_bbo_retains_opaque_provider_values_without_normalization(self):
         context = BboContext()
         with mock.patch.object(futu, "_load_futu_sdk", return_value=FAKE_SDK), mock.patch.object(
             futu, "_utc_now", return_value=NOW
@@ -335,7 +342,10 @@ class BboTests(unittest.TestCase):
             )
         self.assertEqual(result.underlying_bbo.provider_identifier, "US.SPY")
         self.assertEqual(result.option_bbo.provider_identifier, context.option_identifier)
-        self.assertEqual(result.option_bbo.bid_observed_at, NOW - datetime.timedelta(seconds=1))
+        self.assertEqual(
+            result.option_bbo.provider_bid_timestamp_value,
+            decimal.Decimal(str(NOW.timestamp() - 1)),
+        )
         self.assertEqual(result.option_bbo.ask_size, 3)
         self.assertTrue(context.closed)
         self.assertEqual(
@@ -345,11 +355,23 @@ class BboTests(unittest.TestCase):
         self.assertEqual(context.previous_handler.calls, 4)
         self.assertNotIn("quote_scope", result.__dataclass_fields__)
 
-    def test_crossed_future_or_incomplete_bbo_fails_closed(self):
+    def test_absent_unsupported_timestamp_values_do_not_block_bbo(self):
+        context = BboContext(include_populated_timestamp_values=False)
+        with mock.patch.object(futu, "_load_futu_sdk", return_value=FAKE_SDK), mock.patch.object(
+            futu, "_utc_now", return_value=NOW
+        ):
+            result = futu.retrieve_futu_direct_entry_bbo_evidence(
+                context, verification(), timeout_seconds=1
+            )
+        self.assertIsNone(result.underlying_bbo.provider_bid_timestamp_value)
+        self.assertIsNone(result.underlying_bbo.provider_ask_timestamp_value)
+        self.assertEqual(result.option_bbo.received_at, NOW)
+
+    def test_crossed_invalid_size_or_nonfinite_opaque_value_fails_closed(self):
         for kwargs in (
             {"bid_price": decimal.Decimal("2"), "ask_price": decimal.Decimal("1")},
-            {"bid_observed_at": NOW + datetime.timedelta(seconds=2)},
             {"bid_size": 0},
+            {"provider_bid_timestamp_value": decimal.Decimal("NaN")},
         ):
             values = dict(
                 provider_identifier="US.SPY",
@@ -357,27 +379,25 @@ class BboTests(unittest.TestCase):
                 ask_price=decimal.Decimal("1.1"),
                 bid_size=1,
                 ask_size=1,
-                bid_observed_at=NOW,
-                ask_observed_at=NOW,
                 received_at=NOW,
             )
             values.update(kwargs)
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 futu.FutuBboEvidence(**values)
 
-        tolerated = futu.FutuBboEvidence(
+        opaque = futu.FutuBboEvidence(
             provider_identifier="US.SPY",
             bid_price=decimal.Decimal("1"),
             ask_price=decimal.Decimal("1.1"),
             bid_size=1,
             ask_size=1,
-            bid_observed_at=NOW + datetime.timedelta(milliseconds=500),
-            ask_observed_at=NOW,
             received_at=NOW,
+            provider_bid_timestamp_value=decimal.Decimal("999999999999999"),
+            provider_ask_timestamp_value=decimal.Decimal("-7"),
         )
         self.assertEqual(
-            tolerated.bid_observed_at,
-            NOW + datetime.timedelta(milliseconds=500),
+            opaque.provider_bid_timestamp_value,
+            decimal.Decimal("999999999999999"),
         )
 
     def test_subscription_and_close_failures_are_sanitized(self):
@@ -433,8 +453,6 @@ class BboTests(unittest.TestCase):
             ask_price=decimal.Decimal("1.1"),
             bid_size=1,
             ask_size=1,
-            bid_observed_at=NOW,
-            ask_observed_at=NOW,
             received_at=NOW,
         )
         option_bbo = futu.FutuBboEvidence(
@@ -443,8 +461,6 @@ class BboTests(unittest.TestCase):
             ask_price=decimal.Decimal("1.1"),
             bid_size=1,
             ask_size=1,
-            bid_observed_at=NOW,
-            ask_observed_at=NOW,
             received_at=NOW,
         )
         with self.assertRaisesRegex(ValueError, "BBO response"):

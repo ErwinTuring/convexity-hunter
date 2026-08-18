@@ -46,9 +46,7 @@ OpenD and persisted no raw payload. They confirmed:
 - populated exact-option volume, open interest, IV, Delta, Gamma, Theta, Vega,
   and Rho retained provider-natively;
 - qualifying atomic option and SPY BBO frames with exact identity, values,
-  sizes, and separate raw Futu-server bid/ask receipt timestamps; and
-- a measured sub-second OpenD/local clock lead handled by a bounded one-second
-  tolerance without rewriting provider timestamps.
+  sizes, and optional opaque provider timestamp-field values; and
 - the exact Futu contract entered the existing Direct Entry service without a
   new provider orchestration layer; exact-contract verification succeeded,
   research readiness remained absent, both candidate and screening states were
@@ -60,11 +58,11 @@ repository or model output.
 
 ## Active research-readiness gaps
 
-1. Futu atomic Order Book frames have separate provider-server bid/ask receipt
-   timestamps but no single authoritative event timestamp or market/session
-   status in the same frame. Separate market-state reads do not establish that
-   binding. No `OptionQuoteObservation`, `UnderlyingQuoteObservation`,
-   freshness claim, or quote scope is authorized.
+1. Futu confirms U.S. real-time bid/ask/sizes, but explicitly does not support
+   the two Order Book server-receive-time fields for U.S. securities. Populated
+   numeric values remain provider-native and opaque. They and separate
+   market-state reads authorize no event time, freshness, session binding,
+   `OptionQuoteObservation`, `UnderlyingQuoteObservation`, or quote scope.
 2. Futu's exact `STANDARD` classification is useful provider-native evidence
    but does not disclose exact OCC deliverable contents or corporate-action
    lineage. The provider-neutral contract reference remains `INCOMPLETE`, and
@@ -82,22 +80,22 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Preserve provider-native BBO evidence while seeking authoritative
-   same-frame event/session semantics; do not normalize current quotes by
-   inference.
-2. Keep costs and liquidity closed until every existing input authority is
-   satisfied; do not infer deliverable, activity, OI, IV, or Greek semantics.
-3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
-   minimum slice; add only the next demonstrated blocker rather than unrelated
-   infrastructure.
+1. Recenter on bounded Hunter/Event Intelligence capability research and its
+   source-backed event-to-underlying acceptance boundary.
+2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
+   Direct Entry minimum slice. Keep costs and liquidity closed rather than
+   inferring deliverable, activity, OI, IV, or Greek semantics.
+3. Freeze further BBO timestamp probing and provider/rates/history expansion
+   unless new official semantics or a future demonstrated product blocker
+   justifies a separately bounded work unit.
 
 ## Explicitly deferred
 
 - additional Treasury/rate sophistication;
 - forward-dividend, historical-IV, and volatility-surface platforms unless a
   demonstrated vertical-slice blocker requires a bounded unit;
-- broad scanning, structure generation, Event Intelligence, and
-  event-to-underlying mapping until one real Direct Entry slice works;
+- broad scanning and structure generation before Hunter/Event Intelligence
+  establishes its accepted event-to-underlying hypothesis boundary;
 - provider routing/arbitration, portfolio optimization, monitoring, alerts,
   recommendations, execution, and heavy orchestration frameworks.
 
