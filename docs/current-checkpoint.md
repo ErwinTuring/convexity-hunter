@@ -42,6 +42,10 @@ Repository: `ErwinTuring/convexity-hunter`
   submission with one source, two facts, one interpretation, and one
   bidirectional distribution hypothesis. It consumed no market data and
   persisted no raw external payload. The result did not justify an SEC adapter.
+- The deterministic discovery-entry handoff retains one exact accepted Event
+  Intelligence result and one caller-selected retained hypothesis by identity.
+  It does not replay acceptance, select automatically, rank, retrieve a chain,
+  or generate a structure.
 
 ## Live Futu evidence
 
@@ -91,11 +95,11 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Ground and freeze the smallest deterministic discovery-entry handoff from
-   one accepted Event Intelligence result. Retain the exact acceptance result
-   and selected hypothesis; do not replay acceptance.
-2. Keep option-chain retrieval, exact structure generation, ranking, and
-   event-source adapters outside that first handoff contract.
+1. Ground the first provider-neutral option-chain discovery request and
+   eligibility boundary from the accepted handoff.
+2. Resolve in preflight whether current authoritative evidence can satisfy the
+   MVP standard-monthly constraint without weakening exact-deliverable
+   fail-closed semantics. Do not retrieve or generate during preflight.
 3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.

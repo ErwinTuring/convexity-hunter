@@ -1588,14 +1588,31 @@ or falsification semantics, and the manual bounded exercise exposed no current
 product blocker that an adapter would remove. The evidence and decision are in
 [`event-intelligence-real-event-exercise.md`](event-intelligence-real-event-exercise.md).
 
+## Discovery-entry handoff checkpoint
+
+The first deterministic discovery handoff is implemented under
+[`discovery-entry-handoff-contract.md`](discovery-entry-handoff-contract.md).
+Its direct module exports exactly `DiscoveryEntryHandoff` and
+`create_discovery_entry_handoff`, with zero package-root exports. The immutable
+two-field result retains the exact accepted Event Intelligence result and one
+caller-selected retained hypothesis by object identity. It performs no
+automatic selection, ranking, mapping, market-data call, or structure work.
+
+The handoff reconstructs only intrinsic submission structure and checks the
+already-issued `ACCEPTED`, empty-issues, and assessment-version proof state. It
+does not call the acceptance assessor, private issue derivation, or acceptance-
+result constructor. Independent review passed with no blocker, major, or minor
+finding. Validation passed 12 focused handoff tests, 1,247 full-suite tests,
+compileall, and `git diff --check`.
+
 ## Current next priority
 
-Ground and freeze the smallest deterministic discovery-entry handoff from one
-accepted Event Intelligence result. It must retain the accepted result and
-selected hypothesis without replaying acceptance, must not yet retrieve an
-option chain or generate a structure, and must preserve the non-ranking and
-incomplete-result boundaries. Do not reopen market-data infrastructure as a
-substitute for this product path.
+Ground the first provider-neutral option-chain discovery request and eligibility
+boundary that may consume the accepted handoff. Before implementation, resolve
+whether current authoritative evidence can satisfy the MVP's standard-monthly
+constraint without weakening the exact-deliverable fail-closed decision. Do not
+retrieve a chain, generate a structure, or reopen unrelated market-data
+infrastructure during that preflight.
 
 ## Deferred
 

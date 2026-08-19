@@ -548,10 +548,12 @@ they are not the current roadmap priority.
     source-backed event-to-underlying acceptance contract.
 12. Completed one repository-external, source-backed real SEC filing exercise;
     the submission was accepted and did not justify an SEC adapter.
-13. Current: freeze the smallest deterministic discovery-entry handoff from
-    one accepted Event Intelligence result without replaying acceptance.
-14. Later: any demonstrated smallest event-source adapter, real option-chain
-    discovery, exact structure generation, and complete-flow work.
+13. Completed the smallest deterministic discovery-entry handoff from one
+    accepted Event Intelligence result without replaying acceptance.
+14. Current: ground the first provider-neutral option-chain discovery request
+    and eligibility boundary, including unresolved standard-monthly evidence.
+15. Later: any demonstrated smallest event-source adapter, real option-chain
+    retrieval, exact structure generation, and complete-flow work.
 
 ## 17. Locked principles
 
