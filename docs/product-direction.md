@@ -587,8 +587,10 @@ they are not the current roadmap priority.
 18. Completed the smallest deterministic handoff from explicit selection
     through existing exact Futu contract verification and the provider-neutral
     Direct Entry exact-contract gate, without invoking Candidate Assembly.
-19. Next real use requires a human to select one displayed exact contract or
-    explicit valid Call/Put pair; the system does not default or auto-select.
+19. Completed the first real explicit-human-selection exercise from the
+    accepted AAPL path through Browser, exact Futu and Direct Entry gates,
+    partial `DATA_INSUFFICIENT` research, and Chinese rendering. The system did
+    not default, rank, infer ATM/Delta, or substitute a contract.
 20. Later: any demonstrated smallest event-source adapter, separately frozen
     automatic exact-structure generation, and complete-flow work.
 

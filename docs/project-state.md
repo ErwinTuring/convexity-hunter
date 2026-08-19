@@ -1703,6 +1703,25 @@ provider orchestration. Independent review passed with no blocker, major, or
 minor finding. Validation passed 90 focused bridge/Futu/Direct Entry tests,
 1,301 full-suite tests, compileall, and `git diff --check`.
 
+## Real Futu Browser-to-Direct-Entry exercise checkpoint
+
+The first real explicit-human-selection exercise is recorded in
+[`futu-browser-direct-entry-real-exercise.md`](futu-browser-direct-entry-real-exercise.md).
+The accepted AAPL bidirectional-distribution path produced a current Browser;
+the user explicitly selected the 2026-11-20 295 Long Straddle, one contract per
+leg, with USD 10,000 assumed portfolio value and a 30-calendar-day holding
+assumption. The strike was the median of the displayed neutral 15-pair slice,
+which creates no ATM, Delta, candidate, ranking, or recommendation semantics.
+
+Both selected rows were retained by identity. Both exact Futu verifications,
+the bridge Direct Entry exact gate, and the service Direct Entry exact gate
+passed without substitution. Multiplier 100 came from Futu for both legs; both
+references remained `INCOMPLETE`; research readiness remained absent. Partial
+assembly and screening returned `DATA_INSUFFICIENT` with all six applicable
+missing-evidence reasons, no position-management plan, and a nonempty Chinese
+report. No raw payload was persisted and no BBO, history, account, or trading
+call was made.
+
 ## Current next priority
 
 The bounded Futu Exact Contract Browser and explicit human-selection boundary
@@ -1716,13 +1735,13 @@ Call or Put selection produces a listed-structure intent; a Long Straddle
 requires an explicit same-expiry/same-strike Call and Put. The result cannot
 enter Candidate Assembly directly.
 
-That explicit selection can now pass through exact Futu verification and the
-existing provider-neutral Direct Entry exact-contract gate without a new
-orchestration layer. A next real exercise requires an actual human-selected
-row or explicit same-expiry/same-strike Call/Put pair; the system must not
-default or auto-select one. Automatic mode-based generation remains paused
-because accepted Futu evidence supplies neither authoritative ATM reference
-nor authoritative Delta semantics.
+The first real explicit human selection has now passed through exact Futu
+verification, the provider-neutral Direct Entry exact gate, partial assembly,
+screening, and Chinese rendering without a new orchestration layer or weakened
+evidence. The system must not default or auto-select another structure merely
+to repeat the exercise. Automatic mode-based generation remains paused because
+accepted Futu evidence supplies neither authoritative ATM reference nor
+authoritative Delta semantics.
 
 ## Deferred
 

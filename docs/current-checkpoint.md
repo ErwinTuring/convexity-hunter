@@ -90,6 +90,11 @@ OpenD and persisted no raw payload. They confirmed:
   expiration classifications, 5 provider-monthly exact-date chain calls, and
   880 retained provider-classified eligible rows (440 calls and 440 puts),
   with no raw payload persistence, quote retrieval, selection, or generation;
+- one explicit human selection of the 2026-11-20 AAPL 295 Long Straddle from a
+  neutral 15-pair Browser slice; both exact Futu leg verifications and both
+  Direct Entry exact gates passed, both references remained `INCOMPLETE`,
+  research readiness remained absent, screening returned `DATA_INSUFFICIENT`,
+  and a nonempty Chinese report was produced without contract substitution;
   and
 - the exact Futu contract entered the existing Direct Entry service without a
   new provider orchestration layer; exact-contract verification succeeded,
@@ -124,10 +129,9 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. The Browser-to-Direct-Entry architecture is now complete through exact-
-   contract verification. A real use must wait for an explicit human contract
-   selection; the system must not choose a row or Straddle by default merely
-   to run another exercise.
+1. The Browser-to-Direct-Entry architecture and first real explicit-human-
+   selection exercise are complete. The system must not choose another row or
+   Straddle by default merely to repeat the exercise.
 2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
