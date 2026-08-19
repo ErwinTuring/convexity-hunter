@@ -86,7 +86,12 @@ event and observation time; source retention; fact-versus-inference
 separation; disclosed impact path, distribution hypothesis, and event window;
 uncertainty and conflicts; Skill identity and version; and incomplete-result
 handling. This is an acceptance interface, not a second mapping algorithm. Its
-detailed contract requires separate future design after Skill research.
+detailed provider-neutral contract is implemented in
+[`event-intelligence-acceptance-contract.md`](event-intelligence-acceptance-contract.md)
+after the bounded capability review in
+[`event-intelligence-capability-research.md`](event-intelligence-capability-research.md).
+It accepts only auditable hypothesis submissions and does not perform mapping,
+ranking, market-data validation, or candidate generation.
 
 A market-data and deterministic-rules component retrieves the real option
 chain, confirms listed contracts, applies maturity and future strike-or-Delta
@@ -539,10 +544,12 @@ they are not the current roadmap priority.
 9. Completed Tiger local runtime and bounded provider evidence work, retained
    as fallback.
 10. Completed bounded Futu provider and real Direct Entry partial-loop proof.
-11. Current: bounded Hunter/Event Intelligence capability research and the
+11. Completed bounded Hunter/Event Intelligence capability research and the
     source-backed event-to-underlying acceptance contract.
-12. Later: discovery, exact structure generation, and complete-flow work only
-    after that Event Intelligence boundary is frozen.
+12. Current: exercise the accepted boundary with one repository-external,
+    source-backed real event submission before selecting any adapter.
+13. Later: the smallest justified event-source adapter, discovery, exact
+    structure generation, and complete-flow work only after that real exercise.
 
 ## 17. Locked principles
 

@@ -31,6 +31,13 @@ Repository: `ErwinTuring/convexity-hunter`
   quote evidence remain unchanged and available as fallback evidence.
 - U.S. Treasury daily par-yield retrieval and the bounded 30–180-day pricing
   rate proxy remain implemented.
+- Bounded Event Intelligence capability research and the provider-neutral,
+  Skill-neutral acceptance boundary are implemented. It retains structured
+  sources, fact-versus-interpretation dependencies, resolved `UnderlyingKey`,
+  impact and distribution hypotheses, inclusive methodologized windows,
+  contradiction, uncertainty, falsification, and producer identity. Missing
+  semantics remain deterministic `INCOMPLETE`; malformed identities,
+  chronology, references, and graphs fail closed.
 
 ## Live Futu evidence
 
@@ -80,12 +87,16 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Recenter on bounded Hunter/Event Intelligence capability research and its
-   source-backed event-to-underlying acceptance boundary.
-2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
+1. Exercise the accepted Event Intelligence boundary with one
+   repository-external, source-backed real event submission. Prefer SEC EDGAR
+   for a filing-driven case and persist no unreviewed external payload.
+2. Use that bounded result to decide whether a smallest source adapter is
+   justified. Do not install a Skill or create generic orchestration by
+   default.
+3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
-3. Freeze further BBO timestamp probing and provider/rates/history expansion
+4. Freeze further BBO timestamp probing and provider/rates/history expansion
    unless new official semantics or a future demonstrated product blocker
    justifies a separately bounded work unit.
 
@@ -94,8 +105,8 @@ partial Direct Entry loop.
 - additional Treasury/rate sophistication;
 - forward-dividend, historical-IV, and volatility-surface platforms unless a
   demonstrated vertical-slice blocker requires a bounded unit;
-- broad scanning and structure generation before Hunter/Event Intelligence
-  establishes its accepted event-to-underlying hypothesis boundary;
+- broad scanning and structure generation before one real source-backed event
+  exercises the accepted event-to-underlying hypothesis boundary;
 - provider routing/arbitration, portfolio optimization, monitoring, alerts,
   recommendations, execution, and heavy orchestration frameworks.
 

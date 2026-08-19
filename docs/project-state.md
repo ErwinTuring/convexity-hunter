@@ -37,9 +37,10 @@ longer block the honest partial Direct Entry loop. Missing volatility, tail,
 scenario, threshold, and affordability artifacts may remain explicit
 `DATA_INSUFFICIENT` for the first slice. Additional rate, dividend,
 historical-IV, surface, provider, and Greeks infrastructure is deferred. The
-proven Direct Entry partial loop now returns the roadmap to bounded
-Hunter/Event Intelligence capability research and a source-backed
-event-to-underlying acceptance boundary before discovery generation.
+proven Direct Entry partial loop returned the roadmap to bounded
+Hunter/Event Intelligence. The bounded capability research and the
+provider-neutral source-backed event-to-underlying acceptance boundary are now
+implemented before discovery generation.
 
 ## Historical milestone ledger
 
@@ -1547,14 +1548,38 @@ the complete `StructureCosts` path remains closed.
 Independent semantic review passed with no findings. Validation passed 23
 focused Futu tests, 1,210 full-suite tests, compileall, and `git diff --check`.
 
+## Event Intelligence acceptance checkpoint
+
+The bounded capability review compared native web research, `last30days`,
+Serenity, GDELT, and SEC EDGAR without installing or adopting a third-party
+Skill. No evaluated capability alone satisfies the product boundary. The
+adopted contract is therefore provider-neutral and Skill-neutral, with one
+direct-module implementation and zero package-root exports.
+
+The immutable submission retains structured sources, observed facts and
+interpretations, inclusive methodologized event and expected windows, resolved
+`UnderlyingKey` identity, impact path, distribution-change mode and hypothesis,
+support and contradiction, uncertainty, falsification, and producer identity.
+The deterministic result is `ACCEPTED` only when every closed audit condition
+is complete; absent semantics remain subject-bound `INCOMPLETE`, while malformed
+graphs, chronology, identities, and references raise controlled errors. Exact
+nested records are intrinsically reconstructed, and graph validation is
+iterative rather than recursion-limit dependent.
+
+The initial independent review found two MAJOR trust-boundary defects and two
+related MINOR findings: constructor-bypassed identity/nested records, leaked
+`AttributeError`, recursive deep-graph failure, and missing adversarial tests.
+All were corrected, and targeted independent re-review passed. Final validation
+passed 25 focused Event Intelligence tests, 1,235 full-suite tests, compileall,
+and `git diff --check`.
+
 ## Current next priority
 
-Begin bounded Hunter/Event Intelligence capability research. Prefer mature
-Skills where they can satisfy the source, observation-time,
-fact-versus-inference, impact-path, distribution-hypothesis, event-window,
-uncertainty, identity/version, and incomplete-result boundaries already
-defined in `product-direction.md`. Do not reopen market-data infrastructure as
-a substitute for this product path.
+Exercise the accepted boundary with one repository-external, source-backed real
+event submission. Prefer SEC EDGAR when the selected event is filing-driven.
+Use the result to determine whether any smallest adapter is justified; do not
+install a Skill or build a generic event/provider framework by default. Do not
+reopen market-data infrastructure as a substitute for this product path.
 
 ## Deferred
 
