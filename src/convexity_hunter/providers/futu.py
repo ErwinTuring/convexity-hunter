@@ -10,10 +10,14 @@ import numbers as _numbers
 import re as _re
 import threading as _threading
 from dataclasses import dataclass as _dataclass
+from enum import Enum as _Enum
 from typing import Optional as _Optional
 from typing import Tuple as _Tuple
 from zoneinfo import ZoneInfo as _ZoneInfo
 
+from convexity_hunter.option_chain_discovery import (
+    OptionChainDiscoveryRequest as _OptionChainDiscoveryRequest,
+)
 from convexity_hunter.market_data import (
     DataOrigin as _DataOrigin,
     NormalizationMetadata as _NormalizationMetadata,
@@ -30,6 +34,11 @@ __all__ = (
     "initialize_futu_quote_context",
     "FutuExactOptionContractVerification",
     "verify_futu_monthly_option_contract",
+    "FutuOptionChainRowStatus",
+    "FutuOptionChainExpirationEvidence",
+    "FutuOptionChainContractEvidence",
+    "FutuOptionChainDiscoveryEvidence",
+    "retrieve_futu_option_chain_discovery_evidence",
     "FutuBboEvidence",
     "FutuDirectEntryBboEvidence",
     "retrieve_futu_direct_entry_bbo_evidence",
@@ -75,6 +84,18 @@ _ANALYTICS_RETRIEVAL_MESSAGE = (
 )
 _ANALYTICS_RESPONSE_MESSAGE = (
     "Futu exact-option analytics/activity response is invalid."
+)
+_DISCOVERY_EXPIRATION_RETRIEVAL_MESSAGE = (
+    "Futu option-chain discovery expiration retrieval failed."
+)
+_DISCOVERY_EXPIRATION_RESPONSE_MESSAGE = (
+    "Futu option-chain discovery expiration response is invalid."
+)
+_DISCOVERY_CHAIN_RETRIEVAL_MESSAGE = (
+    "Futu option-chain discovery chain retrieval failed."
+)
+_DISCOVERY_CHAIN_RESPONSE_MESSAGE = (
+    "Futu option-chain discovery chain response is invalid."
 )
 _OPTION_IDENTIFIER_PATTERN = _re.compile(
     r"^US\.(?P<root>.+)(?P<expiration>\d{6})(?P<type>[CP])"
@@ -620,6 +641,483 @@ def verify_futu_monthly_option_contract(
         provider_standard_type="STANDARD",
         provider_exercise_type=exercise_type,
         contract_reference=reference,
+    )
+
+
+class FutuOptionChainRowStatus(str, _Enum):
+    """Provider-classified applicability for one retained chain row."""
+
+    ELIGIBLE = "eligible"
+    NON_MONTHLY = "non_monthly"
+    NON_STANDARD = "non_standard"
+    SUSPENDED = "suspended"
+
+
+def _discovery_statuses(
+    provider_expiration_cycle: str,
+    provider_standard_type: str,
+    suspension: bool,
+) -> _Tuple[FutuOptionChainRowStatus, ...]:
+    statuses = []
+    if provider_expiration_cycle != "MONTH":
+        statuses.append(FutuOptionChainRowStatus.NON_MONTHLY)
+    if provider_standard_type != "STANDARD":
+        statuses.append(FutuOptionChainRowStatus.NON_STANDARD)
+    if suspension:
+        statuses.append(FutuOptionChainRowStatus.SUSPENDED)
+    if not statuses:
+        statuses.append(FutuOptionChainRowStatus.ELIGIBLE)
+    return tuple(statuses)
+
+
+def _discovery_string(value: object, message: str) -> str:
+    if type(value) is not str or not value:
+        raise ValueError(message)
+    return value
+
+
+def _discovery_provider_underlying(request: _OptionChainDiscoveryRequest) -> str:
+    return "US." + request.underlying_key.symbol
+
+
+def _validate_discovery_request(value: object) -> _OptionChainDiscoveryRequest:
+    if type(value) is not _OptionChainDiscoveryRequest:
+        raise TypeError(
+            "discovery_request must have exact type OptionChainDiscoveryRequest"
+        )
+    try:
+        rebuilt = _OptionChainDiscoveryRequest(
+            value.discovery_entry_handoff,
+            value.evaluation_date,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("discovery_request is malformed") from error
+    if rebuilt != value:
+        raise ValueError("discovery_request is not intrinsically valid")
+    return value
+
+
+@_dataclass(frozen=True)
+class FutuOptionChainExpirationEvidence:
+    """One retained provider expiration classification and receipt time."""
+
+    expiration: _datetime.date
+    provider_expiration_cycle: str
+    expiration_retrieved_at: _datetime.datetime
+    chain_retrieved_at: _Optional[_datetime.datetime]
+
+    def __post_init__(self) -> None:
+        expiration = _validate_date("expiration", self.expiration)
+        cycle = _discovery_string(
+            self.provider_expiration_cycle,
+            _DISCOVERY_EXPIRATION_RESPONSE_MESSAGE,
+        )
+        expiration_at = _checked_runtime_timestamp(
+            "expiration_retrieved_at",
+            self.expiration_retrieved_at,
+            _DISCOVERY_EXPIRATION_RESPONSE_MESSAGE,
+        )
+        if self.chain_retrieved_at is None:
+            if cycle == "MONTH":
+                raise ValueError(_DISCOVERY_EXPIRATION_RESPONSE_MESSAGE)
+            chain_at = None
+        else:
+            chain_at = _checked_runtime_timestamp(
+                "chain_retrieved_at",
+                self.chain_retrieved_at,
+                _DISCOVERY_CHAIN_RESPONSE_MESSAGE,
+            )
+            if cycle != "MONTH" or chain_at < expiration_at:
+                raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+        object.__setattr__(self, "expiration", expiration)
+        object.__setattr__(self, "provider_expiration_cycle", cycle)
+        object.__setattr__(self, "expiration_retrieved_at", expiration_at)
+        object.__setattr__(self, "chain_retrieved_at", chain_at)
+
+
+@_dataclass(frozen=True)
+class FutuOptionChainContractEvidence:
+    """One exact provider chain row, retained without contract selection."""
+
+    provider_identifier: str
+    provider_underlying: str
+    expiration: _datetime.date
+    option_type: str
+    strike: _decimal.Decimal
+    lot_size: int
+    provider_expiration_cycle: str
+    provider_standard_type: str
+    suspension: bool
+    statuses: _Tuple[FutuOptionChainRowStatus, ...]
+    retrieved_at: _datetime.datetime
+
+    def __post_init__(self) -> None:
+        identifier = _discovery_string(
+            self.provider_identifier, _DISCOVERY_CHAIN_RESPONSE_MESSAGE
+        )
+        provider_underlying = _discovery_string(
+            self.provider_underlying, _DISCOVERY_CHAIN_RESPONSE_MESSAGE
+        )
+        if (
+            not provider_underlying.startswith("US.")
+            or len(provider_underlying) <= 3
+        ):
+            raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+        expiration = _validate_date("expiration", self.expiration)
+        option_type = _canonical_option_type(self.option_type)
+        if type(self.strike) is not _decimal.Decimal:
+            raise TypeError("strike must be a Decimal")
+        strike = _positive_decimal(self.strike, _DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+        if type(self.lot_size) is not int or isinstance(self.lot_size, bool):
+            raise TypeError("lot_size must be an integer")
+        if self.lot_size <= 0:
+            raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+        cycle = _discovery_string(
+            self.provider_expiration_cycle, _DISCOVERY_CHAIN_RESPONSE_MESSAGE
+        )
+        standard_type = _discovery_string(
+            self.provider_standard_type, _DISCOVERY_CHAIN_RESPONSE_MESSAGE
+        )
+        if type(self.suspension) is not bool:
+            raise TypeError("suspension must be a Boolean")
+        expected_statuses = _discovery_statuses(
+            cycle, standard_type, self.suspension
+        )
+        if (
+            type(self.statuses) is not tuple
+            or any(
+                type(item) is not FutuOptionChainRowStatus
+                for item in self.statuses
+            )
+            or self.statuses != expected_statuses
+        ):
+            raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+        retrieved_at = _checked_runtime_timestamp(
+            "retrieved_at", self.retrieved_at, _DISCOVERY_CHAIN_RESPONSE_MESSAGE
+        )
+        root, decoded_expiration, decoded_type, decoded_strike = _decode_identifier(
+            identifier
+        )
+        if (
+            decoded_expiration != expiration
+            or decoded_type != option_type
+            or decoded_strike != strike
+            or (standard_type == "STANDARD" and root != provider_underlying[3:])
+        ):
+            raise ValueError(_IDENTIFIER_MESSAGE)
+        object.__setattr__(self, "provider_identifier", identifier)
+        object.__setattr__(self, "provider_underlying", provider_underlying)
+        object.__setattr__(self, "expiration", expiration)
+        object.__setattr__(self, "option_type", option_type)
+        object.__setattr__(self, "strike", strike)
+        object.__setattr__(self, "provider_expiration_cycle", cycle)
+        object.__setattr__(self, "provider_standard_type", standard_type)
+        object.__setattr__(self, "retrieved_at", retrieved_at)
+
+
+@_dataclass(frozen=True)
+class FutuOptionChainDiscoveryEvidence:
+    """All bounded Futu expiration and chain rows for one exact request."""
+
+    discovery_request: _OptionChainDiscoveryRequest
+    provider_underlying: str
+    expirations: _Tuple[FutuOptionChainExpirationEvidence, ...]
+    contracts: _Tuple[FutuOptionChainContractEvidence, ...]
+
+    def __post_init__(self) -> None:
+        request = _validate_discovery_request(self.discovery_request)
+        expected_underlying = _discovery_provider_underlying(request)
+        if (
+            type(self.provider_underlying) is not str
+            or self.provider_underlying != expected_underlying
+        ):
+            raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+        if type(self.expirations) is not tuple or any(
+            type(item) is not FutuOptionChainExpirationEvidence
+            for item in self.expirations
+        ):
+            raise TypeError(
+                "expirations must be a tuple of FutuOptionChainExpirationEvidence"
+            )
+        if type(self.contracts) is not tuple or any(
+            type(item) is not FutuOptionChainContractEvidence
+            for item in self.contracts
+        ):
+            raise TypeError(
+                "contracts must be a tuple of FutuOptionChainContractEvidence"
+            )
+        expiration_by_date = {}
+        expiration_retrieved_at = None
+        previous_chain_retrieved_at = None
+        for item in self.expirations:
+            try:
+                rebuilt_expiration = FutuOptionChainExpirationEvidence(
+                    item.expiration,
+                    item.provider_expiration_cycle,
+                    item.expiration_retrieved_at,
+                    item.chain_retrieved_at,
+                )
+            except (AttributeError, TypeError, ValueError) as error:
+                raise ValueError(_DISCOVERY_EXPIRATION_RESPONSE_MESSAGE) from error
+            if (
+                rebuilt_expiration != item
+                or item.expiration in expiration_by_date
+                or item.expiration < request.minimum_expiration_date
+                or item.expiration > request.maximum_expiration_date
+            ):
+                raise ValueError(_DISCOVERY_EXPIRATION_RESPONSE_MESSAGE)
+            if expiration_retrieved_at is None:
+                expiration_retrieved_at = item.expiration_retrieved_at
+            elif item.expiration_retrieved_at != expiration_retrieved_at:
+                raise ValueError(_DISCOVERY_EXPIRATION_RESPONSE_MESSAGE)
+            if item.chain_retrieved_at is not None:
+                if (
+                    previous_chain_retrieved_at is not None
+                    and item.chain_retrieved_at < previous_chain_retrieved_at
+                ):
+                    raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+                previous_chain_retrieved_at = item.chain_retrieved_at
+            expiration_by_date[item.expiration] = item
+        if (
+            tuple(sorted(self.expirations, key=lambda item: item.expiration))
+            != self.expirations
+        ):
+            raise ValueError(_DISCOVERY_EXPIRATION_RESPONSE_MESSAGE)
+        rebuilt_contracts = []
+        for item in self.contracts:
+            try:
+                rebuilt_contract = FutuOptionChainContractEvidence(
+                    item.provider_identifier,
+                    item.provider_underlying,
+                    item.expiration,
+                    item.option_type,
+                    item.strike,
+                    item.lot_size,
+                    item.provider_expiration_cycle,
+                    item.provider_standard_type,
+                    item.suspension,
+                    item.statuses,
+                    item.retrieved_at,
+                )
+            except (AttributeError, TypeError, ValueError) as error:
+                raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE) from error
+            if rebuilt_contract != item:
+                raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+            rebuilt_contracts.append(rebuilt_contract)
+        expected_contracts = tuple(
+            sorted(
+                rebuilt_contracts,
+                key=lambda item: (
+                    item.expiration,
+                    item.strike,
+                    0 if item.option_type == "call" else 1,
+                    item.provider_identifier,
+                ),
+            )
+        )
+        if expected_contracts != self.contracts:
+            raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+        seen_identifiers = set()
+        for item in self.contracts:
+            expiration_evidence = expiration_by_date.get(item.expiration)
+            if (
+                item.provider_identifier in seen_identifiers
+                or item.provider_underlying != expected_underlying
+                or expiration_evidence is None
+                or expiration_evidence.provider_expiration_cycle != "MONTH"
+                or item.retrieved_at != expiration_evidence.chain_retrieved_at
+            ):
+                raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+            seen_identifiers.add(item.provider_identifier)
+
+
+def _discovery_expiration_row(row: dict) -> _Tuple[_datetime.date, str]:
+    try:
+        expiration = _datetime.datetime.strptime(
+            row["strike_time"], "%Y-%m-%d"
+        ).date()
+    except Exception:
+        raise ValueError(_DISCOVERY_EXPIRATION_RESPONSE_MESSAGE) from None
+    cycle = _discovery_string(
+        row["expiration_cycle"], _DISCOVERY_EXPIRATION_RESPONSE_MESSAGE
+    )
+    return expiration, cycle
+
+
+def _discovery_contract_row(
+    row: dict,
+    *,
+    provider_underlying: str,
+    expected_expiration: _datetime.date,
+    retrieved_at: _datetime.datetime,
+) -> FutuOptionChainContractEvidence:
+    message = _DISCOVERY_CHAIN_RESPONSE_MESSAGE
+    try:
+        identifier = _discovery_string(row["code"], message)
+        owner = _discovery_string(row["stock_owner"], message)
+        if owner != provider_underlying:
+            raise ValueError(message)
+        try:
+            expiration = _datetime.datetime.strptime(
+                row["strike_time"], "%Y-%m-%d"
+            ).date()
+        except Exception:
+            raise ValueError(message) from None
+        if expiration != expected_expiration:
+            raise ValueError(message)
+        option_type_value = _discovery_string(row["option_type"], message)
+        if option_type_value not in {"CALL", "PUT"}:
+            raise ValueError(message)
+        option_type = option_type_value.lower()
+        strike = _positive_decimal(row["strike_price"], message)
+        lot_size = _provider_integer(row["lot_size"], message)
+        if lot_size <= 0 or type(row["suspension"]) is not bool:
+            raise ValueError(message)
+        cycle = _discovery_string(row["expiration_cycle"], message)
+        standard_type = _discovery_string(row["option_standard_type"], message)
+        root, decoded_expiration, decoded_type, decoded_strike = _decode_identifier(
+            identifier
+        )
+        if (
+            decoded_expiration != expiration
+            or decoded_type != option_type
+            or decoded_strike != strike
+            or (standard_type == "STANDARD" and root != provider_underlying[3:])
+        ):
+            raise ValueError(_IDENTIFIER_MESSAGE)
+        return FutuOptionChainContractEvidence(
+            provider_identifier=identifier,
+            provider_underlying=provider_underlying,
+            expiration=expiration,
+            option_type=option_type,
+            strike=strike,
+            lot_size=lot_size,
+            provider_expiration_cycle=cycle,
+            provider_standard_type=standard_type,
+            suspension=row["suspension"],
+            statuses=_discovery_statuses(cycle, standard_type, row["suspension"]),
+            retrieved_at=retrieved_at,
+        )
+    except (TypeError, ValueError):
+        raise
+    except Exception:
+        raise ValueError(message) from None
+
+
+def retrieve_futu_option_chain_discovery_evidence(
+    quote_context: object,
+    *,
+    discovery_request: _OptionChainDiscoveryRequest,
+) -> FutuOptionChainDiscoveryEvidence:
+    """Retrieve bounded provider classifications without selecting a contract."""
+
+    request = _validate_discovery_request(discovery_request)
+    try:
+        get_expirations = getattr(
+            quote_context, "get_option_expiration_date", None
+        )
+        get_chain = getattr(quote_context, "get_option_chain", None)
+    except Exception:
+        raise TypeError("quote_context must provide Futu quote methods") from None
+    if not callable(get_expirations) or not callable(get_chain):
+        raise TypeError("quote_context must provide Futu quote methods")
+
+    provider_underlying = _discovery_provider_underlying(request)
+    try:
+        ret, table = get_expirations(provider_underlying)
+    except Exception:
+        raise RuntimeError(_DISCOVERY_EXPIRATION_RETRIEVAL_MESSAGE) from None
+    expiration_retrieved_at = _utc_now()
+    if ret != 0:
+        raise RuntimeError(_DISCOVERY_EXPIRATION_RETRIEVAL_MESSAGE)
+    rows = _records(
+        table,
+        columns=frozenset(("strike_time", "expiration_cycle")),
+        message=_DISCOVERY_EXPIRATION_RESPONSE_MESSAGE,
+    )
+    retained = []
+    seen_expirations = set()
+    for row in rows:
+        expiration, cycle = _discovery_expiration_row(row)
+        if not (
+            request.minimum_expiration_date
+            <= expiration
+            <= request.maximum_expiration_date
+        ):
+            continue
+        if expiration in seen_expirations:
+            raise ValueError(_DISCOVERY_EXPIRATION_RESPONSE_MESSAGE)
+        seen_expirations.add(expiration)
+        retained.append((expiration, cycle))
+    retained.sort(key=lambda item: item[0])
+
+    expiration_evidence = []
+    contracts = []
+    seen_identifiers = set()
+    chain_columns = frozenset(
+        (
+            "code",
+            "lot_size",
+            "option_type",
+            "stock_owner",
+            "strike_time",
+            "strike_price",
+            "suspension",
+            "expiration_cycle",
+            "option_standard_type",
+        )
+    )
+    for expiration, cycle in retained:
+        chain_retrieved_at = None
+        if cycle == "MONTH":
+            try:
+                ret, table = get_chain(
+                    provider_underlying,
+                    start=expiration.isoformat(),
+                    end=expiration.isoformat(),
+                )
+            except Exception:
+                raise RuntimeError(_DISCOVERY_CHAIN_RETRIEVAL_MESSAGE) from None
+            chain_retrieved_at = _utc_now()
+            if ret != 0:
+                raise RuntimeError(_DISCOVERY_CHAIN_RETRIEVAL_MESSAGE)
+            chain_rows = _records(
+                table,
+                columns=chain_columns,
+                message=_DISCOVERY_CHAIN_RESPONSE_MESSAGE,
+            )
+            for row in chain_rows:
+                contract = _discovery_contract_row(
+                    row,
+                    provider_underlying=provider_underlying,
+                    expected_expiration=expiration,
+                    retrieved_at=chain_retrieved_at,
+                )
+                if contract.provider_identifier in seen_identifiers:
+                    raise ValueError(_DISCOVERY_CHAIN_RESPONSE_MESSAGE)
+                seen_identifiers.add(contract.provider_identifier)
+                contracts.append(contract)
+        expiration_evidence.append(
+            FutuOptionChainExpirationEvidence(
+                expiration=expiration,
+                provider_expiration_cycle=cycle,
+                expiration_retrieved_at=expiration_retrieved_at,
+                chain_retrieved_at=chain_retrieved_at,
+            )
+        )
+    contracts.sort(
+        key=lambda item: (
+            item.expiration,
+            item.strike,
+            0 if item.option_type == "call" else 1,
+            item.provider_identifier,
+        )
+    )
+    return FutuOptionChainDiscoveryEvidence(
+        discovery_request=request,
+        provider_underlying=provider_underlying,
+        expirations=tuple(expiration_evidence),
+        contracts=tuple(contracts),
     )
 
 

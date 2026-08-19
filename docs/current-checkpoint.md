@@ -50,6 +50,12 @@ Repository: `ErwinTuring/convexity-hunter`
   and caller evaluation date, deriving only the inclusive expiration interval
   `max(evaluation+30, event-end+30)` through `evaluation+150`. It calls no
   provider or clock and claims no contract eligibility.
+- The bounded Futu chain-evidence boundary retrieves expiration
+  classifications once and one exact-date chain per in-range provider
+  `MONTH`. It retains every valid row with deterministic applicability status
+  and ordering. `MONTH + STANDARD + not suspended` remains provider-classified
+  eligibility only; it completes no deliverable, settlement, reference,
+  costs, liquidity, or research-readiness evidence.
 
 ## Live Futu evidence
 
@@ -99,15 +105,13 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Ground and freeze one bounded Futu chain-evidence and provider-classified
-   series-eligibility contract for the request underlying and expiration range.
-2. Keep exact `MONTH + STANDARD` as provider-native classification only. Do not
-   complete deliverable/reference evidence, retrieve quotes, rank, apply
-   Delta/ATM selection, or generate structures in that unit.
-3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
+1. Exercise one exact source-backed discovery request through the bounded Futu
+   chain-evidence boundary using repository-external sanitized live evidence.
+   Persist no raw payload and perform no structure selection or generation.
+2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
-4. Freeze further BBO timestamp probing and provider/rates/history expansion
+3. Freeze further BBO timestamp probing and provider/rates/history expansion
    unless new official semantics or a future demonstrated product blocker
    justifies a separately bounded work unit.
 
@@ -116,8 +120,9 @@ partial Direct Entry loop.
 - additional Treasury/rate sophistication;
 - forward-dividend, historical-IV, and volatility-surface platforms unless a
   demonstrated vertical-slice blocker requires a bounded unit;
-- broad scanning and structure generation before one real source-backed event
-  exercises the accepted event-to-underlying hypothesis boundary;
+- automatic Delta/ATM selection, broad scanning, and structure generation
+  until authoritative market semantics and a separate deterministic contract
+  justify them;
 - provider routing/arbitration, portfolio optimization, monitoring, alerts,
   recommendations, execution, and heavy orchestration frameworks.
 

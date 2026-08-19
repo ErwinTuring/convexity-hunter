@@ -1625,13 +1625,33 @@ reference, costs, liquidity, or research readiness. Independent review passed
 with no findings. Validation passed 12 focused request tests, 1,259 full-suite
 tests, compileall, and `git diff --check`.
 
+## Futu option-chain discovery evidence checkpoint
+
+The bounded provider evidence contract is implemented under
+[`futu-option-chain-discovery-evidence-contract.md`](futu-option-chain-discovery-evidence-contract.md).
+For one exact `OptionChainDiscoveryRequest`, it calls Futu expiration discovery
+once, retains all in-range classifications, and calls one exact-date chain for
+each provider `MONTH` expiration. It retains every structurally valid chain
+row with canonical ordering and complete ordered applicability reasons rather
+than filtering, ranking, or selecting contracts.
+
+Exact `MONTH + STANDARD + not suspended` remains only Futu-classified series
+eligibility. The evidence constructs no `OptionContractReference`, deliverable,
+settlement, quote, costs, liquidity, analytics, research readiness, candidate,
+or structure. Provider failures and malformed payload values fail closed with
+sanitized errors.
+
+Independent review found one MAJOR provider-value error-disclosure defect and
+two MINOR direct-construction/test-boundary gaps. All were corrected, and
+targeted re-review passed. Validation passed 41 focused Futu tests, 1,277
+full-suite tests, compileall, and `git diff --check`.
+
 ## Current next priority
 
-Ground and freeze one bounded Futu chain-evidence and provider-classified
-series-eligibility contract for the exact request underlying and expiration
-interval. Preserve `MONTH + STANDARD` as provider-native classification only;
-do not complete exact deliverable/reference evidence, retrieve quotes, rank
-contracts, apply Delta/ATM selection, or generate structures in that unit.
+Exercise one exact source-backed discovery request through the bounded Futu
+chain-evidence boundary using repository-external sanitized live evidence.
+Persist no raw payload and perform no structure selection, ranking, quote
+retrieval, Delta/ATM resolution, or generation.
 
 ## Deferred
 
@@ -1640,8 +1660,8 @@ contracts, apply Delta/ATM selection, or generate structures in that unit.
   underlying daily bars, historical-dividend evidence, and historical-option-
   bar evidence, and exact-option analytics/activity evidence work units
 - additional market-data providers and generic provider routing/arbitration
-- option-chain discovery, supported structure generation, and contract access
-  beyond one caller-specified exact monthly verification
+- automatic Delta/ATM resolution, supported structure generation, and broad
+  contract scanning beyond bounded provider-classified chain evidence
 - exact standard-monthly-option definition and deterministic Delta/ATM
   resolution contracts
 - non-expiration scenario-pricing production

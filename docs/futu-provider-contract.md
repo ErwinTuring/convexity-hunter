@@ -31,6 +31,11 @@ The direct module convexity_hunter.providers.futu exports exactly, in order:
     initialize_futu_quote_context
     FutuExactOptionContractVerification
     verify_futu_monthly_option_contract
+    FutuOptionChainRowStatus
+    FutuOptionChainExpirationEvidence
+    FutuOptionChainContractEvidence
+    FutuOptionChainDiscoveryEvidence
+    retrieve_futu_option_chain_discovery_evidence
     FutuBboEvidence
     FutuDirectEntryBboEvidence
     retrieve_futu_direct_entry_bbo_evidence
@@ -183,6 +188,21 @@ These fields remain provider-native because Futu does not bind:
 No OptionVolumeObservation, OptionOpenInterestObservation,
 OptionImpliedVolatilityObservation, or OptionGreeksObservation is built.
 
+## Bounded option-chain discovery evidence
+
+`retrieve_futu_option_chain_discovery_evidence` consumes one exact
+provider-neutral `OptionChainDiscoveryRequest`. It retrieves expiration
+classifications once, retains all in-range expiration evidence, and retrieves
+one exact-date chain for each provider `MONTH` expiration. Every structurally
+valid chain row is retained with ordered provider-classified applicability;
+none is selected, ranked, quoted, or generated into a structure.
+
+Exact `MONTH + STANDARD + not suspended` is only provider-classified series
+eligibility. It does not prove an exact standard/unadjusted deliverable or
+authorize reference completion, costs, liquidity, or research readiness. The
+complete boundary is frozen in
+[`futu-option-chain-discovery-evidence-contract.md`](futu-option-chain-discovery-evidence-contract.md).
+
 ## Dependency and failure boundary
 
 futu-api==10.10.7008 is an optional futu dependency. Normal tests use
@@ -197,7 +217,7 @@ embedded in exceptions or returned records.
 This work adds no:
 
 - trading, order, unlock, account, or portfolio API;
-- broad option discovery or recommendation;
+- broad option scanning or recommendation;
 - provider router, fallback executor, arbitration, or blending;
 - generic credential framework;
 - current provider-neutral quote normalization;

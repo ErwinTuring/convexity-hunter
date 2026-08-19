@@ -552,10 +552,13 @@ they are not the current roadmap priority.
     accepted Event Intelligence result without replaying acceptance.
 14. Completed the first provider-neutral option-chain discovery request and
     hard maturity-window boundary.
-15. Current: freeze bounded Futu chain evidence and provider-classified series
+15. Completed bounded Futu chain evidence and provider-classified series
     eligibility for one requested underlying and expiration interval.
-16. Later: any demonstrated smallest event-source adapter, exact structure
-    generation, and complete-flow work.
+16. Current: exercise that boundary once against the accepted source-backed
+    event path using sanitized live Futu evidence, without selecting or
+    generating a structure.
+17. Later: any demonstrated smallest event-source adapter, separately frozen
+    exact-structure generation, and complete-flow work.
 
 ## 17. Locked principles
 
