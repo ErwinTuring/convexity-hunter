@@ -1605,14 +1605,33 @@ result constructor. Independent review passed with no blocker, major, or minor
 finding. Validation passed 12 focused handoff tests, 1,247 full-suite tests,
 compileall, and `git diff --check`.
 
+## Option-chain discovery request checkpoint
+
+The provider-neutral request-only boundary is implemented under
+[`option-chain-discovery-request-contract.md`](option-chain-discovery-request-contract.md).
+Its direct module exports exactly `OptionChainDiscoveryRequest` and
+`create_option_chain_discovery_request`, with zero package-root exports. The
+immutable request retains one exact discovery handoff and caller-supplied
+date-only evaluation date. It exposes the retained underlying, distribution
+mode, and event-window end, plus inclusive minimum and maximum expiration dates
+from the exact `max(evaluation + 30 days, event end + 30 days)` and
+`evaluation + 150 days` policy.
+
+The request makes no provider or clock call and produces no eligibility or
+contract. Complete exact-deliverable proof is not required for the request to
+exist. Later exact `MONTH` and provider `STANDARD` evidence may establish only
+a provider-classified series gate; it cannot complete deliverable, settlement,
+reference, costs, liquidity, or research readiness. Independent review passed
+with no findings. Validation passed 12 focused request tests, 1,259 full-suite
+tests, compileall, and `git diff --check`.
+
 ## Current next priority
 
-Ground the first provider-neutral option-chain discovery request and eligibility
-boundary that may consume the accepted handoff. Before implementation, resolve
-whether current authoritative evidence can satisfy the MVP's standard-monthly
-constraint without weakening the exact-deliverable fail-closed decision. Do not
-retrieve a chain, generate a structure, or reopen unrelated market-data
-infrastructure during that preflight.
+Ground and freeze one bounded Futu chain-evidence and provider-classified
+series-eligibility contract for the exact request underlying and expiration
+interval. Preserve `MONTH + STANDARD` as provider-native classification only;
+do not complete exact deliverable/reference evidence, retrieve quotes, rank
+contracts, apply Delta/ATM selection, or generate structures in that unit.
 
 ## Deferred
 

@@ -550,10 +550,12 @@ they are not the current roadmap priority.
     the submission was accepted and did not justify an SEC adapter.
 13. Completed the smallest deterministic discovery-entry handoff from one
     accepted Event Intelligence result without replaying acceptance.
-14. Current: ground the first provider-neutral option-chain discovery request
-    and eligibility boundary, including unresolved standard-monthly evidence.
-15. Later: any demonstrated smallest event-source adapter, real option-chain
-    retrieval, exact structure generation, and complete-flow work.
+14. Completed the first provider-neutral option-chain discovery request and
+    hard maturity-window boundary.
+15. Current: freeze bounded Futu chain evidence and provider-classified series
+    eligibility for one requested underlying and expiration interval.
+16. Later: any demonstrated smallest event-source adapter, exact structure
+    generation, and complete-flow work.
 
 ## 17. Locked principles
 
@@ -599,7 +601,6 @@ they are not the current roadmap priority.
 The following are unresolved future contracts, not blockers for this alignment:
 
 - the exact standard-monthly-option definition;
-- event-window date representation;
 - the exact Delta convention, nearest-eligible-Delta resolution, tie handling,
   and expiration interaction;
 - the exact ATM or near-ATM definition;
@@ -608,5 +609,4 @@ The following are unresolved future contracts, not blockers for this alignment:
 - the annual convexity-budget contract decision;
 - actual mature Skills, their gaps, adapters, and compositions;
 - provider versus internal non-expiration pricing;
-- final event-to-underlying accepted contract;
 - direct-entry resolution of incomplete structure descriptions.

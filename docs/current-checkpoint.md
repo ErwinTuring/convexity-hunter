@@ -46,6 +46,10 @@ Repository: `ErwinTuring/convexity-hunter`
   Intelligence result and one caller-selected retained hypothesis by identity.
   It does not replay acceptance, select automatically, rank, retrieve a chain,
   or generate a structure.
+- The provider-neutral option-chain discovery request retains the exact handoff
+  and caller evaluation date, deriving only the inclusive expiration interval
+  `max(evaluation+30, event-end+30)` through `evaluation+150`. It calls no
+  provider or clock and claims no contract eligibility.
 
 ## Live Futu evidence
 
@@ -95,11 +99,11 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Ground the first provider-neutral option-chain discovery request and
-   eligibility boundary from the accepted handoff.
-2. Resolve in preflight whether current authoritative evidence can satisfy the
-   MVP standard-monthly constraint without weakening exact-deliverable
-   fail-closed semantics. Do not retrieve or generate during preflight.
+1. Ground and freeze one bounded Futu chain-evidence and provider-classified
+   series-eligibility contract for the request underlying and expiration range.
+2. Keep exact `MONTH + STANDARD` as provider-native classification only. Do not
+   complete deliverable/reference evidence, retrieve quotes, rank, apply
+   Delta/ATM selection, or generate structures in that unit.
 3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
