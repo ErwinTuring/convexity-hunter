@@ -38,6 +38,10 @@ Repository: `ErwinTuring/convexity-hunter`
   contradiction, uncertainty, falsification, and producer identity. Missing
   semantics remain deterministic `INCOMPLETE`; malformed identities,
   chronology, references, and graphs fail closed.
+- One repository-external SEC filing exercise produced an accepted AAPL
+  submission with one source, two facts, one interpretation, and one
+  bidirectional distribution hypothesis. It consumed no market data and
+  persisted no raw external payload. The result did not justify an SEC adapter.
 
 ## Live Futu evidence
 
@@ -87,12 +91,11 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Exercise the accepted Event Intelligence boundary with one
-   repository-external, source-backed real event submission. Prefer SEC EDGAR
-   for a filing-driven case and persist no unreviewed external payload.
-2. Use that bounded result to decide whether a smallest source adapter is
-   justified. Do not install a Skill or create generic orchestration by
-   default.
+1. Ground and freeze the smallest deterministic discovery-entry handoff from
+   one accepted Event Intelligence result. Retain the exact acceptance result
+   and selected hypothesis; do not replay acceptance.
+2. Keep option-chain retrieval, exact structure generation, ranking, and
+   event-source adapters outside that first handoff contract.
 3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.

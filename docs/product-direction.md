@@ -546,10 +546,12 @@ they are not the current roadmap priority.
 10. Completed bounded Futu provider and real Direct Entry partial-loop proof.
 11. Completed bounded Hunter/Event Intelligence capability research and the
     source-backed event-to-underlying acceptance contract.
-12. Current: exercise the accepted boundary with one repository-external,
-    source-backed real event submission before selecting any adapter.
-13. Later: the smallest justified event-source adapter, discovery, exact
-    structure generation, and complete-flow work only after that real exercise.
+12. Completed one repository-external, source-backed real SEC filing exercise;
+    the submission was accepted and did not justify an SEC adapter.
+13. Current: freeze the smallest deterministic discovery-entry handoff from
+    one accepted Event Intelligence result without replaying acceptance.
+14. Later: any demonstrated smallest event-source adapter, real option-chain
+    discovery, exact structure generation, and complete-flow work.
 
 ## 17. Locked principles
 

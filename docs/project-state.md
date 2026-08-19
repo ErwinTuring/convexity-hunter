@@ -1573,13 +1573,29 @@ All were corrected, and targeted independent re-review passed. Final validation
 passed 25 focused Event Intelligence tests, 1,235 full-suite tests, compileall,
 and `git diff --check`.
 
+## Event Intelligence real-event exercise checkpoint
+
+One repository-external exercise used the SEC filing index for Apple Form 8-K
+accession `0000320193-25-000071`. The sanitized submission retained one source,
+two observed facts, one interpretation, and one bidirectional AAPL distribution
+hypothesis. It returned `ACCEPTED` with no issues. It consumed no market data,
+persisted no raw external payload, installed no Skill, and left the repository
+clean.
+
+The exercise does not justify an SEC adapter yet. Deterministic filing metadata
+cannot supply authoritative impact, distribution, contradiction, uncertainty,
+or falsification semantics, and the manual bounded exercise exposed no current
+product blocker that an adapter would remove. The evidence and decision are in
+[`event-intelligence-real-event-exercise.md`](event-intelligence-real-event-exercise.md).
+
 ## Current next priority
 
-Exercise the accepted boundary with one repository-external, source-backed real
-event submission. Prefer SEC EDGAR when the selected event is filing-driven.
-Use the result to determine whether any smallest adapter is justified; do not
-install a Skill or build a generic event/provider framework by default. Do not
-reopen market-data infrastructure as a substitute for this product path.
+Ground and freeze the smallest deterministic discovery-entry handoff from one
+accepted Event Intelligence result. It must retain the accepted result and
+selected hypothesis without replaying acceptance, must not yet retrieve an
+option chain or generate a structure, and must preserve the non-ranking and
+incomplete-result boundaries. Do not reopen market-data infrastructure as a
+substitute for this product path.
 
 ## Deferred
 
