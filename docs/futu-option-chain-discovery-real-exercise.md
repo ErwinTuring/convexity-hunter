@@ -64,3 +64,10 @@ A product/architecture decision is required before generation work: either
 retain the strict mode-based generation gate until authoritative inputs exist,
 or explicitly define a bounded manual-selection handoff from an unranked
 provider-classified catalog. No such choice is made by this exercise.
+
+This exercise predates option-chain discovery request contract v0.2. Its 2025
+expected window is expired for its 2026 evaluation date, so the temporal-
+applicability gate now rejects replaying this hypothesis as current discovery.
+The result remains historical provider-boundary evidence only. A new product
+exercise must use a real current or future event with a non-expired explicit
+expected window.

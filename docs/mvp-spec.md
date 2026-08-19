@@ -105,6 +105,12 @@ source-backed event-impact path, specific distribution-change hypothesis,
 usable event window, eligible listed option market, and resolvable identity
 and chronology.
 
+Before an option-chain discovery request can exist, its caller evaluation date
+must be no later than the selected hypothesis's inclusive expected-window end
+date. An expired hypothesis fails closed; the request never extends the event
+window. Longer-lived effects must be declared and accepted upstream through a
+longer explicit Event Intelligence `expected_window`.
+
 A structure may enter only when the listed contract exists, its grammar and
 maturity are supported, required quote and reference evidence is available,
 and it is compatible with the declared distribution hypothesis.

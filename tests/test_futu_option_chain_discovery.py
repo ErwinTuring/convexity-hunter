@@ -72,8 +72,8 @@ def make_request() -> OptionChainDiscoveryRequest:
         (fact.statement_id,),
     )
     window = MethodologizedDateRange(
-        datetime.date(2029, 12, 1),
-        datetime.date(2029, 12, 1),
+        EVALUATION_DATE,
+        EVALUATION_DATE,
         "Exact event date.",
     )
     hypothesis = EventUnderlyingHypothesis(

@@ -591,7 +591,12 @@ they are not the current roadmap priority.
     accepted AAPL path through Browser, exact Futu and Direct Entry gates,
     partial `DATA_INSUFFICIENT` research, and Chinese rendering. The system did
     not default, rank, infer ATM/Delta, or substitute a contract.
-20. Later: any demonstrated smallest event-source adapter, separately frozen
+20. Completed the deterministic Discovery Entry temporal-applicability gate:
+    request construction now fails when the caller evaluation date is later
+    than the selected hypothesis's inclusive expected-window end date.
+21. Next: use one real current or future event with a non-expired explicit
+    expected window for the complete human-selected partial loop.
+22. Later: any demonstrated smallest event-source adapter, separately frozen
     automatic exact-structure generation, and complete-flow work.
 
 ## 17. Locked principles

@@ -62,6 +62,8 @@ def _validate_request_inputs(
     event_window_end = hypothesis.expected_window.end_date
     if type(event_window_end) is not datetime.date:
         raise ValueError("selected hypothesis requires an event-window end date")
+    if evaluation_date > event_window_end:
+        raise ValueError("selected hypothesis is expired for evaluation_date")
 
     try:
         minimum_expiration = max(

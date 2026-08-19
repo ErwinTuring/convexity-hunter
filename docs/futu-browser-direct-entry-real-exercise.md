@@ -85,3 +85,10 @@ This does not authorize automatic Candidate Generation, default selection,
 ranking, ATM/Delta inference, or weaker research evidence. Complete research
 readiness remains blocked by the already-recorded authoritative evidence gaps;
 the honest partial research path remains usable as `DATA_INSUFFICIENT`.
+
+This historical exercise predates the Discovery Entry temporal-applicability
+gate. Its accepted hypothesis ended in 2025 and therefore cannot be replayed as
+current discovery for a 2026 evaluation date after that gate. The exercise
+remains evidence of downstream Browser-to-report mechanics only. The next real
+product exercise must begin from a current or future event with a non-expired
+explicit expected window.

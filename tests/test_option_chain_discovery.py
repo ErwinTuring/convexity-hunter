@@ -129,7 +129,7 @@ class PublicContractTests(unittest.TestCase):
 
 
 class SuccessfulRequestTests(unittest.TestCase):
-    def test_request_retains_handoff_and_derives_exact_boundaries(self) -> None:
+    def test_active_hypothesis_retains_handoff_and_exact_boundaries(self) -> None:
         handoff = make_handoff(event_window_end=datetime.date(2030, 1, 10))
         request = create_option_chain_discovery_request(
             handoff,
@@ -148,8 +148,8 @@ class SuccessfulRequestTests(unittest.TestCase):
         self.assertEqual(request.minimum_expiration_date, datetime.date(2030, 2, 9))
         self.assertEqual(request.maximum_expiration_date, datetime.date(2030, 5, 31))
 
-    def test_evaluation_date_controls_30_and_150_dte_boundaries(self) -> None:
-        handoff = make_handoff(event_window_end=datetime.date(2029, 12, 1))
+    def test_boundary_day_is_active_and_controls_dte_boundaries(self) -> None:
+        handoff = make_handoff(event_window_end=EVALUATION_DATE)
         request = create_option_chain_discovery_request(
             handoff,
             evaluation_date=EVALUATION_DATE,
@@ -228,6 +228,41 @@ class SuccessfulRequestTests(unittest.TestCase):
 
 
 class FailureBoundaryTests(unittest.TestCase):
+    def test_expired_hypothesis_fails_closed_without_extending_window(self) -> None:
+        handoff = make_handoff(
+            event_window_end=EVALUATION_DATE - datetime.timedelta(days=1)
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "selected hypothesis is expired for evaluation_date",
+        ):
+            create_option_chain_discovery_request(
+                handoff,
+                evaluation_date=EVALUATION_DATE,
+            )
+        with self.assertRaisesRegex(
+            ValueError,
+            "selected hypothesis is expired for evaluation_date",
+        ):
+            OptionChainDiscoveryRequest(handoff, EVALUATION_DATE)
+        self.assertEqual(
+            handoff.selected_hypothesis.expected_window.end_date,
+            EVALUATION_DATE - datetime.timedelta(days=1),
+        )
+
+    def test_expired_hypothesis_precedes_date_arithmetic_overflow(self) -> None:
+        handoff = make_handoff(
+            event_window_end=datetime.date.max - datetime.timedelta(days=1)
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "selected hypothesis is expired for evaluation_date",
+        ):
+            create_option_chain_discovery_request(
+                handoff,
+                evaluation_date=datetime.date.max,
+            )
+
     def test_wrong_top_level_types_and_subclasses_fail(self) -> None:
         handoff = make_handoff()
 

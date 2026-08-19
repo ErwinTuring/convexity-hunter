@@ -1,4 +1,4 @@
-# Option-Chain Discovery Request Contract v0.1
+# Option-Chain Discovery Request Contract v0.2
 
 ## Purpose
 
@@ -36,6 +36,24 @@ def create_option_chain_discovery_request(
 The record stores exactly those two fields and retains the exact handoff by
 identity. The caller supplies a date-only evaluation date; the implementation
 reads no clock.
+
+## Temporal applicability gate
+
+Before request construction and before expiration-boundary arithmetic, the
+selected accepted hypothesis must still be applicable for current discovery:
+
+```text
+evaluation_date <= selected hypothesis expected_window.end_date
+```
+
+The inclusive expected-window end date is valid. For otherwise valid inputs,
+`evaluation_date > expected_window.end_date` fails closed with `ValueError`
+because the selected hypothesis is expired for that evaluation date.
+
+The request never extends, rolls, or substitutes the accepted event window. If
+an event is expected to have longer-lived effects, Event Intelligence must
+express that upstream through a longer explicit, source-auditable
+`expected_window` before a new accepted handoff is created.
 
 ## Derived request boundaries
 
@@ -85,9 +103,10 @@ The handoff and evaluation date require exact types. The handoff is
 intrinsically reconstructed through its existing constructor without replaying
 Event Intelligence acceptance. The accepted hypothesis must retain exact
 `UnderlyingKey`, `DistributionChangeMode`, and a complete event-window end
-date. Missing semantics, malformed or constructor-bypassed records, date
-overflow, and an empty interval fail with controlled `TypeError` or
-`ValueError`.
+date. After those intrinsic semantics are validated, temporal applicability is
+checked before date arithmetic. Missing semantics, malformed or constructor-
+bypassed records, an expired hypothesis, date overflow, and an empty interval
+fail with controlled `TypeError` or `ValueError`.
 
 ## Non-goals
 

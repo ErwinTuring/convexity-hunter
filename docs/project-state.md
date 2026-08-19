@@ -1628,6 +1628,18 @@ reference, costs, liquidity, or research readiness. Independent review passed
 with no findings. Validation passed 12 focused request tests, 1,259 full-suite
 tests, compileall, and `git diff --check`.
 
+Contract v0.2 adds the smallest temporal-applicability gate before expiration
+arithmetic. For otherwise valid inputs, request construction now requires the
+caller evaluation date to be no later than the selected hypothesis's inclusive
+expected-window end date. An expired hypothesis fails closed without extending
+the window; longer-lived effects must be expressed and accepted upstream in
+Event Intelligence. The direct-module API, record shape, maturity arithmetic,
+provider boundaries, and downstream evidence contracts are unchanged.
+Independent review found no blocker or major issue; its one stale historical-
+exercise wording finding was corrected. Validation passed 56 focused
+request/Futu/Browser/selection-bridge tests, 1,303 full-suite tests, compileall,
+and `git diff --check`.
+
 ## Futu option-chain discovery evidence checkpoint
 
 The bounded provider evidence contract is implemented under
@@ -1664,6 +1676,11 @@ strikes, read no credentials, and made no quote, snapshot, history, account, or
 trading call. It selected and generated no structure. The exact evidence and
 remaining generation gate are recorded in
 [`futu-option-chain-discovery-real-exercise.md`](futu-option-chain-discovery-real-exercise.md).
+
+This is historical pre-v0.2 evidence only. Its 2025 expected window is expired
+for the 2026 evaluation date, so v0.2 now rejects replaying that hypothesis as
+current discovery. The recorded provider behavior remains historical evidence;
+it is not proof of current temporal applicability.
 
 ## Futu Exact Contract Browser checkpoint
 
@@ -1707,11 +1724,12 @@ minor finding. Validation passed 90 focused bridge/Futu/Direct Entry tests,
 
 The first real explicit-human-selection exercise is recorded in
 [`futu-browser-direct-entry-real-exercise.md`](futu-browser-direct-entry-real-exercise.md).
-The accepted AAPL bidirectional-distribution path produced a current Browser;
-the user explicitly selected the 2026-11-20 295 Long Straddle, one contract per
-leg, with USD 10,000 assumed portfolio value and a 30-calendar-day holding
-assumption. The strike was the median of the displayed neutral 15-pair slice,
-which creates no ATM, Delta, candidate, ranking, or recommendation semantics.
+The accepted AAPL bidirectional-distribution path produced historical
+pre-v0.2 Browser evidence; the user explicitly selected the 2026-11-20 295 Long
+Straddle, one contract per leg, with USD 10,000 assumed portfolio value and a
+30-calendar-day holding assumption. The strike was the median of the displayed
+neutral 15-pair slice, which creates no ATM, Delta, candidate, ranking, or
+recommendation semantics.
 
 Both selected rows were retained by identity. Both exact Futu verifications,
 the bridge Direct Entry exact gate, and the service Direct Entry exact gate
@@ -1735,11 +1753,11 @@ Call or Put selection produces a listed-structure intent; a Long Straddle
 requires an explicit same-expiry/same-strike Call and Put. The result cannot
 enter Candidate Assembly directly.
 
-The first real explicit human selection has now passed through exact Futu
-verification, the provider-neutral Direct Entry exact gate, partial assembly,
-screening, and Chinese rendering without a new orchestration layer or weakened
-evidence. The system must not default or auto-select another structure merely
-to repeat the exercise. Automatic mode-based generation remains paused because
+The next product exercise must start from one real current or future event whose
+explicit Event Intelligence expected window has not expired on the evaluation
+date. It may then use the existing Underlying, Futu Browser, explicit human
+selection, Direct Entry, and Chinese-report path. The system must not default or
+auto-select a structure. Automatic mode-based generation remains paused because
 accepted Futu evidence supplies neither authoritative ATM reference nor
 authoritative Delta semantics.
 

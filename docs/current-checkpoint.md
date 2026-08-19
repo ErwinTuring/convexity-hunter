@@ -49,7 +49,10 @@ Repository: `ErwinTuring/convexity-hunter`
 - The provider-neutral option-chain discovery request retains the exact handoff
   and caller evaluation date, deriving only the inclusive expiration interval
   `max(evaluation+30, event-end+30)` through `evaluation+150`. It calls no
-  provider or clock and claims no contract eligibility.
+  provider or clock and claims no contract eligibility. It fails closed before
+  request construction when the evaluation date is later than the selected
+  hypothesis's inclusive expected-window end date; it never extends that
+  window.
 - The bounded Futu chain-evidence boundary retrieves expiration
   classifications once and one exact-date chain per in-range provider
   `MONTH`. It retains every valid row with deterministic applicability status
@@ -105,6 +108,12 @@ OpenD and persisted no raw payload. They confirmed:
 No credential, account identifier, raw market payload, or secret entered the
 repository or model output.
 
+The AAPL discovery and Browser exercises above are historical pre-temporal-
+gate evidence. Their 2025 expected window is expired for a 2026 evaluation
+date, so the implemented gate now prohibits replaying that hypothesis as
+current Discovery Entry. The downstream Browser/Direct Entry evidence remains
+a historical implementation proof, not current-event applicability.
+
 ## Active research-readiness gaps
 
 1. Futu confirms U.S. real-time bid/ask/sizes, but explicitly does not support
@@ -129,9 +138,10 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. The Browser-to-Direct-Entry architecture and first real explicit-human-
-   selection exercise are complete. The system must not choose another row or
-   Straddle by default merely to repeat the exercise.
+1. Use one real current or future event whose explicit Event Intelligence
+   expected window remains active on the evaluation date, then run the existing
+   path through Underlying, Futu Browser, explicit human selection, Direct
+   Entry, and Chinese rendering.
 2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
