@@ -23,8 +23,9 @@ The MVP has two equal first-class entry modes:
 
 1. **Discovery entry:** world events flow through Event Intelligence,
    potentially affected underlyings and distribution-change hypotheses, real
-   option-chain retrieval and eligible structure generation; the user then
-   selects one exact structure for Convexity Engine research.
+   option-chain retrieval, and either future eligible structure generation or
+   the bounded exact-contract browser; the user then explicitly selects one
+   exact structure for Convexity Engine research.
 2. **Direct user entry:** the user supplies a structure to investigate; the
    system resolves and validates the real listed contract and applies the same
    eligibility, market-data, and evidence checks before Convexity Engine
@@ -90,6 +91,14 @@ not prove cheapness or bearability.
 Candidate inclusion is determined by business and technical eligibility, not
 an arbitrary maximum number of underlyings or structures.
 
+Candidate qualification is separate from deterministic contract browsing.
+The bounded Futu browser may expose only real chain rows already classified by
+the provider as monthly and standard, not suspended, and inside the existing
+30--150 DTE and `event_window_end + 30 days` maturity bounds. Browser
+visibility means only that a user may explicitly request research on that
+listed contract. It does not establish exact deliverable terms, research
+readiness, liquidity, attractiveness, or candidate inclusion.
+
 For discovery entry, an underlying may enter generation only when the future
 accepted contract establishes a supported security identity, specific
 source-backed event-impact path, specific distribution-change hypothesis,
@@ -100,20 +109,26 @@ A structure may enter only when the listed contract exists, its grammar and
 maturity are supported, required quote and reference evidence is available,
 and it is compatible with the declared distribution hypothesis.
 
-The interaction is layered:
+The currently implemented human-selection interaction is layered:
 
 ```text
 event
     -> eligible affected underlyings
     -> user opens or selects one underlying
-    -> eligible exact option structures
-    -> user selects one exact structure
+    -> unranked provider-classified listed contracts
+    -> user explicitly selects one exact contract or same-expiry/same-strike
+       Call + Put
+    -> Direct Entry exact verification and research-evidence gates
+    -> CandidateResearchRecord
 ```
 
-The selected object includes underlying, structure type, side of each leg,
-strike, expiration, quantity, and contract multiplier. The system does not
-rank structures by investment attractiveness. Stable presentation ordering is
-allowed but is not a recommendation.
+The browser does not label or rank contracts by ATM, Delta, cheapness,
+liquidity, recommendation, or research merit; expiration/strike/Call-Put
+ordering is neutral navigation and no contract is selected by default. The
+selection object includes underlying, structure type, side of each leg,
+strike, expiration, quantity, and provider contract multiplier, but is not a
+candidate and cannot enter Candidate Assembly directly. Automatic Candidate
+Generation remains deferred until its separate evidence contract is met.
 
 ## 4. Initial maturity policy
 

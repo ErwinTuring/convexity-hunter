@@ -36,6 +36,10 @@ The direct module convexity_hunter.providers.futu exports exactly, in order:
     FutuOptionChainContractEvidence
     FutuOptionChainDiscoveryEvidence
     retrieve_futu_option_chain_discovery_evidence
+    FutuExactContractBrowser
+    FutuExactContractSelection
+    create_futu_exact_contract_browser
+    select_futu_exact_contracts
     FutuBboEvidence
     FutuDirectEntryBboEvidence
     retrieve_futu_direct_entry_bbo_evidence
@@ -203,6 +207,20 @@ authorize reference completion, costs, liquidity, or research readiness. The
 complete boundary is frozen in
 [`futu-option-chain-discovery-evidence-contract.md`](futu-option-chain-discovery-evidence-contract.md).
 
+## Exact contract browser and human selection
+
+The bounded Futu Browser exposes all and only provider-classified eligible
+rows already inside the exact discovery request's 30–150 DTE and
+event-window-plus-30 interval. It preserves neutral provider-evidence ordering
+and makes no default selection, ATM/Delta, ranking, quote, liquidity, or
+Candidate claim.
+
+An explicit caller choice may retain one Call or Put, or one exact same-expiry,
+same-strike, same-multiplier Call/Put pair. The resulting `OptionStructure` is
+unverified research intent only and must later pass the unchanged Direct Entry
+exact-contract and research evidence gates. The complete boundary is frozen in
+[`futu-exact-contract-browser-contract.md`](futu-exact-contract-browser-contract.md).
+
 ## Dependency and failure boundary
 
 futu-api==10.10.7008 is an optional futu dependency. Normal tests use
@@ -224,5 +242,6 @@ This work adds no:
 - costs, liquidity, IV, Greeks, or OI normalization;
 - expired-contract discovery;
 - deterministic historical-IV reconstruction;
-- structure generation, ranking, monitoring, alerts, or execution; or
+- automatic candidate/structure generation, ranking, monitoring, alerts, or
+  execution; or
 - changes to Tiger implementation or its existing contracts.

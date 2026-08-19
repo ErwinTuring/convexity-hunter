@@ -15,6 +15,8 @@ from typing import Optional as _Optional
 from typing import Tuple as _Tuple
 from zoneinfo import ZoneInfo as _ZoneInfo
 
+from convexity_hunter.evidence import OptionLeg as _OptionLeg
+from convexity_hunter.evidence import OptionStructure as _OptionStructure
 from convexity_hunter.option_chain_discovery import (
     OptionChainDiscoveryRequest as _OptionChainDiscoveryRequest,
 )
@@ -39,6 +41,10 @@ __all__ = (
     "FutuOptionChainContractEvidence",
     "FutuOptionChainDiscoveryEvidence",
     "retrieve_futu_option_chain_discovery_evidence",
+    "FutuExactContractBrowser",
+    "FutuExactContractSelection",
+    "create_futu_exact_contract_browser",
+    "select_futu_exact_contracts",
     "FutuBboEvidence",
     "FutuDirectEntryBboEvidence",
     "retrieve_futu_direct_entry_bbo_evidence",
@@ -1119,6 +1125,261 @@ def retrieve_futu_option_chain_discovery_evidence(
         expirations=tuple(expiration_evidence),
         contracts=tuple(contracts),
     )
+
+
+def _validate_browser_discovery_evidence(
+    value: object,
+) -> FutuOptionChainDiscoveryEvidence:
+    if type(value) is not FutuOptionChainDiscoveryEvidence:
+        raise TypeError(
+            "discovery_evidence must have exact type "
+            "FutuOptionChainDiscoveryEvidence"
+        )
+    try:
+        rebuilt = FutuOptionChainDiscoveryEvidence(
+            value.discovery_request,
+            value.provider_underlying,
+            value.expirations,
+            value.contracts,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("discovery_evidence is malformed") from error
+    if rebuilt != value:
+        raise ValueError("discovery_evidence is not intrinsically valid")
+    return value
+
+
+def _browser_row_is_visible(row: FutuOptionChainContractEvidence) -> bool:
+    return (
+        row.provider_expiration_cycle == "MONTH"
+        and row.provider_standard_type == "STANDARD"
+        and not row.suspension
+        and row.statuses == (FutuOptionChainRowStatus.ELIGIBLE,)
+    )
+
+
+@_dataclass(frozen=True)
+class FutuExactContractBrowser:
+    """Neutral navigation over browser-visible exact Futu chain rows."""
+
+    discovery_evidence: FutuOptionChainDiscoveryEvidence
+
+    def __post_init__(self) -> None:
+        _validate_browser_discovery_evidence(self.discovery_evidence)
+
+    @property
+    def rows(self) -> _Tuple[FutuOptionChainContractEvidence, ...]:
+        """Return all and only provider-classified browser-visible rows."""
+
+        return tuple(
+            row
+            for row in self.discovery_evidence.contracts
+            if _browser_row_is_visible(row)
+        )
+
+
+def _validate_exact_contract_browser(value: object) -> FutuExactContractBrowser:
+    if type(value) is not FutuExactContractBrowser:
+        raise TypeError("browser must have exact type FutuExactContractBrowser")
+    try:
+        rebuilt = FutuExactContractBrowser(value.discovery_evidence)
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("browser is malformed") from error
+    if rebuilt != value:
+        raise ValueError("browser is not intrinsically valid")
+    return value
+
+
+def _browser_strike_as_float(strike: _decimal.Decimal) -> float:
+    try:
+        normalized = float(strike)
+    except Exception:
+        raise ValueError("selected strike cannot be represented exactly") from None
+    if (
+        not _math.isfinite(normalized)
+        or _decimal.Decimal(str(normalized)) != strike
+    ):
+        raise ValueError("selected strike cannot be represented exactly")
+    return normalized
+
+
+def _browser_contract_order(
+    row: FutuOptionChainContractEvidence,
+) -> tuple:
+    return (
+        row.expiration,
+        row.strike,
+        0 if row.option_type == "call" else 1,
+        row.provider_identifier,
+    )
+
+
+def _validate_selected_browser_rows(
+    browser: FutuExactContractBrowser,
+    selected_contracts: object,
+) -> _Tuple[FutuOptionChainContractEvidence, ...]:
+    if type(selected_contracts) is not tuple:
+        raise TypeError("selected_contracts must have exact type tuple")
+    if len(selected_contracts) not in {1, 2}:
+        raise ValueError("selected_contracts must contain one or two rows")
+    if any(
+        type(row) is not FutuOptionChainContractEvidence
+        for row in selected_contracts
+    ):
+        raise TypeError(
+            "selected contracts must have exact type "
+            "FutuOptionChainContractEvidence"
+        )
+    visible_rows = browser.rows
+    if any(
+        not any(row is visible for visible in visible_rows)
+        for row in selected_contracts
+    ):
+        raise ValueError(
+            "selected contracts must be retained by identity in browser.rows"
+        )
+    identifiers = tuple(row.provider_identifier for row in selected_contracts)
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("selected contract identifiers must be unique")
+    if tuple(sorted(selected_contracts, key=_browser_contract_order)) != (
+        selected_contracts
+    ):
+        raise ValueError("selected_contracts must use neutral browser order")
+    if len(selected_contracts) == 2:
+        call, put = selected_contracts
+        if (
+            call.option_type != "call"
+            or put.option_type != "put"
+            or call.provider_underlying != put.provider_underlying
+            or call.expiration != put.expiration
+            or call.strike != put.strike
+            or call.lot_size != put.lot_size
+        ):
+            raise ValueError(
+                "two selected contracts must form one exact long straddle"
+            )
+    return selected_contracts
+
+
+def _expected_selection_structure(
+    browser: FutuExactContractBrowser,
+    selected_contracts: _Tuple[FutuOptionChainContractEvidence, ...],
+    structure: _OptionStructure,
+) -> _OptionStructure:
+    if type(structure) is not _OptionStructure:
+        raise TypeError("structure must have exact type OptionStructure")
+    try:
+        rebuilt_structure = _OptionStructure(
+            structure.legs,
+            structure.assumed_portfolio_value,
+            structure.expected_holding_days,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("structure is malformed") from error
+    if rebuilt_structure != structure or len(structure.legs) != len(
+        selected_contracts
+    ):
+        raise ValueError("structure does not match selected contracts")
+    symbol = browser.discovery_evidence.discovery_request.underlying_key.symbol
+    expected_legs = []
+    for row, leg in zip(selected_contracts, structure.legs):
+        if type(leg) is not _OptionLeg:
+            raise TypeError("structure legs must have exact type OptionLeg")
+        try:
+            expected_leg = _OptionLeg(
+                symbol,
+                row.option_type,
+                _browser_strike_as_float(row.strike),
+                row.expiration,
+                leg.quantity,
+                row.lot_size,
+            )
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError("structure does not match selected contracts") from error
+        if expected_leg != leg:
+            raise ValueError("structure does not match selected contracts")
+        expected_legs.append(expected_leg)
+    expected = _OptionStructure(
+        tuple(expected_legs),
+        structure.assumed_portfolio_value,
+        structure.expected_holding_days,
+    )
+    if expected != structure:
+        raise ValueError("structure does not match selected contracts")
+    return structure
+
+
+@_dataclass(frozen=True)
+class FutuExactContractSelection:
+    """Explicit human research intent for one exact listed structure."""
+
+    browser: FutuExactContractBrowser
+    selected_contracts: _Tuple[FutuOptionChainContractEvidence, ...]
+    structure: _OptionStructure
+
+    def __post_init__(self) -> None:
+        browser = _validate_exact_contract_browser(self.browser)
+        rows = _validate_selected_browser_rows(browser, self.selected_contracts)
+        _expected_selection_structure(browser, rows, self.structure)
+
+
+def create_futu_exact_contract_browser(
+    discovery_evidence: FutuOptionChainDiscoveryEvidence,
+) -> FutuExactContractBrowser:
+    """Create neutral navigation without choosing or qualifying a contract."""
+
+    evidence = _validate_browser_discovery_evidence(discovery_evidence)
+    return FutuExactContractBrowser(evidence)
+
+
+def select_futu_exact_contracts(
+    browser: FutuExactContractBrowser,
+    *,
+    provider_identifiers: _Tuple[str, ...],
+    assumed_portfolio_value: float,
+    expected_holding_days: int,
+    quantity: int = 1,
+) -> FutuExactContractSelection:
+    """Retain an explicit human selection as unverified research intent."""
+
+    browser = _validate_exact_contract_browser(browser)
+    if type(provider_identifiers) is not tuple:
+        raise TypeError("provider_identifiers must have exact type tuple")
+    if len(provider_identifiers) not in {1, 2}:
+        raise ValueError("provider_identifiers must contain one or two values")
+    if any(type(value) is not str or not value for value in provider_identifiers):
+        raise TypeError("provider identifiers must be nonempty strings")
+    if len(set(provider_identifiers)) != len(provider_identifiers):
+        raise ValueError("provider identifiers must be unique")
+    row_by_identifier = {
+        row.provider_identifier: row for row in browser.rows
+    }
+    if any(identifier not in row_by_identifier for identifier in provider_identifiers):
+        raise ValueError("provider identifier is not visible in this browser")
+    selected = tuple(
+        sorted(
+            (row_by_identifier[identifier] for identifier in provider_identifiers),
+            key=_browser_contract_order,
+        )
+    )
+    _validate_selected_browser_rows(browser, selected)
+    legs = tuple(
+        _OptionLeg(
+            browser.discovery_evidence.discovery_request.underlying_key.symbol,
+            row.option_type,
+            _browser_strike_as_float(row.strike),
+            row.expiration,
+            quantity,
+            row.lot_size,
+        )
+        for row in selected
+    )
+    structure = _OptionStructure(
+        legs,
+        assumed_portfolio_value,
+        expected_holding_days,
+    )
+    return FutuExactContractSelection(browser, selected, structure)
 
 
 def _checked_runtime_timestamp(

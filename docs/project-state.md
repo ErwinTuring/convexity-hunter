@@ -40,7 +40,10 @@ historical-IV, surface, provider, and Greeks infrastructure is deferred. The
 proven Direct Entry partial loop returned the roadmap to bounded
 Hunter/Event Intelligence. The bounded capability research and the
 provider-neutral source-backed event-to-underlying acceptance boundary are now
-implemented before discovery generation.
+implemented before discovery generation. Automatic Candidate Generation
+remains paused, while the separate Futu Exact Contract Browser now permits a
+human to select a real provider-classified listed structure without making any
+candidate, ranking, deliverable, or research-readiness claim.
 
 ## Historical milestone ledger
 
@@ -1662,15 +1665,44 @@ trading call. It selected and generated no structure. The exact evidence and
 remaining generation gate are recorded in
 [`futu-option-chain-discovery-real-exercise.md`](futu-option-chain-discovery-real-exercise.md).
 
+## Futu Exact Contract Browser checkpoint
+
+The bounded Browser and explicit-selection contract is implemented under
+[`futu-exact-contract-browser-contract.md`](futu-exact-contract-browser-contract.md).
+It retains the exact Futu chain evidence and exposes all and only rows with the
+single provider-classified `ELIGIBLE` status: provider `MONTH`, provider
+`STANDARD`, and not suspended. The retained discovery request already supplies
+the inclusive 30--150 DTE and `event_window_end + 30 days` maturity boundary.
+
+The Browser performs no provider call, ranking, labeling, default selection,
+or Candidate Assembly. One explicit identifier produces Long Call or Long Put
+research intent; an explicit same-expiry/same-strike Call and Put pair produces
+Long Straddle research intent. Selection preserves exact provider rows,
+provider multiplier, and the user-supplied quantity and research assumptions.
+It remains unverified until the existing Direct Entry exact-contract gate.
+
+Independent review passed with no blocker, major, or minor finding. Validation
+passed 55 focused Futu/Browser tests, 1,291 full-suite tests, compileall, and
+`git diff --check`.
+
 ## Current next priority
 
-Resolve the next generation architecture gate. Current bidirectional policy
-requires an authoritative ATM reference, while directional policy requires
-authoritative Delta semantics; the accepted Futu evidence boundary supplies
-neither. A product decision must choose whether strict mode-based generation
-remains paused or a separately bounded manual-selection handoff may expose an
-unranked provider-classified catalog. No generation implementation starts
-before that decision.
+The bounded Futu Exact Contract Browser and explicit human-selection boundary
+are implemented under
+[`futu-exact-contract-browser-contract.md`](futu-exact-contract-browser-contract.md).
+It exposes all and only provider-classified `MONTH + STANDARD + not suspended`
+rows already inside the exact 30--150 DTE and `event_window_end + 30 days`
+request. It ranks and labels nothing, defaults to no selection, and creates no
+candidate, exact-deliverable, or research-readiness claim. A single explicit
+Call or Put selection produces a listed-structure intent; a Long Straddle
+requires an explicit same-expiry/same-strike Call and Put. The result cannot
+enter Candidate Assembly directly.
+
+The next bounded work is the smallest deterministic bridge from that explicit
+selection through existing exact Futu contract verification into the existing
+Direct Entry service. Automatic mode-based generation remains paused because
+accepted Futu evidence supplies neither authoritative ATM reference nor
+authoritative Delta semantics.
 
 ## Deferred
 
@@ -1681,6 +1713,8 @@ before that decision.
 - additional market-data providers and generic provider routing/arbitration
 - automatic Delta/ATM resolution, supported structure generation, and broad
   contract scanning beyond bounded provider-classified chain evidence
+- Browser ranking, recommendation, default selection, or direct Candidate
+  Assembly entry
 - exact standard-monthly-option definition and deterministic Delta/ATM
   resolution contracts
 - non-expiration scenario-pricing production

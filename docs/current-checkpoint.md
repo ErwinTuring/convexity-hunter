@@ -56,6 +56,13 @@ Repository: `ErwinTuring/convexity-hunter`
   and ordering. `MONTH + STANDARD + not suspended` remains provider-classified
   eligibility only; it completes no deliverable, settlement, reference,
   costs, liquidity, or research-readiness evidence.
+- The bounded Futu Exact Contract Browser exposes all and only those
+  provider-classified eligible rows from the already-bounded 30--150 DTE and
+  `event_window_end + 30 days` request. It performs no provider call, ranking,
+  labeling, or default selection. An explicit human selection creates only a
+  listed-structure research intent; one Call or Put is supported, and a Long
+  Straddle requires explicit same-expiry/same-strike Call and Put selection.
+  The selection is not a candidate and cannot call Candidate Assembly.
 
 ## Live Futu evidence
 
@@ -110,11 +117,11 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Resolve the next generation architecture gate. Current bidirectional policy
-   requires an authoritative ATM reference, while directional policy requires
-   authoritative Delta semantics; accepted Futu evidence supplies neither.
-   Decide whether to keep strict generation paused or define a bounded manual
-   selection handoff from an unranked provider-classified catalog.
+1. Freeze the smallest deterministic bridge from one explicit
+   `FutuExactContractSelection` through existing exact Futu contract
+   verification into the existing Direct Entry service. It must preserve the
+   selected identities and structure exactly and must not become provider
+   orchestration or Candidate Generation.
 2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
@@ -130,6 +137,8 @@ partial Direct Entry loop.
 - automatic Delta/ATM selection, broad scanning, and structure generation
   until authoritative market semantics and a separate deterministic contract
   justify them;
+- any Browser ranking, recommendation, default selection, or direct Candidate
+  Assembly path;
 - provider routing/arbitration, portfolio optimization, monitoring, alerts,
   recommendations, execution, and heavy orchestration frameworks.
 

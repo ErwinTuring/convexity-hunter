@@ -52,10 +52,18 @@ world events
     -> potentially affected underlyings
     -> distribution-change hypotheses
     -> real option-chain retrieval
-    -> actual eligible option structures
-    -> user selects one exact structure
+    -> Exact Contract Browser
+    -> user explicitly selects one exact listed structure
+    -> Direct Entry exact verification and research-evidence gates
     -> Convexity Engine research
 ```
+
+This implemented browser path is not Automatic Candidate Generation. It
+exposes only provider-classified monthly/standard, non-suspended contracts
+inside the existing 30--150 DTE and `event_window_end + 30 days` maturity
+bounds. Visibility and explicit selection establish neither research
+qualification nor investment merit. Automatic mode-based generation remains
+deferred until authoritative ATM or Delta semantics are available.
 
 Direct user entry:
 
@@ -94,10 +102,13 @@ It accepts only auditable hypothesis submissions and does not perform mapping,
 ranking, market-data validation, or candidate generation.
 
 A market-data and deterministic-rules component retrieves the real option
-chain, confirms listed contracts, applies maturity and future strike-or-Delta
-policies, constructs exact supported candidates, verifies required quote, IV,
-Greeks, volume, open-interest, and reference evidence, and rejects nonexistent
-or invalid structures. Language-model reasoning cannot replace the chain.
+chain and confirms listed contracts. Its current browser applies only the
+deterministic maturity and provider-classification boundary and lets the human
+make an explicit exact selection. Later, a separately frozen mode-based
+generator may apply authoritative strike-or-Delta policies and construct
+research candidates. Direct Entry verifies the selected identity and keeps
+missing quote, reference, activity, and analytics evidence explicit.
+Language-model reasoning cannot replace the chain or missing market evidence.
 
 The Convexity Engine researches the exact selected structure using auditable
 numerical market evidence. It does not discover contracts, make the user's
@@ -144,18 +155,30 @@ supported, maturity is eligible, required quote and reference evidence is
 available, and the structure is compatible with the declared distribution
 hypothesis.
 
+These candidate rules do not govern the separate Exact Contract Browser. A
+browser-visible row is only a real provider-classified listed contract that
+passes the already-frozen maturity request and the deterministic
+`MONTH + STANDARD + not suspended` filter. Futu `STANDARD` remains provider
+classification and is not exact deliverable proof. Human selection says only
+"research this"; it does not make the selection a candidate.
+
 Information volume is controlled through layered interaction:
 
 ```text
 event
     -> eligible affected underlyings
     -> user opens or selects one underlying
-    -> eligible exact option structures
-    -> user selects one exact structure
+    -> unranked exact listed-contract browser
+    -> explicit human selection
+    -> Direct Entry verification
+    -> research qualification and CandidateResearchRecord
 ```
 
-The system does not rank structures by investment attractiveness. Stable
-presentation ordering is permitted but is not a recommendation.
+The browser displays no ATM, Delta, cheap, liquid, recommended, or
+worth-researching label, selects nothing by default, and cannot call Candidate
+Assembly. Stable expiration/strike/Call-Put ordering is neutral navigation,
+not a recommendation. A Long Straddle requires explicit selection of both the
+Call and Put with identical expiration and strike.
 
 ## 7. Maturity policy
 
@@ -557,14 +580,14 @@ they are not the current roadmap priority.
 16. Completed one sanitized live exercise from the accepted AAPL source-backed
     event path through real Futu expiration and chain evidence, without
     selecting or generating a structure.
-17. Current architecture gate: strict mode-based generation requires an
-    authoritative ATM reference for bidirectional hypotheses and authoritative
-    Delta semantics for directional hypotheses. Current accepted Futu evidence
-    supplies neither. A separate product decision must choose whether to keep
-    generation paused or define a bounded manual-selection handoff from an
-    unranked provider-classified catalog.
-18. Later: any demonstrated smallest event-source adapter, separately frozen
-    exact-structure generation, and complete-flow work.
+17. Completed bounded Futu Exact Contract Browser and explicit human-selection
+    boundary. It uses only the existing maturity request and provider
+    `MONTH + STANDARD + not suspended` classification, performs no ranking or
+    default selection, and creates no candidate or research-readiness claim.
+18. Next: the smallest deterministic handoff from the explicit selection
+    through existing exact Futu contract verification into Direct Entry.
+19. Later: any demonstrated smallest event-source adapter, separately frozen
+    automatic exact-structure generation, and complete-flow work.
 
 ## 17. Locked principles
 
