@@ -91,9 +91,12 @@ closed unless:
 - each retained contract reference is the exact object from the corresponding
   provider verification.
 
-Equal-but-copied selections, rows, provider verifications, structures, or
-contract references do not satisfy identity-retention requirements where the
-contract requires identity.
+Identity requirements are relational inside the result: selected rows must be
+the exact Browser-retained rows, the Direct Entry structure must be the exact
+selection structure, and its references must be the exact provider-
+verification references. The bridge revalidates top-level dataclass values but
+does not claim an unattainable external provenance test for an equal copy when
+no originating object is retained by the contract.
 
 ## Failure and disclosure behavior
 
