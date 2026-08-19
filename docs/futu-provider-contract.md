@@ -40,6 +40,8 @@ The direct module convexity_hunter.providers.futu exports exactly, in order:
     FutuExactContractSelection
     create_futu_exact_contract_browser
     select_futu_exact_contracts
+    FutuExactContractSelectionVerification
+    verify_futu_exact_contract_selection
     FutuBboEvidence
     FutuDirectEntryBboEvidence
     retrieve_futu_direct_entry_bbo_evidence
@@ -220,6 +222,22 @@ same-strike, same-multiplier Call/Put pair. The resulting `OptionStructure` is
 unverified research intent only and must later pass the unchanged Direct Entry
 exact-contract and research evidence gates. The complete boundary is frozen in
 [`futu-exact-contract-browser-contract.md`](futu-exact-contract-browser-contract.md).
+
+## Explicit selection verification bridge
+
+`verify_futu_exact_contract_selection` revalidates one explicit Browser
+selection, calls the existing exact Futu verifier once per selected row, and
+fails unless every returned provider identifier and economic contract field
+matches the selected row exactly. It then applies the existing provider-
+neutral Direct Entry exact-contract gate to the exact selected structure and
+the returned references.
+
+The frozen sidecar retains the exact selection, ordered Futu contract
+verifications, and provider-neutral exact verification. It proves only exact
+listed-contract identity. It does not complete deliverables, claim research
+readiness, invoke Candidate Assembly or the reviewed-research service, or add
+provider orchestration. The complete boundary is frozen in
+[`futu-selection-direct-entry-bridge-contract.md`](futu-selection-direct-entry-bridge-contract.md).
 
 ## Dependency and failure boundary
 

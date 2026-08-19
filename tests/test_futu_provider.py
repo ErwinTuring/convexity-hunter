@@ -103,7 +103,7 @@ def verification(context=None):
 
 
 class PublicBoundaryTests(unittest.TestCase):
-    def test_exact_twenty_name_api_and_no_reexports(self):
+    def test_exact_twenty_two_name_api_and_no_reexports(self):
         self.assertEqual(
             futu.__all__,
             (
@@ -119,6 +119,8 @@ class PublicBoundaryTests(unittest.TestCase):
                 "FutuExactContractSelection",
                 "create_futu_exact_contract_browser",
                 "select_futu_exact_contracts",
+                "FutuExactContractSelectionVerification",
+                "verify_futu_exact_contract_selection",
                 "FutuBboEvidence",
                 "FutuDirectEntryBboEvidence",
                 "retrieve_futu_direct_entry_bbo_evidence",

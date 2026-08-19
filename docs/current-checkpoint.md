@@ -63,6 +63,13 @@ Repository: `ErwinTuring/convexity-hunter`
   listed-structure research intent; one Call or Put is supported, and a Long
   Straddle requires explicit same-expiry/same-strike Call and Put selection.
   The selection is not a candidate and cannot call Candidate Assembly.
+- The separate selection-verification bridge revalidates one explicit Browser
+  selection, invokes the existing exact Futu verifier once per selected leg,
+  proves that every returned provider identity and economic contract field
+  still matches, and applies the existing provider-neutral Direct Entry exact-
+  contract gate. The sidecar preserves the exact selection, ordered provider
+  verifications, exact references, and selected structure. It creates no
+  candidate, research-readiness claim, service call, or orchestration layer.
 
 ## Live Futu evidence
 
@@ -117,11 +124,10 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Freeze the smallest deterministic bridge from one explicit
-   `FutuExactContractSelection` through existing exact Futu contract
-   verification into the existing Direct Entry service. It must preserve the
-   selected identities and structure exactly and must not become provider
-   orchestration or Candidate Generation.
+1. The Browser-to-Direct-Entry architecture is now complete through exact-
+   contract verification. A real use must wait for an explicit human contract
+   selection; the system must not choose a row or Straddle by default merely
+   to run another exercise.
 2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.

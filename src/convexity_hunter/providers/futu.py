@@ -15,6 +15,12 @@ from typing import Optional as _Optional
 from typing import Tuple as _Tuple
 from zoneinfo import ZoneInfo as _ZoneInfo
 
+from convexity_hunter.direct_entry_verification import (
+    DirectEntryExactContractVerification as _DirectEntryExactContractVerification,
+)
+from convexity_hunter.direct_entry_verification import (
+    verify_direct_entry_exact_contracts as _verify_direct_entry_exact_contracts,
+)
 from convexity_hunter.evidence import OptionLeg as _OptionLeg
 from convexity_hunter.evidence import OptionStructure as _OptionStructure
 from convexity_hunter.option_chain_discovery import (
@@ -45,6 +51,8 @@ __all__ = (
     "FutuExactContractSelection",
     "create_futu_exact_contract_browser",
     "select_futu_exact_contracts",
+    "FutuExactContractSelectionVerification",
+    "verify_futu_exact_contract_selection",
     "FutuBboEvidence",
     "FutuDirectEntryBboEvidence",
     "retrieve_futu_direct_entry_bbo_evidence",
@@ -1380,6 +1388,192 @@ def select_futu_exact_contracts(
         expected_holding_days,
     )
     return FutuExactContractSelection(browser, selected, structure)
+
+
+def _validate_exact_contract_selection(
+    value: object,
+) -> FutuExactContractSelection:
+    if type(value) is not FutuExactContractSelection:
+        raise TypeError(
+            "selection must have exact type FutuExactContractSelection"
+        )
+    try:
+        browser = _validate_exact_contract_browser(value.browser)
+        rows = _validate_selected_browser_rows(
+            browser,
+            value.selected_contracts,
+        )
+        structure = _expected_selection_structure(
+            browser,
+            rows,
+            value.structure,
+        )
+        rebuilt = FutuExactContractSelection(browser, rows, structure)
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("selection is malformed") from error
+    if rebuilt != value:
+        raise ValueError("selection is not intrinsically valid")
+    return value
+
+
+def _validate_selection_contract_verification(
+    selection: FutuExactContractSelection,
+    row: FutuOptionChainContractEvidence,
+    verification: object,
+) -> FutuExactOptionContractVerification:
+    if type(verification) is not FutuExactOptionContractVerification:
+        raise TypeError(
+            "contract verifications must have exact type "
+            "FutuExactOptionContractVerification"
+        )
+    try:
+        rebuilt = FutuExactOptionContractVerification(
+            verification.provider_identifier,
+            verification.provider_expiration_cycle,
+            verification.provider_standard_type,
+            verification.provider_exercise_type,
+            verification.contract_reference,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("contract verification is malformed") from error
+    if rebuilt != verification:
+        raise ValueError("contract verification is not intrinsically valid")
+    request = selection.browser.discovery_evidence.discovery_request
+    key = verification.contract_reference.contract_key
+    if (
+        verification.provider_identifier != row.provider_identifier
+        or verification.provider_expiration_cycle
+        != row.provider_expiration_cycle
+        or verification.provider_standard_type != row.provider_standard_type
+        or key.underlying_key != request.underlying_key
+        or key.expiration != row.expiration
+        or key.option_type != row.option_type
+        or key.strike != row.strike
+        or key.contract_multiplier != row.lot_size
+    ):
+        raise ValueError(
+            "contract verification does not match selected contract"
+        )
+    return verification
+
+
+def _validate_selection_contract_verifications(
+    selection: FutuExactContractSelection,
+    values: object,
+) -> _Tuple[FutuExactOptionContractVerification, ...]:
+    if type(values) is not tuple:
+        raise TypeError("contract_verifications must have exact type tuple")
+    if len(values) != len(selection.selected_contracts):
+        raise ValueError(
+            "contract_verifications must correspond one-to-one with selection"
+        )
+    return tuple(
+        _validate_selection_contract_verification(selection, row, verification)
+        for row, verification in zip(selection.selected_contracts, values)
+    )
+
+
+def _validate_selection_direct_entry_verification(
+    selection: FutuExactContractSelection,
+    contract_verifications: _Tuple[FutuExactOptionContractVerification, ...],
+    value: object,
+) -> _DirectEntryExactContractVerification:
+    if type(value) is not _DirectEntryExactContractVerification:
+        raise TypeError(
+            "direct_entry_exact_contract_verification must have exact type "
+            "DirectEntryExactContractVerification"
+        )
+    try:
+        rebuilt = _DirectEntryExactContractVerification(
+            value.structure,
+            value.contract_references,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError(
+            "direct_entry_exact_contract_verification is malformed"
+        ) from error
+    expected_references = tuple(
+        verification.contract_reference
+        for verification in contract_verifications
+    )
+    if (
+        rebuilt != value
+        or value.structure is not selection.structure
+        or len(value.contract_references) != len(expected_references)
+        or any(
+            actual is not expected
+            for actual, expected in zip(
+                value.contract_references,
+                expected_references,
+            )
+        )
+    ):
+        raise ValueError(
+            "Direct Entry verification does not retain the exact selection"
+        )
+    return value
+
+
+@_dataclass(frozen=True)
+class FutuExactContractSelectionVerification:
+    """Source-backed exact verification for one explicit Futu selection."""
+
+    selection: FutuExactContractSelection
+    contract_verifications: _Tuple[FutuExactOptionContractVerification, ...]
+    direct_entry_exact_contract_verification: _DirectEntryExactContractVerification
+
+    def __post_init__(self) -> None:
+        selection = _validate_exact_contract_selection(self.selection)
+        verifications = _validate_selection_contract_verifications(
+            selection,
+            self.contract_verifications,
+        )
+        _validate_selection_direct_entry_verification(
+            selection,
+            verifications,
+            self.direct_entry_exact_contract_verification,
+        )
+
+
+def verify_futu_exact_contract_selection(
+    quote_context: object,
+    selection: FutuExactContractSelection,
+) -> FutuExactContractSelectionVerification:
+    """Resolve an explicit selection and apply the Direct Entry exact gate."""
+
+    selection = _validate_exact_contract_selection(selection)
+    underlying_key = (
+        selection.browser.discovery_evidence.discovery_request.underlying_key
+    )
+    verifications = []
+    for row in selection.selected_contracts:
+        verification = verify_futu_monthly_option_contract(
+            quote_context,
+            underlying_key=underlying_key,
+            expiration=row.expiration,
+            option_type=row.option_type,
+            strike=row.strike,
+        )
+        verifications.append(
+            _validate_selection_contract_verification(
+                selection,
+                row,
+                verification,
+            )
+        )
+    retained = tuple(verifications)
+    direct_entry_verification = _verify_direct_entry_exact_contracts(
+        selection.structure,
+        tuple(
+            verification.contract_reference
+            for verification in retained
+        ),
+    )
+    return FutuExactContractSelectionVerification(
+        selection,
+        retained,
+        direct_entry_verification,
+    )
 
 
 def _checked_runtime_timestamp(

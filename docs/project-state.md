@@ -1685,6 +1685,24 @@ Independent review passed with no blocker, major, or minor finding. Validation
 passed 55 focused Futu/Browser tests, 1,291 full-suite tests, compileall, and
 `git diff --check`.
 
+## Futu selection-to-Direct-Entry bridge checkpoint
+
+The separate Tier-A bridge is implemented under
+[`futu-selection-direct-entry-bridge-contract.md`](futu-selection-direct-entry-bridge-contract.md).
+It revalidates one explicit `FutuExactContractSelection`, calls the existing
+exact Futu verifier exactly once per selected leg, rejects any mismatch in
+provider identity or economic contract fields, and applies the existing
+provider-neutral Direct Entry exact-contract verifier to the exact selected
+structure and exact returned references.
+
+The frozen sidecar retains the exact selection, ordered provider
+verifications, exact references, and Direct Entry exact verification. It
+creates no candidate, deliverable completion, research-readiness claim,
+Candidate Assembly, reviewed-research service call, ranking, generation, or
+provider orchestration. Independent review passed with no blocker, major, or
+minor finding. Validation passed 90 focused bridge/Futu/Direct Entry tests,
+1,301 full-suite tests, compileall, and `git diff --check`.
+
 ## Current next priority
 
 The bounded Futu Exact Contract Browser and explicit human-selection boundary
@@ -1698,11 +1716,13 @@ Call or Put selection produces a listed-structure intent; a Long Straddle
 requires an explicit same-expiry/same-strike Call and Put. The result cannot
 enter Candidate Assembly directly.
 
-The next bounded work is the smallest deterministic bridge from that explicit
-selection through existing exact Futu contract verification into the existing
-Direct Entry service. Automatic mode-based generation remains paused because
-accepted Futu evidence supplies neither authoritative ATM reference nor
-authoritative Delta semantics.
+That explicit selection can now pass through exact Futu verification and the
+existing provider-neutral Direct Entry exact-contract gate without a new
+orchestration layer. A next real exercise requires an actual human-selected
+row or explicit same-expiry/same-strike Call/Put pair; the system must not
+default or auto-select one. Automatic mode-based generation remains paused
+because accepted Futu evidence supplies neither authoritative ATM reference
+nor authoritative Delta semantics.
 
 ## Deferred
 

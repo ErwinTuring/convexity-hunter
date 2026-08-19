@@ -584,9 +584,12 @@ they are not the current roadmap priority.
     boundary. It uses only the existing maturity request and provider
     `MONTH + STANDARD + not suspended` classification, performs no ranking or
     default selection, and creates no candidate or research-readiness claim.
-18. Next: the smallest deterministic handoff from the explicit selection
-    through existing exact Futu contract verification into Direct Entry.
-19. Later: any demonstrated smallest event-source adapter, separately frozen
+18. Completed the smallest deterministic handoff from explicit selection
+    through existing exact Futu contract verification and the provider-neutral
+    Direct Entry exact-contract gate, without invoking Candidate Assembly.
+19. Next real use requires a human to select one displayed exact contract or
+    explicit valid Call/Put pair; the system does not default or auto-select.
+20. Later: any demonstrated smallest event-source adapter, separately frozen
     automatic exact-structure generation, and complete-flow work.
 
 ## 17. Locked principles
