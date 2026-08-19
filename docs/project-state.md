@@ -1646,12 +1646,31 @@ two MINOR direct-construction/test-boundary gaps. All were corrected, and
 targeted re-review passed. Validation passed 41 focused Futu tests, 1,277
 full-suite tests, compileall, and `git diff --check`.
 
+## Real Futu option-chain discovery exercise checkpoint
+
+One repository-external exercise reconstructed the accepted AAPL SEC-filing
+hypothesis and passed it through the exact discovery handoff, bounded maturity
+request, and live Futu chain-evidence boundary. The sanitized result retained
+7 in-range expiration classifications, including 5 provider `MONTH`
+expirations, and 880 chain rows: 440 calls and 440 puts. Every returned monthly
+chain row was provider-classified `ELIGIBLE`; this remains classification, not
+deliverable proof or research readiness.
+
+The exercise persisted no raw payload, emitted no contract identifiers or
+strikes, read no credentials, and made no quote, snapshot, history, account, or
+trading call. It selected and generated no structure. The exact evidence and
+remaining generation gate are recorded in
+[`futu-option-chain-discovery-real-exercise.md`](futu-option-chain-discovery-real-exercise.md).
+
 ## Current next priority
 
-Exercise one exact source-backed discovery request through the bounded Futu
-chain-evidence boundary using repository-external sanitized live evidence.
-Persist no raw payload and perform no structure selection, ranking, quote
-retrieval, Delta/ATM resolution, or generation.
+Resolve the next generation architecture gate. Current bidirectional policy
+requires an authoritative ATM reference, while directional policy requires
+authoritative Delta semantics; the accepted Futu evidence boundary supplies
+neither. A product decision must choose whether strict mode-based generation
+remains paused or a separately bounded manual-selection handoff may expose an
+unranked provider-classified catalog. No generation implementation starts
+before that decision.
 
 ## Deferred
 

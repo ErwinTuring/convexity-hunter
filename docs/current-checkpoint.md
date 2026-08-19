@@ -71,7 +71,12 @@ OpenD and persisted no raw payload. They confirmed:
 - populated exact-option volume, open interest, IV, Delta, Gamma, Theta, Vega,
   and Rho retained provider-natively;
 - qualifying atomic option and SPY BBO frames with exact identity, values,
-  sizes, and optional opaque provider timestamp-field values; and
+  sizes, and optional opaque provider timestamp-field values;
+- one accepted AAPL source-backed discovery request producing 7 in-range
+  expiration classifications, 5 provider-monthly exact-date chain calls, and
+  880 retained provider-classified eligible rows (440 calls and 440 puts),
+  with no raw payload persistence, quote retrieval, selection, or generation;
+  and
 - the exact Futu contract entered the existing Direct Entry service without a
   new provider orchestration layer; exact-contract verification succeeded,
   research readiness remained absent, both candidate and screening states were
@@ -105,9 +110,11 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Exercise one exact source-backed discovery request through the bounded Futu
-   chain-evidence boundary using repository-external sanitized live evidence.
-   Persist no raw payload and perform no structure selection or generation.
+1. Resolve the next generation architecture gate. Current bidirectional policy
+   requires an authoritative ATM reference, while directional policy requires
+   authoritative Delta semantics; accepted Futu evidence supplies neither.
+   Decide whether to keep strict generation paused or define a bounded manual
+   selection handoff from an unranked provider-classified catalog.
 2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.

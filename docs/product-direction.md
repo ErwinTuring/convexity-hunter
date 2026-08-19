@@ -554,10 +554,16 @@ they are not the current roadmap priority.
     hard maturity-window boundary.
 15. Completed bounded Futu chain evidence and provider-classified series
     eligibility for one requested underlying and expiration interval.
-16. Current: exercise that boundary once against the accepted source-backed
-    event path using sanitized live Futu evidence, without selecting or
-    generating a structure.
-17. Later: any demonstrated smallest event-source adapter, separately frozen
+16. Completed one sanitized live exercise from the accepted AAPL source-backed
+    event path through real Futu expiration and chain evidence, without
+    selecting or generating a structure.
+17. Current architecture gate: strict mode-based generation requires an
+    authoritative ATM reference for bidirectional hypotheses and authoritative
+    Delta semantics for directional hypotheses. Current accepted Futu evidence
+    supplies neither. A separate product decision must choose whether to keep
+    generation paused or define a bounded manual-selection handoff from an
+    unranked provider-classified catalog.
+18. Later: any demonstrated smallest event-source adapter, separately frozen
     exact-structure generation, and complete-flow work.
 
 ## 17. Locked principles
