@@ -38,6 +38,12 @@ Repository: `ErwinTuring/convexity-hunter`
   contradiction, uncertainty, falsification, and producer identity. Missing
   semantics remain deterministic `INCOMPLETE`; malformed identities,
   chronology, references, and graphs fail closed.
+- The provider-neutral Event Discovery / Event Intake boundary retains at most
+  ten provisional source-backed candidates under one explicit producer policy,
+  preserves presentation order without ranking semantics, and records an
+  explicit human choice of zero or one. Translation binds exact candidate and
+  supplemental sources to one exact caller-built Event Intelligence submission
+  but neither fills fields nor invokes acceptance.
 - One repository-external SEC filing exercise produced an accepted AAPL
   submission with one source, two facts, one interpretation, and one
   bidirectional distribution hypothesis. It consumed no market data and
@@ -149,15 +155,26 @@ Chinese result was honestly `DATA_INSUFFICIENT`. Full sanitized evidence is in
 These gaps block complete research-ready costs/liquidity, not the honest
 partial Direct Entry loop.
 
+The six current screening gaps are frozen outside the Event Discovery / Event
+Intake priority: `missing_costs`, `missing_liquidity`,
+`missing_volatility_environment`, `missing_structure_expiration_tail_slice`,
+`missing_target_move_scenario`, and `missing_volatility_crush_scenario`.
+Freezing them preserves their fail-closed meaning; it neither removes them nor
+authorizes inferred evidence.
+
 ## Next work
 
-1. Treat the current-event FOMC-to-SPY exercise as proof that the temporal gate
-   and existing human-selected partial loop work together. Do not repeat it by
-   default or turn its expiry/strike into a selection rule.
-2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
+1. Run the first repository-external Event Discovery exercise using the frozen
+   seven-day bounded Web Search policy. Present no more than ten source-backed
+   candidates, preserve navigation-only order, and wait for explicit human
+   selection of zero or one.
+2. If one candidate is selected, perform only source-supported supplemental
+   research, record explicit translation, and submit it once to the existing
+   Event Intelligence acceptance boundary. Do not repair it to pass.
+3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
-3. Freeze further BBO timestamp probing and provider/rates/history expansion
+4. Freeze further BBO timestamp probing and provider/rates/history expansion
    unless new official semantics or a future demonstrated product blocker
    justifies a separately bounded work unit.
 

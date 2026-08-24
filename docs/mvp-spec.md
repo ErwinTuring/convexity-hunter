@@ -31,6 +31,20 @@ The MVP has two equal first-class entry modes:
    eligibility, market-data, and evidence checks before Convexity Engine
    research.
 
+Discovery entry begins with a separate, bounded Event Discovery / Event Intake
+layer. One declared external producer may surface no more than ten provisional,
+source-backed `EventCandidate` records under a reproducible discovery policy.
+Candidate visibility and presentation order are navigation only: a candidate
+is not an accepted Event Intelligence hypothesis, a research candidate, a
+ranking, or a recommendation. A human explicitly selects zero or one.
+
+Candidate-to-submission translation binds the exact selected candidate, exact
+source records, any explicit supplemental source records, and one separately
+constructed `EventIntelligenceSubmission`. It never fills a missing event
+date, expected window, resolved underlying identity, impact path, or other
+field merely to pass acceptance. Unsupported fields remain missing and the
+existing Event Intelligence assessor may return `INCOMPLETE`.
+
 Direct entry does not require an Event Intelligence hypothesis. It does not
 bypass contract existence, option-chain verification, supported grammar, DTE
 policy, quote and reference-data validation, provenance, or calculation

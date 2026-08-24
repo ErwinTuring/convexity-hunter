@@ -597,10 +597,15 @@ they are not the current roadmap priority.
 21. Completed one real current-event exercise from an accepted, non-expired
     FOMC-to-SPY hypothesis through the complete human-selected partial loop,
     ending in an honest Chinese `DATA_INSUFFICIENT` report.
-22. Next: retain that loop as the proven Hunter MVP minimum and choose the next
-    separately bounded Hunter/Event Intelligence product work without
-    expanding provider evidence merely to complete the Engine.
-23. Later: any demonstrated smallest event-source adapter, separately frozen
+22. Completed the thin provider-neutral Event Discovery / Event Intake
+    contract: at most ten provisional source-backed candidates, explicit human
+    selection of zero or one, and provenance-only translation into one
+    caller-built Event Intelligence submission without field completion or
+    automatic acceptance.
+23. Next: run the first bounded seven-day Web Search discovery exercise and
+    ask whether the user would continue researching at least one event they did
+    not pre-specify.
+24. Later: any demonstrated smallest event-source adapter, separately frozen
     automatic exact-structure generation, and complete-flow work.
 
 ## 17. Locked principles

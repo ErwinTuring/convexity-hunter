@@ -1770,6 +1770,47 @@ event/discovery/Futu/Direct Entry/report tests and `git diff --check`.
 
 ## Current next priority
 
+The Event Discovery / Event Intake MVP is implemented under
+[`event-discovery-intake-contract.md`](event-discovery-intake-contract.md).
+One provider-neutral direct module retains provisional source-backed
+`EventCandidate` records and producer-ordered batches of zero through ten. It
+records one explicit human selection of zero or one and binds one selected
+candidate plus exact candidate/supplemental source records to one exact
+caller-built `EventIntelligenceSubmission`.
+
+Candidate visibility does not establish an accepted hypothesis, resolved
+underlying, date, expected window, importance, candidate qualification, or
+recommendation. Translation performs no search, field completion, acceptance,
+retry, or downstream promotion; missing semantics remain available to the
+existing assessor as `INCOMPLETE`. The module adds no provider, search adapter,
+Skill, LLM integration, score, news platform, persistence, market data, or
+Engine evidence.
+
+Formal read-only preflight returned `READY`. The initial independent review
+identified one MAJOR mismatch between an overbroad constructor-history claim
+and Python's value-based intrinsic reconstruction. The contract now accurately
+rejects exact-type violations and malformed or noncanonical bypasses while
+making no unimplementable claim that constructor history itself is provenance;
+the added adversarial test protects the realistic malformed bypass. Targeted
+re-review passed. Validation passed 20 new focused tests, 71 combined Event
+Discovery/Event Intelligence/Discovery Entry/request tests, 1,323 full-suite
+tests, compileall, and `git diff --check`.
+
+The next gate is one repository-external live exercise using the frozen
+seven-calendar-day Web Search policy. It may produce zero through ten rather
+than padding, and it stops for explicit human selection before translation.
+
+The existing current-event FOMC-to-SPY exercise remains proof of the downstream
+path. Do not promote its expiry or strike into policy, and do not resume Engine
+evidence expansion merely to avoid an honest `DATA_INSUFFICIENT` result.
+
+The current `missing_costs`, `missing_liquidity`,
+`missing_volatility_environment`, `missing_structure_expiration_tail_slice`,
+`missing_target_move_scenario`, and `missing_volatility_crush_scenario` outputs
+remain frozen fail-closed gaps outside this priority.
+
+## Previous current priority
+
 The bounded Futu Exact Contract Browser and explicit human-selection boundary
 are implemented under
 [`futu-exact-contract-browser-contract.md`](futu-exact-contract-browser-contract.md).
