@@ -594,9 +594,13 @@ they are not the current roadmap priority.
 20. Completed the deterministic Discovery Entry temporal-applicability gate:
     request construction now fails when the caller evaluation date is later
     than the selected hypothesis's inclusive expected-window end date.
-21. Next: use one real current or future event with a non-expired explicit
-    expected window for the complete human-selected partial loop.
-22. Later: any demonstrated smallest event-source adapter, separately frozen
+21. Completed one real current-event exercise from an accepted, non-expired
+    FOMC-to-SPY hypothesis through the complete human-selected partial loop,
+    ending in an honest Chinese `DATA_INSUFFICIENT` report.
+22. Next: retain that loop as the proven Hunter MVP minimum and choose the next
+    separately bounded Hunter/Event Intelligence product work without
+    expanding provider evidence merely to complete the Engine.
+23. Later: any demonstrated smallest event-source adapter, separately frozen
     automatic exact-structure generation, and complete-flow work.
 
 ## 17. Locked principles

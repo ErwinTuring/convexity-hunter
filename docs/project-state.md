@@ -1740,6 +1740,34 @@ missing-evidence reasons, no position-management plan, and a nonempty Chinese
 report. No raw payload was persisted and no BBO, history, account, or trading
 call was made.
 
+## Current-event FOMC-to-SPY real exercise checkpoint
+
+The second real explicit-human-selection exercise is recorded in
+[`futu-spy-fomc-browser-direct-entry-real-exercise.md`](futu-spy-fomc-browser-direct-entry-real-exercise.md).
+Official Federal Reserve meeting-calendar facts and official State Street SPY
+identity facts supported a separately labeled, non-directional interpretation.
+The resulting 2026-09-16--23 expected window was an explicit MVP assumption and
+was still active at the 2026-08-24 evaluation date, so the v0.2 temporal gate
+passed without extension.
+
+Futu exposed three Browser-visible monthly expirations. The user neutrally
+chose the nearest policy-compliant expiry, 2026-11-20, and then explicitly
+selected the median strike from a neutral middle-15 display: the exact SPY 650
+Long Straddle, one contract per leg, with USD 10,000 assumed portfolio value
+and 30 calendar days. These choices created no ATM, Delta, cost, liquidity,
+ranking, candidate, or recommendation semantics.
+
+Both exact Futu leg verifications and both Direct Entry exact gates passed
+without substitution. Both references remained `INCOMPLETE`; research
+readiness remained absent. Partial assembly received the caller-supplied
+`DATA_INSUFFICIENT` research-record state; screening independently returned
+`DATA_INSUFFICIENT` with all six applicable missing-evidence reasons. No
+position-management plan was created, and a nonempty 3,012-character Chinese
+report was rendered. No raw payload was persisted and no BBO, history,
+account, or trading call was made. Independent documentation review's one
+minor state-attribution finding was corrected. Validation passed 155 focused
+event/discovery/Futu/Direct Entry/report tests and `git diff --check`.
+
 ## Current next priority
 
 The bounded Futu Exact Contract Browser and explicit human-selection boundary
@@ -1753,13 +1781,13 @@ Call or Put selection produces a listed-structure intent; a Long Straddle
 requires an explicit same-expiry/same-strike Call and Put. The result cannot
 enter Candidate Assembly directly.
 
-The next product exercise must start from one real current or future event whose
-explicit Event Intelligence expected window has not expired on the evaluation
-date. It may then use the existing Underlying, Futu Browser, explicit human
-selection, Direct Entry, and Chinese-report path. The system must not default or
-auto-select a structure. Automatic mode-based generation remains paused because
-accepted Futu evidence supplies neither authoritative ATM reference nor
-authoritative Delta semantics.
+The current-event FOMC-to-SPY exercise now proves the existing path from an
+accepted non-expired hypothesis through Underlying, Futu Browser, explicit
+human selection, Direct Entry, and honest Chinese `DATA_INSUFFICIENT`
+rendering. Do not repeat the exercise by default or promote its neutral expiry
+and strike choices into automatic policy. Automatic mode-based generation
+remains paused because accepted Futu evidence supplies neither authoritative
+ATM reference nor authoritative Delta semantics.
 
 ## Deferred
 

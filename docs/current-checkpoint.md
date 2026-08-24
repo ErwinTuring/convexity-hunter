@@ -114,6 +114,19 @@ date, so the implemented gate now prohibits replaying that hypothesis as
 current Discovery Entry. The downstream Browser/Direct Entry evidence remains
 a historical implementation proof, not current-event applicability.
 
+On 2026-08-24, a second repository-external sanitized exercise used the
+official 2026-09-15--16 FOMC calendar and official SPY product identity to
+produce one accepted, non-expired `BIDIRECTIONAL_EXPANSION` hypothesis with an
+explicit 2026-09-16--23 MVP expected window. The temporal gate passed at the
+2026-08-24 evaluation date. Futu exposed three eligible monthly expirations;
+the user neutrally chose the nearest, 2026-11-20, then explicitly selected the
+median strike from the displayed middle 15 pairs: one SPY 650 Long Straddle,
+one contract per leg, USD 10,000 assumed portfolio value, and 30 calendar days.
+Both exact Futu and Direct Entry gates passed without substitution; both
+references remained `INCOMPLETE`, research readiness remained absent, and the
+Chinese result was honestly `DATA_INSUFFICIENT`. Full sanitized evidence is in
+[`futu-spy-fomc-browser-direct-entry-real-exercise.md`](futu-spy-fomc-browser-direct-entry-real-exercise.md).
+
 ## Active research-readiness gaps
 
 1. Futu confirms U.S. real-time bid/ask/sizes, but explicitly does not support
@@ -138,10 +151,9 @@ partial Direct Entry loop.
 
 ## Next work
 
-1. Use one real current or future event whose explicit Event Intelligence
-   expected window remains active on the evaluation date, then run the existing
-   path through Underlying, Futu Browser, explicit human selection, Direct
-   Entry, and Chinese rendering.
+1. Treat the current-event FOMC-to-SPY exercise as proof that the temporal gate
+   and existing human-selected partial loop work together. Do not repeat it by
+   default or turn its expiry/strike into a selection rule.
 2. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
