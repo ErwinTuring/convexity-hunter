@@ -1840,12 +1840,37 @@ Intelligence assessment, or Futu exercise followed.
 
 This valid negative result retains `morning-note` as a traditional
 institutional-event baseline but does not promote it or replace bounded Web
-Search. The next bounded investigation may evaluate one mature
+Search. The subsequent bounded investigation evaluated one
 narrative/attention discovery Skill under the unchanged provisional-record,
-neutral-order, explicit-human-selection, and fail-closed acceptance boundaries.
-It does not authorize optimization of `morning-note`, ranking, scoring,
-auto-promotion, market-data feedback, Engine evidence, or an automatic
-downstream Futu exercise.
+neutral-order, explicit-human-selection, and fail-closed acceptance boundaries;
+its result follows. That transition authorized no optimization of
+`morning-note`, ranking, scoring, auto-promotion, market-data feedback, Engine
+evidence, or automatic downstream Futu exercise.
+
+## Last30Days narrative/attention producer checkpoint
+
+The bounded evaluation is sanitized in
+[`event-discovery-last30days-evaluation.md`](event-discovery-last30days-evaluation.md).
+The repository-external adapter pinned `last30days-skill` 3.21.1 at commit
+`d05389d39b2ce09a13f71b01e68562f077c766df`, used the same 2026-08-18 through
+2026-08-24 window, and discarded every native rank, score, engagement,
+recommendation, and content-angle field before the existing Event Discovery
+boundary.
+
+Native historical research was required because live-only `--discover` rejects
+`--as-of`. Browser-cookie reads and credentials were disabled, all artifacts
+remained under `/private/tmp`, and no repository API changed. HN and YouTube
+completed; Reddit reported `auth-failed`; Polymarket and keyless Web reported
+`no-results`; X was absent. The exact versioned result contained no clusters or
+results, and the validated `EventCandidateBatch` contained zero candidates.
+
+The result was not padded, retried with a favorable query, or promoted into a
+human `NONE`. Human willingness, novelty, second-order value, and mapping
+credibility were not demonstrated because no selectable row existed. No
+translation, Event Intelligence assessment, market data, Futu exercise, or
+Engine evidence followed. `last30days` is retained only as an experimental
+narrative/attention producer; it neither replaces Web Search nor joins
+`morning-note` as a baseline.
 
 ## Previous current priority
 

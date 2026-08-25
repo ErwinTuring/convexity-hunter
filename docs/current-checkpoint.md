@@ -154,6 +154,17 @@ credible research mapping. No translation, Event Intelligence assessment, or
 Futu exercise followed. `morning-note` is retained only as a traditional
 institutional-event baseline and does not replace bounded Web Search.
 
+The authorized `last30days-skill` narrative/attention evaluation is recorded
+in
+[`event-discovery-last30days-evaluation.md`](event-discovery-last30days-evaluation.md).
+The pinned, repository-external adapter used the same seven-day historical
+window, discarded all native rank/score/recommendation semantics, disabled
+browser-cookie access, and emitted a valid zero-candidate
+`EventCandidateBatch`. HN and YouTube completed, Reddit ended `auth-failed`, X
+was not configured, and the native export contained no cluster or result.
+No human selection, translation, Event Intelligence assessment, or Futu call
+was fabricated. Material incremental discovery value was not demonstrated.
+
 ## Active research-readiness gaps
 
 1. Futu confirms U.S. real-time bid/ask/sizes, but explicitly does not support
@@ -185,13 +196,14 @@ authorizes inferred evidence.
 
 ## Next work
 
-1. Evaluate one mature narrative/attention discovery Skill as a possible third
-   bounded producer. Do not replace Web Search or promote `morning-note` beyond
-   its traditional institutional-event baseline.
-2. If the Skill is compatible, freeze a separate bounded profile and repeat
-   the same provisional-record, neutral-order, explicit-human-selection, and
-   fail-closed translation boundaries. Do not optimize or broaden the
-   `morning-note` adapter.
+1. Treat bounded Web Search as the only producer that has yet caused explicit
+   human continuation. Retain `morning-note` as the institutional-event
+   baseline and `last30days` as an experimental narrative/attention producer;
+   neither demonstrated material incremental value in its controlled run.
+2. Do not rerun or tune either Skill merely to force candidates. A future
+   producer comparison needs a separately bounded policy, a new comparison
+   window or justified source-coverage change, and the same neutral-order,
+   explicit-human-selection, and fail-closed translation boundaries.
 3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
