@@ -157,13 +157,15 @@ institutional-event baseline and does not replace bounded Web Search.
 The authorized `last30days-skill` narrative/attention evaluation is recorded
 in
 [`event-discovery-last30days-evaluation.md`](event-discovery-last30days-evaluation.md).
-The pinned, repository-external adapter used the same seven-day historical
-window, discarded all native rank/score/recommendation semantics, disabled
-browser-cookie access, and emitted a valid zero-candidate
-`EventCandidateBatch`. HN and YouTube completed, Reddit ended `auth-failed`, X
-was not configured, and the native export contained no cluster or result.
-No human selection, translation, Event Intelligence assessment, or Futu call
-was fabricated. Material incremental discovery value was not demonstrated.
+The initial no-credential run is now classified `INCONCLUSIVE`: Reddit ended
+`auth-failed` and X was absent. A properly enabled rerun used the new
+2026-08-19 through 2026-08-25 window with repository-external X browser-cookie
+authorization and ScrapeCreators-backed Reddit. Reddit, YouTube, and HN were
+`ok`; X and Polymarket validly returned `no-results`; Web was `unreachable`.
+The unchanged adapter discarded all native rank/score/recommendation semantics
+and emitted a valid zero-candidate `EventCandidateBatch`. No human selection,
+translation, Event Intelligence assessment, or Futu call was fabricated.
+Material incremental discovery value was not demonstrated in this rerun.
 
 ## Active research-readiness gaps
 

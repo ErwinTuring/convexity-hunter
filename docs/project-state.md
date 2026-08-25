@@ -1768,7 +1768,7 @@ account, or trading call was made. Independent documentation review's one
 minor state-attribution finding was corrected. Validation passed 155 focused
 event/discovery/Futu/Direct Entry/report tests and `git diff --check`.
 
-## Current next priority
+## Event Discovery / Event Intake implementation checkpoint
 
 The Event Discovery / Event Intake MVP is implemented under
 [`event-discovery-intake-contract.md`](event-discovery-intake-contract.md).
@@ -1852,21 +1852,28 @@ evidence, or automatic downstream Futu exercise.
 The bounded evaluation is sanitized in
 [`event-discovery-last30days-evaluation.md`](event-discovery-last30days-evaluation.md).
 The repository-external adapter pinned `last30days-skill` 3.21.1 at commit
-`d05389d39b2ce09a13f71b01e68562f077c766df`, used the same 2026-08-18 through
-2026-08-24 window, and discarded every native rank, score, engagement,
-recommendation, and content-angle field before the existing Event Discovery
-boundary.
+`d05389d39b2ce09a13f71b01e68562f077c766df` and discards every native rank,
+score, engagement, recommendation, and content-angle field before the existing
+Event Discovery boundary. The initial 2026-08-18 through 2026-08-24
+no-credential run is `INCONCLUSIVE`, not negative product evidence: Reddit
+reported `auth-failed` and X was absent.
 
-Native historical research was required because live-only `--discover` rejects
-`--as-of`. Browser-cookie reads and credentials were disabled, all artifacts
-remained under `/private/tmp`, and no repository API changed. HN and YouTube
-completed; Reddit reported `auth-failed`; Polymarket and keyless Web reported
-`no-results`; X was absent. The exact versioned result contained no clusters or
-results, and the validated `EventCandidateBatch` contained zero candidates.
+The properly enabled rerun used a new 2026-08-19 through 2026-08-25 window.
+The evaluation record freezes the three retained search queries and weights.
+The source arrays added X through explicit browser-cookie consent, and Reddit
+used its explicitly authorized ScrapeCreators backend. Date policy, adapter
+rules, and Hunter authority were unchanged. Reddit, YouTube, and HN were `ok`;
+X and Polymarket returned valid
+`no-results`; keyless Web was `unreachable`. The exact versioned result
+contained no clusters or results, and the validated `EventCandidateBatch`
+contained zero candidates. Credentials and raw artifacts remained outside the
+repository, and no repository API changed.
 
 The result was not padded, retried with a favorable query, or promoted into a
 human `NONE`. Human willingness, novelty, second-order value, and mapping
-credibility were not demonstrated because no selectable row existed. No
+credibility were not demonstrated because no selectable row existed. For this
+properly enabled window and frozen query policy, the Skill emitted no candidate
+to compare with the prior Web Search or `morning-note` batches. No
 translation, Event Intelligence assessment, market data, Futu exercise, or
 Engine evidence followed. `last30days` is retained only as an experimental
 narrative/attention producer; it neither replaces Web Search nor joins
