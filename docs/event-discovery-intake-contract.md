@@ -92,7 +92,13 @@ or zero rather than pad the batch. More than ten candidates, duplicate
 candidate IDs, duplicate deduplication keys, and candidate observation times
 after batch observation time fail closed.
 
-The first bounded repository-external policy is:
+The first bounded repository-external policy is superseded for new discovery
+runs by
+[`Hunter Discovery Policy v0.1`](hunter-discovery-policy-v0.1.md). That policy
+keeps this provider-neutral contract unchanged while freezing three producer-
+level discovery lanes, a strict lane/rationale grammar, exact seven-calendar-
+day source-publication windows, and deterministic neutral presentation order.
+The original exercise policy was:
 
 ```text
 recent public information over an explicit seven-calendar-day window
@@ -106,8 +112,9 @@ recent public information over an explicit seven-calendar-day window
 -> preserve producer presentation order without score semantics
 ```
 
-This policy identifies the first exercise producer; it is not embedded in the
-provider-neutral records and creates no generic news platform.
+The original policy identifies the first exercise producer and remains
+historical evidence. Neither policy is embedded as new provider-neutral fields,
+and neither creates a generic news platform.
 
 ## Explicit human selection
 

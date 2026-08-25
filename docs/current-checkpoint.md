@@ -167,6 +167,46 @@ and emitted a valid zero-candidate `EventCandidateBatch`. No human selection,
 translation, Event Intelligence assessment, or Futu call was fabricated.
 Material incremental discovery value was not demonstrated in this rerun.
 
+`Hunter Discovery Policy v0.1` is now frozen in
+[`hunter-discovery-policy-v0.1.md`](hunter-discovery-policy-v0.1.md) without a
+provider-neutral schema change. It defines one primary lane per candidate,
+strict fact-versus-interpretation representation, an exact seven-day source-
+publication window, and deterministic neutral producer ordering. The first new
+window batch, 2026-08-11 through 2026-08-17, validated with nine candidates and
+is recorded in
+[`hunter-discovery-policy-v0.1-validation.md`](hunter-discovery-policy-v0.1-validation.md).
+The user selected its `SECOND_ORDER_TRANSMISSION` NVDA power-financing item and
+reported that both the event and connection were new, while credibility was
+mixed. Supplemental NVIDIA evidence confirmed the explicit capital and limited
+credit-support channel. Translation completed, but Event Intelligence correctly
+returned `INCOMPLETE` only for `incomplete_expected_window`: sources provide
+years and a lease term, not an exact end date. No date was inferred and no
+market-data or downstream work ran.
+
+The second new window batch, 2026-08-04 through 2026-08-10, independently
+validated with six candidates after one provisional item was excluded because
+an in-window primary source could not be verified. The user selected its
+`NARRATIVE_BELIEF_SHIFT` NVIDIA compute-financing item and again reported that
+both the event and connection were new, with mixed credibility. Supplemental
+NVIDIA and Apollo evidence distinguished an aggregate capital-mobilization aim
+from funded commitments and exposed independent underwriting plus possible
+bounded NVIDIA residual-value support. Translation completed, but Event
+Intelligence correctly returned `INCOMPLETE` only for
+`incomplete_expected_window`; no exact end date was available or inferred, and
+no market-data or downstream work ran.
+
+The third new window batch, 2026-07-28 through 2026-08-03, independently
+validated with eight candidates: five explicit catalysts and three narrative
+or belief-shift rows. No second-order row was manufactured where the bounded
+evidence did not support a transmission path. The user selected the IONQ /
+SkyWater vertical-integration narrative and again reported that both the event
+and connection were new, with mixed credibility. Supplemental SEC evidence
+proved acquisition completion and `IONQ` / `XNYS` identity while preserving
+SkyWater's continuing merchant-foundry role as contradiction evidence.
+Translation correctly returned `INCOMPLETE` only for
+`incomplete_expected_window`; acquisition completion supplied no exact end
+date for integration impact, and no market-data or downstream work ran.
+
 ## Active research-readiness gaps
 
 1. Futu confirms U.S. real-time bid/ask/sizes, but explicitly does not support
@@ -198,18 +238,22 @@ authorizes inferred evidence.
 
 ## Next work
 
-1. Treat bounded Web Search as the only producer that has yet caused explicit
-   human continuation. Retain `morning-note` as the institutional-event
-   baseline and `last30days` as an experimental narrative/attention producer;
-   neither demonstrated material incremental value in its controlled run.
-2. Do not rerun or tune either Skill merely to force candidates. A future
-   producer comparison needs a separately bounded policy, a new comparison
-   window or justified source-coverage change, and the same neutral-order,
-   explicit-human-selection, and fail-closed translation boundaries.
-3. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
+1. Treat the three-batch
+   [`Hunter Discovery Policy v0.1`](hunter-discovery-policy-v0.1.md)
+   repeatability exercise as complete bounded positive evidence. Do not add
+   scoring, automatic promotion, or new discovery producers merely to improve
+   this result.
+2. Keep `morning-note` and `last30days` frozen as completed comparison evidence.
+   Do not rerun or tune a Skill merely to force candidates.
+3. Preserve the existing Event Intelligence fail-closed requirement for an
+   explicit expected-window end. A future work unit may investigate how
+   upstream Event Intelligence can source bounded windows for integration and
+   structural narratives, but it must not infer a date merely to obtain
+   `ACCEPTED`.
+4. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
-4. Freeze further BBO timestamp probing and provider/rates/history expansion
+5. Freeze further BBO timestamp probing and provider/rates/history expansion
    unless new official semantics or a future demonstrated product blocker
    justifies a separately bounded work unit.
 

@@ -1879,6 +1879,63 @@ Engine evidence followed. `last30days` is retained only as an experimental
 narrative/attention producer; it neither replaces Web Search nor joins
 `morning-note` as a baseline.
 
+## Hunter Discovery Policy v0.1 validation checkpoint
+
+[`Hunter Discovery Policy v0.1`](hunter-discovery-policy-v0.1.md) freezes
+bounded Web Search as the active producer and separates three producer-level
+interpretation lanes without changing `EventCandidate` or Event Intelligence.
+It binds an exact inclusive seven-calendar-day source-publication window,
+strict lane/rationale grammar, source-fact separation, no-inference semantics,
+same-event/entity/date deduplication, at most ten candidates without padding,
+and deterministic neutral ordering by earliest source publication then
+candidate ID. Skill tuning and Engine `missing_*` work remain frozen.
+
+The first previously unused window, 2026-08-11 through 2026-08-17, produced a
+validated nine-candidate batch spanning all three lanes. The sanitized batch
+and its public sources are recorded in
+[`hunter-discovery-policy-v0.1-validation.md`](hunter-discovery-policy-v0.1-validation.md).
+The user selected the NVDA `SECOND_ORDER_TRANSMISSION` item, reported that both
+the event and connection were new, and rated the impact path mixed. NVIDIA
+primary evidence confirmed the direct investment and bounded credit-support
+path. The source-bound translation was complete except for an exact expected-
+window end date, so Event Intelligence returned `INCOMPLETE` only for
+`incomplete_expected_window`. No date was invented and no market-data or Direct
+Entry work ran.
+
+The second unused window, 2026-08-04 through 2026-08-10, produced six validated
+candidates after excluding one item whose in-window primary source could not be
+verified. The user selected the NVDA `NARRATIVE_BELIEF_SHIFT` item, again found
+both the event and connection new, and rated credibility mixed. Distinct NVIDIA
+and Apollo facts support the provisional framing of AI compute as independently
+underwritten infrastructure, while also showing that the stated aggregate
+capital amount is not a funded commitment and that NVIDIA support is bounded
+and project-specific. Translation again returned `INCOMPLETE` only for
+`incomplete_expected_window`; the sources provide no exact end date. This
+second positive human continuation is evidence of repeatability across two
+non-first-order lanes, not evidence that the hypothesis is accepted or that the
+underlying is attractive.
+
+The third unused window, 2026-07-28 through 2026-08-03, produced eight
+validated candidates without inventing a second-order row. The user selected
+the IONQ / SkyWater `NARRATIVE_BELIEF_SHIFT` item, found both the event and
+connection new, and again rated credibility mixed. SEC evidence proved that
+the acquisition completed and SkyWater became an IonQ subsidiary, while also
+showing that it remains a merchant foundry and that claimed roadmap and
+vertical-integration benefits are forward-looking. Translation returned
+`INCOMPLETE` only for `incomplete_expected_window`; no exact integration-impact
+end date was available or inferred.
+
+Across three sequential new windows, the human chose one item from every batch;
+all three selected events and connections were new to the human, all three
+were rated mixed rather than accepted as established causal truth, and every
+selection came from a non-first-order lane: one
+`SECOND_ORDER_TRANSMISSION` and two `NARRATIVE_BELIEF_SHIFT`. This is bounded
+positive repeatability evidence for the policy's interpretation value. It does
+not establish automatic discovery quality, recommendation authority, or
+accepted Event Intelligence: all three translations honestly remained
+`INCOMPLETE` because authoritative sources did not supply exact expected-window
+end dates.
+
 ## Previous current priority
 
 The bounded Futu Exact Contract Browser and explicit human-selection boundary
