@@ -1796,9 +1796,10 @@ re-review passed. Validation passed 20 new focused tests, 71 combined Event
 Discovery/Event Intelligence/Discovery Entry/request tests, 1,323 full-suite
 tests, compileall, and `git diff --check`.
 
-The next gate is one repository-external live exercise using the frozen
-seven-calendar-day Web Search policy. It may produce zero through ten rather
-than padding, and it stops for explicit human selection before translation.
+That first repository-external Web Search exercise is now complete; the
+sanitized result and its explicit human selection are recorded in the next
+checkpoint section. The same zero-through-ten, no-padding, explicit-selection
+boundary remains applicable to later producer comparisons.
 
 The existing current-event FOMC-to-SPY exercise remains proof of the downstream
 path. Do not promote its expiry or strike into policy, and do not resume Engine
@@ -1808,6 +1809,43 @@ The current `missing_costs`, `missing_liquidity`,
 `missing_volatility_environment`, `missing_structure_expiration_tail_slice`,
 `missing_target_move_scenario`, and `missing_volatility_crush_scenario` outputs
 remain frozen fail-closed gaps outside this priority.
+
+## SOC discovery and second-producer comparison checkpoint
+
+The first bounded Web Search exercise is complete and sanitized in
+[`event-discovery-soc-real-exercise.md`](event-discovery-soc-real-exercise.md).
+Its nine-candidate batch led to one explicit SOC selection. Supplemental
+primary-source review preserved a mixed court result rather than repairing the
+initial candidate narrative; the exact caller submission was accepted, and
+the real Futu Browser-to-Direct-Entry loop ended honestly at
+`DATA_INSUFFICIENT` with all six frozen gaps.
+
+One mature external Skill has been added as a second, repository-external
+discovery producer without replacing Web Search. The bounded adaptation uses
+only Anthropic `morning-note` event taxonomy and source scanning, pinned to
+financial-services commit
+`e5edf36b69fa2fcd7ad6273ca8b4fb1e4e9376ad`. It excludes every recommendation,
+Top Call, analyst, rating, target, price-movement, positioning, score, and
+automatic-promotion feature. Its nine same-window records validate through the
+existing `EventCandidateBatch` contract with no new public API or acceptance
+authority.
+
+The neutral comparison is recorded in
+[`event-discovery-producer-comparison.md`](event-discovery-producer-comparison.md).
+Five events overlap; each producer has four unique events. The user explicitly
+selected `NONE` and judged that source quality was comparable, novelty improved
+only slightly, second-order potential did not produce a research-ready mapping,
+and underlying mapping was no better overall. No translation, Event
+Intelligence assessment, or Futu exercise followed.
+
+This valid negative result retains `morning-note` as a traditional
+institutional-event baseline but does not promote it or replace bounded Web
+Search. The next bounded investigation may evaluate one mature
+narrative/attention discovery Skill under the unchanged provisional-record,
+neutral-order, explicit-human-selection, and fail-closed acceptance boundaries.
+It does not authorize optimization of `morning-note`, ranking, scoring,
+auto-promotion, market-data feedback, Engine evidence, or an automatic
+downstream Futu exercise.
 
 ## Previous current priority
 
