@@ -2,9 +2,9 @@
 
 ## Status
 
-This Tier-A contract is frozen as the target for a later BUILD. It is not yet
-implemented. The current runtime remains Event Intelligence acceptance v0.1
-and Option-Chain Discovery Request v0.2.
+This Tier-A contract is frozen and implemented. The runtime now uses Event
+Intelligence acceptance v0.2 and Option-Chain Discovery Request v0.3. Existing
+immutable v0.1 results remain historical records and are not runtime inputs.
 
 This contract separates three temporal meanings that current runtime behavior
 derives from one `expected_window.end_date`:
@@ -37,9 +37,9 @@ policy that requires expiration at least 30 calendar days after the bounded
 impact window. In v0.2, only a complete `expected_window.end_date` supplies
 that anchor. `reassessment_by` never does.
 
-## Proposed public contract shape
+## Public contract shape
 
-The later BUILD adds these module-local exact types to
+The implementation adds these module-local exact types to
 `convexity_hunter.event_intelligence`:
 
 ```python
@@ -221,7 +221,7 @@ Option Discovery: NOT READY
 Reason: missing_authoritative_maturity_anchor
 ```
 
-The later Option-Chain Discovery Request contract must freeze the exact stable
+The Option-Chain Discovery Request implementation uses the exact stable
 failure text:
 
 ```text
@@ -259,8 +259,8 @@ Their acceptance, inclusive stale boundary, minimum expiration formula,
 maximum 150-DTE boundary, Futu retrieval, Browser filtering, and explicit human
 selection behavior remain unchanged.
 
-The later Event Intelligence implementation version becomes
-`event-intelligence-acceptance-v0.2`. The BUILD is one atomic cutover:
+The Event Intelligence implementation version is
+`event-intelligence-acceptance-v0.2`. The implementation is one atomic cutover:
 
 - `event_intelligence._ASSESSMENT_VERSION` and
   `discovery_entry._ACCEPTANCE_VERSION` both become that exact value in the
@@ -297,8 +297,8 @@ The three historical results and their original payload semantics remain
 unchanged. This contract records no reassessment date for them and does not
 claim they are now accepted.
 
-The later focused suite must encode these rows as executable assertions rather
-than prose-only examples. It must prove: the FOMC fixture remains accepted and
+The focused suite encodes these rows as executable assertions rather than
+prose-only examples. It proves: the FOMC fixture remains accepted and
 derives byte-for-byte-equivalent request boundaries; each historical fixture
 retains its original v0.1 status in the historical record; no fresh v0.2 fixture
 is accepted without an explicitly supplied valid reassessment or complete
@@ -326,7 +326,7 @@ The BUILD and independent review must reject:
 
 ## BUILD boundary
 
-The later v0.2 BUILD is limited to the exact records, acceptance semantics,
+The v0.2 implementation is limited to the exact records, acceptance semantics,
 chronology, applicability gate, stable missing-anchor failure, migrations, and
 tests frozen here. It must not add monitoring, scheduling, alerts, persistence,
 UI, generic workflow state, option generation, ranking, recommendation,

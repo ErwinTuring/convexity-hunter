@@ -1,10 +1,10 @@
 # Event Intelligence Acceptance Contract v0.1
 
-> Implementation status: this remains the current runtime contract. The
+> Historical v0.1 contract. The implemented runtime contract is the
 > separately frozen
 > [Event Intelligence Temporal Semantics Contract v0.2](event-intelligence-temporal-semantics-v0.2-contract.md)
-> is the target for a later BUILD and changes neither current code nor
-> historical v0.1 results.
+> and its acceptance version is `event-intelligence-acceptance-v0.2`. Existing
+> v0.1 results remain historical records and are not runtime inputs.
 
 ## Purpose
 

@@ -120,17 +120,19 @@ usable event window, eligible listed option market, and resolvable identity
 and chronology.
 
 Before an option-chain discovery request can exist, its caller evaluation date
-must be no later than the selected hypothesis's inclusive expected-window end
-date. An expired hypothesis fails closed; the request never extends the event
-window. Longer-lived effects must be declared and accepted upstream through a
-longer explicit Event Intelligence `expected_window`.
+must be no later than the selected hypothesis's inclusive applicable boundary.
+For a bounded hypothesis that boundary is the expected-window end; a complete
+reassessment supplies the boundary only when no complete impact window exists,
+or when it is earlier. An expired hypothesis fails closed; the request never
+extends the event window. Longer-lived effects must be declared and accepted
+upstream through a longer explicit Event Intelligence `expected_window`.
 
-The frozen, not-yet-implemented
+The implemented
 [Event Intelligence Temporal Semantics v0.2](event-intelligence-temporal-semantics-v0.2-contract.md)
 clarifies that `expected_window` means expected market or distribution impact,
 not a generic research deadline. A structural, narrative, or second-order
 hypothesis may instead use one explicit atomic reassessment record to establish
-research validity without predicting an impact end. That future acceptance
+research validity without predicting an impact end. This accepted state
 does not make Option Discovery ready: only a complete expected-window end is
 the current authoritative maturity anchor, and structural-only discovery must
 fail deterministically with `missing_authoritative_maturity_anchor`. A

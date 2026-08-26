@@ -7,6 +7,7 @@ from .discovery_entry import DiscoveryEntryHandoff
 from .event_intelligence import (
     DistributionChangeMode,
     EventUnderlyingHypothesis,
+    HypothesisReassessment,
     MethodologizedDateRange,
 )
 from .market_data import UnderlyingKey
@@ -27,6 +28,21 @@ def _validate_date_only(name: str, value: object) -> datetime.date:
     if type(value) is not datetime.date:
         raise TypeError(f"{name} must have exact type date")
     return value
+
+
+def _complete_expected_window_end(
+    value: object,
+) -> object:
+    if type(value) is not MethodologizedDateRange:
+        return None
+    if (
+        type(value.start_date) is not datetime.date
+        or type(value.end_date) is not datetime.date
+        or type(value.methodology) is not str
+        or not value.methodology
+    ):
+        return None
+    return value.end_date
 
 
 def _validate_request_inputs(
@@ -57,13 +73,23 @@ def _validate_request_inputs(
         raise ValueError("selected hypothesis requires an underlying_key")
     if type(hypothesis.distribution_mode) is not DistributionChangeMode:
         raise ValueError("selected hypothesis requires a distribution_mode")
-    if type(hypothesis.expected_window) is not MethodologizedDateRange:
-        raise ValueError("selected hypothesis requires an expected_window")
-    event_window_end = hypothesis.expected_window.end_date
-    if type(event_window_end) is not datetime.date:
-        raise ValueError("selected hypothesis requires an event-window end date")
-    if evaluation_date > event_window_end:
+    if hypothesis.reassessment is not None and type(
+        hypothesis.reassessment
+    ) is not HypothesisReassessment:
+        raise TypeError(
+            "selected hypothesis reassessment must have exact type "
+            "HypothesisReassessment"
+        )
+    event_window_end = _complete_expected_window_end(hypothesis.expected_window)
+    applicability_boundaries = []
+    if type(event_window_end) is datetime.date:
+        applicability_boundaries.append(event_window_end)
+    if hypothesis.reassessment is not None:
+        applicability_boundaries.append(hypothesis.reassessment.reassessment_by)
+    if applicability_boundaries and evaluation_date > min(applicability_boundaries):
         raise ValueError("selected hypothesis is expired for evaluation_date")
+    if type(event_window_end) is not datetime.date:
+        raise ValueError("missing_authoritative_maturity_anchor")
 
     try:
         minimum_expiration = max(

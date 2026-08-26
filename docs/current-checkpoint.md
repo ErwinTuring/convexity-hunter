@@ -38,11 +38,11 @@ Repository: `ErwinTuring/convexity-hunter`
   contradiction, uncertainty, falsification, and producer identity. Missing
   semantics remain deterministic `INCOMPLETE`; malformed identities,
   chronology, references, and graphs fail closed.
-- Event Intelligence Temporal Semantics v0.2 is frozen as a contract but is
-  not implemented. It preserves `expected_window` as expected impact, adds an
-  optional atomic reassessment record for research governance, and keeps
-  option-maturity authority separate. Structural-only acceptance will not
-  authorize Option Discovery; the frozen failure is
+- Event Intelligence Temporal Semantics v0.2 is frozen and implemented. It
+  preserves `expected_window` as expected impact, adds an optional atomic
+  reassessment record for research governance, and keeps option-maturity
+  authority separate. Structural-only acceptance will not authorize Option
+  Discovery; request construction fails with
   `missing_authoritative_maturity_anchor`.
 - The provider-neutral Event Discovery / Event Intake boundary retains at most
   ten provisional source-backed candidates under one explicit producer policy,
@@ -61,10 +61,12 @@ Repository: `ErwinTuring/convexity-hunter`
 - The provider-neutral option-chain discovery request retains the exact handoff
   and caller evaluation date, deriving only the inclusive expiration interval
   `max(evaluation+30, event-end+30)` through `evaluation+150`. It calls no
-  provider or clock and claims no contract eligibility. It fails closed before
-  request construction when the evaluation date is later than the selected
-  hypothesis's inclusive expected-window end date; it never extends that
-  window.
+  provider or clock and claims no contract eligibility. It derives
+  applicability from the earlier complete expected-window or reassessment
+  boundary, fails stale before arithmetic, and never extends a window. A
+  current structural-only hypothesis fails request construction with
+  `missing_authoritative_maturity_anchor` because reassessment is not a
+  maturity anchor.
 - The bounded Futu chain-evidence boundary retrieves expiration
   classifications once and one exact-date chain per in-range provider
   `MONTH`. It retains every valid row with deterministic applicability status
@@ -251,12 +253,11 @@ authorizes inferred evidence.
    this result.
 2. Keep `morning-note` and `last30days` frozen as completed comparison evidence.
    Do not rerun or tune a Skill merely to force candidates.
-3. Treat
+3. Preserve the completed
    [`Event Intelligence Temporal Semantics v0.2`](event-intelligence-temporal-semantics-v0.2-contract.md)
-   as frozen and ready for a separately bounded Tier-A BUILD. Preserve every
-   historical result. Do not assign reassessment dates to the three prior
-   structural cases, use governance dates as impact ends, or use them as
-   option-maturity anchors.
+   implementation and every historical result. Do not assign reassessment
+   dates to the three prior structural cases, use governance dates as impact
+   ends, or use them as option-maturity anchors.
 4. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.

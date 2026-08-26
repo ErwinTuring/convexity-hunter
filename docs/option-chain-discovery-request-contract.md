@@ -1,11 +1,11 @@
-# Option-Chain Discovery Request Contract v0.2
+# Option-Chain Discovery Request Contract v0.3
 
-> Implementation status: this remains the current runtime contract. The
-> separately frozen
+> Implementation status: implemented. This is the v0.3 migration from the
+> historical v0.2 request contract required by the
 > [Event Intelligence Temporal Semantics Contract v0.2](event-intelligence-temporal-semantics-v0.2-contract.md)
-> defines a future v0.3 migration target for structural-only hypotheses and
-> the stable `missing_authoritative_maturity_anchor` failure; neither is
-> implemented yet.
+> for structural-only hypotheses and the stable
+> `missing_authoritative_maturity_anchor` failure. Bounded-event behavior is
+> unchanged.
 
 ## Purpose
 
@@ -47,20 +47,28 @@ reads no clock.
 ## Temporal applicability gate
 
 Before request construction and before expiration-boundary arithmetic, the
-selected accepted hypothesis must still be applicable for current discovery:
+selected accepted hypothesis must still be applicable for current discovery.
+The inclusive applicability boundary is derived from complete temporal
+records:
 
 ```text
-evaluation_date <= selected hypothesis expected_window.end_date
+complete expected_window only -> expected_window.end_date
+complete reassessment only -> reassessment.reassessment_by
+both complete -> min(expected_window.end_date, reassessment.reassessment_by)
 ```
 
-The inclusive expected-window end date is valid. For otherwise valid inputs,
-`evaluation_date > expected_window.end_date` fails closed with `ValueError`
-because the selected hypothesis is expired for that evaluation date.
+The boundary day is valid. For otherwise valid inputs,
+`evaluation_date` later than the derived boundary fails closed with
+`ValueError` because the selected hypothesis is expired for that evaluation
+date. A currently applicable structural-only hypothesis then fails request
+construction with exactly `missing_authoritative_maturity_anchor` because only
+a complete `expected_window.end_date` supplies the maturity anchor.
 
-The request never extends, rolls, or substitutes the accepted event window. If
-an event is expected to have longer-lived effects, Event Intelligence must
-express that upstream through a longer explicit, source-auditable
-`expected_window` before a new accepted handoff is created.
+The request never extends, rolls, or substitutes the accepted event window. A
+reassessment date never supplies the maturity anchor or extends a bounded
+impact window. If an event is expected to have longer-lived effects, Event
+Intelligence must express that upstream through a longer explicit,
+source-auditable `expected_window` before a new accepted handoff is created.
 
 ## Derived request boundaries
 
@@ -109,11 +117,12 @@ request-only unit.
 The handoff and evaluation date require exact types. The handoff is
 intrinsically reconstructed through its existing constructor without replaying
 Event Intelligence acceptance. The accepted hypothesis must retain exact
-`UnderlyingKey`, `DistributionChangeMode`, and a complete event-window end
-date. After those intrinsic semantics are validated, temporal applicability is
-checked before date arithmetic. Missing semantics, malformed or constructor-
-bypassed records, an expired hypothesis, date overflow, and an empty interval
-fail with controlled `TypeError` or `ValueError`.
+`UnderlyingKey` and `DistributionChangeMode`, and any reassessment must be
+complete. After those intrinsic semantics are validated, temporal applicability
+is checked before the missing-anchor check and date arithmetic. Missing
+semantics, malformed or constructor-bypassed records, an expired hypothesis,
+the missing maturity anchor, date overflow, and an empty interval fail with
+controlled `TypeError` or `ValueError`.
 
 ## Non-goals
 

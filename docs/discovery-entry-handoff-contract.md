@@ -1,11 +1,10 @@
 # Discovery Entry Handoff Contract v0.1
 
-> Implementation status: this remains the current runtime contract. The
-> frozen
+> Historical v0.1 record shape. The implemented handoff consumes the v0.2
+> acceptance result from the frozen
 > [Event Intelligence Temporal Semantics Contract v0.2](event-intelligence-temporal-semantics-v0.2-contract.md)
-> requires an atomic future cutover to
-> `event-intelligence-acceptance-v0.2`; there will be no dual-version handoff or
-> implicit upgrade of historical v0.1 results.
+> and requires `event-intelligence-acceptance-v0.2`; there is no dual-version
+> handoff or implicit upgrade of historical v0.1 results.
 
 ## Purpose
 
@@ -49,7 +48,7 @@ handoff never chooses one by order, ID, score, or model judgment.
 
 Both arguments require exact types. The acceptance result must retain exact
 status `ACCEPTED`, an exact empty issue tuple, assessment version
-`event-intelligence-acceptance-v0.1`, and an intrinsically valid exact
+`event-intelligence-acceptance-v0.2`, and an intrinsically valid exact
 `EventIntelligenceSubmission`. The selected hypothesis must be an identity
 member of that submission's retained hypothesis tuple. Equality, a matching
 ID, or an equal copy from another result is insufficient.

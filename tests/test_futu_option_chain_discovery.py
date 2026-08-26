@@ -83,6 +83,7 @@ def make_request() -> OptionChainDiscoveryRequest:
         DistributionChangeMode.BIDIRECTIONAL_EXPANSION,
         "The future return distribution may widen.",
         window,
+        None,
         (interpretation.statement_id,),
         (),
         "Contradictory evidence was reviewed; none was identified.",

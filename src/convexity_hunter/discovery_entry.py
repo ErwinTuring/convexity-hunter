@@ -16,7 +16,7 @@ __all__ = (
 )
 
 
-_ACCEPTANCE_VERSION = "event-intelligence-acceptance-v0.1"
+_ACCEPTANCE_VERSION = "event-intelligence-acceptance-v0.2"
 
 
 def _validate_handoff_inputs(
@@ -32,6 +32,11 @@ def _validate_handoff_inputs(
         raise TypeError(
             "selected_hypothesis must have exact type EventUnderlyingHypothesis"
         )
+    if any(
+        field_name not in vars(acceptance_result)
+        for field_name in ("submission", "status", "issues", "assessment_version")
+    ):
+        raise ValueError("acceptance_result is malformed")
 
     try:
         status = acceptance_result.status

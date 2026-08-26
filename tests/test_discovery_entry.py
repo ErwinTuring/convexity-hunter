@@ -55,6 +55,7 @@ def make_hypothesis(hypothesis_id: str = "hypothesis-1") -> EventUnderlyingHypot
         DistributionChangeMode.BIDIRECTIONAL_EXPANSION,
         "The event may widen the future return distribution.",
         WINDOW,
+        None,
         ("interpretation-1",),
         (),
         "Contradictory evidence was reviewed; none was identified.",
@@ -290,6 +291,14 @@ class FailureBoundaryTests(unittest.TestCase):
             with self.assertRaises(error):
                 create_discovery_entry_handoff(forged, valid_hypothesis)
 
+        with self.assertRaisesRegex(ValueError, "acceptance-v0.2"):
+            create_discovery_entry_handoff(
+                forge_result(
+                    assessment_version="event-intelligence-acceptance-v0.1"
+                ),
+                valid_hypothesis,
+            )
+
     def test_missing_result_or_submission_attributes_fail_controlled(self) -> None:
         result = object.__new__(EventIntelligenceAcceptanceResult)
         hypothesis = make_hypothesis()
@@ -300,6 +309,19 @@ class FailureBoundaryTests(unittest.TestCase):
         forged = forge_result(submission=malformed_submission)
         with self.assertRaises(ValueError):
             create_discovery_entry_handoff(forged, hypothesis)
+
+    def test_constructor_bypassed_result_missing_version_cannot_be_handed_off(self) -> None:
+        valid = make_result()
+        forged = object.__new__(EventIntelligenceAcceptanceResult)
+        for field_name in ("submission", "status", "issues"):
+            object.__setattr__(forged, field_name, getattr(valid, field_name))
+        self.assertNotIn("assessment_version", vars(forged))
+
+        with self.assertRaisesRegex(ValueError, "acceptance_result is malformed"):
+            create_discovery_entry_handoff(
+                forged,
+                valid.submission.hypotheses[0],
+            )
 
     def test_noncanonical_or_nested_malformed_submission_fails(self) -> None:
         result = make_result(

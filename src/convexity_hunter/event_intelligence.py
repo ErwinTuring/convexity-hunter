@@ -14,6 +14,8 @@ __all__ = (
     "EventStatement",
     "MethodologizedDateRange",
     "DistributionChangeMode",
+    "ReassessmentBasisKind",
+    "HypothesisReassessment",
     "EventUnderlyingHypothesis",
     "EventIntelligenceSubmission",
     "EventIntelligenceAcceptanceStatus",
@@ -24,7 +26,7 @@ __all__ = (
 )
 
 
-_ASSESSMENT_VERSION = "event-intelligence-acceptance-v0.1"
+_ASSESSMENT_VERSION = "event-intelligence-acceptance-v0.2"
 
 
 def _normalize_required_string(name: str, value: object) -> str:
@@ -91,6 +93,29 @@ def _normalize_text_tuple(name: str, values: object) -> Tuple[str, ...]:
     return tuple(sorted(normalized))
 
 
+def _normalize_exact_required_string(name: str, value: object) -> str:
+    if type(value) is not str:
+        raise TypeError(f"{name} must have exact type str")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{name} must not be empty")
+    return normalized
+
+
+def _normalize_exact_id_tuple(name: str, values: object) -> Tuple[str, ...]:
+    if type(values) not in {tuple, list}:
+        raise TypeError(f"{name} must have exact type tuple or list")
+    normalized = tuple(
+        _normalize_exact_required_string(f"{name} item", item)
+        for item in values
+    )
+    if len(set(normalized)) != len(normalized):
+        raise ValueError(f"{name} must not contain duplicates")
+    if not normalized:
+        raise ValueError(f"{name} must not be empty")
+    return tuple(sorted(normalized))
+
+
 def _normalize_record_tuple(
     name: str, values: object, record_type: Type[object], id_name: str
 ) -> Tuple[object, ...]:
@@ -120,8 +145,11 @@ def _require_intrinsic_record(
 
     if type(value) is not record_type:
         raise TypeError(f"{name} must have exact type {record_type.__name__}")
+    instance_fields = vars(value)
+    if any(field not in instance_fields for field in field_names):
+        raise ValueError(f"{name} is malformed")
     try:
-        rebuilt = record_type(*(getattr(value, field) for field in field_names))
+        rebuilt = record_type(*(instance_fields[field] for field in field_names))
     except AttributeError as error:
         raise ValueError(f"{name} is malformed") from error
     if rebuilt != value:
@@ -247,6 +275,96 @@ class DistributionChangeMode(str, Enum):
     BIDIRECTIONAL_EXPANSION = "bidirectional_expansion"
 
 
+class ReassessmentBasisKind(str, Enum):
+    """Closed provenance bases for a hypothesis reassessment deadline."""
+
+    SOURCE_BACKED_MILESTONE = "source_backed_milestone"
+    CALLER_RESEARCH_POLICY_ASSUMPTION = "caller_research_policy_assumption"
+
+
+def _validate_reassessment_methodology(
+    reassessment_by: datetime.date,
+    methodology: str,
+    basis_kind: ReassessmentBasisKind,
+    basis_statement_ids: Tuple[str, ...],
+) -> None:
+    if basis_kind is ReassessmentBasisKind.SOURCE_BACKED_MILESTONE:
+        if len(basis_statement_ids) != 1:
+            raise ValueError(
+                "source-backed milestone reassessment requires exactly one "
+                "basis statement ID"
+            )
+        expected = (
+            "source-backed-milestone:"
+            f"{basis_statement_ids[0]}:{reassessment_by.isoformat()}"
+        )
+        if methodology != expected:
+            raise ValueError(
+                "source-backed milestone reassessment methodology is invalid"
+            )
+        return
+
+    prefix = "caller-research-policy-assumption:"
+    if not methodology.startswith(prefix):
+        raise ValueError(
+            "caller research policy reassessment methodology is invalid"
+        )
+    remainder = methodology[len(prefix) :]
+    date_text, separator, rationale = remainder.partition(":")
+    if (
+        not separator
+        or date_text != reassessment_by.isoformat()
+        or not rationale.strip()
+    ):
+        raise ValueError(
+            "caller research policy reassessment methodology is invalid"
+        )
+
+
+@dataclass(frozen=True)
+class HypothesisReassessment:
+    """One atomic research-governance reassessment deadline."""
+
+    reassessment_by: datetime.date
+    methodology: str
+    basis_kind: ReassessmentBasisKind
+    basis_statement_ids: Tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.reassessment_by) is not datetime.date:
+            raise TypeError("reassessment_by must have exact type date")
+        methodology = _normalize_exact_required_string(
+            "methodology", self.methodology
+        )
+        if type(self.basis_kind) is not ReassessmentBasisKind:
+            raise TypeError("basis_kind must have exact type ReassessmentBasisKind")
+        basis_statement_ids = _normalize_exact_id_tuple(
+            "basis_statement_ids", self.basis_statement_ids
+        )
+        _validate_reassessment_methodology(
+            self.reassessment_by,
+            methodology,
+            self.basis_kind,
+            basis_statement_ids,
+        )
+        object.__setattr__(self, "methodology", methodology)
+        object.__setattr__(self, "basis_statement_ids", basis_statement_ids)
+
+
+def _require_reassessment(name: str, value: object) -> None:
+    _require_intrinsic_record(
+        name,
+        value,
+        HypothesisReassessment,
+        (
+            "reassessment_by",
+            "methodology",
+            "basis_kind",
+            "basis_statement_ids",
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class EventUnderlyingHypothesis:
     """One auditable event-to-underlying distribution hypothesis."""
@@ -257,6 +375,7 @@ class EventUnderlyingHypothesis:
     distribution_mode: Optional[DistributionChangeMode]
     distribution_hypothesis: Optional[str]
     expected_window: Optional[MethodologizedDateRange]
+    reassessment: Optional[HypothesisReassessment] = None
     supporting_statement_ids: Tuple[str, ...] = ()
     contradicting_statement_ids: Tuple[str, ...] = ()
     contradiction_review: Optional[str] = None
@@ -275,6 +394,8 @@ class EventUnderlyingHypothesis:
             raise TypeError("distribution_mode must be a DistributionChangeMode")
         if self.expected_window is not None:
             _require_date_range("expected_window", self.expected_window)
+        if self.reassessment is not None:
+            _require_reassessment("reassessment", self.reassessment)
 
         supporting = _normalize_id_tuple(
             "supporting_statement_ids", self.supporting_statement_ids
@@ -298,6 +419,7 @@ class EventUnderlyingHypothesis:
                 "distribution_hypothesis", self.distribution_hypothesis
             ),
         )
+        object.__setattr__(self, "reassessment", self.reassessment)
         object.__setattr__(self, "supporting_statement_ids", supporting)
         object.__setattr__(self, "contradicting_statement_ids", contradicting)
         object.__setattr__(
@@ -389,6 +511,7 @@ class EventIntelligenceSubmission:
                     "distribution_mode",
                     "distribution_hypothesis",
                     "expected_window",
+                    "reassessment",
                     "supporting_statement_ids",
                     "contradicting_statement_ids",
                     "contradiction_review",
@@ -421,6 +544,13 @@ class EventIntelligenceSubmission:
                 raise ValueError(
                     f"hypothesis {hypothesis.hypothesis_id} has dangling contradiction IDs"
                 )
+            if hypothesis.reassessment is not None and set(
+                hypothesis.reassessment.basis_statement_ids
+            ) - statement_ids:
+                raise ValueError(
+                    f"hypothesis {hypothesis.hypothesis_id} has dangling "
+                    "reassessment basis IDs"
+                )
 
         _validate_acyclic_statements(statements)
         observed_at = _normalize_optional_utc_datetime(
@@ -432,6 +562,23 @@ class EventIntelligenceSubmission:
             for source in sources
         ):
             raise ValueError("source published_at must not be after observed_at")
+        if observed_at is not None:
+            observed_date = observed_at.date()
+            for hypothesis in hypotheses:
+                if (
+                    hypothesis.reassessment is not None
+                    and hypothesis.reassessment.reassessment_by < observed_date
+                ):
+                    raise ValueError(
+                        "reassessment_by must not precede observed_at UTC "
+                        "calendar date"
+                    )
+
+        statements_by_id = {
+            statement.statement_id: statement for statement in statements
+        }
+        for hypothesis in hypotheses:
+            _validate_reassessment_provenance(hypothesis, statements_by_id)
 
         object.__setattr__(self, "submission_id", submission_id)
         object.__setattr__(
@@ -537,6 +684,7 @@ class EventIntelligenceIssueCode(str, Enum):
     MISSING_DISTRIBUTION_MODE = "missing_distribution_mode"
     MISSING_DISTRIBUTION_HYPOTHESIS = "missing_distribution_hypothesis"
     INCOMPLETE_EXPECTED_WINDOW = "incomplete_expected_window"
+    MISSING_TEMPORAL_APPLICABILITY = "missing_temporal_applicability"
     MISSING_SUPPORTING_EVIDENCE = "missing_supporting_evidence"
     MISSING_SUPPORTING_OBSERVED_FACT = "missing_supporting_observed_fact"
     MISSING_SUPPORTING_INTERPRETATION = "missing_supporting_interpretation"
@@ -650,6 +798,65 @@ def _statement_closure(
     return closure
 
 
+def _validate_reassessment_provenance(
+    hypothesis: EventUnderlyingHypothesis,
+    statements: Dict[str, EventStatement],
+) -> None:
+    reassessment = hypothesis.reassessment
+    if reassessment is None:
+        return
+
+    basis_closure: Set[str] = set()
+    for statement_id in reassessment.basis_statement_ids:
+        basis_closure.update(_statement_closure(statement_id, statements))
+
+    supporting_closure: Set[str] = set()
+    for statement_id in hypothesis.supporting_statement_ids:
+        supporting_closure.update(_statement_closure(statement_id, statements))
+
+    if reassessment.basis_kind is ReassessmentBasisKind.SOURCE_BACKED_MILESTONE:
+        statement = statements[reassessment.basis_statement_ids[0]]
+        if statement.kind is not EventStatementKind.OBSERVED_FACT:
+            raise ValueError(
+                "source-backed milestone reassessment requires a direct "
+                "observed fact"
+            )
+        if not statement.source_ids:
+            raise ValueError(
+                "source-backed milestone reassessment requires a sourced "
+                "observed fact"
+            )
+        if statement.statement_id not in supporting_closure:
+            raise ValueError(
+                "source-backed milestone reassessment fact must be retained "
+                "in supporting closure"
+            )
+        if statement.text is None or (
+            reassessment.reassessment_by.isoformat() not in statement.text
+        ):
+            raise ValueError(
+                "source-backed milestone reassessment date must occur in the "
+                "observed-fact text"
+            )
+        return
+
+    has_source_backed_fact = any(
+        statements[statement_id].kind is EventStatementKind.OBSERVED_FACT
+        and bool(statements[statement_id].source_ids)
+        for statement_id in basis_closure
+    )
+    has_relevant_interpretation = any(
+        statements[statement_id].kind is EventStatementKind.INTERPRETATION
+        and statement_id in supporting_closure
+        for statement_id in basis_closure
+    )
+    if not has_source_backed_fact or not has_relevant_interpretation:
+        raise ValueError(
+            "caller research policy reassessment requires a source-backed "
+            "fact and relevant interpretation in basis closure"
+        )
+
+
 def _interpretation_has_source_closure(
     statement: EventStatement, statements: Dict[str, EventStatement]
 ) -> bool:
@@ -737,7 +944,13 @@ def _derive_event_intelligence_issues(
                 EventIntelligenceIssueCode.MISSING_DISTRIBUTION_HYPOTHESIS,
                 subject_id,
             )
-        if _range_is_incomplete(hypothesis.expected_window):
+        if hypothesis.expected_window is None:
+            if hypothesis.reassessment is None:
+                add(
+                    EventIntelligenceIssueCode.MISSING_TEMPORAL_APPLICABILITY,
+                    subject_id,
+                )
+        elif _range_is_incomplete(hypothesis.expected_window):
             add(EventIntelligenceIssueCode.INCOMPLETE_EXPECTED_WINDOW, subject_id)
         if not hypothesis.supporting_statement_ids:
             add(EventIntelligenceIssueCode.MISSING_SUPPORTING_EVIDENCE, subject_id)

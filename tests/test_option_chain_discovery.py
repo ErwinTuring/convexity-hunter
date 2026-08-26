@@ -6,6 +6,7 @@ import pathlib
 import sys
 import unittest
 from dataclasses import FrozenInstanceError, fields
+from typing import Optional
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
@@ -24,7 +25,9 @@ from convexity_hunter.event_intelligence import (
     EventStatement,
     EventStatementKind,
     EventUnderlyingHypothesis,
+    HypothesisReassessment,
     MethodologizedDateRange,
+    ReassessmentBasisKind,
     assess_event_intelligence_submission,
 )
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
@@ -40,6 +43,9 @@ EVALUATION_DATE = datetime.date(2030, 1, 1)
 def make_handoff(
     mode: DistributionChangeMode = DistributionChangeMode.BIDIRECTIONAL_EXPANSION,
     event_window_end: datetime.date = datetime.date(2030, 1, 10),
+    *,
+    reassessment: Optional[HypothesisReassessment] = None,
+    include_expected_window: bool = True,
 ) -> DiscoveryEntryHandoff:
     source = EventSourceReference(
         "source-1",
@@ -71,7 +77,8 @@ def make_handoff(
         "The event changes possible commercial outcomes.",
         mode,
         "The event may change the future return distribution.",
-        event_range,
+        event_range if include_expected_window else None,
+        reassessment,
         (interpretation.statement_id,),
         (),
         "Contradictory evidence was reviewed; none was identified.",
@@ -92,6 +99,18 @@ def make_handoff(
     )
     result = assess_event_intelligence_submission(submission)
     return create_discovery_entry_handoff(result, hypothesis)
+
+
+def make_caller_reassessment(
+    reassessment_by: datetime.date = datetime.date(2030, 1, 10),
+) -> HypothesisReassessment:
+    return HypothesisReassessment(
+        reassessment_by,
+        "caller-research-policy-assumption:"
+        f"{reassessment_by.isoformat()}:Review the evidence before continued research.",
+        ReassessmentBasisKind.CALLER_RESEARCH_POLICY_ASSUMPTION,
+        ("interpretation-1",),
+    )
 
 
 class PublicContractTests(unittest.TestCase):
@@ -129,6 +148,24 @@ class PublicContractTests(unittest.TestCase):
 
 
 class SuccessfulRequestTests(unittest.TestCase):
+    def test_bounded_fomc_case_retains_original_request_boundaries(self) -> None:
+        request = create_option_chain_discovery_request(
+            make_handoff(event_window_end=datetime.date(2026, 9, 23)),
+            evaluation_date=datetime.date(2026, 8, 24),
+        )
+        self.assertEqual(
+            (
+                request.event_window_end_date,
+                request.minimum_expiration_date,
+                request.maximum_expiration_date,
+            ),
+            (
+                datetime.date(2026, 9, 23),
+                datetime.date(2026, 10, 23),
+                datetime.date(2027, 1, 21),
+            ),
+        )
+
     def test_active_hypothesis_retains_handoff_and_exact_boundaries(self) -> None:
         handoff = make_handoff(event_window_end=datetime.date(2030, 1, 10))
         request = create_option_chain_discovery_request(
@@ -226,8 +263,80 @@ class SuccessfulRequestTests(unittest.TestCase):
             )
         self.assertEqual(request.evaluation_date, EVALUATION_DATE)
 
+    def test_structural_only_current_hypothesis_reaches_anchor_gate(self) -> None:
+        handoff = make_handoff(
+            include_expected_window=False,
+            reassessment=make_caller_reassessment(),
+        )
+        with self.assertRaisesRegex(
+            ValueError, "^missing_authoritative_maturity_anchor$"
+        ):
+            create_option_chain_discovery_request(
+                handoff,
+                evaluation_date=EVALUATION_DATE,
+            )
+
+    def test_reassessment_never_changes_bounded_maturity_or_interval(self) -> None:
+        handoff = make_handoff(
+            event_window_end=datetime.date(2030, 1, 20),
+            reassessment=make_caller_reassessment(
+                datetime.date(2030, 1, 10)
+            ),
+        )
+        request = create_option_chain_discovery_request(
+            handoff,
+            evaluation_date=EVALUATION_DATE,
+        )
+        self.assertEqual(request.event_window_end_date, datetime.date(2030, 1, 20))
+        self.assertEqual(request.minimum_expiration_date, datetime.date(2030, 2, 19))
+        self.assertEqual(request.maximum_expiration_date, datetime.date(2030, 5, 31))
+
 
 class FailureBoundaryTests(unittest.TestCase):
+    def test_stale_structural_hypothesis_precedes_missing_anchor(self) -> None:
+        handoff = make_handoff(
+            include_expected_window=False,
+            reassessment=make_caller_reassessment(EVALUATION_DATE),
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "^selected hypothesis is expired for evaluation_date$",
+        ):
+            create_option_chain_discovery_request(
+                handoff,
+                evaluation_date=EVALUATION_DATE + datetime.timedelta(days=1),
+            )
+
+    def test_earlier_reassessment_boundary_expires_bounded_hypothesis(self) -> None:
+        handoff = make_handoff(
+            event_window_end=datetime.date(2030, 1, 20),
+            reassessment=make_caller_reassessment(EVALUATION_DATE),
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "^selected hypothesis is expired for evaluation_date$",
+        ):
+            create_option_chain_discovery_request(
+                handoff,
+                evaluation_date=EVALUATION_DATE + datetime.timedelta(days=1),
+            )
+
+    def test_later_reassessment_cannot_extend_expired_expected_window(self) -> None:
+        handoff = make_handoff(
+            event_window_end=EVALUATION_DATE - datetime.timedelta(days=1),
+            reassessment=make_caller_reassessment(
+                EVALUATION_DATE + datetime.timedelta(days=30)
+            ),
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "^selected hypothesis is expired for evaluation_date$",
+        ):
+            create_option_chain_discovery_request(
+                handoff,
+                evaluation_date=EVALUATION_DATE,
+            )
+
     def test_expired_hypothesis_fails_closed_without_extending_window(self) -> None:
         handoff = make_handoff(
             event_window_end=EVALUATION_DATE - datetime.timedelta(days=1)

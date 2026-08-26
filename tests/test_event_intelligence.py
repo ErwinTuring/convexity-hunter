@@ -6,6 +6,7 @@ import pathlib
 import sys
 import unittest
 from dataclasses import FrozenInstanceError, fields
+from typing import Tuple
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
@@ -22,7 +23,9 @@ from convexity_hunter.event_intelligence import (
     EventStatement,
     EventStatementKind,
     EventUnderlyingHypothesis,
+    HypothesisReassessment,
     MethodologizedDateRange,
+    ReassessmentBasisKind,
     assess_event_intelligence_submission,
 )
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
@@ -90,6 +93,7 @@ def make_hypothesis(**overrides: object) -> EventUnderlyingHypothesis:
             "The event may increase the frequency or magnitude of tail outcomes."
         ),
         "expected_window": EXPECTED_WINDOW,
+        "reassessment": None,
         "supporting_statement_ids": ("interpretation-1",),
         "contradicting_statement_ids": (),
         "contradiction_review": (
@@ -131,6 +135,8 @@ class PublicContractTests(unittest.TestCase):
                 "EventStatement",
                 "MethodologizedDateRange",
                 "DistributionChangeMode",
+                "ReassessmentBasisKind",
+                "HypothesisReassessment",
                 "EventUnderlyingHypothesis",
                 "EventIntelligenceSubmission",
                 "EventIntelligenceAcceptanceStatus",
@@ -159,6 +165,24 @@ class PublicContractTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
+            tuple(field.name for field in fields(HypothesisReassessment)),
+            (
+                "reassessment_by",
+                "methodology",
+                "basis_kind",
+                "basis_statement_ids",
+            ),
+        )
+        self.assertEqual(
+            HypothesisReassessment.__annotations__,
+            {
+                "reassessment_by": datetime.date,
+                "methodology": str,
+                "basis_kind": ReassessmentBasisKind,
+                "basis_statement_ids": Tuple[str, ...],
+            },
+        )
+        self.assertEqual(
             tuple(field.name for field in fields(EventUnderlyingHypothesis)),
             (
                 "hypothesis_id",
@@ -167,6 +191,7 @@ class PublicContractTests(unittest.TestCase):
                 "distribution_mode",
                 "distribution_hypothesis",
                 "expected_window",
+                "reassessment",
                 "supporting_statement_ids",
                 "contradicting_statement_ids",
                 "contradiction_review",
@@ -217,6 +242,16 @@ class PublicContractTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
+            tuple((item.name, item.value) for item in ReassessmentBasisKind),
+            (
+                ("SOURCE_BACKED_MILESTONE", "source_backed_milestone"),
+                (
+                    "CALLER_RESEARCH_POLICY_ASSUMPTION",
+                    "caller_research_policy_assumption",
+                ),
+            ),
+        )
+        self.assertEqual(
             tuple(item.value for item in EventIntelligenceAcceptanceStatus),
             ("accepted", "incomplete"),
         )
@@ -231,7 +266,7 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual(result.issues, ())
         self.assertEqual(result.issue_codes, ())
         self.assertEqual(
-            result.assessment_version, "event-intelligence-acceptance-v0.1"
+            result.assessment_version, "event-intelligence-acceptance-v0.2"
         )
 
     def test_missing_semantics_return_canonical_incomplete_issues(self) -> None:
@@ -274,7 +309,7 @@ class AcceptanceTests(unittest.TestCase):
                 EventIntelligenceIssueCode.MISSING_IMPACT_PATH,
                 EventIntelligenceIssueCode.MISSING_DISTRIBUTION_MODE,
                 EventIntelligenceIssueCode.MISSING_DISTRIBUTION_HYPOTHESIS,
-                EventIntelligenceIssueCode.INCOMPLETE_EXPECTED_WINDOW,
+                EventIntelligenceIssueCode.MISSING_TEMPORAL_APPLICABILITY,
                 EventIntelligenceIssueCode.MISSING_SUPPORTING_EVIDENCE,
                 EventIntelligenceIssueCode.MISSING_CONTRADICTION_REVIEW,
                 EventIntelligenceIssueCode.MISSING_UNCERTAINTIES,
@@ -409,6 +444,245 @@ class AcceptanceTests(unittest.TestCase):
             assess_event_intelligence_submission(submission),
         )
         self.assertEqual(repr(submission), before)
+
+
+class ReassessmentTests(unittest.TestCase):
+    def test_atomic_records_normalize_and_reject_partial_values(self) -> None:
+        reassessment = HypothesisReassessment(
+            datetime.date(2030, 1, 31),
+            " source-backed-milestone:fact-1:2030-01-31 ",
+            ReassessmentBasisKind.SOURCE_BACKED_MILESTONE,
+            [" fact-1 "],
+        )
+        self.assertEqual(reassessment.methodology, "source-backed-milestone:fact-1:2030-01-31")
+        self.assertEqual(reassessment.basis_statement_ids, ("fact-1",))
+        with self.assertRaises(TypeError):
+            HypothesisReassessment(
+                datetime.datetime(2030, 1, 31),
+                "source-backed-milestone:fact-1:2030-01-31",
+                ReassessmentBasisKind.SOURCE_BACKED_MILESTONE,
+                ("fact-1",),
+            )
+        with self.assertRaises(TypeError):
+            HypothesisReassessment(
+                datetime.date(2030, 1, 31),
+                "source-backed-milestone:fact-1:2030-01-31",
+                "source_backed_milestone",  # type: ignore[arg-type]
+                ("fact-1",),
+            )
+        with self.assertRaises(ValueError):
+            HypothesisReassessment(
+                datetime.date(2030, 1, 31),
+                "source-backed-milestone:fact-1:2030-01-31",
+                ReassessmentBasisKind.SOURCE_BACKED_MILESTONE,
+                (),
+            )
+        with self.assertRaises(ValueError):
+            HypothesisReassessment(
+                datetime.date(2030, 1, 31),
+                "caller-research-policy-assumption:2030-01-31:",
+                ReassessmentBasisKind.CALLER_RESEARCH_POLICY_ASSUMPTION,
+                ("fact-1",),
+            )
+
+    def test_temporal_acceptance_matrix_is_exact(self) -> None:
+        caller = HypothesisReassessment(
+            datetime.date(2030, 1, 31),
+            "caller-research-policy-assumption:2030-01-31:Review the evidence before continued research.",
+            ReassessmentBasisKind.CALLER_RESEARCH_POLICY_ASSUMPTION,
+            ("interpretation-1",),
+        )
+        cases = (
+            (EXPECTED_WINDOW, None, EventIntelligenceAcceptanceStatus.ACCEPTED, ()),
+            (
+                EXPECTED_WINDOW,
+                caller,
+                EventIntelligenceAcceptanceStatus.ACCEPTED,
+                (),
+            ),
+            (
+                None,
+                caller,
+                EventIntelligenceAcceptanceStatus.ACCEPTED,
+                (),
+            ),
+            (
+                None,
+                None,
+                EventIntelligenceAcceptanceStatus.INCOMPLETE,
+                (EventIntelligenceIssueCode.MISSING_TEMPORAL_APPLICABILITY,),
+            ),
+            (
+                MethodologizedDateRange(
+                    None, datetime.date(2030, 1, 31), "Known end only."
+                ),
+                caller,
+                EventIntelligenceAcceptanceStatus.INCOMPLETE,
+                (EventIntelligenceIssueCode.INCOMPLETE_EXPECTED_WINDOW,),
+            ),
+        )
+        for expected_window, reassessment, status, issue_codes in cases:
+            with self.subTest(expected_window=expected_window, reassessment=reassessment):
+                result = assess_event_intelligence_submission(
+                    make_submission(
+                        hypotheses=(
+                            make_hypothesis(
+                                expected_window=expected_window,
+                                reassessment=reassessment,
+                            ),
+                        )
+                    )
+                )
+                self.assertIs(result.status, status)
+                self.assertEqual(result.issue_codes, issue_codes)
+
+    def test_historical_structural_cases_remain_originally_incomplete(self) -> None:
+        historical_cases = (
+            "NVDA power and credit second-order transmission",
+            "NVDA compute-financing narrative",
+            "IONQ and SkyWater vertical integration",
+        )
+        for description in historical_cases:
+            with self.subTest(description=description):
+                result = assess_event_intelligence_submission(
+                    make_submission(
+                        event_description=description,
+                        hypotheses=(
+                            make_hypothesis(
+                                expected_window=MethodologizedDateRange(
+                                    None,
+                                    datetime.date(2030, 1, 31),
+                                    "Only a partial impact window was retained.",
+                                ),
+                                reassessment=None,
+                            ),
+                        ),
+                    )
+                )
+                self.assertIs(
+                    result.status,
+                    EventIntelligenceAcceptanceStatus.INCOMPLETE,
+                )
+                self.assertEqual(
+                    result.issue_codes,
+                    (EventIntelligenceIssueCode.INCOMPLETE_EXPECTED_WINDOW,),
+                )
+                self.assertIsNone(result.submission.hypotheses[0].reassessment)
+
+    def test_source_backed_milestone_requires_exact_fact_provenance(self) -> None:
+        reassessment = HypothesisReassessment(
+            datetime.date(2030, 1, 31),
+            "source-backed-milestone:fact-1:2030-01-31",
+            ReassessmentBasisKind.SOURCE_BACKED_MILESTONE,
+            ("fact-1",),
+        )
+        result = assess_event_intelligence_submission(
+            make_submission(
+                statements=(
+                    make_fact(text="The source states the milestone date 2030-01-31."),
+                    make_interpretation(),
+                ),
+                hypotheses=(
+                    make_hypothesis(expected_window=None, reassessment=reassessment),
+                ),
+            )
+        )
+        self.assertIs(result.status, EventIntelligenceAcceptanceStatus.ACCEPTED)
+
+        with self.assertRaisesRegex(ValueError, "observed-fact text"):
+            make_submission(
+                hypotheses=(
+                    make_hypothesis(expected_window=None, reassessment=reassessment),
+                )
+            )
+        with self.assertRaisesRegex(ValueError, "direct observed fact"):
+            interpretation_reassessment = HypothesisReassessment(
+                datetime.date(2030, 1, 31),
+                "source-backed-milestone:interpretation-1:2030-01-31",
+                ReassessmentBasisKind.SOURCE_BACKED_MILESTONE,
+                ("interpretation-1",),
+            )
+            make_submission(
+                hypotheses=(
+                    make_hypothesis(
+                        expected_window=None,
+                        reassessment=interpretation_reassessment,
+                    ),
+                )
+            )
+
+    def test_caller_policy_requires_source_backed_fact_and_relevant_interpretation(self) -> None:
+        reassessment = HypothesisReassessment(
+            datetime.date(2030, 1, 31),
+            "caller-research-policy-assumption:2030-01-31:Review the factual and interpretive context.",
+            ReassessmentBasisKind.CALLER_RESEARCH_POLICY_ASSUMPTION,
+            ("interpretation-1",),
+        )
+        result = assess_event_intelligence_submission(
+            make_submission(
+                hypotheses=(
+                    make_hypothesis(expected_window=None, reassessment=reassessment),
+                )
+            )
+        )
+        self.assertIs(result.status, EventIntelligenceAcceptanceStatus.ACCEPTED)
+
+        fact_only_basis = HypothesisReassessment(
+            datetime.date(2030, 1, 31),
+            "caller-research-policy-assumption:2030-01-31:Review the fact.",
+            ReassessmentBasisKind.CALLER_RESEARCH_POLICY_ASSUMPTION,
+            ("fact-1",),
+        )
+        with self.assertRaisesRegex(ValueError, "basis closure"):
+            make_submission(
+                hypotheses=(
+                    make_hypothesis(
+                        expected_window=None,
+                        reassessment=fact_only_basis,
+                    ),
+                )
+            )
+
+    def test_reassessment_date_uses_observation_utc_calendar_date(self) -> None:
+        reassessment = HypothesisReassessment(
+            datetime.date(2030, 1, 4),
+            "caller-research-policy-assumption:2030-01-04:Review before continued research.",
+            ReassessmentBasisKind.CALLER_RESEARCH_POLICY_ASSUMPTION,
+            ("interpretation-1",),
+        )
+        valid = make_submission(
+            sources=(
+                make_source(
+                    published_at=datetime.datetime(
+                        2030, 1, 4, 12, 0, tzinfo=datetime.timezone.utc
+                    )
+                ),
+            ),
+            observed_at=datetime.datetime(
+                2030,
+                1,
+                5,
+                0,
+                30,
+                tzinfo=datetime.timezone(datetime.timedelta(hours=8)),
+            ),
+            hypotheses=(
+                make_hypothesis(expected_window=None, reassessment=reassessment),
+            ),
+        )
+        self.assertIs(
+            assess_event_intelligence_submission(valid).status,
+            EventIntelligenceAcceptanceStatus.ACCEPTED,
+        )
+        with self.assertRaisesRegex(ValueError, "UTC calendar date"):
+            make_submission(
+                hypotheses=(
+                    make_hypothesis(
+                        expected_window=None,
+                        reassessment=reassessment,
+                    ),
+                ),
+            )
 
 
 class NormalizationAndValidationTests(unittest.TestCase):
@@ -567,6 +841,30 @@ class NormalizationAndValidationTests(unittest.TestCase):
         malformed_submission = object.__new__(EventIntelligenceSubmission)
         with self.assertRaises(ValueError):
             assess_event_intelligence_submission(malformed_submission)
+
+    def test_v01_shaped_hypothesis_missing_reassessment_cannot_be_assessed(self) -> None:
+        submission = make_submission()
+        canonical = submission.hypotheses[0]
+        legacy = object.__new__(EventUnderlyingHypothesis)
+        for field_name in (
+            "hypothesis_id",
+            "underlying_key",
+            "impact_path",
+            "distribution_mode",
+            "distribution_hypothesis",
+            "expected_window",
+            "supporting_statement_ids",
+            "contradicting_statement_ids",
+            "contradiction_review",
+            "uncertainties",
+            "falsification_conditions",
+        ):
+            object.__setattr__(legacy, field_name, getattr(canonical, field_name))
+        self.assertNotIn("reassessment", vars(legacy))
+        object.__setattr__(submission, "hypotheses", (legacy,))
+
+        with self.assertRaisesRegex(ValueError, "hypothesis is malformed"):
+            assess_event_intelligence_submission(submission)
 
     def test_deep_acyclic_dependency_graph_does_not_use_recursion_limit(self) -> None:
         statements = [make_fact()]

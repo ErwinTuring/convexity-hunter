@@ -1938,11 +1938,12 @@ accepted Event Intelligence: all three translations honestly remained
 `INCOMPLETE` because authoritative sources did not supply exact expected-window
 end dates.
 
-## Event Intelligence Temporal Semantics v0.2 contract freeze
+## Event Intelligence Temporal Semantics v0.2 implementation checkpoint
 
 The Tier-A
 [`Event Intelligence Temporal Semantics v0.2`](event-intelligence-temporal-semantics-v0.2-contract.md)
-contract is frozen but not implemented. It separates expected market or
+contract is implemented in the exact Event Intelligence, Discovery Entry, and
+Option-Chain Discovery boundaries. It separates expected market or
 distribution impact, hypothesis reassessment/research validity, and downstream
 option maturity. Existing bounded-event behavior remains unchanged.
 
@@ -1954,19 +1955,26 @@ assumptions remain explicit assumptions and cannot masquerade as source facts.
 No default horizon, LLM duration estimate, inferred roll-forward, or silent
 extension is permitted.
 
-A complete structural-only reassessment may support future Event Intelligence
-v0.2 acceptance without inventing an impact end. It does not authorize Option
-Discovery. Without a complete expected-window end, request construction must
-fail deterministically with `missing_authoritative_maturity_anchor`; a
-reassessment date is never the maturity anchor. If both temporal records are
-present, stale applicability uses the earlier boundary.
+A complete structural-only reassessment supports Event Intelligence v0.2
+acceptance without inventing an impact end. It does not authorize Option
+Discovery. Without a complete expected-window end, request construction fails
+deterministically with `missing_authoritative_maturity_anchor`; a reassessment
+date is never the maturity anchor. If both temporal records are present, stale
+applicability uses the earlier boundary.
 
-The FOMC bounded case must remain accepted and retain its existing maturity
+The FOMC bounded case remains accepted and retains its existing maturity
 interval. The historical NVDA power/credit, NVDA compute-financing, and
 IONQ/SkyWater results remain exactly `INCOMPLETE / incomplete_expected_window`;
-the freeze assigns none of them a reassessment date and makes no retroactive
-acceptance claim. The next work unit is the separately reviewed v0.2 BUILD,
-not additional discovery, provider, or Engine infrastructure.
+the implementation assigns none of them a reassessment date and makes no
+retroactive acceptance claim. The implemented work unit adds no discovery,
+provider, or Engine infrastructure.
+
+Independent review identified two constructor-bypass failures where dataclass
+class defaults could conceal missing instance fields in a legacy-shaped
+hypothesis or acceptance result. Exact instance-field presence checks and
+decisive regression tests now reject both paths; targeted re-review passed.
+Final validation passed 103 focused temporal/discovery/provider tests and the
+1,337-test full suite, plus compileall and `git diff --check`.
 
 ## Previous current priority
 
