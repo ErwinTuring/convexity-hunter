@@ -1,5 +1,11 @@
 # Event Intelligence Acceptance Contract v0.1
 
+> Implementation status: this remains the current runtime contract. The
+> separately frozen
+> [Event Intelligence Temporal Semantics Contract v0.2](event-intelligence-temporal-semantics-v0.2-contract.md)
+> is the target for a later BUILD and changes neither current code nor
+> historical v0.1 results.
+
 ## Purpose
 
 This contract defines the smallest provider-neutral and Skill-neutral boundary

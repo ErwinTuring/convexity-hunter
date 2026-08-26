@@ -1747,8 +1747,10 @@ The second real explicit-human-selection exercise is recorded in
 Official Federal Reserve meeting-calendar facts and official State Street SPY
 identity facts supported a separately labeled, non-directional interpretation.
 The resulting 2026-09-16--23 expected window was an explicit MVP assumption and
-was still active at the 2026-08-24 evaluation date, so the v0.2 temporal gate
-passed without extension.
+was still active at the 2026-08-24 evaluation date, so the implemented
+Option-Chain Discovery Request v0.2 applicability gate passed without
+extension. This historical wording does not refer to the later, frozen Event
+Intelligence Temporal Semantics v0.2 contract.
 
 Futu exposed three Browser-visible monthly expirations. The user neutrally
 chose the nearest policy-compliant expiry, 2026-11-20, and then explicitly
@@ -1935,6 +1937,36 @@ not establish automatic discovery quality, recommendation authority, or
 accepted Event Intelligence: all three translations honestly remained
 `INCOMPLETE` because authoritative sources did not supply exact expected-window
 end dates.
+
+## Event Intelligence Temporal Semantics v0.2 contract freeze
+
+The Tier-A
+[`Event Intelligence Temporal Semantics v0.2`](event-intelligence-temporal-semantics-v0.2-contract.md)
+contract is frozen but not implemented. It separates expected market or
+distribution impact, hypothesis reassessment/research validity, and downstream
+option maturity. Existing bounded-event behavior remains unchanged.
+
+The frozen shape retains `expected_window` as the impact window and adds one
+optional atomic `HypothesisReassessment`. A present reassessment has a required
+exact date, nonempty methodology, closed source-backed-milestone versus caller-
+research-policy basis kind, and nonempty statement linkage. Caller governance
+assumptions remain explicit assumptions and cannot masquerade as source facts.
+No default horizon, LLM duration estimate, inferred roll-forward, or silent
+extension is permitted.
+
+A complete structural-only reassessment may support future Event Intelligence
+v0.2 acceptance without inventing an impact end. It does not authorize Option
+Discovery. Without a complete expected-window end, request construction must
+fail deterministically with `missing_authoritative_maturity_anchor`; a
+reassessment date is never the maturity anchor. If both temporal records are
+present, stale applicability uses the earlier boundary.
+
+The FOMC bounded case must remain accepted and retain its existing maturity
+interval. The historical NVDA power/credit, NVDA compute-financing, and
+IONQ/SkyWater results remain exactly `INCOMPLETE / incomplete_expected_window`;
+the freeze assigns none of them a reassessment date and makes no retroactive
+acceptance claim. The next work unit is the separately reviewed v0.2 BUILD,
+not additional discovery, provider, or Engine infrastructure.
 
 ## Previous current priority
 

@@ -125,6 +125,18 @@ date. An expired hypothesis fails closed; the request never extends the event
 window. Longer-lived effects must be declared and accepted upstream through a
 longer explicit Event Intelligence `expected_window`.
 
+The frozen, not-yet-implemented
+[Event Intelligence Temporal Semantics v0.2](event-intelligence-temporal-semantics-v0.2-contract.md)
+clarifies that `expected_window` means expected market or distribution impact,
+not a generic research deadline. A structural, narrative, or second-order
+hypothesis may instead use one explicit atomic reassessment record to establish
+research validity without predicting an impact end. That future acceptance
+does not make Option Discovery ready: only a complete expected-window end is
+the current authoritative maturity anchor, and structural-only discovery must
+fail deterministically with `missing_authoritative_maturity_anchor`. A
+reassessment date never substitutes for that anchor, extends a bounded event,
+or authorizes an automatic 30/60/90-day horizon.
+
 A structure may enter only when the listed contract exists, its grammar and
 maturity are supported, required quote and reference evidence is available,
 and it is compatible with the declared distribution hypothesis.

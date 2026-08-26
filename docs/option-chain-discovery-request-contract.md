@@ -1,5 +1,12 @@
 # Option-Chain Discovery Request Contract v0.2
 
+> Implementation status: this remains the current runtime contract. The
+> separately frozen
+> [Event Intelligence Temporal Semantics Contract v0.2](event-intelligence-temporal-semantics-v0.2-contract.md)
+> defines a future v0.3 migration target for structural-only hypotheses and
+> the stable `missing_authoritative_maturity_anchor` failure; neither is
+> implemented yet.
+
 ## Purpose
 
 This Tier-A contract defines a provider-neutral request for later option-chain

@@ -1,5 +1,12 @@
 # Discovery Entry Handoff Contract v0.1
 
+> Implementation status: this remains the current runtime contract. The
+> frozen
+> [Event Intelligence Temporal Semantics Contract v0.2](event-intelligence-temporal-semantics-v0.2-contract.md)
+> requires an atomic future cutover to
+> `event-intelligence-acceptance-v0.2`; there will be no dual-version handoff or
+> implicit upgrade of historical v0.1 results.
+
 ## Purpose
 
 This Tier-A contract defines the smallest deterministic handoff from one
