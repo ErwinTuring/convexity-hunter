@@ -1,5 +1,10 @@
 # Direct Entry Reviewed-Research Service Contract v0.2
 
+> Implementation status: implemented. The frozen, not-yet-implemented
+> [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md)
+> adds only an optional provider-neutral maturity-context sidecar for
+> Discovery Entry and leaves generic Direct Entry unchanged.
+
 ## Purpose and correction
 
 This Tier-A contract composes source-backed exact-contract verification,

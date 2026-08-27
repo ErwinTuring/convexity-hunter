@@ -1976,6 +1976,35 @@ decisive regression tests now reject both paths; targeted re-review passed.
 Final validation passed 103 focused temporal/discovery/provider tests and the
 1,337-test full suite, plus compileall and `git diff --check`.
 
+## Structural Narrative Option Research Activation v0.1 contract freeze
+
+The Tier-A activation contract is frozen but not implemented. It chooses one
+`OptionChainDiscoveryRequest` plus a closed maturity-authority enum rather than
+duplicating the request/provider/Browser path. Existing bounded-event callers
+remain hypothesis-aligned with unchanged expiration arithmetic. An accepted,
+current structural-only hypothesis with a complete reassessment may later use
+an explicitly requested neutral 30--150 DTE Browser, but its machine state is
+always `hypothesis_maturity_alignment = NOT_ESTABLISHED`.
+
+The freeze makes `reassessment_by` applicability-only, forbids neutral-path
+bypass when a complete expected impact window exists, and preserves
+`missing_authoritative_maturity_anchor` for a structural request that asks for
+hypothesis-aligned discovery. Provider expirations, holding assumptions, and
+human selection cannot create or upgrade maturity authority.
+
+The future BUILD carries one provider-neutral request/structure sidecar through
+the existing Futu evidence, Browser selection, Direct Entry, offline service,
+and Chinese report. It does not add the state to Candidate Assembly or Engine
+evidence and adds no ranking, default expiration, automatic generation,
+recommendation, or market-data work.
+
+Independent contract review initially found incomplete public-API/version
+freeze, insufficient context identity requirements, current-versus-successor
+Browser wording, compound-invalid precedence, and enum display ambiguity. The
+freeze was tightened on all five points and targeted re-review passed. The
+bounded v0.1 BUILD is `READY`; no production implementation occurred in this
+contract work unit.
+
 ## Previous current priority
 
 The bounded Futu Exact Contract Browser and explicit human-selection boundary

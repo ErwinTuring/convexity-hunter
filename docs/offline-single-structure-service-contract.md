@@ -1,5 +1,11 @@
 # Offline Single-Structure Service Contract
 
+> Implementation status: implemented. The frozen, not-yet-implemented
+> [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md)
+> defines a future optional maturity-context propagation and Chinese
+> disclosure without adding that state to Candidate Assembly or Engine
+> evidence.
+
 ## 1. Status and authority
 
 This document is the canonical A-level contract for the implemented

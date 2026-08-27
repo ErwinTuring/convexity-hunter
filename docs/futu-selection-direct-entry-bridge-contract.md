@@ -1,5 +1,10 @@
 # Futu Selection-to-Direct-Entry Bridge Contract v0.1
 
+> Implementation status: implemented. A future atomic migration is frozen in
+> [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md)
+> to bind and retain provider-neutral maturity context without changing exact-
+> contract evidence. It is not yet runtime behavior.
+
 ## Purpose and boundary
 
 This separate Tier-A contract verifies that one explicit

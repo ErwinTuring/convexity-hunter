@@ -6,6 +6,12 @@
 > for structural-only hypotheses and the stable
 > `missing_authoritative_maturity_anchor` failure. Bounded-event behavior is
 > unchanged.
+>
+> A reviewed but not-yet-implemented successor is frozen in
+> [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md).
+> Until that BUILD lands, this v0.3 contract remains the runtime authority and
+> structural-only discovery still fails with
+> `missing_authoritative_maturity_anchor`.
 
 ## Purpose
 

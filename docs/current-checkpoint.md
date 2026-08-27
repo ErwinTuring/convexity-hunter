@@ -44,6 +44,13 @@ Repository: `ErwinTuring/convexity-hunter`
   authority separate. Structural-only acceptance will not authorize Option
   Discovery; request construction fails with
   `missing_authoritative_maturity_anchor`.
+- Structural Narrative Option Research Activation v0.1 is independently
+  reviewed and contract-frozen but not implemented. It chooses one request
+  plus a closed maturity-authority enum, preserves bounded-event behavior, and
+  permits only an explicit neutral structural Browser with
+  `hypothesis_maturity_alignment = NOT_ESTABLISHED`. The ready future BUILD
+  must carry one exact maturity-context sidecar through selection, Direct
+  Entry, and Chinese reporting without entering Engine evidence.
 - The provider-neutral Event Discovery / Event Intake boundary retains at most
   ten provisional source-backed candidates under one explicit producer policy,
   preserves presentation order without ranking semantics, and records an
@@ -246,22 +253,26 @@ authorizes inferred evidence.
 
 ## Next work
 
-1. Treat the three-batch
+1. Implement the reviewed
+   [`Structural Narrative Option Research Activation v0.1`](structural-narrative-option-research-activation-contract.md)
+   contract as one atomic Tier-A BUILD. Preserve current runtime behavior until
+   that migration is complete, independently reviewed, and validated.
+2. Treat the three-batch
    [`Hunter Discovery Policy v0.1`](hunter-discovery-policy-v0.1.md)
    repeatability exercise as complete bounded positive evidence. Do not add
    scoring, automatic promotion, or new discovery producers merely to improve
    this result.
-2. Keep `morning-note` and `last30days` frozen as completed comparison evidence.
+3. Keep `morning-note` and `last30days` frozen as completed comparison evidence.
    Do not rerun or tune a Skill merely to force candidates.
-3. Preserve the completed
+4. Preserve the completed
    [`Event Intelligence Temporal Semantics v0.2`](event-intelligence-temporal-semantics-v0.2-contract.md)
    implementation and every historical result. Do not assign reassessment
    dates to the three prior structural cases, use governance dates as impact
    ends, or use them as option-maturity anchors.
-4. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
+5. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
-5. Freeze further BBO timestamp probing and provider/rates/history expansion
+6. Freeze further BBO timestamp probing and provider/rates/history expansion
    unless new official semantics or a future demonstrated product blocker
    justifies a separately bounded work unit.
 
