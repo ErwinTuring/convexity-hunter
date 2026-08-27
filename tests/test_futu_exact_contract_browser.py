@@ -34,7 +34,7 @@ UTC = datetime.timezone.utc
 RETRIEVED_AT = datetime.datetime(2030, 1, 1, 12, 0, tzinfo=UTC)
 
 
-def make_evidence(expirations=None, chains=None):
+def make_evidence(expirations=None, chains=None, *, discovery_request=None):
     expiration_rows = (
         [expiration_row(LOWER)] if expirations is None else expirations
     )
@@ -52,15 +52,20 @@ def make_evidence(expirations=None, chains=None):
     with mock.patch.object(futu, "_utc_now", return_value=RETRIEVED_AT):
         result = futu.retrieve_futu_option_chain_discovery_evidence(
             context,
-            discovery_request=make_request(),
+            discovery_request=(
+                make_request()
+                if discovery_request is None
+                else discovery_request
+            ),
         )
     return result, context
 
 
-def browser_with_rows(rows, expiration=LOWER):
+def browser_with_rows(rows, expiration=LOWER, *, discovery_request=None):
     evidence, context = make_evidence(
         [expiration_row(expiration)],
         {expiration.isoformat(): rows},
+        discovery_request=discovery_request,
     )
     return futu.create_futu_exact_contract_browser(evidence), context
 

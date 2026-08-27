@@ -26,6 +26,7 @@ from convexity_hunter.evidence import (
     OptionLeg,
     OptionStructure,
 )
+from convexity_hunter.option_chain_discovery import OptionResearchMaturityContext
 from convexity_hunter.market_data_transformations import ExactRational
 from convexity_hunter.market_data import CalculationQualityFlag
 from convexity_hunter.report import (
@@ -1347,6 +1348,17 @@ class LocaleValidationTests(unittest.TestCase):
                 screening_decision=object(),  # type: ignore[arg-type]
             )
 
+    def test_renderer_rejects_malformed_maturity_context(self) -> None:
+        malformed = object.__new__(OptionResearchMaturityContext)
+        object.__setattr__(malformed, "structure", self.candidate.structure)
+        with self.assertRaisesRegex(
+            ValueError, "^maturity_context is malformed$"
+        ):
+            render_candidate_markdown(
+                self.candidate,
+                maturity_context=malformed,
+            )
+
     def test_none_preserves_backward_compatible_rendering(self) -> None:
         implicit = render_candidate_markdown(self.candidate)
         explicit = render_candidate_markdown(
@@ -1704,7 +1716,7 @@ class PositionManagementPlanPresentationTests(unittest.TestCase):
         self.plan_result = _watch_result()
         self.candidate = self.plan_result.assembly_result.record
 
-    def test_renderer_signature_has_exact_fourth_sidecar(self) -> None:
+    def test_renderer_signature_has_exact_fifth_sidecar(self) -> None:
         signature = inspect.signature(render_candidate_markdown)
         parameters = tuple(signature.parameters.values())
         self.assertEqual(
@@ -1714,9 +1726,11 @@ class PositionManagementPlanPresentationTests(unittest.TestCase):
                 "locale",
                 "screening_decision",
                 "position_management_plan_result",
+                "maturity_context",
             ),
         )
         self.assertEqual(parameters[3].default, None)
+        self.assertEqual(parameters[4].default, None)
         self.assertNotIn(
             inspect.Parameter.VAR_POSITIONAL,
             tuple(parameter.kind for parameter in parameters),

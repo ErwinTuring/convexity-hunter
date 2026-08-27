@@ -106,10 +106,11 @@ Candidate inclusion is determined by business and technical eligibility, not
 an arbitrary maximum number of underlyings or structures.
 
 Candidate qualification is separate from deterministic contract browsing.
-The currently implemented bounded Futu browser may expose only real chain rows
-already classified by the provider as monthly and standard, not suspended,
-and inside the existing 30--150 DTE and `event_window_end + 30 days` maturity
-bounds. Browser
+The bounded Futu browser may expose only real chain rows already classified by
+the provider as monthly and standard, not suspended, and inside the retained
+authority-specific request bounds. Hypothesis-aligned requests include both
+30--150 DTE and `event_window_end + 30 days`; explicit neutral structural
+requests include only 30--150 DTE with `NOT_ESTABLISHED` alignment. Browser
 visibility means only that a user may explicitly request research on that
 listed contract. It does not establish exact deliverable terms, research
 readiness, liquidity, attractiveness, or candidate inclusion.
@@ -134,22 +135,22 @@ clarifies that `expected_window` means expected market or distribution impact,
 not a generic research deadline. A structural, narrative, or second-order
 hypothesis may instead use one explicit atomic reassessment record to establish
 research validity without predicting an impact end. This accepted state
-does not make Option Discovery ready: only a complete expected-window end is
-the current authoritative maturity anchor, and structural-only discovery must
-fail deterministically with `missing_authoritative_maturity_anchor`. A
+does not establish hypothesis-aligned maturity: only a complete expected-window
+end is the authoritative aligned anchor, and a structural-only aligned request
+fails deterministically with `missing_authoritative_maturity_anchor`. A
 reassessment date never substitutes for that anchor, extends a bounded event,
 or authorizes an automatic 30/60/90-day horizon.
 
-The reviewed
+The implemented
 [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md)
-is frozen but not yet implemented. It permits a caller to explicitly request
+permits a caller to explicitly request
 a neutral structural Browser for an accepted, current, reassessment-backed
 hypothesis without inventing an impact end. That future path uses only the
 neutral 30--150 DTE policy and must retain
 `hypothesis_maturity_alignment = NOT_ESTABLISHED` through selection, Direct
 Entry, and Chinese reporting. A complete expected impact window must continue
 through the stronger bounded-event rule and cannot use the neutral path.
-After that atomic BUILD, only an explicitly requested structural-neutral path
+Only an explicitly requested structural-neutral path
 omits the event buffer because no impact end exists; it retains the same hard
 30--150 DTE range and `NOT_ESTABLISHED` alignment. This is not a change to the
 bounded-event rule.
@@ -193,7 +194,7 @@ the event-window buffer:
 - for `HYPOTHESIS_ALIGNED` bounded events, expiration date at least the expected
   event-window end date plus 30 calendar days.
 
-The frozen, not-yet-implemented `NEUTRAL_STRUCTURAL_RESEARCH` path has no
+The implemented `NEUTRAL_STRUCTURAL_RESEARCH` path has no
 expected impact end and therefore no event-buffer calculation. Its 30--150 DTE
 range is neutral research navigation only and its maturity alignment remains
 `NOT_ESTABLISHED`.

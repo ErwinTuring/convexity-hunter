@@ -1,9 +1,9 @@
-# Futu Selection-to-Direct-Entry Bridge Contract v0.1
+# Futu Selection-to-Direct-Entry Bridge Contract v0.2
 
-> Implementation status: implemented. A future atomic migration is frozen in
+> Implementation status: implemented. The atomic migration is frozen in
 > [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md)
-> to bind and retain provider-neutral maturity context without changing exact-
-> contract evidence. It is not yet runtime behavior.
+> and binds and retains provider-neutral maturity context without changing
+> exact-contract evidence.
 
 ## Purpose and boundary
 
@@ -35,6 +35,7 @@ class FutuExactContractSelectionVerification:
     selection: FutuExactContractSelection
     contract_verifications: tuple[FutuExactOptionContractVerification, ...]
     direct_entry_exact_contract_verification: DirectEntryExactContractVerification
+    maturity_context: OptionResearchMaturityContext
 
 
 def verify_futu_exact_contract_selection(
@@ -47,6 +48,8 @@ The result retains the exact selection by identity. Its ordered provider
 verifications correspond one-to-one with `selection.selected_contracts` and
 retain the exact contract references used by the Direct Entry verification.
 The Direct Entry verification retains `selection.structure` by identity.
+The maturity context retains the exact Browser request and exact selected
+structure by identity.
 
 ## Frozen validation and call order
 
@@ -54,22 +57,24 @@ The function performs only these steps:
 
 1. Revalidate the exact `FutuExactContractSelection`, including its retained
    Browser rows and structure binding.
-2. For every selected row, in neutral selection order, call the existing
+2. Construct `OptionResearchMaturityContext` from the exact Browser request and
+   exact selected structure before any provider call.
+3. For every selected row, in neutral selection order, call the existing
    `verify_futu_monthly_option_contract` exactly once with:
    - the caller's exact `quote_context`;
    - the exact request `UnderlyingKey` retained by the Browser;
    - the row's exact expiration;
    - the row's exact canonical Call/Put value; and
    - the row's exact `Decimal` strike.
-3. Fail closed unless every returned `FutuExactOptionContractVerification` is
+4. Fail closed unless every returned `FutuExactOptionContractVerification` is
    intrinsically valid and exactly matches the selected row's provider
    identifier, provider expiration classification, provider standard
    classification, underlying, expiration, option type, strike, and provider
    lot-size/multiplier.
-4. Call the existing `verify_direct_entry_exact_contracts` exactly once with
+5. Call the existing `verify_direct_entry_exact_contracts` exactly once with
    the exact `selection.structure` and the ordered tuple of exact returned
    `OptionContractReference` objects.
-5. Return the frozen three-field sidecar.
+6. Return the frozen four-field sidecar.
 
 The existing Futu verifier remains the sole owner of expiration, chain,
 snapshot, exact identity, provider `MONTH`, provider `STANDARD`, suspension,
@@ -82,7 +87,7 @@ remain incomplete and do not become research readiness.
 
 ## Direct-construction invariants
 
-Direct construction of the result revalidates all three values and fails
+Direct construction of the result revalidates all four values and fails
 closed unless:
 
 - the selection has exact type and remains intrinsically valid;
@@ -94,7 +99,9 @@ closed unless:
   intrinsically valid;
 - its structure is the exact `selection.structure` object; and
 - each retained contract reference is the exact object from the corresponding
-  provider verification.
+  provider verification;
+- the maturity context request is the exact Browser-retained request; and
+- the maturity context structure is the exact selected structure.
 
 Identity requirements are relational inside the result: selected rows must be
 the exact Browser-retained rows, the Direct Entry structure must be the exact

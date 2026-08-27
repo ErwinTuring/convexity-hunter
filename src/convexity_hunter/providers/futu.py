@@ -26,6 +26,12 @@ from convexity_hunter.evidence import OptionStructure as _OptionStructure
 from convexity_hunter.option_chain_discovery import (
     OptionChainDiscoveryRequest as _OptionChainDiscoveryRequest,
 )
+from convexity_hunter.option_chain_discovery import (
+    OptionResearchMaturityContext as _OptionResearchMaturityContext,
+)
+from convexity_hunter.option_chain_discovery import (
+    _validate_option_research_maturity_context as _validate_option_research_maturity_context,
+)
 from convexity_hunter.market_data import (
     DataOrigin as _DataOrigin,
     NormalizationMetadata as _NormalizationMetadata,
@@ -703,6 +709,7 @@ def _validate_discovery_request(value: object) -> _OptionChainDiscoveryRequest:
         rebuilt = _OptionChainDiscoveryRequest(
             value.discovery_entry_handoff,
             value.evaluation_date,
+            value.maturity_authority,
         )
     except (AttributeError, TypeError, ValueError) as error:
         raise ValueError("discovery_request is malformed") from error
@@ -1521,6 +1528,7 @@ class FutuExactContractSelectionVerification:
     selection: FutuExactContractSelection
     contract_verifications: _Tuple[FutuExactOptionContractVerification, ...]
     direct_entry_exact_contract_verification: _DirectEntryExactContractVerification
+    maturity_context: _OptionResearchMaturityContext
 
     def __post_init__(self) -> None:
         selection = _validate_exact_contract_selection(self.selection)
@@ -1533,6 +1541,12 @@ class FutuExactContractSelectionVerification:
             verifications,
             self.direct_entry_exact_contract_verification,
         )
+        _validate_option_research_maturity_context(self.maturity_context)
+        request = selection.browser.discovery_evidence.discovery_request
+        if self.maturity_context.discovery_request is not request:
+            raise ValueError("maturity_context_request_mismatch")
+        if self.maturity_context.structure is not selection.structure:
+            raise ValueError("maturity_context_structure_mismatch")
 
 
 def verify_futu_exact_contract_selection(
@@ -1542,9 +1556,11 @@ def verify_futu_exact_contract_selection(
     """Resolve an explicit selection and apply the Direct Entry exact gate."""
 
     selection = _validate_exact_contract_selection(selection)
-    underlying_key = (
-        selection.browser.discovery_evidence.discovery_request.underlying_key
+    maturity_context = _OptionResearchMaturityContext(
+        selection.browser.discovery_evidence.discovery_request,
+        selection.structure,
     )
+    underlying_key = maturity_context.discovery_request.underlying_key
     verifications = []
     for row in selection.selected_contracts:
         verification = verify_futu_monthly_option_contract(
@@ -1573,6 +1589,7 @@ def verify_futu_exact_contract_selection(
         selection,
         retained,
         direct_entry_verification,
+        maturity_context,
     )
 
 

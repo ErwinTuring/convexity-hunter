@@ -6684,8 +6684,9 @@ def assemble_artifacts(
     calculated_at=CALCULATED_AT + datetime.timedelta(seconds=30),
     evidence_values=None,
     ai_interpretation=None,
+    structure_override=None,
 ):
-    structure = next(
+    structure = structure_override if structure_override is not None else next(
         item.record.structure
         for item in (
             artifacts[3], artifacts[2], artifacts[5], artifacts[6]
@@ -8304,6 +8305,7 @@ class NoCallApiAndImportProtectionTests(unittest.TestCase):
                 "locale",
                 "screening_decision",
                 "position_management_plan_result",
+                "maturity_context",
             ),
         )
 

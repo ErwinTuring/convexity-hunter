@@ -21,6 +21,10 @@ from .evidence import (
     TailPricingSlice,
     VolatilityEnvironment,
 )
+from .option_chain_discovery import (
+    OptionResearchMaturityContext,
+    _validate_option_research_maturity_context,
+)
 
 if TYPE_CHECKING:
     from .scanner import ScreeningDecision
@@ -1335,6 +1339,19 @@ def _validate_plan_binding(
         )
 
 
+def _validate_maturity_context(
+    candidate: CandidateResearchRecord,
+    maturity_context: Optional[OptionResearchMaturityContext],
+) -> None:
+    """Validate the optional research-context sidecar and exact binding."""
+
+    if maturity_context is None:
+        return
+    _validate_option_research_maturity_context(maturity_context)
+    if maturity_context.structure is not candidate.structure:
+        raise ValueError("maturity_context_structure_mismatch")
+
+
 def _screening_reason_label(reason_value: str, locale: str) -> str:
     """Return one localized reason label or reject an unknown reason value."""
 
@@ -1857,6 +1874,33 @@ def _append_overview(
         )
 
 
+def _append_maturity_alignment_disclosure(
+    lines: list,
+    maturity_context: OptionResearchMaturityContext,
+) -> None:
+    """Append the frozen Chinese maturity-authority disclosure."""
+
+    lines.extend(("", "### 假设与到期日的时间匹配", ""))
+    authority = maturity_context.maturity_authority.name
+    alignment = maturity_context.hypothesis_maturity_alignment.name
+    if authority == "HYPOTHESIS_ALIGNED":
+        lines.extend(
+            (
+                f"- 假设到期日匹配状态：已建立（{alignment}）",
+                f"- 期限依据：预期影响窗口（{authority}）",
+                "- 说明：该到期日仅满足相对于已接受预期影响窗口的既定期限政策；不表示最优、偏好、定价合理或投资建议。",
+            )
+        )
+    else:
+        lines.extend(
+            (
+                f"- 假设到期日匹配状态：未建立（{alignment}）",
+                f"- 期限依据：中性结构性研究（{authority}）",
+                "- 说明：该到期日仅因处于既定 30–150 DTE 中性研究范围并经用户明确选择而进入研究；不表示其匹配叙事持续时间或预期影响，也不表示优选或建议到期日。",
+            )
+        )
+
+
 def _technical_body(
     candidate: CandidateResearchRecord,
     locale: str,
@@ -1933,6 +1977,7 @@ def render_candidate_markdown(
     position_management_plan_result: Optional[
         "PositionManagementPlanResult"
     ] = None,
+    maturity_context: Optional[OptionResearchMaturityContext] = None,
 ) -> str:
     """Render one deterministic bilingual candidate research report."""
     if not isinstance(candidate, CandidateResearchRecord):
@@ -1943,6 +1988,7 @@ def render_candidate_markdown(
     _validate_plan_binding(
         candidate, normalized, position_management_plan_result
     )
+    _validate_maturity_context(candidate, maturity_context)
     grouped_conditions = (
         _group_plan_conditions(position_management_plan_result.plan)
         if position_management_plan_result is not None
@@ -1960,6 +2006,8 @@ def render_candidate_markdown(
         position_management_plan_result,
         grouped_conditions,
     )
+    if maturity_context is not None and normalized == "zh-CN":
+        _append_maturity_alignment_disclosure(lines, maturity_context)
     lines.extend(
         (
             "",

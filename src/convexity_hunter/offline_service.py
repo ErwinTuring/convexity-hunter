@@ -11,6 +11,10 @@ from .position_management import (
     QuantitativePositionManagementCondition,
     create_position_management_plan,
 )
+from .option_chain_discovery import (
+    OptionResearchMaturityContext,
+    _validate_option_research_maturity_context,
+)
 from .report import render_candidate_markdown
 from .scanner import ScreeningDecision, ScreeningPolicy, screen_candidate
 
@@ -41,12 +45,15 @@ class OfflineSingleStructureServiceResult:
     screening_decision: ScreeningDecision
     position_management_plan_result: Optional[PositionManagementPlanResult]
     report_markdown: str
+    maturity_context: Optional[OptionResearchMaturityContext]
 
 
 def run_offline_single_structure_service(
     assembly_result: CandidateResearchRecordAssemblyResult,
     screening_policy: ScreeningPolicy,
     position_management_plan_request: Optional[PositionManagementPlanRequest] = None,
+    *,
+    maturity_context: Optional[OptionResearchMaturityContext],
 ) -> OfflineSingleStructureServiceResult:
     if type(assembly_result) is not CandidateResearchRecordAssemblyResult:
         raise TypeError(
@@ -62,6 +69,10 @@ def run_offline_single_structure_service(
             "position_management_plan_request must have exact type "
             "PositionManagementPlanRequest or be None"
         )
+    if maturity_context is not None:
+        _validate_option_research_maturity_context(maturity_context)
+        if maturity_context.structure is not assembly_result.record.structure:
+            raise ValueError("maturity_context_structure_mismatch")
 
     screening_decision = screen_candidate(
         assembly_result.record,
@@ -82,10 +93,12 @@ def run_offline_single_structure_service(
         locale="zh-CN",
         screening_decision=screening_decision,
         position_management_plan_result=position_management_plan_result,
+        maturity_context=maturity_context,
     )
     return OfflineSingleStructureServiceResult(
         assembly_result,
         screening_decision,
         position_management_plan_result,
         report_markdown,
+        maturity_context,
     )

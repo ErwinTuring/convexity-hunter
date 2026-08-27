@@ -1,9 +1,9 @@
-# Futu Exact Contract Browser Contract v0.1
+# Futu Exact Contract Browser Contract v0.2
 
-> Implementation status: implemented. The separately frozen
+> Implementation status: implemented. The
 > [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md)
-> defines a future neutral structural request and lossless maturity-alignment
-> propagation. It is not yet runtime behavior.
+> defines the implemented neutral structural request and lossless maturity-
+> alignment propagation.
 
 ## Purpose
 
@@ -76,7 +76,7 @@ statuses == (ELIGIBLE,)
 option_type is Call or Put
 ```
 
-The currently implemented v0.3 `OptionChainDiscoveryRequest` enforces both
+The v0.4 `HYPOTHESIS_ALIGNED` `OptionChainDiscoveryRequest` enforces both
 inclusive maturity rules:
 
 ```text
@@ -87,9 +87,8 @@ expiration >= event_window_end + 30 calendar days
 Browser construction revalidates the complete discovery evidence rather than
 weakening or recomputing those request boundaries.
 
-When the frozen Structural Narrative Option Research Activation BUILD lands,
-this contract advances to v0.2 and Browser construction continues to consume
-the exact request bounds without recomputation. A `HYPOTHESIS_ALIGNED` request
+Browser construction consumes the exact request bounds without recomputation.
+A `HYPOTHESIS_ALIGNED` request
 retains both rules above. An explicit `NEUTRAL_STRUCTURAL_RESEARCH` request has
 no event-window end and therefore enforces only its inclusive neutral 30--150
 DTE bounds. Every neutral row retains

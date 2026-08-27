@@ -30,9 +30,13 @@ from convexity_hunter.event_intelligence import (
     ReassessmentBasisKind,
     assess_event_intelligence_submission,
 )
+from convexity_hunter.evidence import OptionLeg, OptionStructure
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
 from convexity_hunter.option_chain_discovery import (
+    HypothesisMaturityAlignment,
     OptionChainDiscoveryRequest,
+    OptionMaturityAuthority,
+    OptionResearchMaturityContext,
     create_option_chain_discovery_request,
 )
 
@@ -118,7 +122,10 @@ class PublicContractTests(unittest.TestCase):
         self.assertEqual(
             option_chain_discovery.__all__,
             (
+                "OptionMaturityAuthority",
+                "HypothesisMaturityAlignment",
                 "OptionChainDiscoveryRequest",
+                "OptionResearchMaturityContext",
                 "create_option_chain_discovery_request",
             ),
         )
@@ -126,32 +133,73 @@ class PublicContractTests(unittest.TestCase):
             self.assertFalse(hasattr(convexity_hunter, name))
         self.assertEqual(
             tuple(field.name for field in fields(OptionChainDiscoveryRequest)),
-            ("discovery_entry_handoff", "evaluation_date"),
+            (
+                "discovery_entry_handoff",
+                "evaluation_date",
+                "maturity_authority",
+            ),
         )
         self.assertEqual(
             OptionChainDiscoveryRequest.__annotations__,
             {
                 "discovery_entry_handoff": DiscoveryEntryHandoff,
                 "evaluation_date": datetime.date,
+                "maturity_authority": OptionMaturityAuthority,
             },
         )
         signature = inspect.signature(create_option_chain_discovery_request)
         self.assertEqual(
             tuple(signature.parameters),
-            ("discovery_entry_handoff", "evaluation_date"),
+            (
+                "discovery_entry_handoff",
+                "evaluation_date",
+                "maturity_authority",
+            ),
         )
         self.assertEqual(
             signature.parameters["evaluation_date"].kind,
             inspect.Parameter.KEYWORD_ONLY,
         )
+        self.assertEqual(
+            signature.parameters["maturity_authority"].kind,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+        self.assertIs(
+            signature.parameters["maturity_authority"].default,
+            OptionMaturityAuthority.HYPOTHESIS_ALIGNED,
+        )
         self.assertIs(signature.return_annotation, OptionChainDiscoveryRequest)
+        self.assertEqual(
+            tuple(item.name for item in OptionMaturityAuthority),
+            ("HYPOTHESIS_ALIGNED", "NEUTRAL_STRUCTURAL_RESEARCH"),
+        )
+        self.assertEqual(
+            tuple(item.name for item in HypothesisMaturityAlignment),
+            ("ESTABLISHED", "NOT_ESTABLISHED"),
+        )
+        self.assertEqual(
+            tuple(field.name for field in fields(OptionResearchMaturityContext)),
+            ("discovery_request", "structure"),
+        )
+        self.assertEqual(
+            OptionResearchMaturityContext.__annotations__,
+            {
+                "discovery_request": OptionChainDiscoveryRequest,
+                "structure": OptionStructure,
+            },
+        )
 
 
 class SuccessfulRequestTests(unittest.TestCase):
     def test_bounded_fomc_case_retains_original_request_boundaries(self) -> None:
+        handoff = make_handoff(event_window_end=datetime.date(2026, 9, 23))
         request = create_option_chain_discovery_request(
-            make_handoff(event_window_end=datetime.date(2026, 9, 23)),
+            handoff, evaluation_date=datetime.date(2026, 8, 24)
+        )
+        explicit = create_option_chain_discovery_request(
+            handoff,
             evaluation_date=datetime.date(2026, 8, 24),
+            maturity_authority=OptionMaturityAuthority.HYPOTHESIS_ALIGNED,
         )
         self.assertEqual(
             (
@@ -164,6 +212,19 @@ class SuccessfulRequestTests(unittest.TestCase):
                 datetime.date(2026, 10, 23),
                 datetime.date(2027, 1, 21),
             ),
+        )
+        self.assertEqual(explicit, request)
+        self.assertIs(
+            explicit.hypothesis_maturity_alignment,
+            HypothesisMaturityAlignment.ESTABLISHED,
+        )
+        self.assertIs(
+            request.maturity_authority,
+            OptionMaturityAuthority.HYPOTHESIS_ALIGNED,
+        )
+        self.assertIs(
+            request.hypothesis_maturity_alignment,
+            HypothesisMaturityAlignment.ESTABLISHED,
         )
 
     def test_active_hypothesis_retains_handoff_and_exact_boundaries(self) -> None:
@@ -276,6 +337,78 @@ class SuccessfulRequestTests(unittest.TestCase):
                 evaluation_date=EVALUATION_DATE,
             )
 
+    def test_explicit_neutral_structural_request_has_only_neutral_bounds(self) -> None:
+        handoff = make_handoff(
+            include_expected_window=False,
+            reassessment=make_caller_reassessment(),
+        )
+        request = create_option_chain_discovery_request(
+            handoff,
+            evaluation_date=EVALUATION_DATE,
+            maturity_authority=(
+                OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH
+            ),
+        )
+        self.assertIs(request.discovery_entry_handoff, handoff)
+        self.assertIsNone(request.event_window_end_date)
+        self.assertEqual(
+            request.minimum_expiration_date,
+            EVALUATION_DATE + datetime.timedelta(days=30),
+        )
+        self.assertEqual(
+            request.maximum_expiration_date,
+            EVALUATION_DATE + datetime.timedelta(days=150),
+        )
+        self.assertIs(
+            request.hypothesis_maturity_alignment,
+            HypothesisMaturityAlignment.NOT_ESTABLISHED,
+        )
+
+    def test_neutral_authority_cannot_bypass_complete_expected_window(self) -> None:
+        for reassessment in (None, make_caller_reassessment()):
+            with self.subTest(reassessment=reassessment):
+                handoff = make_handoff(reassessment=reassessment)
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "^neutral_structural_research_requires_absent_expected_window$",
+                ):
+                    create_option_chain_discovery_request(
+                        handoff,
+                        evaluation_date=EVALUATION_DATE,
+                        maturity_authority=(
+                            OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH
+                        ),
+                    )
+
+    def test_maturity_context_binds_exact_request_and_structure(self) -> None:
+        request = create_option_chain_discovery_request(
+            make_handoff(),
+            evaluation_date=EVALUATION_DATE,
+        )
+        structure = OptionStructure(
+            (
+                OptionLeg(
+                    "ABC",
+                    "call",
+                    100.0,
+                    request.minimum_expiration_date,
+                ),
+            ),
+            10000.0,
+            30,
+        )
+        context = OptionResearchMaturityContext(request, structure)
+        self.assertIs(context.discovery_request, request)
+        self.assertIs(context.structure, structure)
+        self.assertIs(
+            context.maturity_authority,
+            OptionMaturityAuthority.HYPOTHESIS_ALIGNED,
+        )
+        self.assertIs(
+            context.hypothesis_maturity_alignment,
+            HypothesisMaturityAlignment.ESTABLISHED,
+        )
+
     def test_reassessment_never_changes_bounded_maturity_or_interval(self) -> None:
         handoff = make_handoff(
             event_window_end=datetime.date(2030, 1, 20),
@@ -305,6 +438,23 @@ class FailureBoundaryTests(unittest.TestCase):
             create_option_chain_discovery_request(
                 handoff,
                 evaluation_date=EVALUATION_DATE + datetime.timedelta(days=1),
+            )
+
+    def test_stale_structural_hypothesis_precedes_neutral_arithmetic(self) -> None:
+        handoff = make_handoff(
+            include_expected_window=False,
+            reassessment=make_caller_reassessment(EVALUATION_DATE),
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "^selected hypothesis is expired for evaluation_date$",
+        ):
+            create_option_chain_discovery_request(
+                handoff,
+                evaluation_date=EVALUATION_DATE + datetime.timedelta(days=1),
+                maturity_authority=(
+                    OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH
+                ),
             )
 
     def test_earlier_reassessment_boundary_expires_bounded_hypothesis(self) -> None:
@@ -398,6 +548,74 @@ class FailureBoundaryTests(unittest.TestCase):
                     handoff,
                     evaluation_date=invalid_date,  # type: ignore[arg-type]
                 )
+        for invalid_authority in (
+            None,
+            "hypothesis_aligned",
+            HypothesisMaturityAlignment.ESTABLISHED,
+        ):
+            with self.assertRaises(TypeError):
+                create_option_chain_discovery_request(
+                    handoff,
+                    evaluation_date=EVALUATION_DATE,
+                    maturity_authority=invalid_authority,  # type: ignore[arg-type]
+                )
+
+    def test_maturity_context_rejects_mismatch_and_constructor_bypass(self) -> None:
+        request = create_option_chain_discovery_request(
+            make_handoff(),
+            evaluation_date=EVALUATION_DATE,
+        )
+        invalid_structures = (
+            OptionStructure(
+                (
+                    OptionLeg(
+                        "XYZ",
+                        "call",
+                        100.0,
+                        request.minimum_expiration_date,
+                    ),
+                ),
+                10000.0,
+                30,
+            ),
+            OptionStructure(
+                (
+                    OptionLeg(
+                        "ABC",
+                        "call",
+                        100.0,
+                        request.maximum_expiration_date
+                        + datetime.timedelta(days=1),
+                    ),
+                ),
+                10000.0,
+                30,
+            ),
+        )
+        for structure in invalid_structures:
+            with self.assertRaisesRegex(
+                ValueError, "^maturity_context_structure_mismatch$"
+            ):
+                OptionResearchMaturityContext(request, structure)
+        malformed = object.__new__(OptionChainDiscoveryRequest)
+        with self.assertRaises(ValueError):
+            OptionResearchMaturityContext(
+                malformed,
+                invalid_structures[0],
+            )
+
+        malformed_context = object.__new__(OptionResearchMaturityContext)
+        object.__setattr__(
+            malformed_context,
+            "structure",
+            invalid_structures[0],
+        )
+        with self.assertRaisesRegex(
+            ValueError, "^maturity_context is malformed$"
+        ):
+            option_chain_discovery._validate_option_research_maturity_context(
+                malformed_context
+            )
 
     def test_malformed_handoff_fails_controlled(self) -> None:
         malformed = object.__new__(DiscoveryEntryHandoff)

@@ -18,11 +18,27 @@ import convexity_hunter
 from convexity_hunter import direct_entry_verification
 from convexity_hunter import offline_service
 from convexity_hunter import direct_entry_reviewed_research_service as service
-from convexity_hunter.evidence import CandidateState
+from convexity_hunter.evidence import CandidateState, OptionLeg, OptionStructure
+from convexity_hunter.option_chain_discovery import (
+    HypothesisMaturityAlignment,
+    OptionMaturityAuthority,
+    OptionResearchMaturityContext,
+    create_option_chain_discovery_request,
+)
+from convexity_hunter.providers import futu
+from convexity_hunter.report import render_candidate_markdown
 from convexity_hunter.scanner import ScreeningPolicy, ScreeningReasonCode
 
 from tests import market_data_fixtures
 from tests.test_candidate_assembly import assemble_artifacts, complete_artifacts
+from tests.test_futu_exact_contract_browser import browser_with_rows
+from tests.test_futu_option_chain_discovery import LOWER, chain_row
+from tests.test_futu_selection_direct_entry_bridge import ExactSelectionContext
+from tests.test_option_chain_discovery import (
+    EVALUATION_DATE,
+    make_caller_reassessment,
+    make_handoff,
+)
 
 
 def _contract_references(structure):
@@ -104,6 +120,7 @@ class PublicContractTests(unittest.TestCase):
                 "exact_contract_verification",
                 "research_readiness_verification",
                 "offline_service_result",
+                "maturity_context",
             ),
         )
         self.assertEqual(
@@ -118,9 +135,10 @@ class PublicContractTests(unittest.TestCase):
                 "offline_service_result": (
                     offline_service.OfflineSingleStructureServiceResult
                 ),
+                "maturity_context": Optional[OptionResearchMaturityContext],
             },
         )
-        result = result_type(object(), None, object())
+        result = result_type(object(), None, object(), None)
         with self.assertRaises(FrozenInstanceError):
             result.offline_service_result = object()
 
@@ -134,7 +152,7 @@ class PublicContractTests(unittest.TestCase):
             "falsification_conditions", "missing_data",
             "false_positive_reasons", "ai_interpretation",
             "human_review_questions", "calculated_at", "screening_policy",
-            "position_management_plan_request",
+            "position_management_plan_request", "maturity_context",
         )
         signature = inspect.signature(
             service.run_direct_entry_reviewed_research_service
@@ -147,6 +165,14 @@ class PublicContractTests(unittest.TestCase):
         self.assertIs(
             signature.parameters["screening_policy"].annotation,
             ScreeningPolicy,
+        )
+        self.assertEqual(
+            signature.parameters["maturity_context"].kind,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+        self.assertIs(
+            signature.parameters["maturity_context"].default,
+            inspect.Parameter.empty,
         )
 
 
@@ -177,7 +203,7 @@ class DelegationContractTests(unittest.TestCase):
              mock.patch.object(service, "_assemble_candidate_research_record", assemble), \
              mock.patch.object(service, "_run_offline_single_structure_service", offline):
             result = service.run_direct_entry_reviewed_research_service(
-                *arguments, self.policy
+                *arguments, self.policy, maturity_context=None
             )
 
         assembled = list(arguments)
@@ -191,12 +217,18 @@ class DelegationContractTests(unittest.TestCase):
                     self.exact.structure, arguments[11], arguments[10]
                 ),
                 mock.call.assemble(*assembled),
-                mock.call.offline(self.assembly, self.policy, None),
+                mock.call.offline(
+                    self.assembly,
+                    self.policy,
+                    None,
+                    maturity_context=None,
+                ),
             ],
         )
         self.assertIs(result.exact_contract_verification, self.exact)
         self.assertIs(result.research_readiness_verification, self.readiness)
         self.assertIs(result.offline_service_result, self.offline)
+        self.assertIsNone(result.maturity_context)
 
     def test_missing_either_artifact_skips_readiness_but_not_assembly(self):
         for missing_index in (10, 11):
@@ -218,12 +250,17 @@ class DelegationContractTests(unittest.TestCase):
                     return_value=self.offline,
                 ) as offline:
                     result = service.run_direct_entry_reviewed_research_service(
-                        *arguments, self.policy
+                        *arguments, self.policy, maturity_context=None
                     )
                 exact.assert_called_once_with(arguments[6], arguments[7])
                 readiness.assert_not_called()
                 assemble.assert_called_once()
-                offline.assert_called_once_with(self.assembly, self.policy, None)
+                offline.assert_called_once_with(
+                    self.assembly,
+                    self.policy,
+                    None,
+                    maturity_context=None,
+                )
                 self.assertIsNone(result.research_readiness_verification)
 
     def test_exact_verification_failure_short_circuits_all_later_stages(self):
@@ -239,7 +276,7 @@ class DelegationContractTests(unittest.TestCase):
         ) as offline:
             with self.assertRaises(ValueError) as context:
                 service.run_direct_entry_reviewed_research_service(
-                    *self.arguments, self.policy
+                    *self.arguments, self.policy, maturity_context=None
                 )
         self.assertIs(context.exception, error)
         readiness.assert_not_called()
@@ -248,6 +285,148 @@ class DelegationContractTests(unittest.TestCase):
 
 
 class RealVerticalSliceTests(unittest.TestCase):
+    def test_neutral_selection_context_survives_to_chinese_report(self):
+        request = create_option_chain_discovery_request(
+            make_handoff(
+                include_expected_window=False,
+                reassessment=make_caller_reassessment(),
+            ),
+            evaluation_date=EVALUATION_DATE,
+            maturity_authority=(
+                OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH
+            ),
+        )
+        provider_row = chain_row(LOWER, "CALL", "100")
+        browser, _ = browser_with_rows(
+            [provider_row],
+            discovery_request=request,
+        )
+        selection = futu.select_futu_exact_contracts(
+            browser,
+            provider_identifiers=(browser.rows[0].provider_identifier,),
+            assumed_portfolio_value=10000.0,
+            expected_holding_days=30,
+        )
+        bridge = futu.verify_futu_exact_contract_selection(
+            ExactSelectionContext([provider_row]),
+            selection,
+        )
+        assembly = assemble_artifacts(
+            (None,) * 7,
+            CandidateState.DATA_INSUFFICIENT,
+            ("authoritative research evidence remains unavailable",),
+            calculation_id="neutral-structural-source",
+            structure_override=selection.structure,
+        )
+        arguments = list(_arguments(assembly, "neutral-structural-result"))
+        arguments[7] = (
+            bridge.direct_entry_exact_contract_verification.contract_references
+        )
+        result = service.run_direct_entry_reviewed_research_service(
+            *arguments,
+            ScreeningPolicy(),
+            maturity_context=bridge.maturity_context,
+        )
+
+        self.assertIs(result.maturity_context, bridge.maturity_context)
+        self.assertIs(
+            result.offline_service_result.maturity_context,
+            bridge.maturity_context,
+        )
+        self.assertIs(
+            result.maturity_context.hypothesis_maturity_alignment,
+            HypothesisMaturityAlignment.NOT_ESTABLISHED,
+        )
+        report = result.offline_service_result.report_markdown
+        self.assertIn("### 假设与到期日的时间匹配", report)
+        self.assertIn("未建立（NOT_ESTABLISHED）", report)
+        self.assertIn(
+            "中性结构性研究（NEUTRAL_STRUCTURAL_RESEARCH）",
+            report,
+        )
+        self.assertIn("不表示其匹配叙事持续时间或预期影响", report)
+        with self.assertRaisesRegex(
+            ValueError, "^maturity_context_structure_mismatch$"
+        ):
+            render_candidate_markdown(
+                dataclasses.replace(
+                    assembly.record,
+                    structure=dataclasses.replace(selection.structure),
+                ),
+                "zh-CN",
+                maturity_context=bridge.maturity_context,
+            )
+        with self.assertRaisesRegex(
+            ValueError, "^maturity_context_structure_mismatch$"
+        ), mock.patch.object(
+            offline_service,
+            "screen_candidate",
+            side_effect=AssertionError("screening must not run"),
+        ):
+            offline_service.run_offline_single_structure_service(
+                assemble_artifacts((None,) * 7, CandidateState.DATA_INSUFFICIENT,
+                                   ("missing",)),
+                ScreeningPolicy(),
+                maturity_context=bridge.maturity_context,
+            )
+
+    def test_maturity_context_structure_mismatch_precedes_exact_verification(self):
+        request = create_option_chain_discovery_request(
+            make_handoff(),
+            evaluation_date=EVALUATION_DATE,
+        )
+        context = OptionResearchMaturityContext(
+            request,
+            OptionStructure(
+                (
+                    OptionLeg(
+                        "ABC",
+                        "call",
+                        100.0,
+                        request.minimum_expiration_date,
+                    ),
+                ),
+                10000.0,
+                30,
+            ),
+        )
+        with mock.patch.object(
+            service,
+            "_verify_direct_entry_exact_contracts",
+            side_effect=AssertionError("exact verification must not run"),
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "^maturity_context_structure_mismatch$"
+            ):
+                service.run_direct_entry_reviewed_research_service(
+                    *tuple(object() for _ in range(22)),
+                    ScreeningPolicy(),
+                    maturity_context=context,
+                )
+
+    def test_malformed_maturity_context_precedes_exact_verification(self):
+        assembly = assemble_artifacts(
+            (None,) * 7,
+            CandidateState.DATA_INSUFFICIENT,
+            ("missing",),
+        )
+        arguments = _arguments(assembly, "malformed-context")
+        malformed = object.__new__(OptionResearchMaturityContext)
+        object.__setattr__(malformed, "structure", arguments[6])
+        with mock.patch.object(
+            service,
+            "_verify_direct_entry_exact_contracts",
+            side_effect=AssertionError("exact verification must not run"),
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "^maturity_context is malformed$"
+            ):
+                service.run_direct_entry_reviewed_research_service(
+                    *arguments,
+                    ScreeningPolicy(),
+                    maturity_context=malformed,
+                )
+
     def test_complete_artifacts_retain_research_readiness(self):
         assembly = assemble_artifacts(
             complete_artifacts(),
@@ -256,6 +435,7 @@ class RealVerticalSliceTests(unittest.TestCase):
         result = service.run_direct_entry_reviewed_research_service(
             *_arguments(assembly, "direct-entry-complete-result"),
             ScreeningPolicy(),
+            maturity_context=None,
         )
         self.assertIsNotNone(result.research_readiness_verification)
         self.assertEqual(
@@ -273,6 +453,7 @@ class RealVerticalSliceTests(unittest.TestCase):
         result = service.run_direct_entry_reviewed_research_service(
             *_arguments(assembly, "direct-entry-zero-result"),
             ScreeningPolicy(),
+            maturity_context=None,
         )
         offline = result.offline_service_result
         self.assertIsNone(result.research_readiness_verification)
@@ -294,6 +475,10 @@ class RealVerticalSliceTests(unittest.TestCase):
             offline.assembly_result.lineage.inputs,
             (),
         )
+        self.assertNotIn(
+            "假设与到期日的时间匹配",
+            offline.report_markdown,
+        )
 
     def test_one_present_artifact_is_retained_without_claiming_readiness(self):
         costs = complete_artifacts()[3]
@@ -306,6 +491,7 @@ class RealVerticalSliceTests(unittest.TestCase):
         result = service.run_direct_entry_reviewed_research_service(
             *_arguments(assembly, "direct-entry-cost-only-result"),
             ScreeningPolicy(),
+            maturity_context=None,
         )
         self.assertIsNone(result.research_readiness_verification)
         self.assertIs(

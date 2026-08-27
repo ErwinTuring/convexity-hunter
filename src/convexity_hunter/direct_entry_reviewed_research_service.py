@@ -17,6 +17,12 @@ from .offline_service import (
     PositionManagementPlanRequest as _PositionManagementPlanRequest,
     run_offline_single_structure_service as _run_offline_single_structure_service,
 )
+from .option_chain_discovery import (
+    OptionResearchMaturityContext as _OptionResearchMaturityContext,
+)
+from .option_chain_discovery import (
+    _validate_option_research_maturity_context as _validate_option_research_maturity_context,
+)
 from .scanner import ScreeningPolicy as _ScreeningPolicy
 
 
@@ -33,6 +39,7 @@ class DirectEntryReviewedResearchServiceResult:
         _DirectEntryResearchReadinessVerification
     ]
     offline_service_result: _OfflineSingleStructureServiceResult
+    maturity_context: _Optional[_OptionResearchMaturityContext]
 
 
 def run_direct_entry_reviewed_research_service(
@@ -60,7 +67,13 @@ def run_direct_entry_reviewed_research_service(
     calculated_at: object,
     screening_policy: _ScreeningPolicy,
     position_management_plan_request: _Optional[_PositionManagementPlanRequest] = None,
+    *,
+    maturity_context: _Optional[_OptionResearchMaturityContext],
 ) -> DirectEntryReviewedResearchServiceResult:
+    if maturity_context is not None:
+        _validate_option_research_maturity_context(maturity_context)
+        if maturity_context.structure is not structure:
+            raise ValueError("maturity_context_structure_mismatch")
     exact_contract_verification = _verify_direct_entry_exact_contracts(
         structure,
         contract_references,
@@ -104,9 +117,11 @@ def run_direct_entry_reviewed_research_service(
         assembly_result,
         screening_policy,
         position_management_plan_request,
+        maturity_context=maturity_context,
     )
     return DirectEntryReviewedResearchServiceResult(
         exact_contract_verification,
         research_readiness_verification,
         offline_service_result,
+        maturity_context,
     )

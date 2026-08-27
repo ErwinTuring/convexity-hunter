@@ -1,17 +1,14 @@
-# Option-Chain Discovery Request Contract v0.3
+# Option-Chain Discovery Request Contract v0.4
 
-> Implementation status: implemented. This is the v0.3 migration from the
-> historical v0.2 request contract required by the
+> Implementation status: implemented. The v0.4 atomic migration is governed by
+> [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md).
+> It preserves the v0.3 bounded-event path while adding explicit neutral
+> structural research with `NOT_ESTABLISHED` maturity alignment. The historical
+> v0.3 migration from v0.2 was required by the
 > [Event Intelligence Temporal Semantics Contract v0.2](event-intelligence-temporal-semantics-v0.2-contract.md)
 > for structural-only hypotheses and the stable
 > `missing_authoritative_maturity_anchor` failure. Bounded-event behavior is
-> unchanged.
->
-> A reviewed but not-yet-implemented successor is frozen in
-> [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md).
-> Until that BUILD lands, this v0.3 contract remains the runtime authority and
-> structural-only discovery still fails with
-> `missing_authoritative_maturity_anchor`.
+> unchanged under the compatibility default.
 
 ## Purpose
 
@@ -23,11 +20,14 @@ expiration or contract is eligible.
 The direct module `convexity_hunter.option_chain_discovery` exports exactly:
 
 ```python
+OptionMaturityAuthority
+HypothesisMaturityAlignment
 OptionChainDiscoveryRequest
+OptionResearchMaturityContext
 create_option_chain_discovery_request
 ```
 
-Neither name is exported from the package root.
+None of these names is exported from the package root.
 
 ## Exact record and function
 
@@ -36,19 +36,23 @@ Neither name is exported from the package root.
 class OptionChainDiscoveryRequest:
     discovery_entry_handoff: DiscoveryEntryHandoff
     evaluation_date: datetime.date
+    maturity_authority: OptionMaturityAuthority = OptionMaturityAuthority.HYPOTHESIS_ALIGNED
 
 
 def create_option_chain_discovery_request(
     discovery_entry_handoff: DiscoveryEntryHandoff,
     *,
     evaluation_date: datetime.date,
+    maturity_authority: OptionMaturityAuthority = OptionMaturityAuthority.HYPOTHESIS_ALIGNED,
 ) -> OptionChainDiscoveryRequest:
     ...
 ```
 
-The record stores exactly those two fields and retains the exact handoff by
+The record stores exactly those three fields and retains the exact handoff by
 identity. The caller supplies a date-only evaluation date; the implementation
-reads no clock.
+reads no clock. The exact enums, context record, authority-specific formulas,
+failure precedence, and propagation semantics are frozen in the activation
+contract.
 
 ## Temporal applicability gate
 
@@ -66,9 +70,11 @@ both complete -> min(expected_window.end_date, reassessment.reassessment_by)
 The boundary day is valid. For otherwise valid inputs,
 `evaluation_date` later than the derived boundary fails closed with
 `ValueError` because the selected hypothesis is expired for that evaluation
-date. A currently applicable structural-only hypothesis then fails request
-construction with exactly `missing_authoritative_maturity_anchor` because only
-a complete `expected_window.end_date` supplies the maturity anchor.
+date. A currently applicable structural-only hypothesis using the compatibility
+default or explicit `HYPOTHESIS_ALIGNED` authority then fails with exactly
+`missing_authoritative_maturity_anchor`. An explicitly requested
+`NEUTRAL_STRUCTURAL_RESEARCH` request instead requires an absent impact window
+and complete reassessment and proceeds with `NOT_ESTABLISHED` alignment.
 
 The request never extends, rolls, or substitutes the accepted event window. A
 reassessment date never supplies the maturity anchor or extends a bounded
@@ -85,20 +91,24 @@ deterministically derived from the locked MVP maturity policy:
 underlying_key = selected hypothesis underlying_key
 distribution_mode = selected hypothesis distribution_mode
 event_window_end_date = selected hypothesis expected_window.end_date
+    for HYPOTHESIS_ALIGNED; otherwise None
 
-minimum_expiration_date = max(
+HYPOTHESIS_ALIGNED minimum_expiration_date = max(
     evaluation_date + 30 calendar days,
     event_window_end_date + 30 calendar days,
 )
+
+NEUTRAL_STRUCTURAL_RESEARCH minimum_expiration_date =
+    evaluation_date + 30 calendar days
 
 maximum_expiration_date = evaluation_date + 150 calendar days
 ```
 
 Both expiration boundaries are inclusive. A later expiration `E` satisfies
 this request exactly when `minimum_expiration_date <= E <=
-maximum_expiration_date`. This is equivalent to 30–150 calendar DTE plus an
-expiration no earlier than 30 calendar days after the accepted event-window
-end. An empty interval fails request construction.
+maximum_expiration_date`. The event-buffer rule applies only to
+`HYPOTHESIS_ALIGNED`; neutral structural research claims only the 30–150
+calendar DTE interval. An empty interval fails request construction.
 
 The request does not encode short/core/long presentation bands because those
 bands do not change the hard eligibility interval and are not rankings.
@@ -125,10 +135,11 @@ intrinsically reconstructed through its existing constructor without replaying
 Event Intelligence acceptance. The accepted hypothesis must retain exact
 `UnderlyingKey` and `DistributionChangeMode`, and any reassessment must be
 complete. After those intrinsic semantics are validated, temporal applicability
-is checked before the missing-anchor check and date arithmetic. Missing
+is checked before authority admissibility and date arithmetic. Missing
 semantics, malformed or constructor-bypassed records, an expired hypothesis,
-the missing maturity anchor, date overflow, and an empty interval fail with
-controlled `TypeError` or `ValueError`.
+the missing aligned anchor, a neutral request with a complete impact window,
+date overflow, and an empty interval fail with controlled `TypeError` or
+`ValueError`.
 
 ## Non-goals
 

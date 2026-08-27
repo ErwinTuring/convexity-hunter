@@ -246,13 +246,14 @@ No `reassessment_by`, event date, publication date, observation date,
 expected holding period, provider expiration, or user-selected contract may
 substitute for the missing maturity anchor.
 
-A separately reviewed successor contract is now frozen, but not implemented,
-for an explicitly requested neutral structural Browser path. It preserves
+A separately reviewed successor contract is frozen and implemented for an
+explicitly requested neutral structural Browser path. It preserves
 `reassessment_by` as applicability-only authority and records maturity
 alignment as `NOT_ESTABLISHED`; see
 [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md).
-This v0.2 implementation and its current missing-anchor behavior remain
-unchanged until that atomic BUILD.
+The v0.2 Event Intelligence semantics remain unchanged; only an explicit
+Option-Chain Discovery v0.4 neutral authority avoids the aligned missing-anchor
+failure.
 
 ## Existing bounded-event compatibility
 

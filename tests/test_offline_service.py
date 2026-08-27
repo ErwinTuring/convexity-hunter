@@ -18,6 +18,7 @@ import convexity_hunter
 from convexity_hunter import candidate_assembly
 from convexity_hunter import offline_service as service
 from convexity_hunter.evidence import CandidateState
+from convexity_hunter.option_chain_discovery import OptionResearchMaturityContext
 from convexity_hunter.position_management import (
     PositionManagementPlanResult,
     QualitativePositionManagementCondition,
@@ -101,6 +102,7 @@ class PublicContractTests(unittest.TestCase):
                 "screening_decision",
                 "position_management_plan_result",
                 "report_markdown",
+                "maturity_context",
             ),
         )
         expected_request_annotations = {
@@ -119,6 +121,7 @@ class PublicContractTests(unittest.TestCase):
             "screening_decision": ScreeningDecision,
             "position_management_plan_result": Optional[PositionManagementPlanResult],
             "report_markdown": str,
+            "maturity_context": Optional[OptionResearchMaturityContext],
         }
         self.assertEqual(
             service.PositionManagementPlanRequest.__annotations__,
@@ -135,6 +138,7 @@ class PublicContractTests(unittest.TestCase):
                 "assembly_result",
                 "screening_policy",
                 "position_management_plan_request",
+                "maturity_context",
             ),
         )
         self.assertIs(
@@ -166,7 +170,7 @@ class PublicContractTests(unittest.TestCase):
     def test_service_records_are_frozen(self):
         request = service.PositionManagementPlanRequest("plan", (), CALCULATED_AT)
         result = service.OfflineSingleStructureServiceResult(
-            object(), object(), None, "报告"
+            object(), object(), None, "报告", None
         )
         with self.assertRaises(FrozenInstanceError):
             request.calculation_id = "changed"  # type: ignore[misc]
@@ -203,7 +207,7 @@ class TraceAndBoundaryTests(unittest.TestCase):
              mock.patch.object(service, "create_position_management_plan", plan), \
              mock.patch.object(service, "render_candidate_markdown", render):
             result = service.run_offline_single_structure_service(
-                self.assembly, self.policy
+                self.assembly, self.policy, maturity_context=None
             )
 
         self.assertEqual(
@@ -215,6 +219,7 @@ class TraceAndBoundaryTests(unittest.TestCase):
                     locale="zh-CN",
                     screening_decision=self.decision,
                     position_management_plan_result=None,
+                    maturity_context=None,
                 ),
             ],
         )
@@ -225,6 +230,24 @@ class TraceAndBoundaryTests(unittest.TestCase):
         self.assertIs(result.screening_decision, self.decision)
         self.assertIsNone(result.position_management_plan_result)
         self.assertEqual(result.report_markdown, "报告")
+        self.assertIsNone(result.maturity_context)
+
+    def test_malformed_maturity_context_precedes_screening(self):
+        malformed = object.__new__(OptionResearchMaturityContext)
+        object.__setattr__(malformed, "structure", self.assembly.record.structure)
+        with mock.patch.object(
+            service,
+            "screen_candidate",
+            side_effect=AssertionError("screening must not run"),
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "^maturity_context is malformed$"
+            ):
+                service.run_offline_single_structure_service(
+                    self.assembly,
+                    self.policy,
+                    maturity_context=malformed,
+                )
 
     def test_plan_trace_arguments_order_locale_and_identity(self):
         trace, screen, plan, render = self.traced_mocks(
@@ -234,7 +257,10 @@ class TraceAndBoundaryTests(unittest.TestCase):
              mock.patch.object(service, "create_position_management_plan", plan), \
              mock.patch.object(service, "render_candidate_markdown", render):
             result = service.run_offline_single_structure_service(
-                self.assembly, self.policy, self.request
+                self.assembly,
+                self.policy,
+                self.request,
+                maturity_context=None,
             )
 
         self.assertEqual(
@@ -252,6 +278,7 @@ class TraceAndBoundaryTests(unittest.TestCase):
                     locale="zh-CN",
                     screening_decision=self.decision,
                     position_management_plan_result=self.plan_result,
+                    maturity_context=None,
                 ),
             ],
         )
@@ -284,7 +311,10 @@ class TraceAndBoundaryTests(unittest.TestCase):
                 with self.subTest(assembly=type(assembly), policy=type(policy), request=type(request)):
                     with self.assertRaises(TypeError):
                         service.run_offline_single_structure_service(
-                            assembly, policy, request
+                            assembly,
+                            policy,
+                            request,
+                            maturity_context=None,
                         )
         screen.assert_not_called()
         plan.assert_not_called()
@@ -299,7 +329,10 @@ class TraceAndBoundaryTests(unittest.TestCase):
              mock.patch.object(service, "create_position_management_plan", plan), \
              mock.patch.object(service, "render_candidate_markdown", render):
             result = service.run_offline_single_structure_service(
-                self.assembly, self.policy, self.request
+                self.assembly,
+                self.policy,
+                self.request,
+                maturity_context=None,
             )
         self.assertIs(result.screening_decision, rejected_decision)
         plan.assert_called_once()
@@ -322,7 +355,7 @@ class TraceAndBoundaryTests(unittest.TestCase):
             side_effect=AssertionError("assembly replayed"),
         ):
             result = service.run_offline_single_structure_service(
-                self.assembly, self.policy
+                self.assembly, self.policy, maturity_context=None
             )
         self.assertIs(result.assembly_result, self.assembly)
         self.assertEqual(result.report_markdown, "报告")
@@ -350,7 +383,9 @@ class TraceAndBoundaryTests(unittest.TestCase):
                 for state, artifacts, missing in cases
             ]
             for assembly in assemblies:
-                service.run_offline_single_structure_service(assembly, policy)
+                service.run_offline_single_structure_service(
+                    assembly, policy, maturity_context=None
+                )
 
         self.assertEqual(screen.call_count, len(cases))
         self.assertEqual(
@@ -378,7 +413,10 @@ class ExceptionAndPurityTests(unittest.TestCase):
              mock.patch.object(service, "render_candidate_markdown") as render:
             with self.assertRaises(ValueError) as context:
                 service.run_offline_single_structure_service(
-                    self.assembly, self.policy, self.request
+                    self.assembly,
+                    self.policy,
+                    self.request,
+                    maturity_context=None,
                 )
         self.assertIs(context.exception, screening_error)
         screen.assert_called_once()
@@ -392,7 +430,10 @@ class ExceptionAndPurityTests(unittest.TestCase):
              mock.patch.object(service, "render_candidate_markdown") as render:
             with self.assertRaises(RuntimeError) as context:
                 service.run_offline_single_structure_service(
-                    self.assembly, self.policy, self.request
+                    self.assembly,
+                    self.policy,
+                    self.request,
+                    maturity_context=None,
                 )
         self.assertIs(context.exception, plan_error)
         screen.assert_called_once()
@@ -405,7 +446,10 @@ class ExceptionAndPurityTests(unittest.TestCase):
              mock.patch.object(service, "render_candidate_markdown", side_effect=render_error) as render:
             with self.assertRaises(KeyError) as context:
                 service.run_offline_single_structure_service(
-                    self.assembly, self.policy, self.request
+                    self.assembly,
+                    self.policy,
+                    self.request,
+                    maturity_context=None,
                 )
         self.assertIs(context.exception, render_error)
         screen.assert_called_once()
@@ -422,10 +466,16 @@ class ExceptionAndPurityTests(unittest.TestCase):
              mock.patch.object(service, "create_position_management_plan", return_value=plan_result), \
              mock.patch.object(service, "render_candidate_markdown", return_value="固定中文报告"):
             first = service.run_offline_single_structure_service(
-                self.assembly, self.policy, self.request
+                self.assembly,
+                self.policy,
+                self.request,
+                maturity_context=None,
             )
             second = service.run_offline_single_structure_service(
-                self.assembly, self.policy, self.request
+                self.assembly,
+                self.policy,
+                self.request,
+                maturity_context=None,
             )
         self.assertEqual(first, second)
         self.assertEqual(first.report_markdown, "固定中文报告")
@@ -441,8 +491,12 @@ class RealProducerIntegrationTests(unittest.TestCase):
     def test_real_producers_no_plan_path_is_chinese_and_deterministic(self):
         assembly = build_watch_assembly()
         policy = ScreeningPolicy()
-        first = service.run_offline_single_structure_service(assembly, policy)
-        second = service.run_offline_single_structure_service(assembly, policy)
+        first = service.run_offline_single_structure_service(
+            assembly, policy, maturity_context=None
+        )
+        second = service.run_offline_single_structure_service(
+            assembly, policy, maturity_context=None
+        )
         self.assertIs(first.assembly_result, assembly)
         self.assertIsNone(first.position_management_plan_result)
         self.assertEqual(first, second)
@@ -458,7 +512,10 @@ class RealProducerIntegrationTests(unittest.TestCase):
             assembly.lineage.calculated_at + datetime.timedelta(seconds=1),
         )
         result = service.run_offline_single_structure_service(
-            assembly, ScreeningPolicy(), request
+            assembly,
+            ScreeningPolicy(),
+            request,
+            maturity_context=None,
         )
         self.assertIs(result.assembly_result, assembly)
         self.assertIsInstance(result.screening_decision, type(decision_for(CandidateState.DATA_INSUFFICIENT)))

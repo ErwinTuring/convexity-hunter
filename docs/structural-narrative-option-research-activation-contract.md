@@ -2,15 +2,18 @@
 
 ## Status
 
-This Tier-A contract is frozen for a later BUILD. It is not implemented by the
-current runtime. The current implemented behavior remains Option-Chain
-Discovery Request v0.3: a structural-only hypothesis fails with
-`missing_authoritative_maturity_anchor`.
+This Tier-A contract is frozen and implemented as one atomic runtime migration.
+Option-Chain Discovery Request v0.4 now supports the two exact authorities
+defined below. The historical v0.3 behavior remains available through the
+compatibility-default `HYPOTHESIS_ALIGNED` path.
 
 Independent contract review passed after closing exact API, context-binding,
 current-versus-successor wording, compound-failure precedence, and enum-
-rendering ambiguities. The bounded v0.1 BUILD is `READY`; this work unit stops
-before implementation.
+rendering ambiguities. Independent BUILD review initially found one stale
+renderer-signature assertion and missing intrinsic revalidation for
+constructor-bypassed maturity contexts. Both were corrected; targeted
+re-review passed, as did 91 focused tests, the 1,348-test full suite,
+compileall, and `git diff --check`.
 
 The contract permits an accepted, current structural hypothesis to open a
 neutral exact-contract Browser without inventing an expected impact end. It
@@ -466,11 +469,11 @@ precedence, non-bypass behavior, stable failures, context identity and
 structure binding, end-to-end non-upgrade, exact Chinese disclosure, and
 unchanged generic Direct Entry output.
 
-## Non-goals and BUILD boundary
+## Non-goals and implementation boundary
 
-This freeze adds no production code. The later BUILD may implement only the
-closed enum branch, deterministic interval arithmetic, atomic context
-propagation, report disclosure, migrations, and tests described here.
+The implementation is limited to the closed enum branch, deterministic
+interval arithmetic, atomic context propagation, report disclosure,
+migrations, and tests described here.
 
 It must not add ranking, scoring, a default expiration, ATM or Delta selection,
 recommendation, automatic Candidate Generation, provider routing, market-data

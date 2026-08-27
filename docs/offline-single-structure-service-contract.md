@@ -1,8 +1,8 @@
 # Offline Single-Structure Service Contract
 
-> Implementation status: implemented. The frozen, not-yet-implemented
+> Implementation status: implemented. The
 > [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md)
-> defines a future optional maturity-context propagation and Chinese
+> defines the optional maturity-context propagation and Chinese
 > disclosure without adding that state to Candidate Assembly or Engine
 > evidence.
 
@@ -44,8 +44,8 @@ locale selector, or convenience wrapper belongs to this contract.
 
 ## 3. Frozen dataclasses
 
-Both service-owned records are frozen dataclasses with no additional fields.
-Field order is part of the API and must be preserved by introspection,
+Both service-owned records are frozen dataclasses. The v0.2 result appends only
+the maturity context shown below. Field order is part of the API and must be preserved by introspection,
 construction, equality, and serialization-oriented tests.
 
 ### 3.1 `PositionManagementPlanRequest`
@@ -90,6 +90,7 @@ class OfflineSingleStructureServiceResult:
     screening_decision: ScreeningDecision
     position_management_plan_result: Optional[PositionManagementPlanResult]
     report_markdown: str
+    maturity_context: Optional[OptionResearchMaturityContext]
 ```
 
 The result retains the exact supplied `assembly_result` object. It retains the
@@ -100,6 +101,8 @@ calculation lineage, calculation ID, timestamp, state, or market-data record.
 
 `report_markdown` is the deterministic Chinese report returned by the existing
 renderer. A report is required on both the no-plan and plan-enabled paths.
+`maturity_context` retains the exact optional service input by identity and is
+research disclosure only.
 
 ## 4. Function signature
 
@@ -110,6 +113,8 @@ def run_offline_single_structure_service(
     assembly_result: CandidateResearchRecordAssemblyResult,
     screening_policy: ScreeningPolicy,
     position_management_plan_request: Optional[PositionManagementPlanRequest] = None,
+    *,
+    maturity_context: Optional[OptionResearchMaturityContext],
 ) -> OfflineSingleStructureServiceResult:
 ```
 
@@ -126,7 +131,9 @@ boundaries to its direct inputs:
 - `type(assembly_result) is CandidateResearchRecordAssemblyResult`;
 - `type(screening_policy) is ScreeningPolicy`; and
 - `position_management_plan_request is None` or
-  `type(position_management_plan_request) is PositionManagementPlanRequest`.
+  `type(position_management_plan_request) is PositionManagementPlanRequest`;
+- `maturity_context is None` or has the exact context type; and
+- a present context retains `assembly_result.record.structure` by identity.
 
 The service accepts no subclass, replacement record, separate candidate, or
 partial plan-request mapping at these boundaries. Nested validation and
@@ -192,6 +199,7 @@ report_markdown = render_candidate_markdown(
     locale="zh-CN",
     screening_decision=decision,
     position_management_plan_result=plan,
+    maturity_context=maturity_context,
 )
 ```
 
@@ -202,7 +210,7 @@ separately to the renderer.
 
 ### Step 4 — Return the service result
 
-Return one `OfflineSingleStructureServiceResult` with the four fields in the
+Return one `OfflineSingleStructureServiceResult` with the five fields in the
 frozen order from Section 3.2. No additional work occurs after rendering.
 
 ## 7. State and producer separation

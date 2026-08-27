@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import convexity_hunter
 from convexity_hunter import direct_entry_verification
+from convexity_hunter.option_chain_discovery import OptionResearchMaturityContext
 from convexity_hunter.providers import futu
 from tests.test_futu_exact_contract_browser import browser_with_rows
 from tests.test_futu_option_chain_discovery import LOWER, FakeTable, chain_row
@@ -90,6 +91,7 @@ class PublicContractTests(unittest.TestCase):
                 "selection",
                 "contract_verifications",
                 "direct_entry_exact_contract_verification",
+                "maturity_context",
             ),
         )
         signature = inspect.signature(futu.verify_futu_exact_contract_selection)
@@ -125,6 +127,11 @@ class SelectionBridgeTests(unittest.TestCase):
         result = futu.verify_futu_exact_contract_selection(context, selection)
 
         self.assertIs(result.selection, selection)
+        self.assertIs(
+            result.maturity_context.discovery_request,
+            selection.browser.discovery_evidence.discovery_request,
+        )
+        self.assertIs(result.maturity_context.structure, selection.structure)
         self.assertEqual(len(result.contract_verifications), 1)
         provider_verification = result.contract_verifications[0]
         selected_row = selection.selected_contracts[0]
@@ -298,6 +305,7 @@ class SelectionBridgeTests(unittest.TestCase):
                 selection,
                 result.contract_verifications,
                 copied_structure_direct,
+                result.maturity_context,
             )
 
         copied_reference = dataclasses.replace(reference)
@@ -312,6 +320,7 @@ class SelectionBridgeTests(unittest.TestCase):
                 selection,
                 result.contract_verifications,
                 copied_reference_direct,
+                result.maturity_context,
             )
 
     def test_direct_constructor_rejects_bad_tuple_types_counts_and_matches(self):
@@ -335,15 +344,68 @@ class SelectionBridgeTests(unittest.TestCase):
                     selection,
                     invalid,
                     direct,
+                    result.maturity_context,
                 )
         with self.assertRaises(TypeError):
             futu.FutuExactContractSelectionVerification(
                 selection,
                 result.contract_verifications,
                 object(),
+                result.maturity_context,
             )
         with self.assertRaises(FrozenInstanceError):
             result.selection = selection
+
+    def test_context_identity_mismatches_fail_closed(self):
+        provider_row = chain_row(LOWER, "CALL", "100")
+        selection = make_selection([provider_row])
+        result = futu.verify_futu_exact_contract_selection(
+            ExactSelectionContext([provider_row]),
+            selection,
+        )
+        other_selection = make_selection([provider_row])
+        other_result = futu.verify_futu_exact_contract_selection(
+            ExactSelectionContext([provider_row]),
+            other_selection,
+        )
+        with self.assertRaisesRegex(
+            ValueError, "^maturity_context_request_mismatch$"
+        ):
+            futu.FutuExactContractSelectionVerification(
+                selection,
+                result.contract_verifications,
+                result.direct_entry_exact_contract_verification,
+                other_result.maturity_context,
+            )
+        copied_context = type(result.maturity_context)(
+            result.maturity_context.discovery_request,
+            dataclasses.replace(selection.structure),
+        )
+        with self.assertRaisesRegex(
+            ValueError, "^maturity_context_structure_mismatch$"
+        ):
+            futu.FutuExactContractSelectionVerification(
+                selection,
+                result.contract_verifications,
+                result.direct_entry_exact_contract_verification,
+                copied_context,
+            )
+
+        malformed_context = object.__new__(OptionResearchMaturityContext)
+        object.__setattr__(
+            malformed_context,
+            "structure",
+            selection.structure,
+        )
+        with self.assertRaisesRegex(
+            ValueError, "^maturity_context is malformed$"
+        ):
+            futu.FutuExactContractSelectionVerification(
+                selection,
+                result.contract_verifications,
+                result.direct_entry_exact_contract_verification,
+                malformed_context,
+            )
 
     def test_bridge_does_not_call_downstream_research_or_other_provider_paths(self):
         provider_row = chain_row(LOWER, "CALL", "100")

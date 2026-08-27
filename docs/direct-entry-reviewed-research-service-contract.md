@@ -1,8 +1,8 @@
-# Direct Entry Reviewed-Research Service Contract v0.2
+# Direct Entry Reviewed-Research Service Contract v0.3
 
-> Implementation status: implemented. The frozen, not-yet-implemented
+> Implementation status: implemented. The
 > [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md)
-> adds only an optional provider-neutral maturity-context sidecar for
+> adds only the optional provider-neutral maturity-context sidecar for
 > Discovery Entry and leaves generic Direct Entry unchanged.
 
 ## Purpose and correction
@@ -33,13 +33,14 @@ research_readiness_verification: Optional[
     DirectEntryResearchReadinessVerification
 ]
 offline_service_result: OfflineSingleStructureServiceResult
+maturity_context: Optional[OptionResearchMaturityContext]
 ```
 
 The package root exports neither name.
 
 ## Signature
 
-The service has 24 parameters. It preserves the existing 21 candidate-assembly
+The service has 25 parameters. It preserves the existing 21 candidate-assembly
 inputs, adds `contract_references` immediately after `structure`, then accepts
 the existing exact `ScreeningPolicy` and optional
 `PositionManagementPlanRequest`:
@@ -69,21 +70,24 @@ human_review_questions
 calculated_at
 screening_policy
 position_management_plan_request = None
+maturity_context  # required keyword-only; exact context or explicit None
 ```
 
 ## Frozen delegation order
 
 The service performs only:
 
-1. `verify_direct_entry_exact_contracts(structure, contract_references)`;
-2. if and only if both costs and liquidity are present,
+1. validate a present exact `maturity_context` and require its structure by
+   identity before any exact-contract work;
+2. `verify_direct_entry_exact_contracts(structure, contract_references)`;
+3. if and only if both costs and liquidity are present,
    `verify_direct_entry_research_readiness(structure, costs, liquidity)`;
-3. `assemble_candidate_research_record(...)`, using the exact verified
+4. `assemble_candidate_research_record(...)`, using the exact verified
    structure and the caller's seven artifact values unchanged, including
    `None`;
-4. `run_offline_single_structure_service(...)`;
-5. construction of the three-field result retaining both verification
-   sidecars and the offline result.
+5. `run_offline_single_structure_service(...)`, passing the exact context; and
+6. construction of the four-field result retaining both verification
+   sidecars, the offline result, and the exact context.
 
 If only one of costs or liquidity is present, research-readiness verification
 is absent and the assembler remains the authority for the present artifact and

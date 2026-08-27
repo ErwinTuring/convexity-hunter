@@ -41,16 +41,17 @@ Repository: `ErwinTuring/convexity-hunter`
 - Event Intelligence Temporal Semantics v0.2 is frozen and implemented. It
   preserves `expected_window` as expected impact, adds an optional atomic
   reassessment record for research governance, and keeps option-maturity
-  authority separate. Structural-only acceptance will not authorize Option
-  Discovery; request construction fails with
-  `missing_authoritative_maturity_anchor`.
-- Structural Narrative Option Research Activation v0.1 is independently
-  reviewed and contract-frozen but not implemented. It chooses one request
-  plus a closed maturity-authority enum, preserves bounded-event behavior, and
-  permits only an explicit neutral structural Browser with
-  `hypothesis_maturity_alignment = NOT_ESTABLISHED`. The ready future BUILD
-  must carry one exact maturity-context sidecar through selection, Direct
-  Entry, and Chinese reporting without entering Engine evidence.
+  authority separate. Structural-only acceptance does not establish aligned
+  maturity: the compatibility/default aligned request fails with
+  `missing_authoritative_maturity_anchor`, while only an explicit neutral
+  structural request may open the Browser with `NOT_ESTABLISHED` alignment.
+- Structural Narrative Option Research Activation v0.1 is contract-frozen and
+  implemented and independently BUILD-reviewed. It uses one request plus a
+  closed maturity-authority enum, preserves bounded-event behavior, and permits
+  only an explicit neutral structural Browser with
+  `hypothesis_maturity_alignment = NOT_ESTABLISHED`. One exact maturity-context
+  sidecar is retained through selection, Direct Entry, and Chinese reporting
+  without entering Engine evidence.
 - The provider-neutral Event Discovery / Event Intake boundary retains at most
   ten provisional source-backed candidates under one explicit producer policy,
   preserves presentation order without ranking semantics, and records an
@@ -65,15 +66,17 @@ Repository: `ErwinTuring/convexity-hunter`
   Intelligence result and one caller-selected retained hypothesis by identity.
   It does not replay acceptance, select automatically, rank, retrieve a chain,
   or generate a structure.
-- The provider-neutral option-chain discovery request retains the exact handoff
-  and caller evaluation date, deriving only the inclusive expiration interval
-  `max(evaluation+30, event-end+30)` through `evaluation+150`. It calls no
+- The provider-neutral option-chain discovery request retains the exact handoff,
+  caller evaluation date, and exact maturity authority. Hypothesis-aligned
+  requests derive `max(evaluation+30, event-end+30)` through
+  `evaluation+150`; explicit neutral structural requests derive only
+  `evaluation+30` through `evaluation+150` and retain `NOT_ESTABLISHED`. It calls no
   provider or clock and claims no contract eligibility. It derives
   applicability from the earlier complete expected-window or reassessment
   boundary, fails stale before arithmetic, and never extends a window. A
-  current structural-only hypothesis fails request construction with
+  current structural-only hypothesis using aligned authority fails with
   `missing_authoritative_maturity_anchor` because reassessment is not a
-  maturity anchor.
+  maturity anchor; explicit neutral authority does not use it as one.
 - The bounded Futu chain-evidence boundary retrieves expiration
   classifications once and one exact-date chain per in-range provider
   `MONTH`. It retains every valid row with deterministic applicability status
@@ -81,8 +84,8 @@ Repository: `ErwinTuring/convexity-hunter`
   eligibility only; it completes no deliverable, settlement, reference,
   costs, liquidity, or research-readiness evidence.
 - The bounded Futu Exact Contract Browser exposes all and only those
-  provider-classified eligible rows from the already-bounded 30--150 DTE and
-  `event_window_end + 30 days` request. It performs no provider call, ranking,
+  provider-classified eligible rows from the authority-specific request bounds.
+  It performs no provider call, ranking,
   labeling, or default selection. An explicit human selection creates only a
   listed-structure research intent; one Call or Put is supported, and a Long
   Straddle requires explicit same-expiry/same-strike Call and Put selection.
@@ -253,10 +256,11 @@ authorizes inferred evidence.
 
 ## Next work
 
-1. Implement the reviewed
+1. The bounded
    [`Structural Narrative Option Research Activation v0.1`](structural-narrative-option-research-activation-contract.md)
-   contract as one atomic Tier-A BUILD. Preserve current runtime behavior until
-   that migration is complete, independently reviewed, and validated.
+   migration passed independent BUILD review and final validation. The next
+   executable product exercise is one real structural-neutral Browser path,
+   retaining `NOT_ESTABLISHED` through explicit human selection and reporting.
 2. Treat the three-batch
    [`Hunter Discovery Policy v0.1`](hunter-discovery-policy-v0.1.md)
    repeatability exercise as complete bounded positive evidence. Do not add

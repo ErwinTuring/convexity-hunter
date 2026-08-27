@@ -1976,13 +1976,14 @@ decisive regression tests now reject both paths; targeted re-review passed.
 Final validation passed 103 focused temporal/discovery/provider tests and the
 1,337-test full suite, plus compileall and `git diff --check`.
 
-## Structural Narrative Option Research Activation v0.1 contract freeze
+## Structural Narrative Option Research Activation v0.1 implementation
 
-The Tier-A activation contract is frozen but not implemented. It chooses one
+The Tier-A activation contract is frozen, implemented, and independently
+BUILD-reviewed. It chooses one
 `OptionChainDiscoveryRequest` plus a closed maturity-authority enum rather than
 duplicating the request/provider/Browser path. Existing bounded-event callers
 remain hypothesis-aligned with unchanged expiration arithmetic. An accepted,
-current structural-only hypothesis with a complete reassessment may later use
+current structural-only hypothesis with a complete reassessment can use
 an explicitly requested neutral 30--150 DTE Browser, but its machine state is
 always `hypothesis_maturity_alignment = NOT_ESTABLISHED`.
 
@@ -1992,7 +1993,7 @@ bypass when a complete expected impact window exists, and preserves
 hypothesis-aligned discovery. Provider expirations, holding assumptions, and
 human selection cannot create or upgrade maturity authority.
 
-The future BUILD carries one provider-neutral request/structure sidecar through
+The implementation carries one provider-neutral request/structure sidecar through
 the existing Futu evidence, Browser selection, Direct Entry, offline service,
 and Chinese report. It does not add the state to Candidate Assembly or Engine
 evidence and adds no ranking, default expiration, automatic generation,
@@ -2002,8 +2003,13 @@ Independent contract review initially found incomplete public-API/version
 freeze, insufficient context identity requirements, current-versus-successor
 Browser wording, compound-invalid precedence, and enum display ambiguity. The
 freeze was tightened on all five points and targeted re-review passed. The
-bounded v0.1 BUILD is `READY`; no production implementation occurred in this
-contract work unit.
+bounded v0.1 BUILD was declared `READY` before implementation. Independent
+BUILD review then found one stale renderer-signature assertion and missing
+intrinsic revalidation for constructor-bypassed maturity contexts. Both were
+corrected, targeted re-review passed, and final validation passed 91 focused
+tests, the 1,348-test full suite, compileall, and `git diff --check`. The atomic
+implementation checkpoint is complete and ready for one real neutral-
+structural Browser exercise.
 
 ## Previous current priority
 
