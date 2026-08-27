@@ -225,6 +225,23 @@ Translation correctly returned `INCOMPLETE` only for
 `incomplete_expected_window`; acquisition completion supplied no exact end
 date for integration impact, and no market-data or downstream work ran.
 
+The first real
+[`NEUTRAL_STRUCTURAL_RESEARCH` exercise](neutral-structural-research-real-exercise.md)
+is complete. A new 2026-08-20 through 2026-08-26 bounded Web Search batch
+produced eight candidates presented in neutral order; the user selected the
+Nasdaq always-on-markets narrative and reported that both the event and
+connection were new, with mixed credibility. A source-backed 2027-10-10
+regulatory milestone supplied reassessment authority only, not an expected
+impact end or maturity anchor, so Event Intelligence reached `ACCEPTED`
+without hidden duration prediction. The neutral 30--150 DTE Browser exposed
+162 NDAQ contracts across three expirations with `NOT_ESTABLISHED` maturity
+alignment. The user selected the 2026-12-18 85 Long Straddle as a neutral
+exercise structure. Exact gates passed, provider-neutral references remained
+`INCOMPLETE`, and the final Chinese result remained `DATA_INSUFFICIENT` with
+the maturity disclosure intact. This validates lawful structural-narrative
+activation, not convexity-opportunity discovery; the user assessed Browser
+usefulness as mixed.
+
 ## Active research-readiness gaps
 
 1. Futu confirms U.S. real-time bid/ask/sizes, but explicitly does not support
@@ -256,11 +273,11 @@ authorizes inferred evidence.
 
 ## Next work
 
-1. The bounded
-   [`Structural Narrative Option Research Activation v0.1`](structural-narrative-option-research-activation-contract.md)
-   migration passed independent BUILD review and final validation. The next
-   executable product exercise is one real structural-neutral Browser path,
-   retaining `NOT_ESTABLISHED` through explicit human selection and reporting.
+1. Treat the completed real neutral-structural exercise as proof of lawful
+   activation, not opportunity discovery. The next bounded product question is
+   Browser human research discrimination without ranking, recommendation,
+   hidden maturity prediction, automatic candidate generation, or automatic
+   unfreezing of the six screening gaps.
 2. Treat the three-batch
    [`Hunter Discovery Policy v0.1`](hunter-discovery-policy-v0.1.md)
    repeatability exercise as complete bounded positive evidence. Do not add

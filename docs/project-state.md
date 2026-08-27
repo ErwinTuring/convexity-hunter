@@ -2011,18 +2011,52 @@ tests, the 1,348-test full suite, compileall, and `git diff --check`. The atomic
 implementation checkpoint is complete and ready for one real neutral-
 structural Browser exercise.
 
+## First real neutral structural research exercise
+
+The first real
+[`NEUTRAL_STRUCTURAL_RESEARCH` product exercise](neutral-structural-research-real-exercise.md)
+is complete. A new 2026-08-20 through 2026-08-26 Hunter Discovery Policy v0.1
+batch validated eight candidates. The user selected the Nasdaq always-on-
+markets narrative and reported that both the event and event-to-underlying
+connection were new, with mixed impact/transmission credibility.
+
+Supplemental SEC evidence supplied an exact source-backed 2027-10-10
+reassessment milestone. It remained research-governance authority only: no
+expected impact end was invented, and Event Intelligence reached `ACCEPTED`.
+The neutral 30--150 DTE Futu Browser then exposed 162 contracts across three
+expirations with `hypothesis_maturity_alignment = NOT_ESTABLISHED`. The user
+explicitly selected the NDAQ 2026-12-18 85 Long Straddle, USD 10,000 assumed
+portfolio value, and 30-day expected holding period as neutral exercise inputs.
+
+Both exact gates passed without substitution. Provider-neutral contract
+references remained `INCOMPLETE`. Partial assembly retained the caller-
+supplied `DATA_INSUFFICIENT` research-record state, and screening independently
+returned `DATA_INSUFFICIENT` with all six frozen screening gaps; the offline
+single-structure and Chinese reporting path retained the exact maturity
+disclosure. The user assessed the reassessment basis as natural, the maturity
+disclosure as
+understandable and honest, and Browser usefulness as mixed. This is positive
+evidence for lawful structural-narrative activation, not convexity-opportunity
+discovery or investment value. The next bounded product question is how to
+improve Browser human research discrimination without ranking,
+recommendation, hidden maturity prediction, or automatically unfreezing the
+six `missing_*` gaps.
+
 ## Previous current priority
 
 The bounded Futu Exact Contract Browser and explicit human-selection boundary
 are implemented under
 [`futu-exact-contract-browser-contract.md`](futu-exact-contract-browser-contract.md).
 It exposes all and only provider-classified `MONTH + STANDARD + not suspended`
-rows already inside the exact 30--150 DTE and `event_window_end + 30 days`
-request. It ranks and labels nothing, defaults to no selection, and creates no
-candidate, exact-deliverable, or research-readiness claim. A single explicit
-Call or Put selection produces a listed-structure intent; a Long Straddle
-requires an explicit same-expiry/same-strike Call and Put. The result cannot
-enter Candidate Assembly directly.
+rows already inside the request's frozen maturity authority. Hypothesis-
+aligned bounded events retain the exact 30--150 DTE and
+`event_window_end + 30 days` rules; explicit neutral structural research uses
+only the neutral 30--150 DTE interval and retains `NOT_ESTABLISHED`. It ranks
+and labels nothing, defaults to no selection, and creates no candidate, exact-
+deliverable, or research-readiness claim. A single explicit Call or Put
+selection produces a listed-structure intent; a Long Straddle requires an
+explicit same-expiry/same-strike Call and Put. The result cannot enter
+Candidate Assembly directly.
 
 The current-event FOMC-to-SPY exercise now proves the existing path from an
 accepted non-expired hypothesis through Underlying, Futu Browser, explicit

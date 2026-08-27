@@ -60,10 +60,14 @@ world events
 
 This implemented browser path is not Automatic Candidate Generation. It
 exposes only provider-classified monthly/standard, non-suspended contracts
-inside the existing 30--150 DTE and `event_window_end + 30 days` maturity
-bounds. Visibility and explicit selection establish neither research
-qualification nor investment merit. Automatic mode-based generation remains
-deferred until authoritative ATM or Delta semantics are available.
+inside the selected maturity authority's bounds: bounded-event
+`HYPOTHESIS_ALIGNED` discovery retains the 30--150 DTE and
+`event_window_end + 30 days` rules, while explicit
+`NEUTRAL_STRUCTURAL_RESEARCH` uses only the neutral 30--150 DTE interval and
+retains `NOT_ESTABLISHED` maturity alignment. Visibility and explicit
+selection establish neither research qualification nor investment merit.
+Automatic mode-based generation remains deferred until authoritative ATM or
+Delta semantics are available.
 
 Direct user entry:
 
@@ -189,8 +193,10 @@ The initial versioned MVP policy permits standard monthly options only:
 - core hunting range: 60–120 calendar DTE;
 - non-core long range: 121–150 calendar DTE;
 - hard upper bound: 150 calendar DTE; and
-- expiration date must be at least the expected event-window end date plus 30
-  calendar days.
+- for `HYPOTHESIS_ALIGNED` bounded-event discovery, expiration must be at least
+  the expected event-window end date plus 30 calendar days; and
+- for explicitly requested `NEUTRAL_STRUCTURAL_RESEARCH`, no event buffer is
+  claimed or applied, and maturity alignment remains `NOT_ESTABLISHED`.
 
 0DTE and Weeklies are excluded. The event buffer is an initial policy
 assumption. The DTE ranges are Convexity Hunter product choices, not a fixed
@@ -602,10 +608,21 @@ they are not the current roadmap priority.
     selection of zero or one, and provenance-only translation into one
     caller-built Event Intelligence submission without field completion or
     automatic acceptance.
-23. Next: run the first bounded seven-day Web Search discovery exercise and
-    ask whether the user would continue researching at least one event they did
-    not pre-specify.
-24. Later: any demonstrated smallest event-source adapter, separately frozen
+23. Completed three bounded Hunter Discovery Policy v0.1 Web Search batches;
+    each produced a human-selected new event-to-underlying connection while
+    preserving the three historical structural submissions as `INCOMPLETE`.
+24. Completed Event Intelligence Temporal Semantics v0.2 and Structural
+    Narrative Option Research Activation v0.1 without converting reassessment
+    authority into impact duration or option-maturity authority.
+25. Completed the first real neutral-structural NDAQ exercise through 162
+    Browser rows, explicit human selection, exact verification, Direct Entry,
+    and an honest Chinese `DATA_INSUFFICIENT` report with
+    `NOT_ESTABLISHED` maturity alignment intact.
+26. Next: investigate the smallest way to improve Browser human research
+    discrimination without ranking, recommendation, automatic selection,
+    hidden maturity prediction, or automatic unfreezing of the six screening
+    gaps.
+27. Later: any demonstrated smallest event-source adapter, separately frozen
     automatic exact-structure generation, and complete-flow work.
 
 ## 17. Locked principles
