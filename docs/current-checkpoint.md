@@ -125,6 +125,17 @@ Repository: `ErwinTuring/convexity-hunter`
   demonstrated human research-space compression. It does not establish
   repeatability, investment value, recommendation quality, maturity alignment,
   deliverable completeness, formal liquidity, synchrony, or executability.
+- The pre-registered five-sample Hunter end-to-end validation campaign has one
+  completed sample. The fresh bounded Web Search batch produced ten candidates;
+  the human explicitly selected the AMZN advertising-auction lawsuit and found
+  the event new, the already-direct AMZN connection not new, and the
+  transmission credible. Source-backed translation completed, but Event
+  Intelligence returned only `missing_temporal_applicability` because no
+  authoritative impact end or exact source-backed future milestone was
+  available, and no caller research-policy reassessment assumption was
+  supplied. Sample 1 therefore terminated as `EI_NOT_ACCEPTED` before maturity,
+  Futu, or discrimination. The sanitized record is
+  [`hunter-end-to-end-validation-sample-1.md`](hunter-end-to-end-validation-sample-1.md).
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
   proves that every returned provider identity and economic contract field
@@ -311,9 +322,11 @@ authorizes inferred evidence.
 1. Run the pre-registered five-sample campaign one consecutive sample at a time
    under the lightweight
    [`Hunter End-to-End Validation Protocol v0.1`](hunter-end-to-end-validation-protocol.md).
-   The next action is Sample 1: one fresh bounded Web Search batch, followed by
-   an explicit human discovery checkpoint. Diagnose the exact terminal layer;
-   do not tune Hunter or option metrics to force a positive result.
+   Sample 1 is complete with terminal outcome `EI_NOT_ACCEPTED` and exact reason
+   `missing_temporal_applicability`. The next campaign action is Sample 2 using
+   a new unused seven-calendar-day window and the unchanged policy, followed by
+   the same explicit human discovery checkpoint. Do not tune Hunter or option
+   metrics to force a positive result.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
    product-value observation, not a reason to optimize the layer or claim
    investment merit. Preserve every indicative/conditional authority and add
