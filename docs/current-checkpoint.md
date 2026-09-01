@@ -125,17 +125,20 @@ Repository: `ErwinTuring/convexity-hunter`
   demonstrated human research-space compression. It does not establish
   repeatability, investment value, recommendation quality, maturity alignment,
   deliverable completeness, formal liquidity, synchrony, or executability.
-- The pre-registered five-sample Hunter end-to-end validation campaign has one
-  completed sample. The fresh bounded Web Search batch produced ten candidates;
-  the human explicitly selected the AMZN advertising-auction lawsuit and found
-  the event new, the already-direct AMZN connection not new, and the
-  transmission credible. Source-backed translation completed, but Event
-  Intelligence returned only `missing_temporal_applicability` because no
-  authoritative impact end or exact source-backed future milestone was
-  available, and no caller research-policy reassessment assumption was
-  supplied. Sample 1 therefore terminated as `EI_NOT_ACCEPTED` before maturity,
-  Futu, or discrimination. The sanitized record is
+- The pre-registered five-sample Hunter end-to-end validation campaign has two
+  completed samples. Sample 1 selected the AMZN advertising-auction lawsuit and
+  terminated as `EI_NOT_ACCEPTED / missing_temporal_applicability`; its
+  sanitized record is
   [`hunter-end-to-end-validation-sample-1.md`](hunter-end-to-end-validation-sample-1.md).
+  Sample 2 selected the previously unknown APXT/TECfusions business combination
+  with a new-to-human direct connection and mixed credibility. Supplemental SEC
+  verification supplied a natural source-backed 2026-09-30 financial-statement
+  reassessment milestone without inventing an impact end. Event Intelligence
+  returned `ACCEPTED`, and the exact neutral 30--150 DTE request preserved
+  `NOT_ESTABLISHED` maturity alignment, but Futu returned zero `US.APXT`
+  expirations or contracts. Sample 2 therefore terminated as
+  `NO_OPTION_RESEARCH_SURFACE`; its sanitized record is
+  [`hunter-end-to-end-validation-sample-2.md`](hunter-end-to-end-validation-sample-2.md).
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
   proves that every returned provider identity and economic contract field
