@@ -101,9 +101,18 @@ Repository: `ErwinTuring/convexity-hunter`
   `CONDITIONAL_PROVIDER_STANDARD`, exact deliverable verification remains
   `NOT_ESTABLISHED`, and no comparison record can enter Candidate Assembly or
   close a current `missing_*` reason.
+  A valid-RTH NDAQ experiment subsequently showed that Futu SDK 10.10.7008
+  exposes protobuf `hpVolume` as Python `float`: all 164 received OrderBook
+  rows otherwise parsed, but failed only as `ASK_SIZE_INVALID`. The corrected
+  provider boundary accepts only exact positive non-Boolean `int`, or finite
+  positive integer-valued exact `float` canonicalized to `int`; post-adapter
+  evidence remains exact positive `int`. This explicitly corrects the original
+  frozen raw-size assumption while preserving the canonical v0.1 evidence
+  schema and all product semantics. Independent adversarial correction review
+  passed with no finding.
   Production Futu now has exactly 30 direct-module exports and production
   `convexity_discrimination.py` has exactly 19; neither adds package-root
-  exports. Final validation passed 45 focused tests and 1,367 full-suite tests.
+  exports. Final validation passed 45 focused tests and 1,370 full-suite tests.
   Exact checkpoint status: `IMPLEMENTED_AND_REVIEWED`.
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,

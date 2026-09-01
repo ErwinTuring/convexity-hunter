@@ -2474,9 +2474,15 @@ def _browser_side_from_frame(
         return None, None, nonpositive, False
     if len(first) < 2:
         return None, None, size_invalid, False
-    if type(first[1]) is not int or isinstance(first[1], bool):
+    raw_size = first[1]
+    if type(raw_size) is int:
+        size = raw_size
+    elif type(raw_size) is float:
+        if not _math.isfinite(raw_size) or not raw_size.is_integer():
+            return None, None, size_invalid, False
+        size = int(raw_size)
+    else:
         return None, None, size_invalid, False
-    size = first[1]
     if size <= 0:
         return None, None, size_invalid, False
     return price, size, None, False

@@ -237,10 +237,28 @@ flattening of chunks and has exactly one item for every `browser.rows` item in
 the same Browser order. No row is omitted because no frame arrived or one side
 was unavailable.
 
-All present provider prices require exact `Decimal` and finite values. A valid
-side size requires an exact positive non-Boolean `int`. All present timestamps
-require exact timezone-aware `datetime` normalized to UTC. `chunk_index` is an
-exact nonnegative non-Boolean `int`.
+All present provider prices require exact `Decimal` and finite values. After
+provider adaptation, every present side size requires an exact positive
+non-Boolean `int`. All present timestamps require exact timezone-aware
+`datetime` normalized to UTC. `chunk_index` is an exact nonnegative
+non-Boolean `int`.
+
+The raw Futu OrderBook side-size boundary accepts only these two exact built-in
+types:
+
+1. an exact non-Boolean `int`, which must be positive and is retained
+   unchanged; or
+2. an exact `float`, which must be finite, positive, and integer-valued under
+   `value.is_integer()`, and is canonicalized with `int(value)` from that exact
+   represented float value.
+
+Every other raw value is invalid, including `bool`, zero, negative values,
+fractional floats, NaN, infinities, strings, `Decimal`, arbitrary numeric
+subclasses, and missing values. The adapter never rounds, truncates, floors,
+ceils, stringifies/reparses, or applies a permissive `numbers.Real` coercion.
+This raw-provider correction does not relax the evidence constructor: direct
+or constructor-bypassed `FutuBrowserQuoteEvidence` still requires present
+`bid_size` and `ask_size` to have exact built-in `int` type and positive value.
 
 Each item must satisfy this exact canonical field matrix. A constructor-bypassed
 item that does not satisfy it is rejected before discrimination:
@@ -254,10 +272,12 @@ item that does not satisfy it is rejected before discrimination:
 | no frame or subscription failure | all side fields, `received_at`, and provider timestamp values `None` | none | exactly `NO_FRAME_RECEIVED` or `SUBSCRIPTION_FAILED` |
 
 For side classification, each field is validated independently in this fixed
-precedence: absent; exact non-Boolean type and finite numeric validity;
-strictly-positive price; strictly-positive exact non-Boolean integer size.
-Only the first applicable reason for the decisive side is retained. Invalid
-discarded bid fields never survive in an `ASK_SIDE_AVAILABLE` record.
+precedence: absent; exact price type and finite numeric validity;
+strictly-positive price; exact closed raw-size type and numeric validity;
+strictly-positive canonicalizable size. Only the first applicable reason for
+the decisive side is retained. Crossing is evaluated only after both sides
+are complete and valid. Invalid discarded bid fields never survive in an
+`ASK_SIDE_AVAILABLE` record.
 
 ### Side-specific availability
 
@@ -1111,6 +1131,25 @@ selection, selection verification, Direct Entry, candidate, screening,
 reporting, `market_data`, transformation, and risk-assessment schemas remain
 unchanged. There is no persisted-artifact migration, legacy decoder, automatic
 upgrade, compatibility adapter, or package-root export.
+
+### Live-evidence raw-size correction
+
+The original frozen v0.1 text required the provider-native raw side size itself
+to have exact Python `int` type. A real RTH NDAQ Browser experiment against
+Futu SDK 10.10.7008 disproved that provider-boundary assumption: the SDK
+prefers protobuf `hpVolume`, represented as a Python `float`, and all 164
+otherwise received OrderBook rows failed only as `ASK_SIZE_INVALID`.
+
+This document therefore explicitly corrects that raw-provider acceptance
+boundary; it does not claim production was merely inconsistent with the old
+contract. The quote-batch schema remains
+`futu-browser-provider-native-quote-batch-v0.1` because the canonical evidence
+shape, exact post-adapter field types, authority semantics, reason-code
+semantics, ordering, and every downstream contract remain unchanged. No raw
+provider frame is persisted or decoded under this schema, so there is no
+persisted-artifact migration or legacy decoder to version. The correction is a
+provider-adapter bug fix to the existing v0.1 canonical output contract, not a
+new evidence schema.
 
 The first BUILD may add only:
 

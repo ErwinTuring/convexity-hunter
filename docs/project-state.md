@@ -58,6 +58,17 @@ is conditional on provider `STANDARD` classification while exact deliverable
 verification remains unestablished. The current six screening gaps remain
 unchanged.
 
+A subsequent valid-RTH NDAQ product experiment exposed one narrow raw-provider
+assumption defect. Futu SDK 10.10.7008 supplied protobuf `hpVolume` as Python
+`float`; all 164 OrderBook rows otherwise parsed and failed solely as
+`ASK_SIZE_INVALID`. The provider adapter now accepts only exact positive
+non-Boolean `int`, or finite positive integer-valued exact `float` values that
+are canonicalized to `int`. Canonical evidence still requires exact positive
+`int`. The contract records this as an explicit correction to its original
+raw-size assumption; the v0.1 canonical evidence schema, authority,
+reason-code, ordering, and discrimination semantics remain unchanged.
+Independent adversarial correction review passed with no finding.
+
 Its exact checkpoint status is `IMPLEMENTED_AND_REVIEWED`.
 
 Current runtime API state is explicit: production
@@ -2082,7 +2093,7 @@ blocker. Independent BUILD review later found nine fail-closed, callback, UTC,
 reference-authority, and constructor-bypass defects. Seven closed on first
 targeted BUILD re-review; the two remaining constructor-bypass defects closed
 on final targeted re-review, which returned `PASS` with no finding. Final
-validation passed 45 focused tests and 1,367 full-suite tests, compileall,
+validation passed 45 focused tests and 1,370 full-suite tests, compileall,
 exact 30/19 API checks, and `git diff --check`.
 
 ## Previous current priority

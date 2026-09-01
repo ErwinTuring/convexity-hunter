@@ -655,8 +655,8 @@ class ProviderQuoteBatchTests(unittest.TestCase):
             ({"code": row.provider_identifier, "Bid": [(2, 1)], "Ask": [(2, 1)]}, futu.FutuBrowserQuoteAvailability.TWO_SIDED_AVAILABLE, None),
             ({"code": row.provider_identifier, "Bid": [(1, "bad")], "Ask": [(2, 1)]}, futu.FutuBrowserQuoteAvailability.ASK_SIDE_AVAILABLE, futu.FutuBrowserQuoteReasonCode.BID_SIZE_INVALID),
             ({"code": row.provider_identifier, "Bid": [(1, 1)], "Ask": [(2, "bad")]}, futu.FutuBrowserQuoteAvailability.UNAVAILABLE, futu.FutuBrowserQuoteReasonCode.ASK_SIZE_INVALID),
-            ({"code": row.provider_identifier, "Bid": [(1, 10.0)], "Ask": [(2, 1)]}, futu.FutuBrowserQuoteAvailability.ASK_SIDE_AVAILABLE, futu.FutuBrowserQuoteReasonCode.BID_SIZE_INVALID),
-            ({"code": row.provider_identifier, "Bid": [(1, 1)], "Ask": [(2, 10.0)]}, futu.FutuBrowserQuoteAvailability.UNAVAILABLE, futu.FutuBrowserQuoteReasonCode.ASK_SIZE_INVALID),
+            ({"code": row.provider_identifier, "Bid": [(1, 10.5)], "Ask": [(2, 1)]}, futu.FutuBrowserQuoteAvailability.ASK_SIDE_AVAILABLE, futu.FutuBrowserQuoteReasonCode.BID_SIZE_INVALID),
+            ({"code": row.provider_identifier, "Bid": [(1, 1)], "Ask": [(2, 10.5)]}, futu.FutuBrowserQuoteAvailability.UNAVAILABLE, futu.FutuBrowserQuoteReasonCode.ASK_SIZE_INVALID),
             ({"code": row.provider_identifier, "Bid": "bad", "Ask": [(2, 1)]}, futu.FutuBrowserQuoteAvailability.UNAVAILABLE, futu.FutuBrowserQuoteReasonCode.MALFORMED_FRAME),
         )
         with mock.patch.object(futu, "_utc_now", return_value=NOW):
@@ -667,6 +667,153 @@ class ProviderQuoteBatchTests(unittest.TestCase):
                     )
                     self.assertIs(quote.availability, availability)
                     self.assertEqual(quote.reason_codes, () if reason is None else (reason,))
+
+    def test_raw_provider_side_size_canonicalization_is_exact_and_closed(self):
+        row = make_browser().rows[0]
+
+        class IntSubclass(int):
+            pass
+
+        class FloatSubclass(float):
+            pass
+
+        valid_ask_sizes = (
+            (1, 1),
+            (1.0, 1),
+            (1048576.0, 1048576),
+        )
+        invalid_ask_sizes = (
+            True,
+            0,
+            -1,
+            0.0,
+            -1.0,
+            1.5,
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            decimal.Decimal("1"),
+            "1",
+            IntSubclass(1),
+            FloatSubclass(1.0),
+        )
+
+        with mock.patch.object(futu, "_utc_now", return_value=NOW):
+            for raw_size, expected_size in valid_ask_sizes:
+                with self.subTest(valid_size=raw_size):
+                    frame = {
+                        "code": row.provider_identifier,
+                        "Ask": [(2, raw_size)],
+                    }
+                    quote = futu._browser_quote_from_atomic_frame(
+                        data=frame,
+                        rsp_pb=FakeRsp(frame),
+                        row=row,
+                        chunk_index=0,
+                    )
+                    self.assertIs(
+                        quote.availability,
+                        futu.FutuBrowserQuoteAvailability.ASK_SIDE_AVAILABLE,
+                    )
+                    self.assertEqual(quote.ask_size, expected_size)
+                    self.assertIs(type(quote.ask_size), int)
+                    self.assertEqual(
+                        quote.reason_codes,
+                        (futu.FutuBrowserQuoteReasonCode.BID_ABSENT,),
+                    )
+
+            for raw_size in invalid_ask_sizes:
+                with self.subTest(invalid_size=repr(raw_size)):
+                    frame = {
+                        "code": row.provider_identifier,
+                        "Ask": [(2, raw_size)],
+                    }
+                    quote = futu._browser_quote_from_atomic_frame(
+                        data=frame,
+                        rsp_pb=FakeRsp(frame),
+                        row=row,
+                        chunk_index=0,
+                    )
+                    self.assertIs(
+                        quote.availability,
+                        futu.FutuBrowserQuoteAvailability.UNAVAILABLE,
+                    )
+                    self.assertEqual(
+                        quote.reason_codes,
+                        (futu.FutuBrowserQuoteReasonCode.ASK_SIZE_INVALID,),
+                    )
+
+    def test_integer_valued_float_sizes_preserve_side_and_cross_precedence(self):
+        row = make_browser().rows[0]
+        with mock.patch.object(futu, "_utc_now", return_value=NOW):
+            two_sided_frame = {
+                "code": row.provider_identifier,
+                "Bid": [(1, 2.0)],
+                "Ask": [(2, 3.0)],
+            }
+            two_sided = futu._browser_quote_from_atomic_frame(
+                data=two_sided_frame,
+                rsp_pb=FakeRsp(two_sided_frame),
+                row=row,
+                chunk_index=0,
+            )
+            self.assertIs(
+                two_sided.availability,
+                futu.FutuBrowserQuoteAvailability.TWO_SIDED_AVAILABLE,
+            )
+            self.assertEqual((two_sided.bid_size, two_sided.ask_size), (2, 3))
+            self.assertIs(type(two_sided.bid_size), int)
+            self.assertIs(type(two_sided.ask_size), int)
+
+            invalid_ask_frame = {
+                "code": row.provider_identifier,
+                "Bid": [(3, 1)],
+                "Ask": [(2, 1.5)],
+            }
+            invalid_ask = futu._browser_quote_from_atomic_frame(
+                data=invalid_ask_frame,
+                rsp_pb=FakeRsp(invalid_ask_frame),
+                row=row,
+                chunk_index=0,
+            )
+            self.assertIs(
+                invalid_ask.availability,
+                futu.FutuBrowserQuoteAvailability.UNAVAILABLE,
+            )
+            self.assertEqual(
+                invalid_ask.reason_codes,
+                (futu.FutuBrowserQuoteReasonCode.ASK_SIZE_INVALID,),
+            )
+
+            invalid_bid_frame = {
+                "code": row.provider_identifier,
+                "Bid": [(3, 1.5)],
+                "Ask": [(2, 2.0)],
+            }
+            invalid_bid = futu._browser_quote_from_atomic_frame(
+                data=invalid_bid_frame,
+                rsp_pb=FakeRsp(invalid_bid_frame),
+                row=row,
+                chunk_index=0,
+            )
+            self.assertIs(
+                invalid_bid.availability,
+                futu.FutuBrowserQuoteAvailability.ASK_SIDE_AVAILABLE,
+            )
+            self.assertEqual(invalid_bid.ask_size, 2)
+            self.assertEqual(
+                invalid_bid.reason_codes,
+                (futu.FutuBrowserQuoteReasonCode.BID_SIZE_INVALID,),
+            )
+
+    def test_post_adapter_quote_evidence_still_rejects_float_sizes(self):
+        quote = make_quote_batch(make_browser()).quotes[0]
+        forged = object.__new__(futu.FutuBrowserQuoteEvidence)
+        for name, value in quote.__dict__.items():
+            object.__setattr__(forged, name, value)
+        object.__setattr__(forged, "ask_size", 1.0)
+        with self.assertRaisesRegex(TypeError, "ask_size must have exact type int"):
+            futu.FutuBrowserQuoteEvidence.__post_init__(forged)
 
 
 class DiscriminationBehaviorTests(unittest.TestCase):
