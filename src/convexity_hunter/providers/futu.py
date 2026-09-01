@@ -67,6 +67,14 @@ __all__ = (
     "retrieve_futu_historical_option_bar_evidence",
     "FutuExactOptionAnalyticsActivityEvidence",
     "retrieve_futu_exact_option_analytics_activity_evidence",
+    "FutuBrowserQuoteAuthority",
+    "FutuBrowserQuoteSemanticState",
+    "FutuBrowserQuoteAvailability",
+    "FutuBrowserQuoteReasonCode",
+    "FutuBrowserQuoteEvidence",
+    "FutuBrowserQuoteChunkEvidence",
+    "FutuBrowserQuoteBatchEvidence",
+    "retrieve_futu_browser_quote_batch_evidence",
 )
 
 
@@ -95,6 +103,13 @@ _STANDARD_MESSAGE = "Futu does not classify the exact contract as standard."
 _IDENTIFIER_MESSAGE = "Futu option identifier is inconsistent."
 _BBO_RETRIEVAL_MESSAGE = "Futu direct-entry BBO retrieval failed."
 _BBO_RESPONSE_MESSAGE = "Futu direct-entry BBO response is invalid."
+_BROWSER_QUOTE_RETRIEVAL_MESSAGE = (
+    "Futu Browser quote-batch retrieval failed."
+)
+_BROWSER_QUOTE_RESPONSE_MESSAGE = "Futu Browser quote response is invalid."
+_BROWSER_QUOTE_BATCH_VERSION = (
+    "futu-browser-provider-native-quote-batch-v0.1"
+)
 _BAR_RETRIEVAL_MESSAGE = "Futu underlying daily-bar retrieval failed."
 _BAR_RESPONSE_MESSAGE = "Futu underlying daily-bar response is invalid."
 _OPTION_BAR_RETRIEVAL_MESSAGE = "Futu historical option-bar retrieval failed."
@@ -1942,6 +1957,841 @@ def retrieve_futu_direct_entry_bbo_evidence(
     )
 
 
+class FutuBrowserQuoteAuthority(str, _Enum):
+    INDICATIVE_ONLY = "indicative_only"
+
+
+class FutuBrowserQuoteSemanticState(str, _Enum):
+    UNAVAILABLE = "unavailable"
+    NOT_ESTABLISHED = "not_established"
+    UNASSIGNED = "unassigned"
+    NONE = "none"
+
+
+class FutuBrowserQuoteAvailability(str, _Enum):
+    ASK_SIDE_AVAILABLE = "ask_side_available"
+    TWO_SIDED_AVAILABLE = "two_sided_available"
+    UNAVAILABLE = "unavailable"
+
+
+class FutuBrowserQuoteReasonCode(str, _Enum):
+    BID_ABSENT = "bid_absent"
+    BID_NONPOSITIVE = "bid_nonpositive"
+    BID_PRICE_INVALID = "bid_price_invalid"
+    BID_SIZE_INVALID = "bid_size_invalid"
+    ASK_ABSENT = "ask_absent"
+    ASK_NONPOSITIVE = "ask_nonpositive"
+    ASK_PRICE_INVALID = "ask_price_invalid"
+    ASK_SIZE_INVALID = "ask_size_invalid"
+    CROSSED_MARKET = "crossed_market"
+    NO_FRAME_RECEIVED = "no_frame_received"
+    SUBSCRIPTION_FAILED = "subscription_failed"
+    MALFORMED_FRAME = "malformed_frame"
+
+
+_BROWSER_BID_REASONS = frozenset((
+    FutuBrowserQuoteReasonCode.BID_ABSENT,
+    FutuBrowserQuoteReasonCode.BID_NONPOSITIVE,
+    FutuBrowserQuoteReasonCode.BID_PRICE_INVALID,
+    FutuBrowserQuoteReasonCode.BID_SIZE_INVALID,
+))
+_BROWSER_ASK_REASONS = frozenset((
+    FutuBrowserQuoteReasonCode.ASK_ABSENT,
+    FutuBrowserQuoteReasonCode.ASK_NONPOSITIVE,
+    FutuBrowserQuoteReasonCode.ASK_PRICE_INVALID,
+    FutuBrowserQuoteReasonCode.ASK_SIZE_INVALID,
+))
+_BROWSER_REASON_ORDER = {
+    item: index for index, item in enumerate(FutuBrowserQuoteReasonCode)
+}
+
+
+def _validate_browser_quote_row(
+    value: object,
+) -> FutuOptionChainContractEvidence:
+    if type(value) is not FutuOptionChainContractEvidence:
+        raise TypeError(
+            "browser_row must have exact type FutuOptionChainContractEvidence"
+        )
+    try:
+        rebuilt = FutuOptionChainContractEvidence(
+            value.provider_identifier,
+            value.provider_underlying,
+            value.expiration,
+            value.option_type,
+            value.strike,
+            value.lot_size,
+            value.provider_expiration_cycle,
+            value.provider_standard_type,
+            value.suspension,
+            value.statuses,
+            value.retrieved_at,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE) from error
+    if rebuilt != value or not _browser_row_is_visible(value):
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+    return value
+
+
+def _validate_browser_quote_optional_timestamp(
+    value: object,
+) -> _Optional[_decimal.Decimal]:
+    if value is None:
+        return None
+    if type(value) is not _decimal.Decimal:
+        raise TypeError(
+            "provider timestamp values must be Decimal values or None"
+        )
+    if not value.is_finite():
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+    return value
+
+
+def _validate_browser_quote_price(value: object, label: str) -> _decimal.Decimal:
+    if type(value) is not _decimal.Decimal:
+        raise TypeError(f"{label} must have exact type Decimal")
+    if not value.is_finite() or value <= 0:
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+    return value
+
+
+def _validate_browser_quote_size(value: object, label: str) -> int:
+    if type(value) is not int or isinstance(value, bool):
+        raise TypeError(f"{label} must have exact type int")
+    if value <= 0:
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+    return value
+
+
+def _validate_browser_quote_reasons(
+    value: object,
+) -> _Tuple[FutuBrowserQuoteReasonCode, ...]:
+    if type(value) is not tuple:
+        raise TypeError("reason_codes must have exact type tuple")
+    if any(type(item) is not FutuBrowserQuoteReasonCode for item in value):
+        raise TypeError(
+            "reason_codes items must have exact type FutuBrowserQuoteReasonCode"
+        )
+    if len(set(value)) != len(value) or value != tuple(
+        sorted(value, key=_BROWSER_REASON_ORDER.__getitem__)
+    ):
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+    return value
+
+
+@_dataclass(frozen=True)
+class FutuBrowserQuoteEvidence:
+    browser_row: FutuOptionChainContractEvidence
+    chunk_index: int
+    availability: FutuBrowserQuoteAvailability
+    bid_price: _Optional[_decimal.Decimal]
+    ask_price: _Optional[_decimal.Decimal]
+    bid_size: _Optional[int]
+    ask_size: _Optional[int]
+    received_at: _Optional[_datetime.datetime]
+    provider_bid_timestamp_value: _Optional[_decimal.Decimal]
+    provider_ask_timestamp_value: _Optional[_decimal.Decimal]
+    reason_codes: _Tuple[FutuBrowserQuoteReasonCode, ...]
+
+    def __post_init__(self) -> None:
+        _validate_browser_quote_row(self.browser_row)
+        if type(self.chunk_index) is not int or isinstance(self.chunk_index, bool):
+            raise TypeError("chunk_index must have exact type int")
+        if self.chunk_index < 0:
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        if type(self.availability) is not FutuBrowserQuoteAvailability:
+            raise TypeError(
+                "availability must have exact type FutuBrowserQuoteAvailability"
+            )
+        reasons = _validate_browser_quote_reasons(self.reason_codes)
+        bid_timestamp = _validate_browser_quote_optional_timestamp(
+            self.provider_bid_timestamp_value
+        )
+        ask_timestamp = _validate_browser_quote_optional_timestamp(
+            self.provider_ask_timestamp_value
+        )
+        received_at = None
+        if self.received_at is not None:
+            received_at = _checked_runtime_timestamp(
+                "received_at", self.received_at, _BROWSER_QUOTE_RESPONSE_MESSAGE
+            )
+
+        if self.availability is FutuBrowserQuoteAvailability.TWO_SIDED_AVAILABLE:
+            bid = _validate_browser_quote_price(self.bid_price, "bid_price")
+            ask = _validate_browser_quote_price(self.ask_price, "ask_price")
+            _validate_browser_quote_size(self.bid_size, "bid_size")
+            _validate_browser_quote_size(self.ask_size, "ask_size")
+            if received_at is None or reasons or bid > ask:
+                raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        elif self.availability is FutuBrowserQuoteAvailability.ASK_SIDE_AVAILABLE:
+            ask = _validate_browser_quote_price(self.ask_price, "ask_price")
+            _validate_browser_quote_size(self.ask_size, "ask_size")
+            if (
+                self.bid_price is not None
+                or self.bid_size is not None
+                or received_at is None
+                or len(reasons) != 1
+                or reasons[0] not in _BROWSER_BID_REASONS
+            ):
+                raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        else:
+            if reasons == (FutuBrowserQuoteReasonCode.CROSSED_MARKET,):
+                bid = _validate_browser_quote_price(self.bid_price, "bid_price")
+                ask = _validate_browser_quote_price(self.ask_price, "ask_price")
+                _validate_browser_quote_size(self.bid_size, "bid_size")
+                _validate_browser_quote_size(self.ask_size, "ask_size")
+                if received_at is None or bid <= ask:
+                    raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+            elif len(reasons) == 1 and (
+                reasons[0] in _BROWSER_ASK_REASONS
+                or reasons[0] is FutuBrowserQuoteReasonCode.MALFORMED_FRAME
+            ):
+                if any(
+                    item is not None
+                    for item in (
+                        self.bid_price,
+                        self.ask_price,
+                        self.bid_size,
+                        self.ask_size,
+                    )
+                ) or received_at is None:
+                    raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+            elif reasons in (
+                (FutuBrowserQuoteReasonCode.NO_FRAME_RECEIVED,),
+                (FutuBrowserQuoteReasonCode.SUBSCRIPTION_FAILED,),
+            ):
+                if any(
+                    item is not None
+                    for item in (
+                        self.bid_price,
+                        self.ask_price,
+                        self.bid_size,
+                        self.ask_size,
+                        received_at,
+                        bid_timestamp,
+                        ask_timestamp,
+                    )
+                ):
+                    raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+            else:
+                raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        object.__setattr__(self, "received_at", received_at)
+
+
+def _validate_browser_quote_evidence(
+    value: object,
+) -> FutuBrowserQuoteEvidence:
+    if type(value) is not FutuBrowserQuoteEvidence:
+        raise TypeError("quotes must contain exact FutuBrowserQuoteEvidence")
+    try:
+        if value.received_at is not None and (
+            type(value.received_at) is not _datetime.datetime
+            or value.received_at.tzinfo is not _UTC
+            or value.received_at.fold != 0
+        ):
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        rebuilt = FutuBrowserQuoteEvidence(
+            value.browser_row,
+            value.chunk_index,
+            value.availability,
+            value.bid_price,
+            value.ask_price,
+            value.bid_size,
+            value.ask_size,
+            value.received_at,
+            value.provider_bid_timestamp_value,
+            value.provider_ask_timestamp_value,
+            value.reason_codes,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE) from error
+    if rebuilt != value:
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+    return value
+
+
+@_dataclass(frozen=True)
+class FutuBrowserQuoteChunkEvidence:
+    chunk_index: int
+    expiration: _datetime.date
+    requested_rows: _Tuple[FutuOptionChainContractEvidence, ...]
+    quotes: _Tuple[FutuBrowserQuoteEvidence, ...]
+    started_at: _datetime.datetime
+    completed_at: _datetime.datetime
+
+    def __post_init__(self) -> None:
+        if type(self.chunk_index) is not int or isinstance(self.chunk_index, bool):
+            raise TypeError("chunk_index must have exact type int")
+        if self.chunk_index < 0:
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        expiration = _validate_date("expiration", self.expiration)
+        if type(self.requested_rows) is not tuple or any(
+            type(item) is not FutuOptionChainContractEvidence
+            for item in self.requested_rows
+        ):
+            raise TypeError(
+                "requested_rows must be a tuple of exact Browser rows"
+            )
+        if not self.requested_rows:
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        for row in self.requested_rows:
+            _validate_browser_quote_row(row)
+        if (
+            any(row.expiration != expiration for row in self.requested_rows)
+            or len({row.provider_identifier for row in self.requested_rows})
+            != len(self.requested_rows)
+        ):
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        if type(self.quotes) is not tuple:
+            raise TypeError(
+                "quotes must be a tuple of FutuBrowserQuoteEvidence"
+            )
+        quotes = tuple(_validate_browser_quote_evidence(item) for item in self.quotes)
+        if len(self.quotes) != len(self.requested_rows) or any(
+            quote.browser_row is not row or quote.chunk_index != self.chunk_index
+            for row, quote in zip(self.requested_rows, quotes)
+        ):
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        started = _checked_runtime_timestamp(
+            "started_at", self.started_at, _BROWSER_QUOTE_RESPONSE_MESSAGE
+        )
+        completed = _checked_runtime_timestamp(
+            "completed_at", self.completed_at, _BROWSER_QUOTE_RESPONSE_MESSAGE
+        )
+        if completed < started:
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        object.__setattr__(self, "expiration", expiration)
+        object.__setattr__(self, "started_at", started)
+        object.__setattr__(self, "completed_at", completed)
+
+
+@_dataclass(frozen=True)
+class FutuBrowserQuoteBatchEvidence:
+    browser: FutuExactContractBrowser
+    chunks: _Tuple[FutuBrowserQuoteChunkEvidence, ...]
+
+    def __post_init__(self) -> None:
+        try:
+            raw_browser = self.browser
+            raw_chunks = self.chunks
+        except AttributeError as error:
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE) from error
+        browser = _validate_exact_contract_browser(raw_browser)
+        if type(raw_chunks) is not tuple:
+            raise TypeError(
+                "chunks must be a tuple of FutuBrowserQuoteChunkEvidence"
+            )
+        validated_chunks = []
+        for item in raw_chunks:
+            if type(item) is not FutuBrowserQuoteChunkEvidence:
+                raise TypeError(
+                    "chunks must be a tuple of FutuBrowserQuoteChunkEvidence"
+                )
+            try:
+                if any(
+                    type(timestamp) is not _datetime.datetime
+                    or timestamp.tzinfo is not _UTC
+                    or timestamp.fold != 0
+                    for timestamp in (item.started_at, item.completed_at)
+                ):
+                    raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+                rebuilt = FutuBrowserQuoteChunkEvidence(
+                    item.chunk_index,
+                    item.expiration,
+                    item.requested_rows,
+                    item.quotes,
+                    item.started_at,
+                    item.completed_at,
+                )
+            except (AttributeError, TypeError, ValueError) as error:
+                raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE) from error
+            if rebuilt != item:
+                raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+            validated_chunks.append(item)
+        rows = browser.rows
+        expiration_order = tuple(dict.fromkeys(row.expiration for row in rows))
+        if len(validated_chunks) != len(expiration_order):
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        flattened_rows = []
+        flattened_quotes = []
+        for index, (expiration, chunk) in enumerate(
+            zip(expiration_order, validated_chunks)
+        ):
+            expected_rows = tuple(row for row in rows if row.expiration == expiration)
+            if (
+                chunk.chunk_index != index
+                or chunk.expiration != expiration
+                or len(chunk.requested_rows) != len(expected_rows)
+                or any(
+                    actual is not expected
+                    for actual, expected in zip(chunk.requested_rows, expected_rows)
+                )
+            ):
+                raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+            flattened_rows.extend(chunk.requested_rows)
+            flattened_quotes.extend(chunk.quotes)
+        if len(flattened_rows) != len(rows) or any(
+            actual is not expected for actual, expected in zip(flattened_rows, rows)
+        ):
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        if len(flattened_quotes) != len(rows) or any(
+            quote.browser_row is not row
+            for quote, row in zip(flattened_quotes, rows)
+        ):
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+
+    @property
+    def schema_version(self) -> str:
+        return _BROWSER_QUOTE_BATCH_VERSION
+
+    @property
+    def quotes(self) -> _Tuple[FutuBrowserQuoteEvidence, ...]:
+        return tuple(quote for chunk in self.chunks for quote in chunk.quotes)
+
+    @property
+    def authority(self) -> FutuBrowserQuoteAuthority:
+        return FutuBrowserQuoteAuthority.INDICATIVE_ONLY
+
+    @property
+    def event_time(self) -> FutuBrowserQuoteSemanticState:
+        return FutuBrowserQuoteSemanticState.UNAVAILABLE
+
+    @property
+    def freshness(self) -> FutuBrowserQuoteSemanticState:
+        return FutuBrowserQuoteSemanticState.NOT_ESTABLISHED
+
+    @property
+    def session_binding(self) -> FutuBrowserQuoteSemanticState:
+        return FutuBrowserQuoteSemanticState.NOT_ESTABLISHED
+
+    @property
+    def quote_scope(self) -> FutuBrowserQuoteSemanticState:
+        return FutuBrowserQuoteSemanticState.UNASSIGNED
+
+    @property
+    def executable_price_claim(self) -> FutuBrowserQuoteSemanticState:
+        return FutuBrowserQuoteSemanticState.NONE
+
+    @property
+    def cross_structure_quote_synchronicity(
+        self,
+    ) -> FutuBrowserQuoteSemanticState:
+        return FutuBrowserQuoteSemanticState.NOT_ESTABLISHED
+
+
+def _browser_unavailable_quote(
+    row: FutuOptionChainContractEvidence,
+    chunk_index: int,
+    reason: FutuBrowserQuoteReasonCode,
+    *,
+    received_at: _Optional[_datetime.datetime] = None,
+    provider_bid_timestamp_value: _Optional[_decimal.Decimal] = None,
+    provider_ask_timestamp_value: _Optional[_decimal.Decimal] = None,
+) -> FutuBrowserQuoteEvidence:
+    return FutuBrowserQuoteEvidence(
+        row,
+        chunk_index,
+        FutuBrowserQuoteAvailability.UNAVAILABLE,
+        None,
+        None,
+        None,
+        None,
+        received_at,
+        provider_bid_timestamp_value,
+        provider_ask_timestamp_value,
+        (reason,),
+    )
+
+
+def _browser_frame_timestamp_values(
+    rsp_pb: object,
+) -> _Tuple[_Optional[_decimal.Decimal], _Optional[_decimal.Decimal]]:
+    try:
+        if not rsp_pb.HasField("s2c"):
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        s2c = rsp_pb.s2c
+        bid_present = s2c.HasField("svrRecvTimeBidTimestamp")
+        ask_present = s2c.HasField("svrRecvTimeAskTimestamp")
+        bid_value = (
+            _provider_decimal(
+                s2c.svrRecvTimeBidTimestamp, _BROWSER_QUOTE_RESPONSE_MESSAGE
+            )
+            if bid_present
+            else None
+        )
+        ask_value = (
+            _provider_decimal(
+                s2c.svrRecvTimeAskTimestamp, _BROWSER_QUOTE_RESPONSE_MESSAGE
+            )
+            if ask_present
+            else None
+        )
+        return bid_value, ask_value
+    except Exception:
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE) from None
+
+
+def _browser_side_from_frame(
+    data: dict,
+    name: str,
+) -> tuple:
+    absent = (
+        FutuBrowserQuoteReasonCode.ASK_ABSENT
+        if name == "Ask"
+        else FutuBrowserQuoteReasonCode.BID_ABSENT
+    )
+    price_invalid = (
+        FutuBrowserQuoteReasonCode.ASK_PRICE_INVALID
+        if name == "Ask"
+        else FutuBrowserQuoteReasonCode.BID_PRICE_INVALID
+    )
+    nonpositive = (
+        FutuBrowserQuoteReasonCode.ASK_NONPOSITIVE
+        if name == "Ask"
+        else FutuBrowserQuoteReasonCode.BID_NONPOSITIVE
+    )
+    size_invalid = (
+        FutuBrowserQuoteReasonCode.ASK_SIZE_INVALID
+        if name == "Ask"
+        else FutuBrowserQuoteReasonCode.BID_SIZE_INVALID
+    )
+    levels = data.get(name)
+    if levels is None or levels == []:
+        return None, None, absent, False
+    if type(levels) not in (list, tuple) or not levels:
+        return None, None, FutuBrowserQuoteReasonCode.MALFORMED_FRAME, True
+    first = levels[0]
+    if type(first) not in (list, tuple):
+        return None, None, FutuBrowserQuoteReasonCode.MALFORMED_FRAME, True
+    if not first:
+        return None, None, absent, False
+    try:
+        price = _provider_decimal(first[0], _BROWSER_QUOTE_RESPONSE_MESSAGE)
+    except ValueError:
+        return None, None, price_invalid, False
+    if price <= 0:
+        return None, None, nonpositive, False
+    if len(first) < 2:
+        return None, None, size_invalid, False
+    if type(first[1]) is not int or isinstance(first[1], bool):
+        return None, None, size_invalid, False
+    size = first[1]
+    if size <= 0:
+        return None, None, size_invalid, False
+    return price, size, None, False
+
+
+def _browser_quote_from_atomic_frame(
+    *,
+    data: object,
+    rsp_pb: object,
+    row: FutuOptionChainContractEvidence,
+    chunk_index: int,
+) -> FutuBrowserQuoteEvidence:
+    received_at = _utc_now()
+    if type(data) is not dict or data.get("code") != row.provider_identifier:
+        raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+    bid_timestamp, ask_timestamp = _browser_frame_timestamp_values(rsp_pb)
+    ask, ask_size, ask_reason, ask_malformed = _browser_side_from_frame(data, "Ask")
+    if ask_malformed:
+        return _browser_unavailable_quote(
+            row,
+            chunk_index,
+            FutuBrowserQuoteReasonCode.MALFORMED_FRAME,
+            received_at=received_at,
+            provider_bid_timestamp_value=bid_timestamp,
+            provider_ask_timestamp_value=ask_timestamp,
+        )
+    if ask_reason is not None:
+        return _browser_unavailable_quote(
+            row,
+            chunk_index,
+            ask_reason,
+            received_at=received_at,
+            provider_bid_timestamp_value=bid_timestamp,
+            provider_ask_timestamp_value=ask_timestamp,
+        )
+    bid, bid_size, bid_reason, bid_malformed = _browser_side_from_frame(data, "Bid")
+    if bid_malformed:
+        return _browser_unavailable_quote(
+            row,
+            chunk_index,
+            FutuBrowserQuoteReasonCode.MALFORMED_FRAME,
+            received_at=received_at,
+            provider_bid_timestamp_value=bid_timestamp,
+            provider_ask_timestamp_value=ask_timestamp,
+        )
+    if bid_reason is not None:
+        return FutuBrowserQuoteEvidence(
+            row,
+            chunk_index,
+            FutuBrowserQuoteAvailability.ASK_SIDE_AVAILABLE,
+            None,
+            ask,
+            None,
+            ask_size,
+            received_at,
+            bid_timestamp,
+            ask_timestamp,
+            (bid_reason,),
+        )
+    availability = (
+        FutuBrowserQuoteAvailability.UNAVAILABLE
+        if bid > ask
+        else FutuBrowserQuoteAvailability.TWO_SIDED_AVAILABLE
+    )
+    reasons = (
+        (FutuBrowserQuoteReasonCode.CROSSED_MARKET,)
+        if bid > ask
+        else ()
+    )
+    return FutuBrowserQuoteEvidence(
+        row,
+        chunk_index,
+        availability,
+        bid,
+        ask,
+        bid_size,
+        ask_size,
+        received_at,
+        bid_timestamp,
+        ask_timestamp,
+        reasons,
+    )
+
+
+def retrieve_futu_browser_quote_batch_evidence(
+    quote_context: object,
+    browser: FutuExactContractBrowser,
+    *,
+    timeout_seconds: float = 15.0,
+) -> FutuBrowserQuoteBatchEvidence:
+    """Consume one dedicated context for lossless Browser quote evidence."""
+
+    browser = _validate_exact_contract_browser(browser)
+    if isinstance(timeout_seconds, bool) or not isinstance(
+        timeout_seconds, _numbers.Real
+    ):
+        raise TypeError("timeout_seconds must be a number")
+    if not _math.isfinite(float(timeout_seconds)) or not 0 < timeout_seconds <= 60:
+        raise ValueError("timeout_seconds must be greater than 0 and at most 60")
+    try:
+        set_handler = getattr(quote_context, "set_handler", None)
+        subscribe = getattr(quote_context, "subscribe", None)
+        close = getattr(quote_context, "close", None)
+    except Exception:
+        raise TypeError("quote_context must provide Futu quote methods") from None
+    if not all(callable(item) for item in (set_handler, subscribe, close)):
+        raise TypeError("quote_context must provide Futu quote methods")
+
+    primary_error = None
+    primary_traceback = None
+    primary_is_exact_input = False
+    result = None
+    close_failed = False
+    lock = None
+    state = None
+    try:
+        sdk = _load_futu_sdk()
+        previous_handler = _capture_order_book_handler(quote_context)
+        try:
+            subscription_record = quote_context._sub_record
+            existing_subscriptions = subscription_record.get_sub_list()
+        except Exception:
+            primary_is_exact_input = True
+            raise TypeError(
+                "quote_context must expose the pinned Futu subscription boundary"
+            ) from None
+        if (
+            type(previous_handler) is not sdk.OrderBookHandlerBase
+            or type(existing_subscriptions) is not list
+            or existing_subscriptions
+        ):
+            primary_is_exact_input = True
+            raise ValueError(
+                "quote_context must be a dedicated unsubscribed Futu quote context"
+            )
+
+        rows = browser.rows
+        row_by_identifier = {row.provider_identifier: row for row in rows}
+        if len(row_by_identifier) != len(rows):
+            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+        browser_identifiers = frozenset(row_by_identifier)
+        lock = _threading.RLock()
+        ready = _threading.Event()
+        state = {
+            "active": frozenset(),
+            "chunk_index": None,
+            "provisional": False,
+            "arrival": 0,
+            "queued": [],
+            "retained": {},
+            "error": None,
+            "sealed": True,
+        }
+
+        class _BrowserQuoteHandler(sdk.OrderBookHandlerBase):
+            def on_recv_rsp(self, rsp_pb):
+                try:
+                    with lock:
+                        previous_handler.on_recv_rsp(rsp_pb)
+                        ret, data = super().on_recv_rsp(rsp_pb)
+                        if ret != sdk.RET_OK or type(data) is not dict:
+                            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+                        identifier = data.get("code")
+                        if (
+                            type(identifier) is not str
+                            or identifier not in browser_identifiers
+                        ):
+                            raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+                        if state["sealed"] or identifier not in state["active"]:
+                            return ret, data
+                        ordinal = state["arrival"]
+                        state["arrival"] += 1
+                        item = _browser_quote_from_atomic_frame(
+                            data=data,
+                            rsp_pb=rsp_pb,
+                            row=row_by_identifier[identifier],
+                            chunk_index=state["chunk_index"],
+                        )
+                        if state["provisional"]:
+                            state["queued"].append((ordinal, identifier, item))
+                        elif identifier not in state["retained"]:
+                            state["retained"][identifier] = item
+                            if state["active"].issubset(state["retained"]):
+                                ready.set()
+                    return ret, data
+                except Exception:
+                    with lock:
+                        state["error"] = _BROWSER_QUOTE_RESPONSE_MESSAGE
+                        ready.set()
+                    return -1, _BROWSER_QUOTE_RESPONSE_MESSAGE
+
+        try:
+            handler_result = set_handler(_BrowserQuoteHandler())
+        except Exception:
+            raise RuntimeError(_BROWSER_QUOTE_RETRIEVAL_MESSAGE) from None
+        if handler_result != sdk.RET_OK:
+            raise RuntimeError(_BROWSER_QUOTE_RETRIEVAL_MESSAGE)
+
+        chunks = []
+        expiration_order = tuple(dict.fromkeys(row.expiration for row in rows))
+        for chunk_index, expiration in enumerate(expiration_order):
+            requested_rows = tuple(row for row in rows if row.expiration == expiration)
+            identifiers = tuple(row.provider_identifier for row in requested_rows)
+            expected = frozenset(identifiers)
+            started_at = _utc_now()
+            with lock:
+                state.update({
+                    "active": expected,
+                    "chunk_index": chunk_index,
+                    "provisional": True,
+                    "arrival": 0,
+                    "queued": [],
+                    "retained": {},
+                    "error": None,
+                    "sealed": False,
+                })
+                ready.clear()
+            try:
+                response = subscribe(
+                    list(identifiers),
+                    [sdk.SubType.ORDER_BOOK],
+                    is_first_push=True,
+                    subscribe_push=True,
+                )
+            except Exception:
+                response = None
+            subscription_succeeded = (
+                type(response) is tuple
+                and len(response) == 2
+                and response[0] == sdk.RET_OK
+            )
+            if not subscription_succeeded:
+                with lock:
+                    callback_error = state["error"]
+                    state["queued"] = []
+                    state["retained"] = {}
+                    state["sealed"] = True
+                    state["active"] = frozenset()
+                if callback_error is not None:
+                    raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+                completed_at = _utc_now()
+                quotes = tuple(
+                    _browser_unavailable_quote(
+                        row,
+                        chunk_index,
+                        FutuBrowserQuoteReasonCode.SUBSCRIPTION_FAILED,
+                    )
+                    for row in requested_rows
+                )
+                chunks.append(FutuBrowserQuoteChunkEvidence(
+                    chunk_index,
+                    expiration,
+                    requested_rows,
+                    quotes,
+                    started_at,
+                    completed_at,
+                ))
+                continue
+            with lock:
+                state["provisional"] = False
+                for _, identifier, item in sorted(state["queued"]):
+                    if identifier not in state["retained"]:
+                        state["retained"][identifier] = item
+                state["queued"] = []
+                if state["error"] is not None or expected.issubset(
+                    state["retained"]
+                ):
+                    ready.set()
+            ready.wait(float(timeout_seconds))
+            with lock:
+                state["sealed"] = True
+                state["active"] = frozenset()
+                callback_error = state["error"]
+                retained = dict(state["retained"])
+            if callback_error is not None:
+                raise ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+            completed_at = _utc_now()
+            quotes = tuple(
+                retained.get(row.provider_identifier)
+                or _browser_unavailable_quote(
+                    row,
+                    chunk_index,
+                    FutuBrowserQuoteReasonCode.NO_FRAME_RECEIVED,
+                )
+                for row in requested_rows
+            )
+            chunks.append(FutuBrowserQuoteChunkEvidence(
+                chunk_index,
+                expiration,
+                requested_rows,
+                quotes,
+                started_at,
+                completed_at,
+            ))
+        result = FutuBrowserQuoteBatchEvidence(browser, tuple(chunks))
+    except Exception as error:
+        primary_error = error
+        primary_traceback = error.__traceback__
+    try:
+        close()
+    except Exception:
+        close_failed = True
+    if lock is not None and state is not None:
+        with lock:
+            callback_error_after_close = state["error"]
+        if callback_error_after_close is not None and primary_error is None:
+            primary_error = ValueError(_BROWSER_QUOTE_RESPONSE_MESSAGE)
+            primary_traceback = primary_error.__traceback__
+    if close_failed and not primary_is_exact_input:
+        raise RuntimeError(_BROWSER_QUOTE_RETRIEVAL_MESSAGE)
+    if primary_error is not None:
+        raise primary_error.with_traceback(primary_traceback)
+    return result
+
+
 def _validate_history_range(
     begin_date: object,
     end_date: object,
@@ -2436,3 +3286,12 @@ def retrieve_futu_exact_option_analytics_activity_evidence(
         )
     except Exception:
         raise ValueError(_ANALYTICS_RESPONSE_MESSAGE) from None
+
+
+# Preserve the frozen public module insertion order: the eight additive Browser
+# quote names follow all twenty-two existing direct-module names even though the
+# implementation sits beside the existing BBO boundary above.
+for _browser_quote_public_name in __all__[-8:]:
+    globals()[_browser_quote_public_name] = globals().pop(
+        _browser_quote_public_name
+    )

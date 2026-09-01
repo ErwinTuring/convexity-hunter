@@ -140,7 +140,7 @@ persistence, monitoring, trading, provider routing, or Tiger change.
 
 ## Frozen successor comparison layer
 
-The separate, not-yet-implemented
+The separate, subsequently implemented
 [Probability-Free Convexity Discrimination v0.1 contract](probability-free-convexity-discrimination-v0.1-contract.md)
 does not change these Browser responsibilities or non-goals. It retains one
 exact Browser by identity, gathers separate pre-selection provider-native

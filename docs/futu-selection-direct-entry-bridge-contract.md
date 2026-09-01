@@ -24,8 +24,9 @@ FutuExactContractSelectionVerification
 verify_futu_exact_contract_selection
 ```
 
-Nothing is re-exported from a package module. The Futu direct-module API then
-contains exactly 22 names.
+Nothing is re-exported from a package module. At this bridge checkpoint, the
+Futu direct-module API contained exactly 22 names; later additive provider
+evidence APIs do not change this bridge contract.
 
 ## Exact result and function
 

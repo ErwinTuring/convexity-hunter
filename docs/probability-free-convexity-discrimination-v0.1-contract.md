@@ -2,31 +2,29 @@
 
 ## Status
 
-This Tier-A contract is frozen for a later BUILD. It is not implemented by the
-current runtime. The current Futu Exact Contract Browser, provider evidence,
-selection, Direct Entry, Candidate Assembly, screening, and reporting behavior
-remain unchanged.
+This Tier-A contract is frozen and implemented. The bounded BUILD passed
+independent review, two targeted correction reviews, focused and full
+validation. Existing Futu Exact Contract Browser, selection, Direct Entry,
+Candidate Assembly, screening, and reporting behavior remain unchanged.
 
-The frozen target defines a bounded comparison layer between the existing
+The implemented contract defines a bounded comparison layer between the existing
 neutral Browser and explicit human selection. Once built, it will quantify
 deterministic expiration payoff geometry under increasingly extreme states. It
 will estimate no event probability, expected return, historical reach
 frequency, empirical tail probability, historical win rate, or investment
 merit.
 
-Independent contract review and targeted re-review have passed. The subsequent
-bounded BUILD is `READY` but has not started. This work unit stops before
-production implementation.
+Independent contract review and targeted re-review passed before BUILD. The
+production BUILD and its independent adversarial review are complete.
 
 ```text
-checkpoint_status = SUBSEQUENT_BUILD_READY
+checkpoint_status = IMPLEMENTED_AND_REVIEWED
 ```
 
-At this checkpoint, the production Futu runtime still exports exactly its
-existing 22 names. The 30-name Futu API below is the frozen post-BUILD target,
-not current runtime state. `convexity_discrimination.py` does not exist in the
-production package; its 19-name direct-module API below is likewise a frozen
-post-BUILD target.
+The production Futu runtime now exports exactly 30 names: its retained 22-name
+prefix plus the frozen eight-name additive API below. Production
+`convexity_discrimination.py` exists with exactly the frozen 19-name
+direct-module API. Neither module adds package-root exports.
 
 ## Durable product principle
 
@@ -1153,10 +1151,22 @@ authority boundary, crossed-price versus invalid-size precedence, and canonical
 tuple ordering. This contract incorporates all six corrections. Targeted
 re-review returned `PASS` with no unresolved or new blocking finding.
 
+The independent BUILD review then returned `FAIL` with nine accepted findings:
+callback serialization and post-seal error observation, malformed callback
+envelope rejection, close/error precedence, handler-error sanitization,
+constructor-bypassed UTC canonicalization, exact integer side sizes,
+unadjusted/complete reference authority, and controlled malformed-batch
+failure. The first targeted BUILD re-review closed seven findings and found two
+remaining constructor-bypass gaps for chunk timestamps and public batch/result
+objects. Those were corrected; final targeted BUILD re-review returned `PASS`
+with no remaining finding. Final validation passed 45 focused
+provider/Browser/discrimination and Milestone-4 tests, 1,367 full-suite tests,
+compileall, exact 30/19 API checks, and `git diff --check`.
+
 ## Explicit non-goals
 
-This contract adds no production code, live provider call, exact human
-selection, Candidate generation, screening change, report output, historical
+This bounded implementation adds no live provider call, exact human selection,
+Candidate generation, screening change, report output, historical
 stress, probability, expected return, score, rank, recommendation, portfolio
 affordability, position sizing, monitoring, trading, provider routing, or
 resolution of any current `missing_*` gap.

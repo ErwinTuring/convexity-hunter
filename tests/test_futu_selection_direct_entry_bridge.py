@@ -107,7 +107,7 @@ class PublicContractTests(unittest.TestCase):
                 "verify_futu_exact_contract_selection",
             ),
         )
-        self.assertEqual(len(futu.__all__), 22)
+        self.assertEqual(len(futu.__all__), 30)
         for name in (
             "FutuExactContractSelectionVerification",
             "verify_futu_exact_contract_selection",

@@ -303,8 +303,9 @@ selection.browser.discovery_evidence.discovery_request` and
 `maturity_context.structure is selection.structure`. The existing ordered
 provider verification and provider-neutral exact-contract checks then run
 unchanged. The returned result retains that same context object by identity.
-No Futu direct-module name is added or reordered; its `__all__` remains the
-existing exact 22 names.
+This migration adds or reorders no Futu direct-module name. At this migration
+checkpoint, `__all__` contained the existing exact 22 names; later additive
+provider evidence APIs do not change this migration contract.
 
 The Direct Entry service contract advances to v0.3. Its result appends exactly:
 

@@ -103,7 +103,7 @@ def verification(context=None):
 
 
 class PublicBoundaryTests(unittest.TestCase):
-    def test_exact_twenty_two_name_api_and_no_reexports(self):
+    def test_exact_thirty_name_api_and_no_reexports(self):
         self.assertEqual(
             futu.__all__,
             (
@@ -129,6 +129,14 @@ class PublicBoundaryTests(unittest.TestCase):
                 "retrieve_futu_historical_option_bar_evidence",
                 "FutuExactOptionAnalyticsActivityEvidence",
                 "retrieve_futu_exact_option_analytics_activity_evidence",
+                "FutuBrowserQuoteAuthority",
+                "FutuBrowserQuoteSemanticState",
+                "FutuBrowserQuoteAvailability",
+                "FutuBrowserQuoteReasonCode",
+                "FutuBrowserQuoteEvidence",
+                "FutuBrowserQuoteChunkEvidence",
+                "FutuBrowserQuoteBatchEvidence",
+                "retrieve_futu_browser_quote_batch_evidence",
             ),
         )
         self.assertEqual(

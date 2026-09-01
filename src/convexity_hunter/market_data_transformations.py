@@ -12277,6 +12277,15 @@ def _rational_multiply_int(
     return ExactRational(value.numerator * multiplier, value.denominator)
 
 
+def _rational_multiply(
+    left: ExactRational, right: ExactRational
+) -> ExactRational:
+    return ExactRational(
+        left.numerator * right.numerator,
+        left.denominator * right.denominator,
+    )
+
+
 def _rational_divide_int(
     value: ExactRational, divisor: int
 ) -> ExactRational:
@@ -12590,6 +12599,96 @@ def _expiration_thresholds_match(
     )
 
 
+class _PayoffMathGrammar(str, Enum):
+    LONG_CALL = "long_call"
+    LONG_PUT = "long_put"
+    LONG_STRADDLE = "long_straddle"
+
+
+class _PayoffMathBranch(str, Enum):
+    DOWNSIDE = "downside"
+    UPSIDE = "upside"
+
+
+def _conditional_threshold_prices(
+    grammar: _PayoffMathGrammar,
+    strike: ExactRational,
+    payoff_distance: ExactRational,
+    multiples: tuple,
+) -> tuple:
+    """Return private canonical threshold branches for exact payoff geometry."""
+
+    if type(grammar) is not _PayoffMathGrammar:
+        raise TypeError("grammar must have exact type _PayoffMathGrammar")
+    strike = _strict_expiration_exact_rational(strike, "strike")
+    distance = _strict_expiration_exact_rational(
+        payoff_distance, "payoff_distance"
+    )
+    if strike.numerator <= 0 or distance.numerator <= 0:
+        raise ValueError("strike and payoff_distance must be strictly positive")
+    if type(multiples) is not tuple or any(
+        type(item) is not int for item in multiples
+    ):
+        raise TypeError("multiples must be a tuple of exact integers")
+    if not multiples or any(item <= 0 for item in multiples):
+        raise ValueError("multiples must be strictly positive")
+    records = []
+    for multiple in multiples:
+        scaled = _rational_multiply_int(distance, multiple)
+        if grammar is _PayoffMathGrammar.LONG_CALL:
+            branches = ((
+                _PayoffMathBranch.UPSIDE,
+                _rational_add(strike, scaled),
+            ),)
+        elif grammar is _PayoffMathGrammar.LONG_PUT:
+            branches = ((
+                _PayoffMathBranch.DOWNSIDE,
+                _rational_subtract(strike, scaled),
+            ),)
+        else:
+            branches = (
+                (
+                    _PayoffMathBranch.DOWNSIDE,
+                    _rational_subtract(strike, scaled),
+                ),
+                (
+                    _PayoffMathBranch.UPSIDE,
+                    _rational_add(strike, scaled),
+                ),
+            )
+        for branch, unconstrained in branches:
+            records.append((
+                multiple,
+                branch,
+                None if unconstrained.numerator < 0 else unconstrained,
+            ))
+    return tuple(records)
+
+
+def _gross_expiration_payoff(
+    grammar: _PayoffMathGrammar,
+    strike: ExactRational,
+    terminal_underlying_price: ExactRational,
+) -> ExactRational:
+    """Return exact scalar terminal intrinsic payoff for private grammar."""
+
+    if type(grammar) is not _PayoffMathGrammar:
+        raise TypeError("grammar must have exact type _PayoffMathGrammar")
+    strike = _strict_expiration_exact_rational(strike, "strike")
+    terminal = _strict_expiration_exact_rational(
+        terminal_underlying_price, "terminal_underlying_price"
+    )
+    if strike.numerator <= 0 or terminal.numerator < 0:
+        raise ValueError("strike must be positive and terminal price nonnegative")
+    difference = _rational_subtract(terminal, strike)
+    if grammar is _PayoffMathGrammar.LONG_CALL:
+        return difference if difference.numerator > 0 else ExactRational(0, 1)
+    if grammar is _PayoffMathGrammar.LONG_PUT:
+        return ExactRational(-difference.numerator, difference.denominator) \
+            if difference.numerator < 0 else ExactRational(0, 1)
+    return ExactRational(abs(difference.numerator), difference.denominator)
+
+
 def _expected_expiration_thresholds(
     structure: OptionStructure,
     base_underlying_price: decimal.Decimal,
@@ -12604,49 +12703,49 @@ def _expected_expiration_thresholds(
         structure.legs[0].quantity
         * structure.legs[0].contract_multiplier
     )
+    grammar = {
+        "long_call": _PayoffMathGrammar.LONG_CALL,
+        "long_put": _PayoffMathGrammar.LONG_PUT,
+        "long_straddle": _PayoffMathGrammar.LONG_STRADDLE,
+    }[structure.structure_type]
+    one_x_distance = _rational_divide_int(cost, position_scale)
+    branches = _conditional_threshold_prices(
+        grammar,
+        strike,
+        one_x_distance,
+        _EXPIRATION_THRESHOLD_MULTIPLES,
+    )
     records = []
-    for multiple in _EXPIRATION_THRESHOLD_MULTIPLES:
+    for multiple, branch, unconstrained in branches:
         target = _rational_multiply_int(cost, multiple)
-        distance = _rational_divide_int(target, position_scale)
-        branches = (
-            ((ExpirationPayoffThresholdSide.UPSIDE, _rational_add(strike, distance)),)
-            if structure.structure_type == "long_call"
-            else (
-                (ExpirationPayoffThresholdSide.DOWNSIDE,
-                 _rational_subtract(strike, distance)),
-            )
-            if structure.structure_type == "long_put"
-            else (
-                (ExpirationPayoffThresholdSide.DOWNSIDE,
-                 _rational_subtract(strike, distance)),
-                (ExpirationPayoffThresholdSide.UPSIDE,
-                 _rational_add(strike, distance)),
-            )
+        side = (
+            ExpirationPayoffThresholdSide.DOWNSIDE
+            if branch is _PayoffMathBranch.DOWNSIDE
+            else ExpirationPayoffThresholdSide.UPSIDE
         )
-        for side, unconstrained in branches:
-            if unconstrained.numerator < 0:
-                records.append(ExpirationPayoffThreshold(
-                    multiple,
-                    side,
-                    ExpirationPayoffThresholdStatus
-                    .UNAVAILABLE_NEGATIVE_UNDERLYING_PRICE,
-                    target,
-                    None,
-                    None,
-                    None,
-                ))
-                continue
-            absolute = _rational_subtract(unconstrained, base)
-            relative = _rational_divide(absolute, base)
+        if unconstrained is None:
             records.append(ExpirationPayoffThreshold(
                 multiple,
                 side,
-                ExpirationPayoffThresholdStatus.AVAILABLE,
+                ExpirationPayoffThresholdStatus
+                .UNAVAILABLE_NEGATIVE_UNDERLYING_PRICE,
                 target,
-                unconstrained,
-                absolute,
-                relative,
+                None,
+                None,
+                None,
             ))
+            continue
+        absolute = _rational_subtract(unconstrained, base)
+        relative = _rational_divide(absolute, base)
+        records.append(ExpirationPayoffThreshold(
+            multiple,
+            side,
+            ExpirationPayoffThresholdStatus.AVAILABLE,
+            target,
+            unconstrained,
+            absolute,
+            relative,
+        ))
     return tuple(records)
 
 

@@ -184,7 +184,7 @@ Assembly. Stable expiration/strike/Call-Put ordering is neutral navigation,
 not a recommendation. A Long Straddle requires explicit selection of both the
 Call and Put with identical expiration and strike.
 
-The next bounded layer is contract-frozen, not implemented: the
+The next bounded layer is contract-frozen and implemented: the
 [Probability-Free Convexity Discrimination v0.1 contract](probability-free-convexity-discrimination-v0.1-contract.md)
 retains the Browser unchanged and inserts an `INDICATIVE_ONLY` comparison
 surface before explicit human selection. It quantifies conditional expiration

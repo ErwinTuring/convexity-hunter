@@ -91,8 +91,8 @@ Repository: `ErwinTuring/convexity-hunter`
   Straddle requires explicit same-expiry/same-strike Call and Put selection.
   The selection is not a candidate and cannot call Candidate Assembly.
 - Probability-Free Convexity Discrimination v0.1 is Tier-A contract-frozen,
-  independently reviewed, and `BUILD READY`, but not implemented. Its successor
-  architecture preserves the exact neutral
+  implemented, independently BUILD-reviewed, corrected, and finally re-reviewed
+  with no remaining finding. It preserves the exact neutral
   Browser, adds one separate pre-selection Futu provider-native quote batch,
   and displays exhaustive mode-compatible comparison geometry before explicit
   human selection. Ask-side metrics remain available when bid is zero or
@@ -101,10 +101,10 @@ Repository: `ErwinTuring/convexity-hunter`
   `CONDITIONAL_PROVIDER_STANDARD`, exact deliverable verification remains
   `NOT_ESTABLISHED`, and no comparison record can enter Candidate Assembly or
   close a current `missing_*` reason.
-  Current runtime remains unchanged: Futu has 22 exports and no production
-  `convexity_discrimination.py`. The frozen post-BUILD targets are respectively
-  30 and 19 exports; those are contract counts, not current API counts.
-  Exact checkpoint status: `SUBSEQUENT_BUILD_READY`.
+  Production Futu now has exactly 30 direct-module exports and production
+  `convexity_discrimination.py` has exactly 19; neither adds package-root
+  exports. Final validation passed 45 focused tests and 1,367 full-suite tests.
+  Exact checkpoint status: `IMPLEMENTED_AND_REVIEWED`.
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
   proves that every returned provider identity and economic contract field
@@ -288,10 +288,10 @@ authorizes inferred evidence.
 
 ## Next work
 
-1. The frozen and independently reviewed
+1. The implemented and independently BUILD-reviewed
    [`Probability-Free Convexity Discrimination v0.1 contract`](probability-free-convexity-discrimination-v0.1-contract.md)
-   is the next bounded `BUILD READY` work unit. This checkpoint records only
-   contract readiness; production implementation has not started.
+   is ready for one bounded real NDAQ product exercise. That exercise must stop
+   before exact selection and preserve every indicative/conditional authority.
 2. Treat the completed real neutral-structural exercise as proof of lawful
    activation, not opportunity discovery. The frozen discrimination layer is
    the only current Browser-research-discrimination direction; do not add

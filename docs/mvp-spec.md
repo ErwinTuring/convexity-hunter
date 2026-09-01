@@ -180,7 +180,7 @@ strike, expiration, quantity, and provider contract multiplier, but is not a
 candidate and cannot enter Candidate Assembly directly. Automatic Candidate
 Generation remains deferred until its separate evidence contract is met.
 
-The frozen but not yet implemented
+The frozen and implemented
 [Probability-Free Convexity Discrimination v0.1 contract](probability-free-convexity-discrimination-v0.1-contract.md)
 defines one separate comparison layer between the neutral Futu Browser and
 explicit human selection. It may use provider-native ask-side evidence to show

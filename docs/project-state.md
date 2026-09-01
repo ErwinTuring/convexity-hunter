@@ -45,9 +45,9 @@ remains paused, while the separate Futu Exact Contract Browser now permits a
 human to select a real provider-classified listed structure without making any
 candidate, ranking, deliverable, or research-readiness claim.
 
-Probability-Free Convexity Discrimination v0.1 is now Tier-A contract-frozen,
-independently reviewed, and `BUILD READY`; it is not implemented. Its bounded
-target preserves the neutral
+Probability-Free Convexity Discrimination v0.1 is Tier-A contract-frozen,
+implemented, independently BUILD-reviewed, corrected, and finally re-reviewed
+with no remaining finding. It preserves the neutral
 Browser, introduces one separate pre-selection provider-native quote batch,
 and materializes exhaustive mode-compatible comparison structures before
 explicit human selection. It estimates no extreme-event probability and
@@ -58,15 +58,13 @@ is conditional on provider `STANDARD` classification while exact deliverable
 verification remains unestablished. The current six screening gaps remain
 unchanged.
 
-Its exact checkpoint status is `SUBSEQUENT_BUILD_READY`: contract frozen,
-production implementation absent, and current runtime unchanged.
+Its exact checkpoint status is `IMPLEMENTED_AND_REVIEWED`.
 
-Current-versus-target API state is explicit: production
-`convexity_hunter.providers.futu` remains at 22 exports, while the frozen target
-would append eight names for 30 after BUILD. Production has no
-`convexity_discrimination.py`; that future direct module has a frozen target of
-19 exports. These target counts are contract declarations, not runtime
-validation results.
+Current runtime API state is explicit: production
+`convexity_hunter.providers.futu` has exactly 30 exports, retaining its original
+22-name prefix and appending the frozen eight names. Production
+`convexity_discrimination.py` has exactly 19 direct-module exports. Neither is
+re-exported from the package root.
 
 ## Historical milestone ledger
 
@@ -2065,7 +2063,7 @@ improve Browser human research discrimination without ranking,
 recommendation, hidden maturity prediction, or automatically unfreezing the
 six `missing_*` gaps.
 
-## Probability-Free Convexity Discrimination v0.1 contract freeze
+## Probability-Free Convexity Discrimination v0.1 implementation
 
 The Tier-A contract is frozen in
 [`probability-free-convexity-discrimination-v0.1-contract.md`](probability-free-convexity-discrimination-v0.1-contract.md).
@@ -2075,10 +2073,17 @@ latest-completed-close reference, exact conditional 1x/2x/5x/10x hurdles, the
 ordered -50% through +50% response ladder, optional indicative spread, exact
 authority states, immutable comparison results, shared private Milestone-4
 payoff math, formal-artifact isolation, NDAQ 162-row/81-pair goldens, and
-decisive adversarial tests. Historical stress, carry, Pareto, analytics,
+decisive adversarial tests. The bounded production implementation preserves
+those exact APIs and authorities. Historical stress, carry, Pareto, analytics,
 activity, scoring, ranking, recommendation, and automatic generation remain
 deferred. Independent review identified six deterministic-boundary issues; all
-were corrected, and targeted re-review passed with no remaining blocker.
+were corrected, and targeted contract re-review passed with no remaining
+blocker. Independent BUILD review later found nine fail-closed, callback, UTC,
+reference-authority, and constructor-bypass defects. Seven closed on first
+targeted BUILD re-review; the two remaining constructor-bypass defects closed
+on final targeted re-review, which returned `PASS` with no finding. Final
+validation passed 45 focused tests and 1,367 full-suite tests, compileall,
+exact 30/19 API checks, and `git diff --check`.
 
 ## Previous current priority
 
