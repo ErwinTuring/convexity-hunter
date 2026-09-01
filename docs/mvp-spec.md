@@ -180,6 +180,27 @@ strike, expiration, quantity, and provider contract multiplier, but is not a
 candidate and cannot enter Candidate Assembly directly. Automatic Candidate
 Generation remains deferred until its separate evidence contract is met.
 
+The frozen but not yet implemented
+[Probability-Free Convexity Discrimination v0.1 contract](probability-free-convexity-discrimination-v0.1-contract.md)
+defines one separate comparison layer between the neutral Futu Browser and
+explicit human selection. It may use provider-native ask-side evidence to show
+an `Indicative Premium-to-Reference Ratio`, conditional 1x/2x/5x/10x
+expiration hurdles, and one fixed probability-free response ladder. A valid
+ask remains usable when bid is zero or absent; two-sided evidence is required
+only for an indicative relative-spread disclosure. All quote evidence remains
+`INDICATIVE_ONLY`, with no established event time, freshness, session binding,
+quote scope, executable-price claim, quote/reference temporal alignment, or
+cross-structure synchronicity.
+
+The payoff geometry is explicitly
+`CONDITIONAL_PROVIDER_STANDARD`; exact deliverable verification remains
+`NOT_ESTABLISHED`. The layer creates no `OptionStructure`, Candidate, formal
+cost, liquidity, threshold, affordability, or screening evidence, ranks and
+selects nothing, and cannot close any current `missing_*` reason. Its fixed
+extreme-state ladder contains no probability, expected return, historical
+frequency, score, or recommendation. Historical stress remains deferred while
+only unadjusted Futu daily bars are available.
+
 ## 4. Initial maturity policy
 
 The initial versioned policy accepts standard monthly options only. Every path

@@ -45,6 +45,29 @@ remains paused, while the separate Futu Exact Contract Browser now permits a
 human to select a real provider-classified listed structure without making any
 candidate, ranking, deliverable, or research-readiness claim.
 
+Probability-Free Convexity Discrimination v0.1 is now Tier-A contract-frozen,
+independently reviewed, and `BUILD READY`; it is not implemented. Its bounded
+target preserves the neutral
+Browser, introduces one separate pre-selection provider-native quote batch,
+and materializes exhaustive mode-compatible comparison structures before
+explicit human selection. It estimates no extreme-event probability and
+creates no Candidate, formal Engine artifact, ranking, recommendation, or
+default selection. Ask-side geometry remains available when bid is zero or
+absent; relative spread requires valid two-sided evidence. All payoff geometry
+is conditional on provider `STANDARD` classification while exact deliverable
+verification remains unestablished. The current six screening gaps remain
+unchanged.
+
+Its exact checkpoint status is `SUBSEQUENT_BUILD_READY`: contract frozen,
+production implementation absent, and current runtime unchanged.
+
+Current-versus-target API state is explicit: production
+`convexity_hunter.providers.futu` remains at 22 exports, while the frozen target
+would append eight names for 30 after BUILD. Production has no
+`convexity_discrimination.py`; that future direct module has a frozen target of
+19 exports. These target counts are contract declarations, not runtime
+validation results.
+
 ## Historical milestone ledger
 
 Milestones 1–5 are complete. Milestone 4 — Deterministic Expiration
@@ -2041,6 +2064,21 @@ discovery or investment value. The next bounded product question is how to
 improve Browser human research discrimination without ranking,
 recommendation, hidden maturity prediction, or automatically unfreezing the
 six `missing_*` gaps.
+
+## Probability-Free Convexity Discrimination v0.1 contract freeze
+
+The Tier-A contract is frozen in
+[`probability-free-convexity-discrimination-v0.1-contract.md`](probability-free-convexity-discrimination-v0.1-contract.md).
+It defines exact direct-module APIs, one-expiration-per-chunk Futu quote
+coverage, side-specific ask versus two-sided availability, a unique Futu
+latest-completed-close reference, exact conditional 1x/2x/5x/10x hurdles, the
+ordered -50% through +50% response ladder, optional indicative spread, exact
+authority states, immutable comparison results, shared private Milestone-4
+payoff math, formal-artifact isolation, NDAQ 162-row/81-pair goldens, and
+decisive adversarial tests. Historical stress, carry, Pareto, analytics,
+activity, scoring, ranking, recommendation, and automatic generation remain
+deferred. Independent review identified six deterministic-boundary issues; all
+were corrected, and targeted re-review passed with no remaining blocker.
 
 ## Previous current priority
 

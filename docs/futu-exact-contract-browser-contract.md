@@ -137,3 +137,14 @@ Greeks, IV, activity, liquidity, cheapness, attractiveness, recommendation,
 default contract, automatic selection, Candidate Generation, reference
 completion, Direct Entry invocation, Candidate Assembly, screening, report,
 persistence, monitoring, trading, provider routing, or Tiger change.
+
+## Frozen successor comparison layer
+
+The separate, not-yet-implemented
+[Probability-Free Convexity Discrimination v0.1 contract](probability-free-convexity-discrimination-v0.1-contract.md)
+does not change these Browser responsibilities or non-goals. It retains one
+exact Browser by identity, gathers separate pre-selection provider-native
+quote evidence, and materializes exhaustive mode-compatible comparison
+structures without modifying, ranking, hiding, or selecting Browser rows.
+`ComparisonStructure` remains distinct from both this contract's explicit
+human `FutuExactContractSelection` and every downstream Candidate type.

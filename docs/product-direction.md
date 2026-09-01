@@ -184,6 +184,25 @@ Assembly. Stable expiration/strike/Call-Put ordering is neutral navigation,
 not a recommendation. A Long Straddle requires explicit selection of both the
 Call and Put with identical expiration and strike.
 
+The next bounded layer is contract-frozen, not implemented: the
+[Probability-Free Convexity Discrimination v0.1 contract](probability-free-convexity-discrimination-v0.1-contract.md)
+retains the Browser unchanged and inserts an `INDICATIVE_ONLY` comparison
+surface before explicit human selection. It quantifies conditional expiration
+payoff geometry over an exact fixed shock ladder; it does not estimate the
+probability of an extreme event. Mode chooses only exhaustive Call, Put, or
+same-strike Straddle comparison grammar and never an expiration or strike.
+Comparison structures are not Candidates and have no rank, score,
+recommendation, default selection, or path into Candidate Assembly.
+
+Ask-side evidence may support the indicative premium-to-reference ratio and
+conditional payoff geometry even when bid is zero or absent. Two-sided
+evidence supports only an indicative relative-spread disclosure. Neither path
+creates formal costs, liquidity, affordability, or reviewed payoff-threshold
+evidence. The sole reference is an exact latest completed normalized close,
+and quote/reference temporal alignment remains explicitly not established.
+Historical extreme replay remains deferred because the current Futu history is
+unadjusted and may contain corporate-action discontinuities.
+
 ## 7. Maturity policy
 
 The initial versioned MVP policy permits standard monthly options only:

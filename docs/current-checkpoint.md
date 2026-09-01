@@ -90,6 +90,21 @@ Repository: `ErwinTuring/convexity-hunter`
   listed-structure research intent; one Call or Put is supported, and a Long
   Straddle requires explicit same-expiry/same-strike Call and Put selection.
   The selection is not a candidate and cannot call Candidate Assembly.
+- Probability-Free Convexity Discrimination v0.1 is Tier-A contract-frozen,
+  independently reviewed, and `BUILD READY`, but not implemented. Its successor
+  architecture preserves the exact neutral
+  Browser, adds one separate pre-selection Futu provider-native quote batch,
+  and displays exhaustive mode-compatible comparison geometry before explicit
+  human selection. Ask-side metrics remain available when bid is zero or
+  absent; relative spread alone requires two-sided evidence. Quote authority
+  is `INDICATIVE_ONLY`, payoff authority is
+  `CONDITIONAL_PROVIDER_STANDARD`, exact deliverable verification remains
+  `NOT_ESTABLISHED`, and no comparison record can enter Candidate Assembly or
+  close a current `missing_*` reason.
+  Current runtime remains unchanged: Futu has 22 exports and no production
+  `convexity_discrimination.py`. The frozen post-BUILD targets are respectively
+  30 and 19 exports; those are contract counts, not current API counts.
+  Exact checkpoint status: `SUBSEQUENT_BUILD_READY`.
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
   proves that every returned provider identity and economic contract field
@@ -273,27 +288,31 @@ authorizes inferred evidence.
 
 ## Next work
 
-1. Treat the completed real neutral-structural exercise as proof of lawful
-   activation, not opportunity discovery. The next bounded product question is
-   Browser human research discrimination without ranking, recommendation,
-   hidden maturity prediction, automatic candidate generation, or automatic
-   unfreezing of the six screening gaps.
-2. Treat the three-batch
+1. The frozen and independently reviewed
+   [`Probability-Free Convexity Discrimination v0.1 contract`](probability-free-convexity-discrimination-v0.1-contract.md)
+   is the next bounded `BUILD READY` work unit. This checkpoint records only
+   contract readiness; production implementation has not started.
+2. Treat the completed real neutral-structural exercise as proof of lawful
+   activation, not opportunity discovery. The frozen discrimination layer is
+   the only current Browser-research-discrimination direction; do not add
+   ranking, recommendation, hidden maturity prediction, automatic Candidate
+   Generation, or automatic unfreezing of the six screening gaps.
+3. Treat the three-batch
    [`Hunter Discovery Policy v0.1`](hunter-discovery-policy-v0.1.md)
    repeatability exercise as complete bounded positive evidence. Do not add
    scoring, automatic promotion, or new discovery producers merely to improve
    this result.
-3. Keep `morning-note` and `last30days` frozen as completed comparison evidence.
+4. Keep `morning-note` and `last30days` frozen as completed comparison evidence.
    Do not rerun or tune a Skill merely to force candidates.
-4. Preserve the completed
+5. Preserve the completed
    [`Event Intelligence Temporal Semantics v0.2`](event-intelligence-temporal-semantics-v0.2-contract.md)
    implementation and every historical result. Do not assign reassessment
    dates to the three prior structural cases, use governance dates as impact
    ends, or use them as option-maturity anchors.
-5. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
+6. Treat the real Futu-backed partial `DATA_INSUFFICIENT` report as the proven
    Direct Entry minimum slice. Keep costs and liquidity closed rather than
    inferring deliverable, activity, OI, IV, or Greek semantics.
-6. Freeze further BBO timestamp probing and provider/rates/history expansion
+7. Freeze further BBO timestamp probing and provider/rates/history expansion
    unless new official semantics or a future demonstrated product blocker
    justifies a separately bounded work unit.
 
