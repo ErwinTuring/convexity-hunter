@@ -114,6 +114,17 @@ Repository: `ErwinTuring/convexity-hunter`
   `convexity_discrimination.py` has exactly 19; neither adds package-root
   exports. Final validation passed 45 focused tests and 1,370 full-suite tests.
   Exact checkpoint status: `IMPLEMENTED_AND_REVIEWED`.
+  The first complete real NDAQ human checkpoint is recorded in
+  [`probability-free-convexity-discrimination-real-experiment.md`](probability-free-convexity-discrimination-real-experiment.md).
+  One valid-RTH batch covered 164 legs and 82 Long Straddles; all 164 legs had
+  usable asks. The blind human selection changed from the prior neutral
+  Browser-only structure to the 2026-10-16 97.5 Long Straddle, approximately
+  65--70 structures were confidently rejected, and search effort was reported
+  as materially reduced without probability estimation. This establishes
+  `REAL_PRODUCT_VALUE_EVIDENCE = POSITIVE_BOUNDED`: one real NDAQ surface
+  demonstrated human research-space compression. It does not establish
+  repeatability, investment value, recommendation quality, maturity alignment,
+  deliverable completeness, formal liquidity, synchrony, or executability.
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
   proves that every returned provider identity and economic contract field
@@ -297,14 +308,16 @@ authorizes inferred evidence.
 
 ## Next work
 
-1. The implemented and independently BUILD-reviewed
-   [`Probability-Free Convexity Discrimination v0.1 contract`](probability-free-convexity-discrimination-v0.1-contract.md)
-   is ready for one bounded real NDAQ product exercise. That exercise must stop
-   before exact selection and preserve every indicative/conditional authority.
-2. Treat the completed real neutral-structural exercise as proof of lawful
-   activation, not opportunity discovery. The frozen discrimination layer is
-   the only current Browser-research-discrimination direction; do not add
-   ranking, recommendation, hidden maturity prediction, automatic Candidate
+1. Run the pre-registered five-sample campaign one consecutive sample at a time
+   under the lightweight
+   [`Hunter End-to-End Validation Protocol v0.1`](hunter-end-to-end-validation-protocol.md).
+   The next action is Sample 1: one fresh bounded Web Search batch, followed by
+   an explicit human discovery checkpoint. Diagnose the exact terminal layer;
+   do not tune Hunter or option metrics to force a positive result.
+2. Treat the completed NDAQ discrimination experiment as one bounded positive
+   product-value observation, not a reason to optimize the layer or claim
+   investment merit. Preserve every indicative/conditional authority and add
+   no ranking, recommendation, hidden maturity prediction, automatic Candidate
    Generation, or automatic unfreezing of the six screening gaps.
 3. Treat the three-batch
    [`Hunter Discovery Policy v0.1`](hunter-discovery-policy-v0.1.md)
