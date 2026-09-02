@@ -125,7 +125,7 @@ Repository: `ErwinTuring/convexity-hunter`
   demonstrated human research-space compression. It does not establish
   repeatability, investment value, recommendation quality, maturity alignment,
   deliverable completeness, formal liquidity, synchrony, or executability.
-- The pre-registered five-sample Hunter end-to-end validation campaign has two
+- The pre-registered five-sample Hunter end-to-end validation campaign has three
   completed samples. Sample 1 selected the AMZN advertising-auction lawsuit and
   terminated as `EI_NOT_ACCEPTED / missing_temporal_applicability`; its
   sanitized record is
@@ -139,6 +139,18 @@ Repository: `ErwinTuring/convexity-hunter`
   expirations or contracts. Sample 2 therefore terminated as
   `NO_OPTION_RESEARCH_SURFACE`; its sanitized record is
   [`hunter-end-to-end-validation-sample-2.md`](hunter-end-to-end-validation-sample-2.md).
+  Sample 3 selected the previously unknown TMQ Arctic Project permitting
+  schedule and found both the event and direct project-to-underlying connection
+  new and credible. A natural source-backed 2026-09-18 EIS milestone supported
+  reassessment without becoming an impact end or maturity anchor. Event
+  Intelligence returned `ACCEPTED`; the neutral Browser exposed 48 legs and 24
+  Long Straddles across three expirations with `NOT_ESTABLISHED` maturity
+  alignment. One valid-RTH quote batch supplied asks for all 48 legs, and the
+  complete probability-free surface reduced human search effort but produced
+  an explicit `NONE`: all 24 structures were rejected using indicative
+  premium/reference and conditional payoff geometry. Sample 3 therefore
+  terminated as `OPTION_RESEARCH_NONE`; its sanitized record is
+  [`hunter-end-to-end-validation-sample-3.md`](hunter-end-to-end-validation-sample-3.md).
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
   proves that every returned provider identity and economic contract field
@@ -325,10 +337,11 @@ authorizes inferred evidence.
 1. Run the pre-registered five-sample campaign one consecutive sample at a time
    under the lightweight
    [`Hunter End-to-End Validation Protocol v0.1`](hunter-end-to-end-validation-protocol.md).
-   Sample 1 is complete with terminal outcome `EI_NOT_ACCEPTED` and exact reason
-   `missing_temporal_applicability`. The next campaign action is Sample 2 using
-   a new unused seven-calendar-day window and the unchanged policy, followed by
-   the same explicit human discovery checkpoint. Do not tune Hunter or option
+   Samples 1--3 are complete with respective terminal outcomes
+   `EI_NOT_ACCEPTED`, `NO_OPTION_RESEARCH_SURFACE`, and
+   `OPTION_RESEARCH_NONE`. The next campaign action is Sample 4 using a new
+   unused seven-calendar-day window and the unchanged policy, followed by the
+   same explicit human discovery checkpoint. Do not tune Hunter or option
    metrics to force a positive result.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
    product-value observation, not a reason to optimize the layer or claim
