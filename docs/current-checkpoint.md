@@ -125,8 +125,8 @@ Repository: `ErwinTuring/convexity-hunter`
   demonstrated human research-space compression. It does not establish
   repeatability, investment value, recommendation quality, maturity alignment,
   deliverable completeness, formal liquidity, synchrony, or executability.
-- The pre-registered five-sample Hunter end-to-end validation campaign has four
-  completed samples. Sample 1 selected the AMZN advertising-auction lawsuit and
+- The pre-registered five-sample Hunter end-to-end validation campaign is
+  complete. Sample 1 selected the AMZN advertising-auction lawsuit and
   terminated as `EI_NOT_ACCEPTED / missing_temporal_applicability`; its
   sanitized record is
   [`hunter-end-to-end-validation-sample-1.md`](hunter-end-to-end-validation-sample-1.md).
@@ -164,6 +164,19 @@ Repository: `ErwinTuring/convexity-hunter`
   preference. Sample 4 therefore terminated as
   `OPTION_RESEARCH_PREFERENCE_FORMED`; its sanitized record is
   [`hunter-end-to-end-validation-sample-4.md`](hunter-end-to-end-validation-sample-4.md).
+  Sample 5 selected the previously unknown IPW convertible-facility draw and
+  found both the event and direct financing-survival connection new and
+  credible. A natural source-backed 2026-10-01 first-payment milestone
+  supported reassessment without becoming an impact end or maturity anchor.
+  Event Intelligence returned `ACCEPTED`, but Futu returned zero `US.IPW`
+  expirations or contracts inside the exact neutral bounds. Sample 5 therefore
+  terminated as `NO_OPTION_RESEARCH_SURFACE`; its sanitized record is
+  [`hunter-end-to-end-validation-sample-5.md`](hunter-end-to-end-validation-sample-5.md).
+  The complete initial terminal distribution is one `EI_NOT_ACCEPTED`, two
+  `NO_OPTION_RESEARCH_SURFACE`, one `OPTION_RESEARCH_NONE`, and one
+  `OPTION_RESEARCH_PREFERENCE_FORMED`, with zero operationally inconclusive
+  samples. The bounded synthesis is
+  [`hunter-end-to-end-validation-campaign-synthesis.md`](hunter-end-to-end-validation-campaign-synthesis.md).
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
   proves that every returned provider identity and economic contract field
@@ -347,17 +360,16 @@ authorizes inferred evidence.
 
 ## Next work
 
-1. Run the pre-registered five-sample campaign one consecutive sample at a time
-   under the lightweight
-   [`Hunter End-to-End Validation Protocol v0.1`](hunter-end-to-end-validation-protocol.md).
-   Samples 1--4 are complete with respective terminal outcomes
-   `EI_NOT_ACCEPTED`, `NO_OPTION_RESEARCH_SURFACE`, and
-   `OPTION_RESEARCH_NONE`, and `OPTION_RESEARCH_PREFERENCE_FORMED`. The next
-   campaign action is the fifth and final pre-registered sample using a new
-   unused seven-calendar-day window and the unchanged policy, followed by the
-   same explicit human discovery checkpoint. After Sample 5 reaches one exact
-   terminal outcome, stop for campaign synthesis before any expansion toward
-   ten. Do not tune Hunter or option metrics to force a positive result.
+1. Treat the initial five-sample campaign and its
+   [`bounded synthesis`](hunter-end-to-end-validation-campaign-synthesis.md)
+   as complete. It produced five of five explicit human discovery
+   continuations, four Event Intelligence acceptances, two legitimate option
+   surfaces, one geometry-supported `NONE`, one geometry-supported research
+   preference, and no operationally inconclusive sample. The smallest
+   recommended next action is a separately declared five-sample extension to
+   ten under the unchanged protocol, discovery policy, no-option-feedback
+   rule, and human checkpoints. Do not tune Hunter or option metrics to improve
+   observed rates, and stop again for synthesis after five added samples.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
    product-value observation, not a reason to optimize the layer or claim
    investment merit. Preserve every indicative/conditional authority and add
