@@ -368,8 +368,11 @@ authorizes inferred evidence.
    preference, and no operationally inconclusive sample. The smallest
    recommended next action is a separately declared five-sample extension to
    ten under the unchanged protocol, discovery policy, no-option-feedback
-   rule, and human checkpoints. Do not tune Hunter or option metrics to improve
-   observed rates, and stop again for synthesis after five added samples.
+   rule, and human checkpoints. That extension is now frozen in
+   [`hunter-end-to-end-validation-extension.md`](hunter-end-to-end-validation-extension.md).
+   Run Samples 6--10 consecutively, do not tune Hunter or option metrics to
+   improve observed rates, and stop again for synthesis after five added
+   samples.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
    product-value observation, not a reason to optimize the layer or claim
    investment merit. Preserve every indicative/conditional authority and add
