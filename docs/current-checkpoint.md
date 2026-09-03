@@ -177,6 +177,26 @@ Repository: `ErwinTuring/convexity-hunter`
   `OPTION_RESEARCH_PREFERENCE_FORMED`, with zero operationally inconclusive
   samples. The bounded synthesis is
   [`hunter-end-to-end-validation-campaign-synthesis.md`](hunter-end-to-end-validation-campaign-synthesis.md).
+- The separately frozen five-sample extension is in progress under the exact
+  unchanged protocol. Sample 6 selected the previously unknown Rocket
+  Lab/Iridium cash-and-stock merger and found both the event and the direct
+  RKLB transaction connection new and credible. Supplemental SEC verification
+  supplied the source-backed 2027-06-28 initial outside date as a natural
+  reassessment milestone without converting it into an expected impact end or
+  maturity anchor. Event Intelligence returned `ACCEPTED`; the human retained
+  the RKLB acquirer-side path, the neutral Browser exposed 296 eligible legs
+  across three expirations, and discrimination mapped them exhaustively to 148
+  Long Straddles with `NOT_ESTABLISHED` maturity alignment. One valid-RTH quote
+  batch supplied asks for all 296 legs. The
+  probability-free surface reduced human search effort, approximately 142 of
+  148 structures were confidently rejected, and the human selected the
+  2026-10-16 strike-65 Long Straddle based on equal surface-low
+  premium/reference versus strike 60 but more balanced conditional 1x/2x
+  geometry. Sample 6 therefore terminated as
+  `OPTION_RESEARCH_PREFERENCE_FORMED`; its sanitized record is
+  [`hunter-end-to-end-validation-sample-6.md`](hunter-end-to-end-validation-sample-6.md).
+  The extension now has one of five samples complete; no aggregate inference
+  is made before Sample 10.
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
   proves that every returned provider identity and economic contract field
@@ -370,7 +390,7 @@ authorizes inferred evidence.
    ten under the unchanged protocol, discovery policy, no-option-feedback
    rule, and human checkpoints. That extension is now frozen in
    [`hunter-end-to-end-validation-extension.md`](hunter-end-to-end-validation-extension.md).
-   Run Samples 6--10 consecutively, do not tune Hunter or option metrics to
+   Sample 6 is complete. Run Samples 7--10 consecutively, do not tune Hunter or option metrics to
    improve observed rates, and stop again for synthesis after five added
    samples.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
