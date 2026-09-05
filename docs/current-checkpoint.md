@@ -195,7 +195,28 @@ Repository: `ErwinTuring/convexity-hunter`
   geometry. Sample 6 therefore terminated as
   `OPTION_RESEARCH_PREFERENCE_FORMED`; its sanitized record is
   [`hunter-end-to-end-validation-sample-6.md`](hunter-end-to-end-validation-sample-6.md).
-  The extension now has one of five samples complete; no aggregate inference
+  Sample 7 selected the previously unknown ClearPoint/AMT-130 delivery-path
+  hypothesis, found both the event and second-order connection new, and rated
+  the transmission mixed. Primary materials established historical AMT-130
+  trial use of ClearPoint navigation and SmartFlow cannulae plus current
+  partner-program identification, but did not establish approved-label
+  requirements, exclusivity, future per-administration use, procedure
+  economics, volume, or enterprise materiality. A source-backed 2026-09-30
+  four-year-data milestone supported natural reassessment without becoming an
+  impact end or maturity anchor. Event Intelligence returned `ACCEPTED`; the
+  neutral Browser exposed 74 legs across three expirations and discrimination
+  mapped them exhaustively to 37 Long Straddles with `NOT_ESTABLISHED` maturity
+  alignment. One valid-RTH quote batch supplied asks for all 74 legs. The
+  probability-free surface reduced human search effort, approximately 33 of 37
+  structures were confidently rejected, and the human selected the 2026-10-16
+  strike-15 Long Straddle because its 1x/2x conditional hurdles were more
+  bidirectionally balanced than strike 12.5 despite a slightly higher
+  premium/reference. Its approximately 37.76% indicative relative spread
+  remains a negative warning and no formal liquidity or executability finding.
+  Sample 7 therefore terminated as `OPTION_RESEARCH_PREFERENCE_FORMED`; its
+  sanitized record is
+  [`hunter-end-to-end-validation-sample-7.md`](hunter-end-to-end-validation-sample-7.md).
+  The extension now has two of five samples complete; no aggregate inference
   is made before Sample 10.
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
@@ -390,9 +411,9 @@ authorizes inferred evidence.
    ten under the unchanged protocol, discovery policy, no-option-feedback
    rule, and human checkpoints. That extension is now frozen in
    [`hunter-end-to-end-validation-extension.md`](hunter-end-to-end-validation-extension.md).
-   Sample 6 is complete. Run Samples 7--10 consecutively, do not tune Hunter or option metrics to
-   improve observed rates, and stop again for synthesis after five added
-   samples.
+   Samples 6 and 7 are complete. Run Samples 8--10 consecutively, do not tune
+   Hunter or option metrics to improve observed rates, and stop again for
+   synthesis after five added samples.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
    product-value observation, not a reason to optimize the layer or claim
    investment merit. Preserve every indicative/conditional authority and add
