@@ -14,6 +14,13 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current authoritative product state
 
+[Sample 8](hunter-end-to-end-validation-sample-8.md) completed with
+`OPTION_RESEARCH_NONE`: HUMA reached accepted Event Intelligence and 23 real
+neutral Long Straddle comparisons; the human rejected all 23 through
+deterministic geometry and reported reduced search effort. Eight of ten
+campaign samples are complete. Continue Samples 9--10 under the frozen
+extension, then synthesize; the six Engine gaps remain frozen.
+
 Git is the only authority for current code state. Every fresh thread must run
 `git fetch origin main`, `git rev-parse HEAD`, and
 `git status --short --branch`; this document intentionally stores no static

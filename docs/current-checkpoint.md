@@ -216,7 +216,16 @@ Repository: `ErwinTuring/convexity-hunter`
   Sample 7 therefore terminated as `OPTION_RESEARCH_PREFERENCE_FORMED`; its
   sanitized record is
   [`hunter-end-to-end-validation-sample-7.md`](hunter-end-to-end-validation-sample-7.md).
-  The extension now has two of five samples complete; no aggregate inference
+  Sample 8 selected HUMA's V012 interim-result/financing combination; both
+  event and connection were new and the human rated transmission credible.
+  Event Intelligence accepted with a source-backed December 31 reassessment
+  and no expected impact end. One RTH batch supported 23 neutral Long
+  Straddles; the human rejected all 23 using premium/reference and 1x/2x
+  geometry, with reduced search effort and no need for probability or spread.
+  The terminal is `OPTION_RESEARCH_NONE`, useful negative compression within
+  the indicative authority boundaries. See
+  [Sample 8](hunter-end-to-end-validation-sample-8.md).
+  The extension now has three of five samples complete; no aggregate inference
   is made before Sample 10.
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
@@ -411,7 +420,7 @@ authorizes inferred evidence.
    ten under the unchanged protocol, discovery policy, no-option-feedback
    rule, and human checkpoints. That extension is now frozen in
    [`hunter-end-to-end-validation-extension.md`](hunter-end-to-end-validation-extension.md).
-   Samples 6 and 7 are complete. Run Samples 8--10 consecutively, do not tune
+   Samples 6--8 are complete. Run Samples 9--10 consecutively, do not tune
    Hunter or option metrics to improve observed rates, and stop again for
    synthesis after five added samples.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
