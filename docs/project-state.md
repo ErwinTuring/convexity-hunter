@@ -14,13 +14,14 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current authoritative product state
 
-[Sample 9](hunter-end-to-end-validation-sample-9.md) completed with
-`NO_OPTION_RESEARCH_SURFACE`: SUNE reached accepted Event Intelligence, but
-the successful Futu chain query returned no expirations or Browser rows.
-Human discovery interest remains positive; instrumentability attrition is
-not a discovery or geometry rejection. Nine of ten campaign samples are
-complete. Run Sample 10 under the frozen extension, then synthesize; the
-six Engine gaps remain frozen.
+[Sample 10](hunter-end-to-end-validation-sample-10.md) completed with an IREN
+geometry-supported research preference. The
+[ten-sample synthesis](hunter-end-to-end-validation-ten-sample-synthesis.md)
+closes the campaign: 10 discovery continuations, 9 EI acceptances, 6 surfaces,
+4 preferences and 2 geometry-supported NONE outcomes. Stop for product
+synthesis; no Sample 11 or BUILD is authorized by these results. A compact
+presentation-only preflight is recommended, not implemented. The six Engine
+gaps remain frozen.
 
 Git is the only authority for current code state. Every fresh thread must run
 `git fetch origin main`, `git rev-parse HEAD`, and

@@ -230,9 +230,11 @@ Repository: `ErwinTuring/convexity-hunter`
   the human. EI accepted with no impact end and a source-backed Q4-end
   reassessment. A successful Futu chain query returned zero expirations and
   Browser rows: `NO_OPTION_RESEARCH_SURFACE`, not discovery rejection or
-  option-geometry rejection. The extension now has four of five samples
-  complete; no aggregate inference
-  is made before Sample 10.
+  option-geometry rejection. [Sample 10](hunter-end-to-end-validation-sample-10.md)
+  completed with IREN October 16 strike 47 Long Straddle research preference
+  after 190 comparisons, with approximately 175 rejected by the human.
+  The [ten-sample synthesis](hunter-end-to-end-validation-ten-sample-synthesis.md)
+  closes the extension. Stop for product synthesis; no automatic next sample.
 - The separate selection-verification bridge revalidates one explicit Browser
   selection, invokes the existing exact Futu verifier once per selected leg,
   proves that every returned provider identity and economic contract field
@@ -421,14 +423,14 @@ authorizes inferred evidence.
    as complete. It produced five of five explicit human discovery
    continuations, four Event Intelligence acceptances, two legitimate option
    surfaces, one geometry-supported `NONE`, one geometry-supported research
-   preference, and no operationally inconclusive sample. The smallest
-   recommended next action is a separately declared five-sample extension to
-   ten under the unchanged protocol, discovery policy, no-option-feedback
-   rule, and human checkpoints. That extension is now frozen in
+   preference, and no operationally inconclusive sample. Its recommended
+   extension to ten preserved the protocol, discovery policy,
+   no-option-feedback rule, and human checkpoints, as frozen in
    [`hunter-end-to-end-validation-extension.md`](hunter-end-to-end-validation-extension.md).
-   Samples 6--9 are complete. Run Sample 10, do not tune
-   Hunter or option metrics to improve observed rates, and stop again for
-   synthesis after five added samples.
+   Samples 6--10 and the
+   [ten-sample synthesis](hunter-end-to-end-validation-ten-sample-synthesis.md)
+   are now complete. Stop for product review. The recommended next bounded
+   action is presentation-only preflight, not BUILD or another campaign.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
    product-value observation, not a reason to optimize the layer or claim
    investment merit. Preserve every indicative/conditional authority and add
