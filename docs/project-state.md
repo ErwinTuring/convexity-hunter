@@ -14,12 +14,13 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 
 ## Current authoritative product state
 
-[Sample 8](hunter-end-to-end-validation-sample-8.md) completed with
-`OPTION_RESEARCH_NONE`: HUMA reached accepted Event Intelligence and 23 real
-neutral Long Straddle comparisons; the human rejected all 23 through
-deterministic geometry and reported reduced search effort. Eight of ten
-campaign samples are complete. Continue Samples 9--10 under the frozen
-extension, then synthesize; the six Engine gaps remain frozen.
+[Sample 9](hunter-end-to-end-validation-sample-9.md) completed with
+`NO_OPTION_RESEARCH_SURFACE`: SUNE reached accepted Event Intelligence, but
+the successful Futu chain query returned no expirations or Browser rows.
+Human discovery interest remains positive; instrumentability attrition is
+not a discovery or geometry rejection. Nine of ten campaign samples are
+complete. Run Sample 10 under the frozen extension, then synthesize; the
+six Engine gaps remain frozen.
 
 Git is the only authority for current code state. Every fresh thread must run
 `git fetch origin main`, `git rev-parse HEAD`, and
