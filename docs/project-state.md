@@ -23,8 +23,38 @@ compact presentation is now implemented in `convexity_presentation.py`:
 `render_convexity_comparison_markdown(result)` emits every comparison in retained
 order, with first-pass metrics and a complete exact JSON audit appendix.
 No sorting, ranking, recommendation or filtering was added; discrimination and
-Engine semantics are unchanged. Event Entry is the next separate product work
-unit, not part of this implementation. The six Engine gaps remain frozen.
+Engine semantics are unchanged. Event Entry is now implemented as the third
+entry mode. The six Engine gaps remain frozen.
+
+### Entry modes and Event Entry boundary
+
+- Autonomous Discovery: discovered EventCandidate → human selection → existing EI.
+- Event Entry: user event/news/thesis + separately grounded submission → existing EI.
+- Direct Entry: user exact option structure → existing exact verification/research.
+
+`event_entry.prepare_event_entry_research` accepts `UserEventInput(description)`;
+optional `provisional_symbols`, `source_locators` and `event_date` are unverified
+caller hints, never copied into source facts. The caller supplies the existing
+`EventIntelligenceSubmission`, an explicit `grounding_methodology` describing
+how retained evidence supports/refutes the request, `evaluation_date`, and an
+explicit `selected_hypothesis` retained by identity. The service does not search
+or independently authenticate source truth or the prose-to-evidence relationship;
+the caller remains responsible for that grounding. Existing EI assessment is
+always applied before an option request can be created.
+
+Missing submission/grounding/selection returns a blocked context; EI rejection
+retains its assessment/issues. Existing invalid-input, stale and maturity errors
+propagate unchanged. No date, reassessment or hypothesis is synthesized. Both
+existing maturity authorities retain their exact rules, including explicit neutral
+structural research and NOT_ESTABLISHED alignment.
+
+`EventEntryResearchContext.entry_origin = EVENT_ENTRY` is sidecar provenance, not
+numerical evidence; callers retain it alongside downstream artifacts. Its accepted
+`option_request` is the unchanged `OptionChainDiscoveryRequest`, usable by existing
+Futu discovery → Browser → discrimination → compact/full-audit presentation.
+The service stops at this handoff; it performs no provider calls, EventCandidate
+selection, exact option selection, Candidate Assembly or Direct Entry execution.
+No live Event Entry experiment has been run in this work unit.
 
 Git is the only authority for current code state. Every fresh thread must run
 `git fetch origin main`, `git rev-parse HEAD`, and

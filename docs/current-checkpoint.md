@@ -434,8 +434,13 @@ authorizes inferred evidence.
    retains all comparisons in neutral order, reduces primary columns and
    provides a complete exact audit appendix (including non-comparison rows).
    No calculation, authority, ranking, selection or Engine change was made.
-   Event Entry is the next separate product capability; do not start it as
-   part of this completed work unit or automatically extend the campaign.
+   Event Entry is now implemented separately in `event_entry.py`: user prose
+   and unverified hints remain distinct from caller-grounded EI evidence;
+   existing assessment and explicit hypothesis selection lead to the unchanged
+   option request, with EVENT_ENTRY origin retained in sidecar context.
+   No acceptance, maturity, provider, discrimination or Engine rules changed.
+   This implementation stops before any live Event Entry experiment; do not
+   automatically extend the campaign. See [current product state](project-state.md).
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
    product-value observation, not a reason to optimize the layer or claim
    investment merit. Preserve every indicative/conditional authority and add
