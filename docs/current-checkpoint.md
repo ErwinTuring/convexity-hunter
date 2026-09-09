@@ -429,8 +429,13 @@ authorizes inferred evidence.
    [`hunter-end-to-end-validation-extension.md`](hunter-end-to-end-validation-extension.md).
    Samples 6--10 and the
    [ten-sample synthesis](hunter-end-to-end-validation-ten-sample-synthesis.md)
-   are now complete. Stop for product review. The recommended next bounded
-   action is presentation-only preflight, not BUILD or another campaign.
+   are now complete. The separately authorized compact presentation BUILD is
+   complete: `convexity_presentation.render_convexity_comparison_markdown`
+   retains all comparisons in neutral order, reduces primary columns and
+   provides a complete exact audit appendix (including non-comparison rows).
+   No calculation, authority, ranking, selection or Engine change was made.
+   Event Entry is the next separate product capability; do not start it as
+   part of this completed work unit or automatically extend the campaign.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
    product-value observation, not a reason to optimize the layer or claim
    investment merit. Preserve every indicative/conditional authority and add

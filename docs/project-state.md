@@ -18,10 +18,13 @@ prove opportunities, recommend trades, monitor positions, or execute trades.
 geometry-supported research preference. The
 [ten-sample synthesis](hunter-end-to-end-validation-ten-sample-synthesis.md)
 closes the campaign: 10 discovery continuations, 9 EI acceptances, 6 surfaces,
-4 preferences and 2 geometry-supported NONE outcomes. Stop for product
-synthesis; no Sample 11 or BUILD is authorized by these results. A compact
-presentation-only preflight is recommended, not implemented. The six Engine
-gaps remain frozen.
+4 preferences and 2 geometry-supported NONE outcomes. The separately authorized
+compact presentation is now implemented in `convexity_presentation.py`:
+`render_convexity_comparison_markdown(result)` emits every comparison in retained
+order, with first-pass metrics and a complete exact JSON audit appendix.
+No sorting, ranking, recommendation or filtering was added; discrimination and
+Engine semantics are unchanged. Event Entry is the next separate product work
+unit, not part of this implementation. The six Engine gaps remain frozen.
 
 Git is the only authority for current code state. Every fresh thread must run
 `git fetch origin main`, `git rev-parse HEAD`, and
