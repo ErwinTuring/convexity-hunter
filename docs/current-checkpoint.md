@@ -439,8 +439,14 @@ authorizes inferred evidence.
    existing assessment and explicit hypothesis selection lead to the unchanged
    option request, with EVENT_ENTRY origin retained in sidecar context.
    No acceptance, maturity, provider, discrimination or Engine rules changed.
-   This implementation stops before any live Event Entry experiment; do not
-   automatically extend the campaign. See [current product state](project-state.md).
+   `event_entry_preparation.py` now adds retained grounding and 0..N provisional
+   hypothesis preparation, explicit human selection/NONE and identity-preserving
+   translation into that existing service. No automatic search, temporal
+   completion or realized-economic-impact prerequisite is added.
+   The first real exercise stopped before EI with no testable underlying
+   hypothesis selected; it was not system INCOMPLETE and did not test an option
+   surface. This BUILD starts no new experiment and does not extend the campaign.
+   See [current product state](project-state.md) for the exact boundary and record.
 2. Treat the completed NDAQ discrimination experiment as one bounded positive
    product-value observation, not a reason to optimize the layer or claim
    investment merit. Preserve every indicative/conditional authority and add

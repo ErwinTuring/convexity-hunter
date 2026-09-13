@@ -29,7 +29,8 @@ entry mode. The six Engine gaps remain frozen.
 ### Entry modes and Event Entry boundary
 
 - Autonomous Discovery: discovered EventCandidate → human selection → existing EI.
-- Event Entry: user event/news/thesis + separately grounded submission → existing EI.
+- Event Entry: user event → retained grounding/hypothesis preparation → explicit
+  human hypothesis selection or NONE → existing EI → existing option research.
 - Direct Entry: user exact option structure → existing exact verification/research.
 
 `event_entry.prepare_event_entry_research` accepts `UserEventInput(description)`;
@@ -54,7 +55,50 @@ numerical evidence; callers retain it alongside downstream artifacts. Its accept
 Futu discovery → Browser → discrimination → compact/full-audit presentation.
 The service stops at this handoff; it performs no provider calls, EventCandidate
 selection, exact option selection, Candidate Assembly or Direct Entry execution.
-No live Event Entry experiment has been run in this work unit.
+The new `event_entry_preparation` boundary reuses existing sources, statements
+and `EventUnderlyingHypothesis` objects; external research supplies them, not a
+new search service. `prepare_event_entry_hypotheses` validates 0..N drafts in
+retained navigation order. Each draft needs a provisional underlying, concrete
+impact/distribution interpretation with a source-fact dependency, contradiction
+review, uncertainties and observable falsification conditions. Realized revenue,
+orders, capex or price effects are not prerequisites. Association alone does not
+generate a hypothesis, and the user is not asked for a trade direction.
+
+`PreparedEventStatement` preserves the existing fact/interpretation kind. An
+attributed allegation uses exact text `claimant + " alleged: " + claim`; it
+reports speech, not the truth of the claim. Source fidelity, complete claim
+labeling and the substantive specificity of mechanisms remain external research
+responsibilities: deterministic validation cannot read or adjudicate prose.
+Explicit `EventCausalLink` assertions of realized causation require source-bound
+occurrence dates and both facts in the interpretation's dependencies; an effect
+predating its cause is rejected. Equal/later dates only pass the ordering check,
+not prove causation. A required chronology-review explanation covers the caller's
+review; omitted causal assertions cannot be detected by a language-free validator.
+Future conditional mechanisms need no invented effect date. Observation dates
+and falsification text never become reassessment or maturity authority.
+
+`select_event_entry_hypothesis(preparation, hypothesis_id=...)` has no default,
+even for one draft. `None` records NONE; translation then stops before EI.
+`translate_event_entry_selection` constructs the existing submission with the
+exact selected hypothesis and retained source/statement identities. Event metadata
+and dates are explicit caller arguments (including None); no field is completed
+for acceptance. Evidence/draft changes require a new preparation and human choice.
+`translation.prepare_research(evaluation_date=..., maturity_authority=...)` calls
+the existing Event Entry service and EI assessment. Keep the immutable translation
+alongside its returned context to retain the complete EVENT_ENTRY lineage; no
+Engine metadata, ranking, automatic promotion or provider operations are added.
+
+First real Event Entry exercise (Coxon resignation/AI-safety controversy):
+**PRE_EI_RESEARCH_STOPPED / NO_TESTABLE_UNDERLYING_HYPOTHESIS** is a descriptive
+research-stage outcome, not a production status enum. Reporting supported the
+resignation/criticism as attributed claims. Chronology showed the related policy
+initiative and some company safety activity predated the event. Commercial links
+were identified, but no sufficiently grounded listed-underlying hypothesis was
+selected. Formal EI was not run, Futu was not called, no option surface was shown
+and no structure was selected. This is not system EI `INCOMPLETE`, does not
+evaluate the downstream comparison layer, and is not classified as Event Entry
+success or failure. This BUILD runs no new live experiment; Samples 1--10 and
+the six Engine gaps remain untouched.
 
 Git is the only authority for current code state. Every fresh thread must run
 `git fetch origin main`, `git rev-parse HEAD`, and
