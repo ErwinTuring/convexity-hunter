@@ -154,6 +154,36 @@ class PreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'cyclic'):
             self.prepare(statements=(PreparedEventStatement(a), PreparedEventStatement(b)), hypotheses=())
 
+    def unordered(self):
+        extra = replace(self.s.sources[0], source_id='a-extra')
+        return self.prepare(sources=self.s.sources + (extra,),
+            statements=tuple(PreparedEventStatement(s) for s in reversed(self.s.statements)))
+
+    def test_unordered_evidence_retains_identity_through_ei(self):
+        p = self.unordered()
+        t = self.translate(self.choose(p))
+        self.assertEqual([s.source_id for s in t.submission.sources], ['a-extra', 'source-1'])
+        self.assertIs(t.submission.sources[1], p.sources[0])
+        self.assertIs(t.submission.statements[1], p.statements[0].statement)
+        self.assertEqual([s.source_id for s in p.sources], ['source-1', 'a-extra'])
+        context = t.prepare_research(evaluation_date=dt.date(2030,1,3), maturity_authority=M.HYPOTHESIS_ALIGNED)
+        self.assertIs(context.assessment.submission, t.submission)
+        self.assertIsNotNone(context.option_request)
+
+    def test_membership_changes_rejected(self):
+        t = self.translate(self.choose(self.unordered()))
+        with self.assertRaisesRegex(ValueError, 'membership'):
+            EventEntryTranslation(t.selection, replace(t.submission, sources=self.s.sources))
+        extra = replace(self.s.sources[0], source_id='new')
+        with self.assertRaisesRegex(ValueError, 'membership'):
+            EventEntryTranslation(t.selection, replace(t.submission, sources=t.submission.sources + (extra,)))
+
+    def test_statement_clone_rejected_after_canonical_sort(self):
+        t = self.translate(self.choose(self.unordered()))
+        with self.assertRaisesRegex(ValueError, 'identity'):
+            EventEntryTranslation(t.selection, replace(t.submission,
+                statements=(replace(t.submission.statements[0]),) + t.submission.statements[1:]))
+
 
 if __name__ == '__main__':
     unittest.main()

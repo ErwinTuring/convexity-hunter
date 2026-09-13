@@ -212,10 +212,16 @@ class EventEntryTranslation:
         h = self.selection.hypothesis
         if h is None or len(self.submission.hypotheses) != 1 or self.submission.hypotheses[0] is not h:
             raise ValueError("translation requires exact selected hypothesis")
-        for retained, supplied in ((p.sources, self.submission.sources),
-                                   (tuple(s.statement for s in p.statements), self.submission.statements)):
-            if len(retained) != len(supplied) or any(a is not b for a, b in zip(retained, supplied)):
-                raise ValueError("translation must retain evidence by identity and order")
+        for retained, supplied, key in (
+            (p.sources, self.submission.sources, "source_id"),
+            (tuple(s.statement for s in p.statements), self.submission.statements, "statement_id"),
+        ):
+            # EI canonicalizes record order by ID; provenance binds objects, not positions.
+            expected = {getattr(record, key): record for record in retained}
+            actual = {getattr(record, key): record for record in supplied}
+            if (expected.keys() != actual.keys()
+                    or any(actual[identifier] is not record for identifier, record in expected.items())):
+                raise ValueError("translation must retain exact evidence membership and identity")
 
     def prepare_research(self, *, evaluation_date, maturity_authority):
         """Return existing context; keep this translation alongside it for lineage."""

@@ -80,7 +80,12 @@ and falsification text never become reassessment or maturity authority.
 `select_event_entry_hypothesis(preparation, hypothesis_id=...)` has no default,
 even for one draft. `None` records NONE; translation then stops before EI.
 `translate_event_entry_selection` constructs the existing submission with the
-exact selected hypothesis and retained source/statement identities. Event metadata
+exact selected hypothesis and retained source/statement identities. EI's existing
+ID-sorted evidence order is allowed; exact membership and per-ID object identity
+are required, while preparation navigation order remains unchanged. The first
+attempt to translate rerun hypothesis A exposed and corrected an adapter-only
+positional-order defect; that attempt stopped before EI, not at an evidence rejection.
+Event metadata
 and dates are explicit caller arguments (including None); no field is completed
 for acceptance. Evidence/draft changes require a new preparation and human choice.
 `translation.prepare_research(evaluation_date=..., maturity_authority=...)` calls
