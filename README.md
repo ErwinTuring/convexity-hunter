@@ -4,12 +4,12 @@ Convexity Hunter is an investigation assistant for identifying concrete Long
 Option Position structures that may deserve further research as potentially
 underpriced positive-convexity opportunities.
 
-It supports two product directions: discovery from world events through
-Event Intelligence and real option-chain candidate generation, and direct user
-entry of a structure to investigate. Both paths converge on one verified exact
-Long Call, Long Put, or Long Straddle selected by the user. The system
-organizes auditable evidence; it does not prove opportunities, recommend or
-execute trades, or monitor positions.
+It supports three product entry modes: Autonomous Discovery from a retained
+EventCandidate batch, Event Entry from caller-prepared grounding and
+hypotheses, and Direct Entry of an exact structure. All three modes converge
+on one verified exact Long Call, Long Put, or Long Straddle selected by the
+user. The system organizes auditable evidence; it does not prove opportunities,
+recommend or execute trades, or monitor positions.
 
 ## Current status
 
@@ -29,10 +29,12 @@ are complete. Deterministic report rendering may optionally receive a verified
 plan result and display it in the active Chinese report. The existing English
 renderer remains compatibility-only.
 
-Active discovery, Skill integration, real option-chain candidate generation,
-production candidate assembly, non-expiration pricing production,
-and the complete application flow remain future work. Monitoring, alerts,
-scheduling, recommendations, and execution remain absent.
+Automatic Candidate Generation, live RTH evidence acquisition, non-expiration
+pricing production, and a UI remain future work. The bounded offline
+`ResearchCase` composition now joins the three entry modes, preserves their
+existing evidence lineage, and converges on the existing reviewed-research
+service. Monitoring, alerts, scheduling, recommendations, and execution remain
+absent.
 
 The active product output is Chinese only. An English renderer remains
 implemented for compatibility and possible future reuse, but English is not
@@ -44,6 +46,7 @@ part of the active product flow.
 - [MVP specification](docs/mvp-spec.md)
 - [Risk-assessment contracts](docs/risk-assessment-contracts.md)
 - [Project state](docs/project-state.md)
+- [ResearchCase application contract](docs/research-case-application-contract.md)
 - [Context governance](docs/context-governance.md)
 - [Current checkpoint](docs/current-checkpoint.md)
 - [Architecture decisions](docs/decisions/README.md)

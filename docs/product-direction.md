@@ -42,7 +42,7 @@ structures, exotics, 0DTE, Weeklies, portfolio optimization, automatic
 execution, probability forecasts, trade recommendations, and calculation of
 an optimal contract count.
 
-## 3. Two entry paths
+## 3. Three entry modes
 
 Discovery entry:
 
@@ -69,6 +69,28 @@ selection establish neither research qualification nor investment merit.
 Automatic mode-based generation remains deferred until authoritative ATM or
 Delta semantics are available.
 
+Event Entry:
+
+```text
+user event
+    -> caller-prepared grounding and hypothesis drafts
+    -> human explicitly selects one hypothesis or NONE
+    -> existing Event Intelligence assessment
+    -> existing option research request
+    -> Exact Contract Browser and explicit structure selection
+    -> Direct Entry exact verification and research-evidence gates
+    -> Convexity Engine research
+```
+
+The bounded offline `ResearchCase` application composition retains the
+preparation, selected hypothesis, request, Browser, discrimination result, and
+verification sidecars by identity. Positive candidate selection and raw Event
+Entry can pause before submission or preparation; exact verification accepts
+only a typed result already acquired outside the application. It does not
+search for events, make a selection, or make a provider call. Its full contract
+and gap matrix are in
+[`research-case-application-contract.md`](research-case-application-contract.md).
+
 Direct user entry:
 
 ```text
@@ -83,7 +105,7 @@ bypasses real contract existence, option-chain verification, supported
 structure grammar, DTE policy, quote and reference-data validation,
 market-data provenance, or calculation lineage. An incomplete description may
 be resolved against the actual chain, but the system must never invent a
-contract. Both paths converge on one verified exact `OptionStructure`.
+contract. All three modes converge on one verified exact `OptionStructure`.
 
 ## 4. Dual-engine architecture
 

@@ -387,6 +387,62 @@ the maturity disclosure intact. This validates lawful structural-narrative
 activation, not convexity-opportunity discovery; the user assessed Browser
 usefulness as mixed.
 
+## Current offline ResearchCase application boundary
+
+The bounded immutable in-memory `ResearchCase` composition is implemented in
+[`research-case-application-contract.md`](research-case-application-contract.md)
+for Autonomous Discovery, Event Entry, and Direct Entry. Positive Autonomous
+Discovery candidate selection can be recorded before any submission or EI
+assessment; `attach_discovery_submission` attaches the caller's retained
+submission separately. Raw Event Entry can likewise wait for a retained
+`UserEventInput` to receive `EventEntryPreparation`. Candidate, hypothesis,
+and exact-structure choices remain explicit, including human `NONE`, and a
+stopped or completed case cannot advance through normal continuation.
+
+Browser and discrimination evidence are offline typed attachments. Empty
+Browser rows and zero comparisons terminate at `NO_OPTION_RESEARCH_SURFACE`,
+which is distinct from discovery rejection and from a human structure `NONE`.
+The app accepts only a typed
+`FutuExactContractSelectionVerification`; it has no provider-context
+convenience branch and makes no provider call. Any future authorized RTH or
+other provider acquisition must create that typed verification outside this
+application boundary. Neutral structural research retains
+`NOT_ESTABLISHED` maturity alignment by exact request identity.
+
+Once the one existing reviewed research service returns, application
+execution is `COMPLETED` even when its independent `ScreeningDecision` is
+`DATA_INSUFFICIENT`. Screening reasons, reviewed-artifact omissions, and the
+Chinese report remain retained and rendered. This sprint added no live market
+evidence and makes no investment claim.
+
+## Current six-gap dependency/blocker split
+
+All six reviewed-result attachment paths are A and now wired. No B completion
+from authentic real inputs is claimed. C applies to future RTH acquisition;
+external authority is a separate dependency which RTH alone cannot resolve.
+
+| Gap | Classification | Current blocker and existing dependency |
+| --- | --- | --- |
+| Costs | A | The existing cost transformation and reviewed-service path are wired; authoritative contract, quote, and cost inputs remain external. |
+| Liquidity | A | The existing liquidity path is wired; authoritative activity/session, effective OI/volume, and quote semantics remain external. |
+| Volatility environment | A | The existing transform needs current/historical relationships, expected sessions, realized-volatility output, and complete ATM candidates. Futu IV/Greeks timing, model, and input semantics are not authoritative; RTH alone is insufficient. |
+| Expiration tail slice | A | The existing transform needs volatility environment, session relationships, complete tail universes, historical EOD data, and explicit delta methodology. No reconstruction is implemented. |
+| Target move scenario | A | The existing scenario transform consumes a caller-supplied `ScenarioPricingCalculationResult` and methodology; pass-through is not an implemented pricer. |
+| Volatility crush scenario | A | The same explicit scenario-pricing inputs and methodology are required; no crush method is chosen or manufactured here. |
+
+No D decision is active. A new IV estimator, reconstruction method, or
+scenario pricer would require an explicit economic/methodology decision. Two lawful paths remain distinct:
+
+- Earliest `REJECT`: a verified exact structure plus one sufficient authentic
+  reviewed hard-limit artifact (for example liquidity), with its required
+  dependencies, can trigger the existing hard-reject rule while other
+  artifacts remain explicitly missing. Complete all-six evidence is not required.
+- `WATCH` / `INVESTIGATE`: complete policy-critical costs, liquidity,
+  volatility environment, tail, and required target/crush scenario evidence
+  must satisfy existing dependency closure and screening policy, including
+  assembly sidecars, affordability, and thresholds where required. Otherwise,
+  absent a sufficient hard reject, `DATA_INSUFFICIENT` remains explicit.
+
 ## Active research-readiness gaps
 
 1. Futu confirms U.S. real-time bid/ask/sizes, but explicitly does not support
@@ -407,7 +463,9 @@ usefulness as mixed.
    inferred.
 
 These gaps block complete research-ready costs/liquidity, not the honest
-partial Direct Entry loop.
+partial Direct Entry loop. Canonical quote/session semantics, exact
+deliverable proof, effective activity evidence, and IV/Greeks timing and
+methodology are external-authority blockers; RTH alone does not repair them.
 
 The six current screening gaps are frozen outside the Event Discovery / Event
 Intake priority: `missing_costs`, `missing_liquidity`,

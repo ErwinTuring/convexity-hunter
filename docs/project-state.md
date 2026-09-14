@@ -24,13 +24,23 @@ compact presentation is now implemented in `convexity_presentation.py`:
 order, with first-pass metrics and a complete exact JSON audit appendix.
 No sorting, ranking, recommendation or filtering was added; discrimination and
 Engine semantics are unchanged. Event Entry is now implemented as the third
-entry mode. The six Engine gaps remain frozen.
+entry mode. The bounded immutable in-memory `ResearchCase` composition is now
+implemented in [`research-case-application-contract.md`](research-case-application-contract.md):
+it joins Autonomous Discovery, Event Entry, and Direct Entry through explicit
+human checkpoints and the existing reviewed-research service, with offline
+Browser/discrimination evidence only. Positive candidate selection and raw
+Event Entry can each pause before submission/preparation, while empty option
+surfaces terminate as `NO_OPTION_RESEARCH_SURFACE`; exact verification accepts
+only a typed offline result. It adds no live provider evidence and does not
+change the six frozen Engine gaps. The current execution/gap split is recorded
+in [`current-checkpoint.md`](current-checkpoint.md).
 
 ### Entry modes and Event Entry boundary
 
-- Autonomous Discovery: discovered EventCandidate → human selection → existing EI.
-- Event Entry: user event → retained grounding/hypothesis preparation → explicit
-  human hypothesis selection or NONE → existing EI → existing option research.
+- Autonomous Discovery: discovered EventCandidate → human selection checkpoint
+  → caller submission attachment → existing EI.
+- Event Entry: raw user event or retained grounding/hypothesis preparation →
+  explicit human hypothesis selection or NONE → existing EI → existing option research.
 - Direct Entry: user exact option structure → existing exact verification/research.
 
 `event_entry.prepare_event_entry_research` accepts `UserEventInput(description)`;
