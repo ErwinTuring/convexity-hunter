@@ -415,6 +415,17 @@ execution is `COMPLETED` even when its independent `ScreeningDecision` is
 Chinese report remain retained and rendered. This sprint added no live market
 evidence and makes no investment claim.
 
+## Current sanitized AMZN / historical-IV checkpoint
+
+The durable documentation checkpoint is recorded in
+[`amzn-pricing-evidence-checkpoint.md`](amzn-pricing-evidence-checkpoint.md).
+It records the AMZN 2026-10-16 K255 Long Straddle partial Direct Entry result,
+the unchanged six `missing_*` reasons, the native-only two-call historical-IV
+rerun, and the conditional 2026-09-14 exact-DTE feasibility arithmetic. No
+READY evidence BUILD or methodology change is authorized while supplier
+semantics and historical expiry-universe authority await Futu support; caller
+lookup/lookback/`D` sampling remains an undeclared research-policy input.
+
 ## Current six-gap dependency/blocker split
 
 All six reviewed-result attachment paths are A and now wired. No B completion

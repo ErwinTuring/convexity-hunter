@@ -115,6 +115,19 @@ evaluate the downstream comparison layer, and is not classified as Event Entry
 success or failure. This BUILD runs no new live experiment; Samples 1--10 and
 the six Engine gaps remain untouched.
 
+### Current sanitized AMZN / historical-IV documentation checkpoint
+
+The bounded AMZN 2026-10-16 K255 Long Straddle continuation and native-only
+historical-IV feasibility audit are recorded in
+[`amzn-pricing-evidence-checkpoint.md`](amzn-pricing-evidence-checkpoint.md).
+The exact-identity-verified structure reached the existing partial Direct Entry
+path and unchanged `DATA_INSUFFICIENT` six-gap result; no full ResearchCase
+replay or new evidence BUILD was performed. Conditional 2026-09-14 arithmetic
+gives current tenors 32/67/95/123, but the retained current expiries are not a
+historical universe. Supplier methodology and historical expiry-universe
+authority remain unresolved pending Futu support; caller lookup/lookback/`D`
+sampling is a separate undeclared research-policy input.
+
 Git is the only authority for current code state. Every fresh thread must run
 `git fetch origin main`, `git rev-parse HEAD`, and
 `git status --short --branch`; this document intentionally stores no static
