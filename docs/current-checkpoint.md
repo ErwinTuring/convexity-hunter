@@ -422,9 +422,15 @@ The durable documentation checkpoint is recorded in
 It records the AMZN 2026-10-16 K255 Long Straddle partial Direct Entry result,
 the unchanged six `missing_*` reasons, the native-only two-call historical-IV
 rerun, and the conditional 2026-09-14 exact-DTE feasibility arithmetic. No
-READY evidence BUILD or methodology change is authorized while supplier
-semantics and historical expiry-universe authority await Futu support; caller
-lookup/lookback/`D` sampling remains an undeclared research-policy input.
+READY Engine evidence BUILD is claimed while supplier semantics and historical
+expiry-universe authority remain unresolved; lookback/`D` sampling remains an
+undeclared research-policy input. The later bounded caller RV assumptions below
+do not change the provider or transformation contracts.
+The [AMZN volatility-environment feasibility checkpoint](amzn-volatility-environment-feasibility-v0.1.md)
+separates one-expiry-per-date 3C.7d history from Tail's matrix. The raw-close/252
+caller RV policy and 22-session window are explicit; the single execution timed
+out without a result, with no retry. Historical BBO/universe and current canonical
+evidence remain unresolved; no provider or VolatilityEnvironment is proven ready.
 
 ## Current six-gap dependency/blocker split
 

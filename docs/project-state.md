@@ -1,5 +1,13 @@
 # Project State
 
+## Navigation status — 2026-09-16
+
+The [AMZN volatility-environment feasibility checkpoint](amzn-volatility-environment-feasibility-v0.1.md)
+records `NO_PROVIDER_YET_PROVEN` and an operationally inconclusive single RV run.
+Historical ATM BBO/universe and current canonical inputs remain separate blockers;
+lookback remains unselected and the six screening gaps remain unchanged.
+This navigation note changes no production behavior or business contract.
+
 ## Project objective
 
 Convexity Hunter starts from changes in the world, identifies events that may

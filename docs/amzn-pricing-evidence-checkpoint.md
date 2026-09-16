@@ -1,5 +1,9 @@
 # AMZN pricing-evidence checkpoint
 
+Subsequent bounded findings and the unresolved RV execution are recorded in
+[Volatility Environment feasibility v0.1](amzn-volatility-environment-feasibility-v0.1.md).
+The prior native-IV observations below remain unchanged.
+
 ## Scope and status
 
 This is one sanitized, durable checkpoint for the 2026-09-14 AMZN Event Entry
@@ -99,15 +103,19 @@ Conditionally, 2026-09-14 is current and is excluded from historical dates:
 | returned native dates | 20 |
 | preceding date labels (not validated sessions/samples) | 19 |
 | current tenors (`T`) | 4 |
-| required `D × T` cells if those 19 dates were declared `D` (`19 × 4`) | 76 |
+| conditional 3C.7e Tail `D × T` cells if those 19 dates were declared `D` (`19 × 4`) | 76 |
 | retained current expiration dates | 4 |
 
 After excluding the current 2026-09-14 label, the 19 preceding labels would
-require 76 `D × T` cells if the caller declared those labels as `D` historical
-dates; this is not an admissibility result. For 2026-09-11, the four exact-tenor
-historical expiries would be 2026-10-13, 2026-11-17, 2026-12-15, and 2027-01-12
-(zero in `E_retained`). The retained current set is not a historical universe
-and is not substituted for any historical cell.
+require 76 `D × T` cells only for the conditional 3C.7e Tail calculation if the
+caller declared those labels as `D` historical dates; this is not a 3C.7d
+VolEnv requirement or an admissibility result. If those same 19 labels were
+declared as the VolEnv historical sample, the 3C.7d shape would instead be 19
+one-expiry cells at exact `T=32`, not `19 × 4`; no `D` or actual sample has
+been selected. For 2026-09-11, the four exact-tenor historical expiries would
+be 2026-10-13, 2026-11-17, 2026-12-15, and 2027-01-12 (zero in `E_retained`).
+The retained current set is not a historical universe and is not substituted
+for any historical cell.
 
 This proves only calendar arithmetic and matrix size. It does not claim any
 required expiry was absent, invalid, unlisted, unavailable, or a holiday, and
