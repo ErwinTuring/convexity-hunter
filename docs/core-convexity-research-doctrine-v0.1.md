@@ -2,7 +2,7 @@
 
 Status: Accepted
 Decision date: 2026-09-18
-Readiness: `CORE_MVP_BLOCKED` ([readiness audit](core-convexity-mvp-readiness-v0.1.md))
+Readiness: `CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS` ([readiness audit](core-convexity-mvp-readiness-v0.1.md))
 
 ## Context
 
@@ -133,9 +133,10 @@ The current runtime, legacy manual-selection contracts, old screening
 contracts, and historical campaign records remain versioned evidence and stay
 unchanged. This doctrine supersedes their unqualified product-target wording
 only; it does not claim that the target flow is built. The current task is
-authorized to proceed to BUILD once the specific loss/survival method boundary
-is resolved; this does not imply a new product approval for every
-implementation. Readiness remains `CORE_MVP_BLOCKED`; see the
+authorized to proceed to BUILD against the approved loss/survival boundary;
+this does not imply runtime completion or a new product approval for every
+implementation. Readiness is
+`CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS`; see the
 [readiness audit](core-convexity-mvp-readiness-v0.1.md).
 
 ## Rationale

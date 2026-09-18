@@ -8,8 +8,8 @@ The approved target correction is [Core Convexity Research Doctrine v0.1](core-c
 It supersedes conflicting target wording in this navigation document while
 leaving completed runtime contracts, implementations, tests, and campaign
 records unchanged. Readiness is
-`CORE_MVP_BLOCKED`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
-This is not a build or code-complete declaration.
+`CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
+BUILD is authorized, but this is not a runtime or code-complete declaration.
 
 ## 1. Product objective
 

@@ -32,7 +32,8 @@ defaulted to zero. Absolute gross hurdles do not require history/reference.
 
 The capability bullets below and later checkpoints describe unchanged current
 runtime/legacy contract evidence. They do not claim the target has been built.
-Readiness is `CORE_MVP_BLOCKED`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
+Readiness is `CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
+BUILD is authorized against the frozen boundary; runtime remains unchanged.
 
 ## Product capability that exists
 

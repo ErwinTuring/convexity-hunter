@@ -65,7 +65,7 @@ two-item description was incomplete:
 This subsection records the existing manual-selection/runtime boundary. The
 approved target above supersedes it as product direction only; it does not
 claim that the target flow has been built. Current Main readiness is
-`CORE_MVP_BLOCKED`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
+`CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
 
 Discovery entry begins with a separate, bounded Event Discovery / Event Intake
 layer. One declared external producer may surface no more than ten provisional,

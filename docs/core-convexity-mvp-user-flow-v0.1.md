@@ -1,11 +1,12 @@
 # Core Convexity MVP User Flow v0.1
 
 Status: Approved target; not implemented
-Readiness: `CORE_MVP_BLOCKED` ([readiness audit](core-convexity-mvp-readiness-v0.1.md))
+Readiness: `CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS` ([readiness audit](core-convexity-mvp-readiness-v0.1.md))
 
 This compact flow is governed by the
 [Core Convexity Research Doctrine](core-convexity-research-doctrine-v0.1.md).
-It is a target navigation note, not a frontend, database, or runtime claim.
+BUILD is authorized against the approved conditional-budget boundary, but this
+is still not a frontend, database, or runtime completion claim.
 
 ## One Core, three entries
 

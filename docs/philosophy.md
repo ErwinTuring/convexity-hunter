@@ -5,6 +5,10 @@ It is a product-target correction approved independently of implementation
 readiness. Existing runtime behavior, versioned contracts, and historical
 campaign records remain unchanged.
 
+Current Main readiness is
+`CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS` ([readiness audit](core-convexity-mvp-readiness-v0.1.md));
+this authorizes the frozen BUILD boundary, not runtime completion.
+
 Convexity Hunter researches exact supported Long Option Position structures for
 positive-convexity researchability, not market direction. Positive convexity,
 underpricing, and recommendation are distinct: the Core does not require an
