@@ -77,6 +77,57 @@ application APIs, public type names, and record schemas are deliberately
 deferred to the corresponding worker proposal and Main freeze; this document
 does not invent them. No new numeric policy is introduced.
 
+## Kernel implementation freeze — approved BUILD boundary
+
+- Add independent `src/convexity_hunter/core_research.py` with
+  `evaluate_core_research(CoreResearchRequest)` returning immutable
+  `CoreResearchResult`; the three new dispositions do not overload legacy
+  screening values.
+- Each leg carries exact identity, Call/Put side, `K`, expiry, `q`, `m`,
+  currency, optional ask, and provenance. A straddle requires the same
+  underlying, expiry, strike, `q`, and `m` across both legs.
+- This phase accepts only `CONDITIONAL_STANDARD_PAYOFF` with an explicit
+  approval basis; it never claims verified deliverable terms.
+- The cost ledger declares required components, an upper bound or `unknown`
+  for each, completeness, and method. `premium_upper_bound` is total position
+  cost and must be at least `Σ(q × m × ask)` when asks are present; it is never
+  generated from asks, and explicit zero requires a stated basis.
+- Portfolio value, maximum single loss, maximum repeated loss, and repeat count
+  are all explicit. Sensitivity predeclares `S >= 0` and per-leg `ask > 0`.
+- Any unknown required input returns `DATA_INSUFFICIENT_CORE` while retaining
+  computable geometry. A complete case may derive `RESEARCHABLE_CONVEXITY` or
+  `REJECT` from the budget; callers cannot pass a boolean approval flag.
+- Output includes absolute gross 1x/2x/5x/10x hurdles, conditional loss and
+  repeat stress, sensitivity, and authority. Enhancements never upgrade
+  underpricing. Input identity and finite exact math are revalidated at entry;
+  API details follow the implementation record. Main app freeze is recorded
+  below.
+
+## Main application freeze — BUILD boundary
+- Target modules are `core_application`, `core_futu`, and
+  `core_presentation`; this is a docs freeze, not a runtime claim.
+- World raw requests enter through an injected bounded source producer. Event
+  `UserEventInput` enters through an injected grounder. Both retain original
+  input identity and emit source-backed Event Intelligence submissions; every
+  submission is assessed.
+- Every accepted hypothesis branches automatically through the existing
+  maturity request, the Futu Browser's full supported-structure surface, and
+  the common kernel. Automated provenance never fabricates human selection.
+- Exact provider ID, rows, request, and batch identities bind together;
+  multiplier is provider-supplied and quantity is explicit caller input.
+- Operational bounds are explicit: exceeded runs retain `cases=()` rather than
+  truncating; per-case exact failures are retained; quote-operation failure is
+  a blocked branch with no retry.
+- Direct runs real verification plus native quote through the kernel and then
+  automatically produce the full report. World/Event produce `StructuredCaseSet`
+  plus compact output; lazy reports reuse records and make no network call.
+- The kernel remains independent of legacy `OptionStructure` and `ScreeningDecision`;
+  every numeric policy is explicit and missing required input yields
+  `DATA_INSUFFICIENT_CORE`/`DSC_Core`.
+- Missing injected source is an operational blocker, never disguised
+  code-complete result; no runtime completion is claimed, and app details remain
+  subject to the corresponding worker/Main review.
+
 Runtime is unchanged. No tests, real three-entry exercise, or code-complete
 claim is made. An absent external callable producer is an implementation/
 runtime gap, not a second user-authorization or methodology blocker.
