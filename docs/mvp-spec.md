@@ -1,25 +1,52 @@
 # MVP Specification
 
-Convexity Hunter v0.1 identifies exact Long Option Position structures that
-deserve further investigation as potentially underpriced positive-convexity
-opportunities. It does not prove an opportunity exists, predict market
-direction, issue trade recommendations, monitor positions, or execute trades.
-The canonical post-Milestone-3 direction is in
+The approved target is [Core Convexity Research Doctrine v0.1](core-convexity-research-doctrine-v0.1.md).
+It is a docs-only product-target decision; it does not claim that the current
+runtime is ready or change production, tests, or legacy contracts. Sections
+below that describe human selection, old screening states, or completed
+campaigns remain versioned runtime/contract evidence unless explicitly marked
+as target doctrine.
+
+The MVP target researches exact supported Long Option Position structures for
+positive-convexity researchability. Convexity is not underpricing and neither
+is a recommendation. Optional benchmark, history, VolEnv, Tail, and percentile
+evidence cannot invalidate the Core merely by being absent. The product does
+not predict market direction, issue trade recommendations, monitor positions,
+or execute trades. The canonical product direction remains in
 [product-direction.md](product-direction.md).
 
 ## 1. MVP research question and entry modes
 
-The system must answer:
+The target Core must answer:
 
-> Which exact supported option structures deserve further investigation
-> because their downside is bounded, their positive convexity may be
-> insufficiently priced, and their maximum loss fits the user's explicitly
-> declared risk assumptions?
+> Which exact supported long option structures can be deterministically
+> classified as `RESEARCHABLE_CONVEXITY`, `REJECT`, or
+> `DATA_INSUFFICIENT_CORE` after geometry, explicit cost/loss budget,
+> sensitivity, and survival/repeatability checks?
 
-The final research unit is one verified exact `OptionStructure`, not a generic
-asset or a multi-position portfolio.
+The final Core unit is one exact supported `OptionStructure`, not a generic
+asset or a multi-position portfolio. Discovery and Event entry may enumerate
+many eligible exact structures, but each structure receives the same Core.
 
-The MVP has two equal first-class entry modes:
+The approved target has three equivalent entries:
+
+1. **Direct entry:** one exact supported structure enters the Core directly.
+2. **Discovery entry:** all accepted discovery hypotheses feed deterministic
+   eligibility and enumeration of Long Calls, Long Puts, and same-strike Long
+   Straddles within the existing maturity policies.
+3. **Event entry:** all accepted event hypotheses feed the same deterministic
+   eligibility and enumeration.
+
+The target has no Discovery/Event human selection gate, ATM/Delta inference,
+ranking, Top-N, score, or “best” selection. Indicative asks remain
+non-executable evidence. Portfolio/survival inputs and any consumed fee ledger
+are explicit; missing values are not defaulted to zero. Absolute gross hurdles
+do not require history or a reference price.
+
+### Current runtime entry evidence (unchanged)
+
+The current runtime evidence includes three first-class entry modes; the earlier
+two-item description was incomplete:
 
 1. **Discovery entry:** world events flow through Event Intelligence,
    potentially affected underlyings and distribution-change hypotheses, real
@@ -30,6 +57,15 @@ The MVP has two equal first-class entry modes:
    system resolves and validates the real listed contract and applies the same
    eligibility, market-data, and evidence checks before Convexity Engine
    research.
+3. **Event Entry:** a user event or retained grounding/hypothesis preparation
+   proceeds through the existing Event Intelligence assessment and option
+   research boundary. This already implemented third entry is retained in the
+   [ResearchCase application contract](research-case-application-contract.md).
+
+This subsection records the existing manual-selection/runtime boundary. The
+approved target above supersedes it as product direction only; it does not
+claim that the target flow has been built. Current Main readiness is
+`CORE_MVP_BLOCKED`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
 
 Discovery entry begins with a separate, bounded Event Discovery / Event Intake
 layer. One declared external producer may surface no more than ten provisional,

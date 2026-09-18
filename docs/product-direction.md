@@ -4,20 +4,42 @@ This document is the canonical product direction after Milestone 3. It defines
 the active product objective and roadmap without changing the completed
 Milestone 1–5 implementation.
 
+The approved target correction is [Core Convexity Research Doctrine v0.1](core-convexity-research-doctrine-v0.1.md).
+It supersedes conflicting target wording in this navigation document while
+leaving completed runtime contracts, implementations, tests, and campaign
+records unchanged. Readiness is
+`CORE_MVP_BLOCKED`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
+This is not a build or code-complete declaration.
+
 ## 1. Product objective
 
-Convexity Hunter starts from changes in the world, identifies events that may
-alter future return distributions, identifies potentially affected
-underlyings, uses real option-chain data to construct actual Long Option
-Position candidates, lets the user select one exact option structure, and then
-uses auditable market evidence to determine whether its positive convexity may
-be insufficiently priced and whether its maximum loss fits the user's
-explicitly declared risk assumptions.
+Convexity Hunter's target starts from uncertainty or event context, resolves
+exact supported Long Option structures, computes auditable payoff geometry,
+explicit cost/loss budgets, sensitivity, and survival/repeatability, and emits
+one deterministic Core disposition. Direct, Discovery, and Event entry all
+use this same Core. Discovery and Event process all accepted hypotheses and
+deterministically enumerate eligible Long Calls, Long Puts, and same-strike
+Long Straddles within the existing maturity policies; they do not require a
+human selection gate, ATM/Delta inference, ranking, Top-N, or a “best” choice.
 
-The system identifies structures worthy of further investigation. It does not
-prove that an opportunity exists, recommend a trade, or execute one. The final
-unit of research is one exact option structure, not a generic asset or a
-multi-position optimized portfolio.
+Positive convexity is not underpricing, and neither is a recommendation.
+Underpricing, long-history, VolEnv, Tail, percentile, and benchmark evidence
+are optional claim-triggered enhancements rather than Core prerequisites. The
+final Core unit is one exact option structure, not a generic asset or a
+multi-position optimized portfolio. The target does not recommend or execute
+a trade.
+
+The flow is:
+
+```text
+uncertainty / event context -> exact structures -> geometry
+-> cost / loss budget -> sensitivity -> survival / repeatability
+-> RESEARCHABLE_CONVEXITY | REJECT | DATA_INSUFFICIENT_CORE
+```
+
+Sections below retain runtime and historical roadmap evidence. In particular,
+existing human-selection, screening, and mode-based strike/Delta descriptions
+are not claims that the approved target has been implemented.
 
 ## 2. Supported research unit and scope
 

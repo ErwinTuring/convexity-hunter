@@ -1,24 +1,47 @@
 # Project State
 
-## Navigation status — 2026-09-16
+## Historical navigation note — 2026-09-16 (legacy enhancement evidence)
 
 The [AMZN volatility-environment feasibility checkpoint](amzn-volatility-environment-feasibility-v0.1.md)
 records `NO_PROVIDER_YET_PROVEN` and an operationally inconclusive single RV run.
 Historical ATM BBO/universe and current canonical inputs remain separate blockers;
 lookback remains unselected and the six screening gaps remain unchanged.
-This navigation note changes no production behavior or business contract.
+This is legacy enhancement evidence only; it is not the current mainline
+readiness decision and changes no production behavior or business contract.
+
+## Approved target doctrine — 2026-09-18
+
+The accepted [Core Convexity Research Doctrine v0.1](core-convexity-research-doctrine-v0.1.md)
+is a docs-only product-target correction approved independently of readiness.
+Its target flow is uncertainty/event context → exact supported structures →
+geometry → explicit cost/loss budget → sensitivity → survival/repeatability →
+`RESEARCHABLE_CONVEXITY` | `REJECT` | `DATA_INSUFFICIENT_CORE`.
+
+Direct, Discovery, and Event entry share that Core. Discovery and Event consume
+all accepted hypotheses and deterministically enumerate eligible supported Long
+Calls, Long Puts, and same-strike Long Straddles within existing maturity
+policies; the target adds no human selection gate, ATM/Delta inference, ranking,
+Top-N, or “best” choice. Convexity is not underpricing or recommendation, and
+missing history or optional VolEnv/Tail/percentile/benchmark evidence does not
+invalidate Core. Required portfolio/survival inputs and consumed fee ledgers
+remain explicit, with no defaults or zero substitution; absolute gross hurdles
+need no history/reference price.
+
+The current Main readiness decision is
+`CORE_MVP_BLOCKED`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
+The remaining milestone, campaign, and runtime sections are retained as
+versioned evidence. They may describe the current manual-selection flow,
+legacy screening states, or unresolved external inputs and do not claim this
+target is built or ready.
 
 ## Project objective
 
-Convexity Hunter starts from changes in the world, identifies events that may
-alter future return distributions and potentially affected underlyings,
-constructs actual supported Long Option Position candidates from real option
-chains, lets the user select one exact structure, and uses auditable evidence
-to investigate whether its positive convexity may be insufficiently priced and
-whether maximum loss fits explicitly declared risk assumptions. A direct user
-entry path converges on the same verified exact structure and Convexity Engine.
-The system identifies structures worthy of further investigation; it does not
-prove opportunities, recommend trades, monitor positions, or execute trades.
+The project target is to research exact supported Long Option Position
+structures through one common deterministic Core: geometry, explicit
+cost/loss budget, sensitivity, and survival/repeatability. Direct, Discovery,
+and Event entry converge on the same Core and dispositions. The project does
+not prove underpricing, issue recommendations, monitor positions, or execute
+trades.
 
 ## Current authoritative product state
 

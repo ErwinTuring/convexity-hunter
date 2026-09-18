@@ -9,6 +9,31 @@ Repository: `ErwinTuring/convexity-hunter`
   `git fetch origin main`, `git rev-parse HEAD`, and
   `git status --short --branch`; Git is the sole code-state authority.
 
+## Approved target applicability — 2026-09-18
+
+The [Core Convexity Research Doctrine v0.1](core-convexity-research-doctrine-v0.1.md)
+is an accepted docs-only target correction, not a runtime or readiness claim.
+Direct, Discovery, and Event entry target the same flow:
+
+```text
+uncertainty / event -> exact structures -> geometry -> cost/loss budget
+-> sensitivity -> survival/repeatability
+-> RESEARCHABLE_CONVEXITY | REJECT | DATA_INSUFFICIENT_CORE
+```
+
+Discovery and Event target all accepted hypotheses and deterministic eligibility
+for supported Long Calls, Long Puts, and same-strike Long Straddles within
+existing maturity policies. There is no target human selection gate,
+ATM/Delta inference, ranking, Top-N, or “best” choice. Convexity is distinct
+from underpricing and recommendation; missing history or optional
+VolEnv/Tail/percentile/benchmark evidence does not invalidate Core. Required
+portfolio/survival inputs and consumed fee ledgers are explicit and never
+defaulted to zero. Absolute gross hurdles do not require history/reference.
+
+The capability bullets below and later checkpoints describe unchanged current
+runtime/legacy contract evidence. They do not claim the target has been built.
+Readiness is `CORE_MVP_BLOCKED`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
+
 ## Product capability that exists
 
 - The deterministic Convexity Engine, reviewed-artifact candidate assembler,
