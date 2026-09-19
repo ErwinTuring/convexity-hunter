@@ -30,11 +30,18 @@ need no history/reference price.
 The current Main readiness decision is
 `CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
 The dated `CORE_MVP_BLOCKED` conclusion is retained there as resolved historical
-evidence. BUILD is authorized against the frozen boundary; runtime is unchanged.
+evidence. The Core kernel and three-entry application API are implemented and
+independently reviewed, with 20 kernel and 10 application tests. One real
+Direct technical case verified both contracts and produced geometry and a
+Chinese `DATA_INSUFFICIENT_CORE` report without historical valuation inputs.
+World/Event require host-provided source/grounder callables; these are not
+configured for live operation. See the [Core user flow](core-convexity-mvp-user-flow-v0.1.md)
+for validation and precise operational gaps. Three live entry modes are not
+yet verified.
 The remaining milestone, campaign, and runtime sections are retained as
 versioned evidence. They may describe the current manual-selection flow,
 legacy screening states, or unresolved external inputs and do not claim this
-target is built or ready.
+target is fully built or operational.
 
 ## Project objective
 

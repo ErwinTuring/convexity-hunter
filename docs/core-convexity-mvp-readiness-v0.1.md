@@ -1,7 +1,7 @@
 # Core Convexity MVP Readiness v0.1
 
 Status: `CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS`
-Decision: final Main readiness decision; approved contract freeze only
+Decision: final Main readiness decision; implementation progress below
 Decision date: 2026-09-18
 
 This audit distinguishes method/input readiness from implementation. `READY`
@@ -9,7 +9,7 @@ means a method or reusable input boundary is available; it does not mean the
 target runtime is implemented. The runtime/build column is explicit.
 
 Pre-documentation baseline: fetched clean at HEAD
-`7bd0cf1739b259ab247df47c9894486c802f59a9`; current changes are docs only.
+`7bd0cf1739b259ab247df47c9894486c802f59a9`; that audit was documentation-only.
 Evidence environment: Futu API `10.10.7008` with OpenD `11111` listening; this
 does not establish authentication, quote authority, or executable data.
 
@@ -22,7 +22,18 @@ and `report.py:1973`.
 `READY_WITH_EXPLICIT_APPROVED_ASSUMPTION` applies only to the now-approved
 conditional budget boundary; it never means actual safety or executability.
 
-## 20-item audit
+## Implementation progress — 2026-09-19
+
+The Core kernel and three-entry application implementation passed independent
+review and targeted re-review. Twenty kernel and ten application tests pass.
+The user-flow document records final validation and the real Direct smoke
+case. World/Event source callables remain operational prerequisites; their
+absence is not presented as live three-entry completion.
+The following matrix is the original pre-BUILD readiness snapshot, not a live
+inventory of implementation files. Missing caller risk/cost policy remains a
+case-level `DATA_INSUFFICIENT_CORE` outcome, not permission to invent defaults.
+
+## 20-item pre-BUILD audit
 
 | # | Item and evidence | Status | Method/input | Runtime/build state |
 |---:|---|---|---|---|
@@ -128,6 +139,7 @@ does not invent them. No new numeric policy is introduced.
   code-complete result; no runtime completion is claimed, and app details remain
   subject to the corresponding worker/Main review.
 
-Runtime is unchanged. No tests, real three-entry exercise, or code-complete
-claim is made. An absent external callable producer is an implementation/
+At contract freeze, runtime was unchanged and no tests or real three-entry
+exercise were claimed. See the dated implementation progress above for the
+current state. An absent external callable producer is an implementation/
 runtime gap, not a second user-authorization or methodology blocker.

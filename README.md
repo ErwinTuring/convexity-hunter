@@ -1,17 +1,32 @@
 # Convexity Hunter
 
-Convexity Hunter is an investigation assistant for identifying concrete Long
-Option Position structures that may deserve further research as potentially
-underpriced positive-convexity opportunities.
+Convexity Hunter researches exact supported long-option structures through
+conditional payoff geometry, explicit cost/loss budgets, sensitivity and
+repeat-loss policy. Underpricing is an optional stronger claim, not a
+prerequisite for Core research; historical option data is not a Core dependency.
 
-It supports three product entry modes: Autonomous Discovery from a retained
-EventCandidate batch, Event Entry from caller-prepared grounding and
-hypotheses, and Direct Entry of an exact structure. All three modes converge
-on one verified exact Long Call, Long Put, or Long Straddle selected by the
-user. The system organizes auditable evidence; it does not prove opportunities,
-recommend or execute trades, or monitor positions.
+The thin Core application API supports World/Autonomous Discovery through an
+injected source producer, Event Entry through an injected grounder, and Direct
+Entry of an exact structure. World/Event branch accepted hypotheses and
+deterministically enumerate eligible Long Calls, Long Puts or same-strike Long
+Straddles without ranking or mandatory human selection. All entries use the
+same Core. The system does not predict returns, recommend or execute trades,
+or monitor positions.
 
 ## Current status
+
+The new Core application is independently reviewed and tested. World/Event
+return structured case sets and compact comparisons; full Chinese details are
+rendered on demand from retained records. Direct Entry automatically renders
+one full report. Missing required cost/risk inputs remain
+`DATA_INSUFFICIENT_CORE`; missing optional valuation evidence alone does not.
+Source producers/grounders and explicit caller research policy must be supplied
+by the host. This is an application API, not a bundled autonomous search service
+or a claim that all three live entry modes are operational. See the
+[Core user flow](docs/core-convexity-mvp-user-flow-v0.1.md) and
+[current checkpoint](docs/current-checkpoint.md) for runtime evidence and gaps.
+
+### Retained legacy capabilities
 
 Milestones 1–5 are complete. The repository contains domain records,
 deterministic screening and reporting, provider-neutral market-data contracts,
@@ -29,8 +44,9 @@ are complete. Deterministic report rendering may optionally receive a verified
 plan result and display it in the active Chinese report. The existing English
 renderer remains compatibility-only.
 
-Automatic Candidate Generation, live RTH evidence acquisition, non-expiration
-pricing production, and a UI remain future work. The bounded offline
+ATM/Delta-based automatic Candidate Generation, non-expiration pricing
+production, and a UI remain outside this Core MVP. Deterministic eligibility
+enumeration is not a recommendation engine. The retained bounded offline
 `ResearchCase` composition now joins the three entry modes, preserves their
 existing evidence lineage, and converges on the existing reviewed-research
 service. Monitoring, alerts, scheduling, recommendations, and execution remain
@@ -44,6 +60,8 @@ part of the active product flow.
 
 - [Product direction](docs/product-direction.md)
 - [MVP specification](docs/mvp-spec.md)
+- [Core research doctrine](docs/core-convexity-research-doctrine-v0.1.md)
+- [Three-entry Core user flow](docs/core-convexity-mvp-user-flow-v0.1.md)
 - [Risk-assessment contracts](docs/risk-assessment-contracts.md)
 - [Project state](docs/project-state.md)
 - [ResearchCase application contract](docs/research-case-application-contract.md)

@@ -11,6 +11,35 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
+### Core application implementation — 2026-09-19
+
+`core_research`, `core_application`, `core_futu`, and `core_presentation`
+implement the approved thin application API. Kernel and application independent
+reviews passed after targeted corrections to identity binding, retained report
+reasons, early aggregate bounds, malformed native quotes, and exact-option
+subscription. Twenty kernel and ten application tests pass; final regression
+evidence is recorded in the [Core user flow](core-convexity-mvp-user-flow-v0.1.md).
+Legacy Futu/discrimination public APIs remain 30/19; old valuation contracts
+and manual-selection workflows are unchanged.
+
+One real Direct technical smoke case completed via local OpenD on 2026-09-19:
+AMZN 2026-11-20 K255 Long Straddle, one contract per leg. This is a disclosed
+test input, not substitution for the historical human-selected structure.
+Both exact contracts verified; two option quote reads were performed without
+retry; all four owned contexts closed. Geometry and a Chinese report were
+produced with `DATA_INSUFFICIENT_CORE`: `cost_ledger_missing`,
+`risk_policy_missing`, `sensitivity_missing`. Quotes remain `INDICATIVE_ONLY`;
+payoff remains conditional and maturity alignment remains `NOT_ESTABLISHED`.
+No account safety, executability, underpricing or investment merit was proved.
+
+World/Event application integration is tested with synthetic injected sources,
+but live source adapters are not configured: runtime checks returned
+`missing_source_producer` and `missing_grounder`. Do not call this three live
+entry modes verified. Next operational work is source/grounder host wiring and
+explicit caller cost/risk/sensitivity policy, not renewed theory or historical
+option infrastructure. Missing policy must remain Core insufficiency, not a
+hidden default. Optional VolEnv/Tail/history gaps are not Core blockers.
+
 The [Core Convexity Research Doctrine v0.1](core-convexity-research-doctrine-v0.1.md)
 is an accepted docs-only target correction, not a runtime or readiness claim.
 Direct, Discovery, and Event entry target the same flow:
@@ -33,7 +62,9 @@ defaulted to zero. Absolute gross hurdles do not require history/reference.
 The capability bullets below and later checkpoints describe unchanged current
 runtime/legacy contract evidence. They do not claim the target has been built.
 Readiness is `CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS`; see the [readiness audit](core-convexity-mvp-readiness-v0.1.md).
-BUILD is authorized against the frozen boundary; runtime remains unchanged.
+The approved application API is implemented; see the runtime qualifications
+above. Existing legacy behavior is unchanged. Complete live three-entry
+operation is not established.
 
 ## Product capability that exists
 
