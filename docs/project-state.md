@@ -6,6 +6,11 @@ The third extraction workflow had a transport failure, without retry; usage coun
 remain inconsistent with per-search credits. Paid OpenAI API work is withdrawn.
 No production source adapter or independent Grounder is claimed by that checkpoint.
 
+[Semantic verification design](event-grounder-semantic-verification-design-v0.1.md)
+passed independent review and targeted empty-batch clarification. Search,
+source verification, and EI acceptance remain separate. This is design-only:
+no new production contract, host implementation, or live experiment is claimed.
+
 ## Historical navigation note — 2026-09-16 (legacy enhancement evidence)
 
 The [AMZN volatility-environment feasibility checkpoint](amzn-volatility-environment-feasibility-v0.1.md)

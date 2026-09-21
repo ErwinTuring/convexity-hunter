@@ -19,6 +19,12 @@ succeeded; two Extracts succeeded and the third workflow had a transport error
 account usage still reads zero; do not claim settled remaining quota. Codex-assisted
 verification must not be described as an independently deployed Grounder.
 
+[Grounder semantic verification design](event-grounder-semantic-verification-design-v0.1.md)
+is DESIGN_ONLY, independently reviewed with the empty-batch ambiguity resolved.
+The proposed host stops before Core when no submission can be constructed;
+this is not implemented runtime behavior. No new live experiment or BUILD was
+performed. Next live validation requires separate explicit authorization.
+
 ### Core application implementation — 2026-09-19
 
 `core_research`, `core_application`, `core_futu`, and `core_presentation`
