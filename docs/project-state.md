@@ -1,5 +1,11 @@
 # Project State
 
+Latest source/grounder work: [stage-level checkpoint](world-event-source-validation-2026-09-20.md).
+Tavily free-only gate is confirmed; three real searches and two extracts succeeded.
+The third extraction workflow had a transport failure, without retry; usage counters
+remain inconsistent with per-search credits. Paid OpenAI API work is withdrawn.
+No production source adapter or independent Grounder is claimed by that checkpoint.
+
 ## Historical navigation note — 2026-09-16 (legacy enhancement evidence)
 
 The [AMZN volatility-environment feasibility checkpoint](amzn-volatility-environment-feasibility-v0.1.md)
@@ -2066,6 +2072,16 @@ translation, Event Intelligence assessment, market data, Futu exercise, or
 Engine evidence followed. `last30days` is retained only as an experimental
 narrative/attention producer; it neither replaces Web Search nor joins
 `morning-note` as a baseline.
+
+The current 2026-09-20 World/Event validation is a blocked stage checkpoint,
+not a successful complete experiment; see
+[`world-event-source-validation-2026-09-20.md`](world-event-source-validation-2026-09-20.md).
+The observed clock was `2026-09-20T23:47Z` after the native TTL: leg 1 had 15
+nominations, leg 2 had 5 pending topics, `pending_valid=false; stale=true`, and
+leg 3 was stale after interruption. Final `EventCandidateBatch` is
+`NOT_COMPLETED`, not zero; finalize exited 2, and no timestamp rewrite, source
+rerun, or normal-finalize claim was made. Tavily subsequently passed authentication
+and free-only checks and ran bounded retrieval; see the current checkpoint above.
 
 ## Hunter Discovery Policy v0.1 validation checkpoint
 

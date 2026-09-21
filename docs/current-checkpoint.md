@@ -11,6 +11,14 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
+Latest source work: [World/Event validation checkpoint](world-event-source-validation-2026-09-20.md).
+The paid OpenAI Grounder route is withdrawn; Tavily free Search/Extract is
+tested with PAYGO-off confirmed by the user's dashboard. Three Basic Searches
+succeeded; two Extracts succeeded and the third workflow had a transport error
+(request stage unknown; no retry). Search responses report three credits while
+account usage still reads zero; do not claim settled remaining quota. Codex-assisted
+verification must not be described as an independently deployed Grounder.
+
 ### Core application implementation — 2026-09-19
 
 `core_research`, `core_application`, `core_futu`, and `core_presentation`
@@ -386,6 +394,17 @@ The unchanged adapter discarded all native rank/score/recommendation semantics
 and emitted a valid zero-candidate `EventCandidateBatch`. No human selection,
 translation, Event Intelligence assessment, or Futu call was fabricated.
 Material incremental discovery value was not demonstrated in this rerun.
+
+The current 2026-09-20 World/Event source-validation run is a stage-level
+blocked checkpoint, not a completed experiment; see
+[`world-event-source-validation-2026-09-20.md`](world-event-source-validation-2026-09-20.md).
+At `2026-09-20T23:47Z`, the native TTL had expired: leg 1 produced 15
+nominations, leg 2 produced 5 pending topics, `read_pending_report` returned
+`pending_valid=false; stale=true`, and leg 3 was stale after session interruption.
+The final `EventCandidateBatch` is `NOT_COMPLETED`, not zero. Finalize exited 2;
+no timestamp edit, source pull, rerun, or normal-finalize claim was made. Pending
+source-relevance concerns remain limitations. Tavily credentials and free-only gate
+are now resolved; see the linked checkpoint for real retrieval and remaining limits.
 
 `Hunter Discovery Policy v0.1` is now frozen in
 [`hunter-discovery-policy-v0.1.md`](hunter-discovery-policy-v0.1.md) without a
