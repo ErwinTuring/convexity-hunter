@@ -1,5 +1,15 @@
 # Project State
 
+New World producer comparison: [Sep23 run and protocol deviation](world-source-comparison-2026-09-23.md).
+The fresh last30days three-leg run completed within TTL, with 15 nominations,
+5 native themes and one deduplicated source-qualified provisional event.
+Specific ticker mapping remains unresolved. Source-channel counts did not prevent
+unrelated enrichment; Hunter retained its verification boundary. No production
+changes, EI promotion or Core/Futu execution occurred in this work unit.
+Web retained four events, with no retained overlap. Its original-page request cap
+was exceeded (24 URL request items against 12); do not claim equal-budget
+comparative performance. The Skill arm completed; the old expired run remains unchanged.
+
 Latest source/grounder work: [IREN semantic trial](event-grounder-iren-semantic-trial-2026-09-21.md).
 Two searches and three extracts completed Sep 21; Sep 23 continuation is offline
 only. The financing subhypothesis reached EI ACCEPTED; the separate procurement

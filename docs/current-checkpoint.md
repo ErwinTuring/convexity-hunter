@@ -11,6 +11,17 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
+New World comparison: [Sep23 fresh run](world-source-comparison-2026-09-23.md).
+The Sep17–23 native last30days run finalized within TTL: 15 nominations,
+5 native themes, one source-qualified provisional SEC exemption candidate after
+deduplication. Specific listed-symbol mapping is unresolved; this is not EI or
+Core acceptance. Old Sep20 expired execution remains historically unchanged.
+Web retained four provisional events; no retained event overlaps with the Skill
+arm. Web exceeded its 12-open cap (24 requested URL items including a failed
+12-item batch); this is a descriptive comparison, not a budget-compliant efficacy
+test. No production source adapter was added. See the comparison for source-quality
+limitations rather than treating native multi-source counts as proof.
+
 Latest source work: [IREN semantic trial](event-grounder-iren-semantic-trial-2026-09-21.md),
 using Sep 21 retained retrieval, continued offline Sep 23. Two searches and three
 extracts succeeded. The verified financing subhypothesis is EI ACCEPTED with
