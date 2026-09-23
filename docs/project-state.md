@@ -1,9 +1,17 @@
 # Project State
 
-Latest source/grounder work: [stage-level checkpoint](world-event-source-validation-2026-09-20.md).
+Latest source/grounder work: [IREN semantic trial](event-grounder-iren-semantic-trial-2026-09-21.md).
+Two searches and three extracts completed Sep 21; Sep 23 continuation is offline
+only. The financing subhypothesis reached EI ACCEPTED; the separate procurement
+subquestion remains unresolved. Independent review passed; retrieval, source
+verification and acceptance stay distinct. No production Grounder or financial
+Core execution is claimed.
+
+Earlier stage: [stage-level checkpoint](world-event-source-validation-2026-09-20.md).
 Tavily free-only gate is confirmed; three real searches and two extracts succeeded.
-The third extraction workflow had a transport failure, without retry; usage counters
-remain inconsistent with per-search credits. Paid OpenAI API work is withdrawn.
+The third extraction workflow had a transport failure, without retry. That run's
+usage later appeared in the IREN precheck; per-call and account counters must
+still be reported separately. Paid OpenAI API work is withdrawn.
 No production source adapter or independent Grounder is claimed by that checkpoint.
 
 [Semantic verification design](event-grounder-semantic-verification-design-v0.1.md)

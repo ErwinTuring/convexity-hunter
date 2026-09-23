@@ -11,19 +11,28 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
-Latest source work: [World/Event validation checkpoint](world-event-source-validation-2026-09-20.md).
+Latest source work: [IREN semantic trial](event-grounder-iren-semantic-trial-2026-09-21.md),
+using Sep 21 retained retrieval, continued offline Sep 23. Two searches and three
+extracts succeeded. The verified financing subhypothesis is EI ACCEPTED with
+no expected impact window; the procurement subquestion remains unresolved.
+Independent execution review passed. Semantic evaluation is recorded in that report;
+do not repeat the exhausted retrieval budget or treat retained data as fresh.
+
+Earlier stage: [World/Event validation checkpoint](world-event-source-validation-2026-09-20.md).
 The paid OpenAI Grounder route is withdrawn; Tavily free Search/Extract is
 tested with PAYGO-off confirmed by the user's dashboard. Three Basic Searches
 succeeded; two Extracts succeeded and the third workflow had a transport error
 (request stage unknown; no retry). Search responses report three credits while
-account usage still reads zero; do not claim settled remaining quota. Codex-assisted
+account usage still read zero at that earlier check. The later IREN precheck
+observed those three credits; its own final usage snapshot was again not yet
+updated. Do not claim settled remaining quota. Codex-assisted
 verification must not be described as an independently deployed Grounder.
 
 [Grounder semantic verification design](event-grounder-semantic-verification-design-v0.1.md)
 is DESIGN_ONLY, independently reviewed with the empty-batch ambiguity resolved.
 The proposed host stops before Core when no submission can be constructed;
-this is not implemented runtime behavior. No new live experiment or BUILD was
-performed. Next live validation requires separate explicit authorization.
+this is not implemented production behavior. A subsequent bounded IREN trial
+was explicitly authorized; it does not authorize a broader campaign or BUILD.
 
 ### Core application implementation — 2026-09-19
 
