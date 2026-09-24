@@ -1,5 +1,12 @@
 # Project State
 
+Active work: [standalone local MVP M0–M8](standalone-mvp-architecture-v0.1.md).
+M0 targeted independent review passed; M1 transport/config BUILD is unlocked,
+while production runtime remains unchanged. User-authorized
+DeepSeek API replaces the removed local model; a 135-token synthetic connection
+test passed, not an end-to-end semantic acceptance test. Subsequent implementation
+must preserve EI/Core and distinguish Host failures from economic classifications.
+
 New World producer comparison: [Sep23 run and protocol deviation](world-source-comparison-2026-09-23.md).
 The fresh last30days three-leg run completed within TTL, with 15 nominations,
 5 native themes and one deduplicated source-qualified provisional event.

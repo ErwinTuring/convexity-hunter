@@ -11,6 +11,16 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
+Current work: [independent local MVP architecture](standalone-mvp-architecture-v0.1.md),
+under the user's continuous M0–M8 authorization. This supersedes the old
+Codex-hosted-only/no-UI/no-database delivery restriction, not EI/Core evidence
+contracts. M0 targeted independent review passed; M1 transport/config BUILD is
+unlocked. No production Host is claimed yet; M2 semantic acceptance is separate.
+The user replaced local-model evaluation with an explicitly authorized DeepSeek
+API. The local model was removed and its service stopped. One `deepseek-flash`
+synthetic call succeeded (116 input / 19 output tokens); this is connectivity,
+not semantic Grounder or independent-product acceptance.
+
 New World comparison: [Sep23 fresh run](world-source-comparison-2026-09-23.md).
 The Sep17–23 native last30days run finalized within TTL: 15 nominations,
 5 native themes, one source-qualified provisional SEC exemption candidate after
