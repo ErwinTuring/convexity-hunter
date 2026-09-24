@@ -21,6 +21,13 @@ API. The local model was removed and its service stopped. One `deepseek-flash`
 synthetic call succeeded (116 input / 19 output tokens); this is connectivity,
 not semantic Grounder or independent-product acceptance.
 
+M3 Profile subunit is implemented in `host_profile`: explicit approved
+USD100000 / .005 / 3 / .015, generated quantity one, immutable versioned snapshot
+and the existing Core request factory. Verified multipliers/structure identity
+remain unchanged. Independent review and 36 Profile/Core tests passed.
+`cost_ledger=None` and `sensitivity=None` remain honest missing evidence; this
+does not complete M3 cost/sensitivity work or standalone three-entry acceptance.
+
 New World comparison: [Sep23 fresh run](world-source-comparison-2026-09-23.md).
 The Sep17–23 native last30days run finalized within TTL: 15 nominations,
 5 native themes, one source-qualified provisional SEC exemption candidate after
