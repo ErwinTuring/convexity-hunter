@@ -21,6 +21,14 @@ API. The local model was removed and its service stopped. One `deepseek-flash`
 synthetic call succeeded (116 input / 19 output tokens); this is connectivity,
 not semantic Grounder or independent-product acceptance.
 
+M1a model transport/config is implemented in `host_model`, with independent
+review, 18 tests, and one real production-adapter call (104 reported tokens).
+It supports the user's existing external DeepSeek properties wrapper, explicit
+remote/cost permission and budgets, no redirects/retry/fallback, and sanitized
+receipts. Assistant content remains untrusted for the separate M2 semantic gate.
+See [model validation evidence](standalone-model-validation-2026-09-24.md).
+Controlled Skill execution, Grounder, persistence and the workbench remain open.
+
 M3 Profile subunit is implemented in `host_profile`: explicit approved
 USD100000 / .005 / 3 / .015, generated quantity one, immutable versioned snapshot
 and the existing Core request factory. Verified multipliers/structure identity

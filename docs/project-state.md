@@ -12,6 +12,12 @@ reviewed; six new tests and 30 existing Core/application tests pass. It supplies
 approved risk/repeat inputs through the existing request factory, without Kernel
 changes or invented cost/sensitivity evidence. Full M3 and M8 remain incomplete.
 
+M1a `host_model` is implemented and independently reviewed: 18 focused tests;
+one real DeepSeek call through production transport succeeded (104 tokens).
+[Validation](standalone-model-validation-2026-09-24.md) separates transport,
+synthetic semantic probes and still-unproven real Grounder capability. The
+independent Skill/source/Host/UI work is not claimed complete.
+
 New World producer comparison: [Sep23 run and protocol deviation](world-source-comparison-2026-09-23.md).
 The fresh last30days three-leg run completed within TTL, with 15 nominations,
 5 native themes and one deduplicated source-qualified provisional event.
