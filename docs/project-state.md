@@ -1,5 +1,11 @@
 # Project State
 
+Latest completed source subunit: [Sep27 Tavily transport validation](standalone-source-validation-2026-09-27.md).
+`host_sources` passed independent review, 19 focused tests and bounded real
+Search/Extract validation after precise response-schema corrections. Snippets
+and bodies remain unverified; no Grounder/EI/Core completion follows from this.
+Skill host implementation remains local and under review; standalone MVP is open.
+
 Active work: [standalone local MVP M0–M8](standalone-mvp-architecture-v0.1.md).
 M0 targeted independent review passed; M1 transport/config BUILD is unlocked,
 while production runtime remains unchanged. User-authorized

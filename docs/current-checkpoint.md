@@ -11,6 +11,15 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
+Latest continuation: [Sep27 Tavily transport validation](standalone-source-validation-2026-09-27.md).
+The Sep25 unknown-field blocker was investigated with separately budgeted schema
+diagnostics. Narrow Search/Extract compatibility fixes passed independent review,
+19 source tests and a bounded real production-adapter Search/Extract run.
+All returned evidence remains unverified; transport success is not Grounder/EI
+acceptance. Skill execution work remains local and under review. The
+[Sep25 pause](standalone-host-resume-2026-09-25.md) is historical, not a current
+quota or source-compatibility blocker.
+
 Current work: [independent local MVP architecture](standalone-mvp-architecture-v0.1.md),
 under the user's continuous M0–M8 authorization. This supersedes the old
 Codex-hosted-only/no-UI/no-database delivery restriction, not EI/Core evidence
