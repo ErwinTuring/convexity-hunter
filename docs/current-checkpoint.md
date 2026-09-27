@@ -11,6 +11,11 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
+Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
+is frozen and builder BUILD_READY after independent review; production builder
+and semantic validator remain absent. Do not equate structural/lexical checks
+with factual entailment or live EI acceptance.
+
 Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2026-09-27.md).
 The pinned native protocol controller and guarded launcher passed independent
 review, 15 focused tests and offline startup with independent CPython 3.12.14.
