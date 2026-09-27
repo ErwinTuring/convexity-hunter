@@ -126,18 +126,19 @@ A.
 ## Child-agent model and recovery
 
 PREFLIGHT, BUILD, REVIEW, targeted fixes, targeted re-review, and other
-execution child agents default to `gpt-5.6-luna` with `max` reasoning effort.
+execution child agents default to `gpt-6-luna` with `max` reasoning effort,
+per the user's 2026-09-28 model switch. Spawn them with an explicit model and
+reasoning-effort override; the existing `luna-worker` role is fixed to
+`gpt-5.6-luna` and must not be used to claim a GPT-6 run.
 The requested model or a child's self-report is not evidence of actual
 execution. Claim the model and effort only when runtime metadata binds the
 child context to the actual values. Do not add a custom telemetry or audit
 framework to establish this.
 
 If the same substantive blocker survives two Luna/max fix-and-re-review
-rounds, enter temporary recovery mode with `gpt-5.6-sol` and `medium` effort
-for at most two rounds. If it still survives, the Main Architect performs a
-root-cause replan. Escalate to the user only if the replan becomes a product,
-architecture, contract, or scope decision; do not mechanically repeat the
-same loop.
+rounds, the Main Architect performs a root-cause replan rather than changing
+the child model or mechanically repeating the same loop. Escalate to the user
+only if the replan becomes a product, architecture, contract, or scope decision.
 
 ## Token and context cost control
 
