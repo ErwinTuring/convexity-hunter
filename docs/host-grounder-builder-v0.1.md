@@ -134,6 +134,26 @@ lack optional EI fields and be assessed as INCOMPLETE.
 
 ## Quote spans and semantic boundary
 
+`FieldBindingDTO.field_path` uses only the following positional paths into the
+exact immutable envelope. `{i}` and `{j}` are in-bounds decimal array indices
+without signs or leading zeroes (except `0`). No aliases, wildcards, escaping,
+or ID-based lookup are permitted:
+
+| `semantic_role` | Permitted paths |
+| --- | --- |
+| `hypothesis` | `/hypotheses/{i}/impact_path`, `/hypotheses/{i}/distribution_mode`, `/hypotheses/{i}/distribution_hypothesis` |
+| `date` | `/claims/{i}/event_date`, `/hypotheses/{i}/expected_window/start_date`, `/hypotheses/{i}/expected_window/end_date`, `/hypotheses/{i}/reassessment/reassessment_by` |
+| `entity` | `/claims/{i}/entity_refs/{j}`, `/hypotheses/{i}/underlying_symbol` |
+
+The terminal field must exist and be non-null; the entity-ref index must
+resolve to an existing nonempty item. Unlisted paths fail structural
+validation. Multiple bindings for one path are retained, but every supplied
+binding for a projected field must pass lexical and semantic checks; an
+unresolved or contradictory binding is not silently ignored. For each non-null
+field above, at least one verified binding is required before projection.
+This does not establish an impact end or listed security identity by itself:
+the separate temporal and underlying provenance rules still apply.
+
 For every `FieldBindingDTO`, `start` and `end` are zero-based Unicode codepoint
 indices into the exact registered body, with a nonempty half-open span:
 `0 <= start < end <= len(body)` and `body[start:end] == quote`. They are not
@@ -157,6 +177,47 @@ object and call `validate_source_batch`; persist the same `run_id` and
 submission. Call
 `assess_event_intelligence_submission` only after constructing a nonempty,
 valid submission; its status and issue codes are never builder outputs.
+
+The Host-produced semantic-validation receipt has this closed v0.1 shape;
+model DTO status labels are never copied into it:
+
+```text
+SemanticValidationReceipt {
+  schema_version: "semantic-validation-v0.1",
+  run_id: exact Host run ID,
+  canonical_input_hash: exact run_start input SHA-256,
+  envelope_hash: SHA-256 of canonical ModelOutputEnvelope JSON,
+  source_body_hashes: sorted tuple of (source_id, SHA-256 body hash),
+  validator_id: nonempty Host validator identifier,
+  validator_version: nonempty version,
+  verified_claim_ids: tuple of exact ClaimDTO IDs,
+  rejected_claims: tuple of (claim_id, reason),
+  verified_hypothesis_ids: tuple of exact HypothesisDTO IDs,
+  rejected_hypotheses: tuple of (hypothesis_id, reason),
+  verified_binding_indices: tuple of zero-based FieldBindingDTO indices,
+  rejected_bindings: tuple of (zero-based binding index, reason),
+  coverage_outcomes: tuple of (
+    zero-based CoverageDTO index,
+    exact subquestion_id,
+    "supported" | "unresolved" | "contradicted",
+    nonempty validator rationale
+  )
+}
+```
+
+Each claim, hypothesis, and binding index appears exactly once in its verified
+or rejected partition. Every CoverageDTO entry has exactly one outcome in the
+receipt, and its index/ID must agree with the envelope and original request.
+The validator outcome, not the model-authored `CoverageDTO.status`, is used in
+Host coverage display; both remain in the sidecar when they disagree. IDs and
+indices must resolve to this envelope;
+duplicates, overlaps, missing/unknown entries, empty reasons, or identity/hash
+mismatch reject the receipt. The Host validates this shape and provenance
+before the builder consumes it. Partitioning alone is not proof of truth: the
+separate semantic validator must examine readable body content, attribution,
+temporal roles, entity identity, interpretation and counterevidence. A verified
+hypothesis still projects only when its claim dependency closure and all
+applicable field bindings survive.
 
 ## Remaining runtime blocker before a live Grounder claim
 
