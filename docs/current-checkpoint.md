@@ -15,8 +15,9 @@ Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2
 The pinned native protocol controller and guarded launcher passed independent
 review, 15 focused tests and offline startup with independent CPython 3.12.14.
 This is M1b startup and native output retention, not live World or EI acceptance.
-The separate pre-Core gate passed review in the local worktree and awaits its
-own checkpoint. Full regression with both uncommitted units passed 1,512 tests.
+The separate pre-Core gate passed review: invalid or empty source batches stop
+before Core; valid incomplete submissions still reach EI. Full regression with
+both implementation units passed 1,512 tests. Grounder remains open.
 
 Earlier: [Sep27 Tavily transport validation](standalone-source-validation-2026-09-27.md).
 The Sep25 unknown-field blocker was investigated with separately budgeted schema

@@ -1,11 +1,17 @@
 # Project State
 
+The pre-Core source batch gate is implemented and independently reviewed.
+It rejects empty, invalid or wrongly bound source batches before Core and
+passes valid incomplete submissions to the existing Event Intelligence check.
+Six focused tests and the 1,512-test full suite passed; it does not implement
+the semantic Grounder or a complete Host status machine.
+
 M1b Skill host/launcher is implemented and independently reviewed; see
 [validation](standalone-skill-validation-2026-09-27.md). Fifteen focused tests
 and an offline guarded launch with independent Python 3.12.14 passed. The
-full suite with the locally completed pre-Core gate passed 1,512 tests.
+full suite with the pre-Core gate passed 1,512 tests.
 No live Skill discovery, semantic Grounder or three-entry Host completion is
-claimed. The gate is a separate reviewed work unit awaiting commit.
+claimed.
 
 Latest completed source subunit: [Sep27 Tavily transport validation](standalone-source-validation-2026-09-27.md).
 `host_sources` passed independent review, 19 focused tests and bounded real
