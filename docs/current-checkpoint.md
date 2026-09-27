@@ -11,12 +11,19 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
-Latest continuation: [Sep27 Tavily transport validation](standalone-source-validation-2026-09-27.md).
+Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2026-09-27.md).
+The pinned native protocol controller and guarded launcher passed independent
+review, 15 focused tests and offline startup with independent CPython 3.12.14.
+This is M1b startup and native output retention, not live World or EI acceptance.
+The separate pre-Core gate passed review in the local worktree and awaits its
+own checkpoint. Full regression with both uncommitted units passed 1,512 tests.
+
+Earlier: [Sep27 Tavily transport validation](standalone-source-validation-2026-09-27.md).
 The Sep25 unknown-field blocker was investigated with separately budgeted schema
 diagnostics. Narrow Search/Extract compatibility fixes passed independent review,
 19 source tests and a bounded real production-adapter Search/Extract run.
 All returned evidence remains unverified; transport success is not Grounder/EI
-acceptance. Skill execution work remains local and under review. The
+acceptance. Skill execution work was subsequently reviewed. The
 [Sep25 pause](standalone-host-resume-2026-09-25.md) is historical, not a current
 quota or source-compatibility blocker.
 
