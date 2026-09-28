@@ -16,6 +16,13 @@ its receipt must come from a trusted Host semantic validator, which is not yet
 implemented. No source truth or live Grounder is claimed. That validator and
 runtime integration remain M2 work.
 
+The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
+is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted
+re-review. It specifies a bounded second verifier call and Host receipt
+construction. The low-level `Mapping` Builder API is structural only and does
+not authenticate issuers; product runtime integration is not implemented. No
+semantic truth or real-trial result is claimed; EI acceptance remains separate.
+
 The pre-Core source batch gate is implemented and independently reviewed.
 It rejects empty, invalid or wrongly bound source batches before Core and
 passes valid incomplete submissions to the existing Event Intelligence check.

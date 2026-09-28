@@ -22,6 +22,13 @@ validator and live Host integration remain absent; structural/lexical checks
 and synthetic receipts do not establish factual entailment or live EI
 acceptance.
 
+The [Host Semantic Validation v0.1](host-grounder-semantic-validation-v0.1.md)
+contract is frozen and SUBSEQUENT_BUILD_READY after independent review and
+targeted re-review. It specifies a separate bounded verifier call and
+conservative evidence assessment, not semantic truth or EI acceptance. The
+low-level Builder still accepts mappings for controlled structural use and does
+not authenticate issuers; live integration requires a real trial.
+
 Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2026-09-27.md).
 The pinned native protocol controller and guarded launcher passed independent
 review, 15 focused tests and offline startup with independent CPython 3.12.14.
