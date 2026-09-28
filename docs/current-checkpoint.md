@@ -17,8 +17,9 @@ parser, receipt identity/lexical validator, and deterministic Builder are
 implemented, with 8, 16, and 13 focused tests respectively and independent
 review. The Builder consumes the frozen validated envelope snapshot and can
 produce a partial EI submission without dropping unrelated verified
-hypotheses. It requires a trusted Host-produced semantic receipt. The semantic
-validator and live Host integration remain absent; structural/lexical checks
+hypotheses. It requires a trusted Host-produced semantic receipt. An internal
+same-run Event path now makes a fallible verifier call, but live Host/source
+integration remains absent; structural/lexical checks
 and synthetic receipts do not establish factual entailment or live EI
 acceptance.
 
@@ -27,16 +28,20 @@ contract is frozen and SUBSEQUENT_BUILD_READY after independent review and
 targeted re-review. It specifies a separate bounded verifier call and
 conservative evidence assessment, not semantic truth or EI acceptance. The
 closed verdict parser and deterministic receipt-construction helper are now
-implemented with 10 focused tests and independent review; they are non-live
-and do not authenticate the verifier call. The low-level Builder still accepts
-mappings for controlled structural use. Same-run product integration and a real
-trial remain open.
+implemented with 10 focused tests and independent review; in isolation they
+do not authenticate the verifier call. The low-level Builder still accepts
+mappings for controlled structural use. An internal same-run Event path now
+uses pre-registered source bodies, separate bounded producer/verifier calls and
+an internally constructed v0.2 receipt. It has only fake-client validation;
+source acquisition, live model trial, product Host integration and EI acceptance
+remain open.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas
 in [Builder v0.2](host-grounder-builder-v0.2.md) and [Semantic Validation
-v0.2](host-grounder-semantic-validation-v0.2.md). Production v0.1 contracts
-remain unchanged; v0.2 runtime and live Host runs do not exist.
+v0.2](host-grounder-semantic-validation-v0.2.md). Pure input binding and an
+internal v0.2 same-run runtime are implemented; public v0.1 Builder behavior
+remains unchanged. No live Host run has been established.
 
 Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2026-09-27.md).
 The pinned native protocol controller and guarded launcher passed independent

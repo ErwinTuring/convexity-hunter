@@ -298,10 +298,57 @@ def build_host_grounder(
     max_string_bytes: int,
     max_array_items: int,
 ) -> HostBuildResult:
-    """Project verified closures into one batch.
+    """Project the v0.1 receipt without changing the established API."""
+    return _build_host_grounder_with_schema(
+        envelope,
+        receipt,
+        context=context,
+        request_subquestion_ids=request_subquestion_ids,
+        max_input_bytes=max_input_bytes,
+        max_string_bytes=max_string_bytes,
+        max_array_items=max_array_items,
+        expected_schema_version="semantic-validation-v0.1",
+    )
 
-    Requires a receipt from a trusted Host semantic validator; this projection
-    cannot authenticate its issuer or establish factual truth.
+
+def _build_host_grounder_v0_2(
+    envelope: Mapping[str, object],
+    receipt: Mapping[str, object],
+    *,
+    context: HostBuildContext,
+    request_subquestion_ids: Tuple[str, ...],
+    max_input_bytes: int,
+    max_string_bytes: int,
+    max_array_items: int,
+) -> HostBuildResult:
+    """Internal same-run projection for the explicit v0.2 receipt protocol."""
+    return _build_host_grounder_with_schema(
+        envelope,
+        receipt,
+        context=context,
+        request_subquestion_ids=request_subquestion_ids,
+        max_input_bytes=max_input_bytes,
+        max_string_bytes=max_string_bytes,
+        max_array_items=max_array_items,
+        expected_schema_version="semantic-validation-v0.2",
+    )
+
+
+def _build_host_grounder_with_schema(
+    envelope: Mapping[str, object],
+    receipt: Mapping[str, object],
+    *,
+    context: HostBuildContext,
+    request_subquestion_ids: Tuple[str, ...],
+    max_input_bytes: int,
+    max_string_bytes: int,
+    max_array_items: int,
+    expected_schema_version: str,
+) -> HostBuildResult:
+    """Project a structurally valid receipt of exactly the selected version.
+
+    This checks structure and run bindings; it cannot authenticate the mapping's
+    issuer or establish semantic or real-world truth.
     """
     if type(context) is not HostBuildContext:
         raise TypeError("context must be HostBuildContext")
@@ -322,6 +369,7 @@ def build_host_grounder(
         max_input_bytes=max_input_bytes,
         max_string_bytes=max_string_bytes,
         max_array_items=max_array_items,
+        expected_schema_version=expected_schema_version,
     )
     # The caller's parsed mapping is mutable. Only the validated snapshot feeds projection.
     data = parse_model_output_envelope(

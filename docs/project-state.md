@@ -12,9 +12,10 @@ snapshot after strict revalidation. `host_grounder_builder` now projects only
 verified closures from that snapshot into at most one existing EI submission;
 13 focused tests and independent review plus targeted re-review pass. A stale
 reassessment excludes only its own hypothesis. This is a non-live Builder:
-its receipt must come from a trusted Host semantic validator, which is not yet
-implemented. No source truth or live Grounder is claimed. That validator and
-runtime integration remain M2 work.
+its receipt must come from a trusted Host semantic verifier call. An internal
+same-run Event path now supplies that call and constructs a v0.2 receipt;
+no source truth or live product Grounder is claimed. Source acquisition,
+real-model trial and product Host integration remain M2 work.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted
@@ -22,17 +23,19 @@ re-review. It specifies a bounded second verifier call and Host receipt
 construction. The first implementation slice now strictly parses the closed
 verifier verdict and constructs a deterministic receipt from bounded exact-body
 references; 10 focused tests and independent review plus targeted re-review
-pass. This remains a non-live, unauthenticated low-level helper. The low-level
-`Mapping` Builder API is structural only; same-run product orchestration is
-not implemented. No semantic truth or real-trial result is claimed; EI
+pass. In isolation this remains a non-live, unauthenticated low-level helper.
+The low-level `Mapping` Builder API is structural only; a separate internal
+same-run v0.2 orchestration path now exists with fake-client coverage. No
+semantic truth or real-trial result is claimed; EI
 acceptance remains separate.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed
 deltas in [Builder v0.2](host-grounder-builder-v0.2.md) and [Semantic
 Validation v0.2](host-grounder-semantic-validation-v0.2.md). Production v0.1
-contracts and structural fixture hashes remain unchanged; no v0.2 runtime or
-live Host run exists.
+public Builder behavior and structural fixture hashes remain unchanged; pure
+run-input binding and internal v0.2 runtime are implemented, but no live Host
+run exists.
 
 The pre-Core source batch gate is implemented and independently reviewed.
 It rejects empty, invalid or wrongly bound source batches before Core and
