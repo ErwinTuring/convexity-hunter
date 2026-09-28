@@ -12,7 +12,8 @@ Repository: `ErwinTuring/convexity-hunter`
 ## Approved target applicability — 2026-09-18
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
-is frozen and builder BUILD_READY after independent review; production builder
+is frozen and builder BUILD_READY after independent review. A closed DTO parser
+is implemented with eight focused tests and targeted review, but the builder
 and semantic validator remain absent. Do not equate structural/lexical checks
 with factual entailment or live EI acceptance.
 

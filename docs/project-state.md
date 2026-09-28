@@ -1,11 +1,12 @@
 # Project State
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
-is frozen after independent Tier-A review and targeted re-review. Only the
-builder translation boundary is BUILD_READY; no runtime semantic validator or
-live Grounder is claimed. The contract preserves valid partial EI, explicit
-claim/body binding, exact input identity, and fail-closed temporal/entity
-provenance. Production implementation remains the next M2 work unit.
+is frozen after independent Tier-A review and targeted re-review. Its closed
+field-path and receipt clarification is part of the contract. The first
+production slice,
+`host_grounder_schema`, strictly parses the untrusted model DTO; eight focused
+tests and targeted independent review pass. It does not verify source meaning,
+construct EI submissions, or provide a live Grounder. Those remain M2 work.
 
 The pre-Core source batch gate is implemented and independently reviewed.
 It rejects empty, invalid or wrongly bound source batches before Core and
