@@ -27,6 +27,13 @@ pass. This remains a non-live, unauthenticated low-level helper. The low-level
 not implemented. No semantic truth or real-trial result is claimed; EI
 acceptance remains separate.
 
+Future Event run-input provenance is frozen in
+[Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed
+deltas in [Builder v0.2](host-grounder-builder-v0.2.md) and [Semantic
+Validation v0.2](host-grounder-semantic-validation-v0.2.md). Production v0.1
+contracts and structural fixture hashes remain unchanged; no v0.2 runtime or
+live Host run exists.
+
 The pre-Core source batch gate is implemented and independently reviewed.
 It rejects empty, invalid or wrongly bound source batches before Core and
 passes valid incomplete submissions to the existing Event Intelligence check.

@@ -32,6 +32,12 @@ and do not authenticate the verifier call. The low-level Builder still accepts
 mappings for controlled structural use. Same-run product integration and a real
 trial remain open.
 
+Future Event run-input provenance is frozen in
+[Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas
+in [Builder v0.2](host-grounder-builder-v0.2.md) and [Semantic Validation
+v0.2](host-grounder-semantic-validation-v0.2.md). Production v0.1 contracts
+remain unchanged; v0.2 runtime and live Host runs do not exist.
+
 Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2026-09-27.md).
 The pinned native protocol controller and guarded launcher passed independent
 review, 15 focused tests and offline startup with independent CPython 3.12.14.
