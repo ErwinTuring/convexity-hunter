@@ -128,8 +128,9 @@ A.
 PREFLIGHT, BUILD, REVIEW, targeted fixes, targeted re-review, and other
 execution child agents default to `gpt-6-luna` with `max` reasoning effort,
 per the user's 2026-09-28 model switch. Spawn them with an explicit model and
-reasoning-effort override; the existing `luna-worker` role is fixed to
-`gpt-5.6-luna` and must not be used to claim a GPT-6 run.
+reasoning-effort override. Runtime role settings can change across app
+sessions; do not infer them from the role name or an earlier session. Verify
+runtime metadata before claiming a GPT-6 run.
 The requested model or a child's self-report is not evidence of actual
 execution. Claim the model and effort only when runtime metadata binds the
 child context to the actual values. Do not add a custom telemetry or audit
