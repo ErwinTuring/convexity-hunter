@@ -26,8 +26,11 @@ The [Host Semantic Validation v0.1](host-grounder-semantic-validation-v0.1.md)
 contract is frozen and SUBSEQUENT_BUILD_READY after independent review and
 targeted re-review. It specifies a separate bounded verifier call and
 conservative evidence assessment, not semantic truth or EI acceptance. The
-low-level Builder still accepts mappings for controlled structural use and does
-not authenticate issuers; live integration requires a real trial.
+closed verdict parser and deterministic receipt-construction helper are now
+implemented with 10 focused tests and independent review; they are non-live
+and do not authenticate the verifier call. The low-level Builder still accepts
+mappings for controlled structural use. Same-run product integration and a real
+trial remain open.
 
 Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2026-09-27.md).
 The pinned native protocol controller and guarded launcher passed independent
