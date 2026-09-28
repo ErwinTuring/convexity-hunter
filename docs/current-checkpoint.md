@@ -13,10 +13,13 @@ Repository: `ErwinTuring/convexity-hunter`
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
-parser and receipt identity/lexical validator are implemented, with 8 and 16
-focused tests respectively and independent review. Receipt validation returns
-a frozen envelope snapshot; the builder and semantic validator remain absent.
-Do not equate structural/lexical checks with factual entailment or live EI
+parser, receipt identity/lexical validator, and deterministic Builder are
+implemented, with 8, 16, and 13 focused tests respectively and independent
+review. The Builder consumes the frozen validated envelope snapshot and can
+produce a partial EI submission without dropping unrelated verified
+hypotheses. It requires a trusted Host-produced semantic receipt. The semantic
+validator and live Host integration remain absent; structural/lexical checks
+and synthetic receipts do not establish factual entailment or live EI
 acceptance.
 
 Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2026-09-27.md).

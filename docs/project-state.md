@@ -8,8 +8,13 @@ DTO; eight focused tests and targeted independent review pass. The second slice,
 `host_grounder_receipt`, validates closed receipt partitions, run/envelope/body
 identity, request coverage, and lexical quote binding; 16 focused tests and
 independent review plus targeted re-review pass. It returns a frozen envelope
-snapshot after strict revalidation. Neither slice verifies source meaning,
-constructs EI submissions, or provides a live Grounder. Those remain M2 work.
+snapshot after strict revalidation. `host_grounder_builder` now projects only
+verified closures from that snapshot into at most one existing EI submission;
+13 focused tests and independent review plus targeted re-review pass. A stale
+reassessment excludes only its own hypothesis. This is a non-live Builder:
+its receipt must come from a trusted Host semantic validator, which is not yet
+implemented. No source truth or live Grounder is claimed. That validator and
+runtime integration remain M2 work.
 
 The pre-Core source batch gate is implemented and independently reviewed.
 It rejects empty, invalid or wrongly bound source batches before Core and
