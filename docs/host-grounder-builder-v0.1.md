@@ -205,6 +205,16 @@ SemanticValidationReceipt {
 }
 ```
 
+For `envelope_hash`, canonical bytes are exactly the UTF-8 result of Python's
+`json.dumps(parsed_envelope, ensure_ascii=False, sort_keys=True,
+separators=(',', ':'), allow_nan=False)`, with no trailing newline. This
+preserves array order and does not add, remove, or normalize envelope fields.
+Receipt validation reparses these bytes with the same explicit input, string,
+and array limits used for the initial parse and returns a frozen
+`ValidatedEnvelopeSnapshot`
+containing these bytes and the matching receipt hash. The builder consumes that
+snapshot, never the mutable parsed mapping.
+
 Each claim, hypothesis, and binding index appears exactly once in its verified
 or rejected partition. Every CoverageDTO entry has exactly one outcome in the
 receipt, and its index/ID must agree with the envelope and original request.

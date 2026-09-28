@@ -12,10 +12,12 @@ Repository: `ErwinTuring/convexity-hunter`
 ## Approved target applicability — 2026-09-18
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
-is frozen and builder BUILD_READY after independent review. A closed DTO parser
-is implemented with eight focused tests and targeted review, but the builder
-and semantic validator remain absent. Do not equate structural/lexical checks
-with factual entailment or live EI acceptance.
+is frozen and builder BUILD_READY after independent review. The closed DTO
+parser and receipt identity/lexical validator are implemented, with 8 and 16
+focused tests respectively and independent review. Receipt validation returns
+a frozen envelope snapshot; the builder and semantic validator remain absent.
+Do not equate structural/lexical checks with factual entailment or live EI
+acceptance.
 
 Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2026-09-27.md).
 The pinned native protocol controller and guarded launcher passed independent

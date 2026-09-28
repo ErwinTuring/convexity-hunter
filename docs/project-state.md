@@ -3,10 +3,13 @@
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed
 field-path and receipt clarification is part of the contract. The first
-production slice,
-`host_grounder_schema`, strictly parses the untrusted model DTO; eight focused
-tests and targeted independent review pass. It does not verify source meaning,
-construct EI submissions, or provide a live Grounder. Those remain M2 work.
+production slice, `host_grounder_schema`, strictly parses the untrusted model
+DTO; eight focused tests and targeted independent review pass. The second slice,
+`host_grounder_receipt`, validates closed receipt partitions, run/envelope/body
+identity, request coverage, and lexical quote binding; 16 focused tests and
+independent review plus targeted re-review pass. It returns a frozen envelope
+snapshot after strict revalidation. Neither slice verifies source meaning,
+constructs EI submissions, or provides a live Grounder. Those remain M2 work.
 
 The pre-Core source batch gate is implemented and independently reviewed.
 It rejects empty, invalid or wrongly bound source batches before Core and
