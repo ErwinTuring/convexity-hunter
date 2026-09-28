@@ -24,6 +24,9 @@ _TOP = frozenset(("schema_version", "run_id", "envelope_hash", "source_body_hash
 _BASE = frozenset(("outcome", "rationale", "evidence_refs"))
 _REF = frozenset(("source_id", "body_sha256", "start", "end", "quote"))
 _OUTCOMES = frozenset(("supported", "contradicted", "unresolved"))
+_RECEIPT_SCHEMA_VERSIONS = frozenset(
+    ("semantic-validation-v0.1", "semantic-validation-v0.2")
+)
 
 
 def _limit(value: object, name: str) -> int:
@@ -206,8 +209,14 @@ def build_semantic_validation_receipt(
     max_string_bytes: int,
     max_array_items: int,
     max_source_body_bytes: int,
+    receipt_schema_version: str = "semantic-validation-v0.1",
 ) -> dict:
-    """Apply deterministic gates and return the Builder's closed receipt map."""
+    """Build a version-selected closed receipt; v0.1 remains the default."""
+    if (
+        type(receipt_schema_version) is not str
+        or receipt_schema_version not in _RECEIPT_SCHEMA_VERSIONS
+    ):
+        raise ValueError("receipt_schema_version is unsupported")
     max_input_bytes = _limit(max_input_bytes, "max_input_bytes")
     max_string_bytes = _limit(max_string_bytes, "max_string_bytes")
     max_array_items = _limit(max_array_items, "max_array_items")
@@ -448,7 +457,7 @@ def build_semantic_validation_receipt(
         coverage_outcomes.append((i, item["subquestion_id"], status, rationale))
 
     receipt = {
-        "schema_version": "semantic-validation-v0.1",
+        "schema_version": receipt_schema_version,
         "run_id": run_id,
         "canonical_input_hash": canonical_input_hash,
         "envelope_hash": envelope_hash,
@@ -468,5 +477,6 @@ def build_semantic_validation_receipt(
         request_subquestion_ids=request_ids, source_bodies=source_bodies,
         max_input_bytes=max_input_bytes, max_string_bytes=max_string_bytes,
         max_array_items=max_array_items,
+        expected_schema_version=receipt_schema_version,
     )
     return receipt

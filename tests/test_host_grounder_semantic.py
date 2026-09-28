@@ -187,6 +187,17 @@ class HostGrounderSemanticTests(unittest.TestCase):
         self.assertEqual(receipt["verified_binding_indices"], (0,))
         self.assertEqual(receipt["coverage_outcomes"][0][2], "supported")
 
+    def test_explicit_v02_receipt_selector_preserves_v01_default(self):
+        envelope, verdict, bodies = _case()
+        receipt = _build(
+            envelope, verdict, bodies,
+            receipt_schema_version="semantic-validation-v0.2",
+        )
+        self.assertEqual(receipt["schema_version"], "semantic-validation-v0.2")
+
+        with self.assertRaisesRegex(ValueError, "receipt_schema_version is unsupported"):
+            _build(envelope, verdict, bodies, receipt_schema_version="semantic-validation-v0.3")
+
     def test_parser_rejects_duplicate_json_keys(self):
         raw = '{"schema_version":"semantic-verdict-v0.1","schema_version":"semantic-verdict-v0.1"}'
         with self.assertRaisesRegex(ValueError, "duplicate JSON key"):

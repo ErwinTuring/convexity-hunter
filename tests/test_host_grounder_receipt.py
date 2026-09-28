@@ -152,6 +152,7 @@ def _validate(
     max_input_bytes=100_000,
     max_string_bytes=10_000,
     max_array_items=100,
+    expected_schema_version="semantic-validation-v0.1",
 ):
     return validate_semantic_validation_receipt(
         envelope,
@@ -163,6 +164,7 @@ def _validate(
         max_input_bytes=max_input_bytes,
         max_string_bytes=max_string_bytes,
         max_array_items=max_array_items,
+        expected_schema_version=expected_schema_version,
     )
 
 
@@ -177,6 +179,34 @@ class HostGrounderReceiptTests(unittest.TestCase):
             hashlib.sha256(snapshot.canonical_bytes).hexdigest(),
             snapshot.envelope_hash,
         )
+
+    def test_v02_receipt_and_explicit_version_mismatch(self):
+        envelope, receipt, source_bodies = _case()
+        receipt["schema_version"] = "semantic-validation-v0.2"
+
+        with self.assertRaisesRegex(ValueError, "does not match expected_schema_version"):
+            _validate(envelope, receipt, source_bodies)
+        self.assertIsInstance(
+            _validate(
+                envelope, receipt, source_bodies,
+                expected_schema_version="semantic-validation-v0.2",
+            ),
+            ValidatedEnvelopeSnapshot,
+        )
+        with self.assertRaisesRegex(ValueError, "does not match expected_schema_version"):
+            _validate(
+                envelope, dict(receipt, schema_version="semantic-validation-v0.1"),
+                source_bodies, expected_schema_version="semantic-validation-v0.2",
+            )
+        with self.assertRaisesRegex(ValueError, "expected_schema_version is unsupported"):
+            _validate(
+                envelope, receipt, source_bodies,
+                expected_schema_version="semantic-validation-v0.3",
+            )
+
+        receipt["schema_version"] = "semantic-validation-v0.3"
+        with self.assertRaisesRegex(ValueError, "receipt schema_version is unsupported"):
+            _validate(envelope, receipt, source_bodies)
 
     def test_canonical_envelope_encoding_has_independent_golden_bytes_and_hash(self):
         envelope = _envelope(

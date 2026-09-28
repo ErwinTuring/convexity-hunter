@@ -33,6 +33,9 @@ _RECEIPT_KEYS = frozenset(
 )
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _COVERAGE_OUTCOMES = frozenset({"supported", "unresolved", "contradicted"})
+_RECEIPT_SCHEMA_VERSIONS = frozenset(
+    {"semantic-validation-v0.1", "semantic-validation-v0.2"}
+)
 
 
 @dataclass(frozen=True)
@@ -129,6 +132,7 @@ def validate_semantic_validation_receipt(
     max_input_bytes: int,
     max_string_bytes: int,
     max_array_items: int,
+    expected_schema_version: str = "semantic-validation-v0.1",
 ) -> ValidatedEnvelopeSnapshot:
     """Validate a receipt and return its immutable canonical envelope snapshot.
 
@@ -152,17 +156,23 @@ def validate_semantic_validation_receipt(
         max_array_items=max_array_items,
     )
     if not isinstance(receipt, Mapping) or set(receipt) != _RECEIPT_KEYS:
-        raise ValueError("receipt must have the exact closed v0.1 field set")
+        raise ValueError("receipt must have the exact closed field set")
+
+    if (
+        type(expected_schema_version) is not str
+        or expected_schema_version not in _RECEIPT_SCHEMA_VERSIONS
+    ):
+        raise ValueError("expected_schema_version is unsupported")
 
     run_id = _nonempty_utf8(run_id, "expected run_id")
     canonical_input_hash = _sha256_text(
         canonical_input_hash, "expected canonical_input_hash"
     )
-    if (
-        type(receipt["schema_version"]) is not str
-        or receipt["schema_version"] != "semantic-validation-v0.1"
-    ):
-        raise ValueError("receipt schema_version must be semantic-validation-v0.1")
+    schema_version = receipt["schema_version"]
+    if type(schema_version) is not str or schema_version not in _RECEIPT_SCHEMA_VERSIONS:
+        raise ValueError("receipt schema_version is unsupported")
+    if schema_version != expected_schema_version:
+        raise ValueError("receipt schema_version does not match expected_schema_version")
     if _nonempty_utf8(receipt["run_id"], "receipt run_id") != run_id:
         raise ValueError("receipt run_id does not match the Host run")
     if _sha256_text(receipt["canonical_input_hash"], "receipt canonical_input_hash") != (
