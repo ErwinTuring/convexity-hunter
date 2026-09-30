@@ -17,14 +17,25 @@ same-run Event path now supplies that call and constructs a v0.2 receipt;
 no source truth or live product Grounder is claimed. A bounded external live
 trial reached discovery but stopped at the producer schema array-type check
 (`dto_failed_gate=schema`, `host_grounder_schema.py:136`; exact field unknown)
-before semantic verification. Cumulative Tavily reservations are ten; settled usage is
-unknown. That diagnostic protocol is exhausted and remains historical. The
-prompt-only format correction is implemented against the unchanged DTO and
-independently reviewed; 37 focused model/schema/runtime tests, compilation, and
-diff-check passed. A distinct post-correction validation is preregistered
-within standing M0–M8 authorization, with no new provider or methodology; it
-has not yet run. Production source acquisition and product Host integration
-remain M2 work; no product success is claimed.
+before semantic verification. The separately preregistered post-format run
+then passed the discovery DTO/stage/run/coverage gates (6 claims, 0 hypotheses,
+7 bindings) and completed one semantic call, but stopped at
+`SEMANTIC_VERDICT_REJECTED` before submission/EI. The exact receipt/verdict
+subgate is unknown; this does not prove the model's judgment false or source
+quality poor. Cumulative Tavily reservations are eleven; settled usage is
+unknown. That one-shot protocol is complete with no retry. The prompt-only
+format correction is implemented against the unchanged DTO and independently
+reviewed; 37 focused model/schema/runtime tests, compilation, and diff-check
+passed. A read-only inspection located the broad receipt-builder catch; a
+module/line-only locator is preregistered as a separate one-shot under standing
+M0–M8 authorization. The outside-repository script passed compilation,
+synthetic offline validation, but the latest counts-only delta awaits targeted
+reviewer re-review; it has made no provider call. This standalone run allows
+one Extract and at most two model-role calls under existing budgets/caps, with
+no retries; the completed protocol above remains closed and reservations remain
+eleven until execution. The latest result remains `SEMANTIC_VERDICT_REJECTED`;
+this is not M2 success. Production source acquisition and product Host
+integration remain M2 work; no product success is claimed.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted

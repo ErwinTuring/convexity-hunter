@@ -37,22 +37,25 @@ production source-acquisition integration, a completed end-to-end live Grounder 
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
-records the null-title adapter diagnosis, post-fix discovery attempts, and
-the bounded DeepSeek documentation preflight, and the subsequent one-shot DTO
-array-type diagnostic. The latest run used the same complete 9,420-byte SEC
-body and stopped at `host_grounder_schema.py:136` (`bounded_array` rejected a
-non-array value; `dto_failed_gate=schema`, exact field unknown, payload not
-retained).
-Discovery ended normally (`stop`) after 8.707 seconds (4,201 prompt / 2,845
-completion / 7,046 total tokens; 9,404 content bytes; reasoning metadata null).
-Semantic calls were zero. Cumulative Tavily reservations are ten
-requests/credits; settled usage is unknown. That diagnostic protocol is
-exhausted and remains historical. The prompt-only JSON shape correction
-against the locked DTO is implemented and independently reviewed; 37 focused
-model/schema/runtime tests, compilation, and diff-check passed. A distinct
-post-correction validation is preregistered under the standing M0–M8
-authorization in the trial log, with no new provider or methodology; it has
-not yet run. No full suite or product success is claimed.
+records the earlier transport/discovery diagnostics and the completed
+post-format-correction validation. That run used the same complete 9,420-byte
+SEC body, passed the discovery DTO/stage/run/coverage gates (6 claims, 0
+hypotheses, 7 bindings), and completed one semantic call normally before
+`SEMANTIC_VERDICT_REJECTED`; submission/EI was not reached. The exact receipt
+subgate is unknown; this is not evidence that the model's judgment was false
+or source quality poor. Cumulative Tavily reservations are eleven; settled
+usage is unknown. The preregistered protocol is complete with no retry. The
+prompt-only JSON shape correction against the locked DTO is implemented and
+independently reviewed; 37 focused model/schema/runtime tests, compilation,
+and diff-check passed. Read-only inspection found the runtime's broad receipt
+builder catch. A distinct one-shot semantic-receipt locator is preregistered
+under standing M0–M8 authorization. Its external script passed compilation and
+synthetic offline validation, but the newly added counts-only delta still needs
+targeted reviewer re-review; no provider call has been made. The standalone
+protocol allows one Extract and at most two model-role calls with existing
+budgets/caps and no retries. The previous protocol remains closed; reservations
+remain eleven until the new run. The latest outcome remains
+`SEMANTIC_VERDICT_REJECTED`; this preregistration is not M2 success.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas

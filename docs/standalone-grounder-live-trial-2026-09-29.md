@@ -184,9 +184,8 @@ seven focused model/schema/runtime tests passed, as did source compilation and
 
 This is one separately bounded validation under the user's standing continuous
 M0–M8 authorization, distinct from and not a reopening of the exhausted
-diagnostic protocol above. It introduces no provider or methodology change and
-is preregistration only; no call or credit reservation has yet occurred under
-this protocol.
+diagnostic protocol above. It introduced no provider or methodology change.
+The preregistered operation has now been executed once; its outcome follows.
 
 - Use the same official IREN SEC filing URL and the existing reviewed DTO
   diagnostic script unchanged.
@@ -199,6 +198,84 @@ this protocol.
   response, 20 KB accepted source body, and 40 KB model response. Stop on any
   strict-gate failure; no retry or alternate path.
 
-The cumulative prior Tavily reservation count remains ten until execution; if
-the new Extract is made, its reservation is counted separately. Reservation
-counts are not settled usage or billing claims.
+At preregistration, the cumulative prior Tavily reservation count was ten. The
+executed Extract added one reservation, bringing the cumulative count to
+eleven. Reservation counts are not settled usage or billing claims.
+
+## Executed post-format-correction validation — 2026-09-30
+
+The one permitted run used the same official IREN SEC filing, complete
+9,420-byte body, and SHA-256 prefix `89536ce6ff75`; one Tavily Basic Extract
+request reserved one credit. Both model requests explicitly disabled thinking,
+as preregistered. Discovery made one call and finished normally
+(`stop`) in 7.220 seconds: 5,011 prompt, 2,383 completion, 7,394 total tokens,
+and 7,233 content UTF-8 bytes. The DTO passed; stage/run identity flags were
+true, with 6 claims, 0 hypotheses, and 7 field bindings. The coverage gate had
+no failure. Discovery reasoning metadata was null, not reported as zero.
+
+Semantic verification made one call and finished normally (`stop`) in 8.259
+seconds: 5,964 prompt, 2,677 completion, 8,641 total tokens, and 7,337 content
+UTF-8 bytes. Its reasoning metadata was also null, not reported as zero. The
+runtime returned `SEMANTIC_VERDICT_REJECTED`; submission and EI assessment were
+not reached. No retry was made under this completed protocol. The exact
+receipt/verdict subgate remains unknown. This outcome does not establish that
+the model's semantic judgment was false or that source quality was poor.
+Settled provider usage remains unknown.
+
+## Read-only semantic rejection path inspection — 2026-09-30
+
+`run_host_grounder_same_run` calls
+`build_semantic_validation_receipt` and converts any exception from it to
+`SEMANTIC_VERDICT_REJECTED` at `host_grounder_runtime.py:430–431`. The builder
+in `host_grounder_semantic.py` reparses the envelope and verdict, checks
+identity/hash, source registry and ordered coverage, validates exact evidence
+references, derives claim/hypothesis/coverage outcomes, and finally calls
+`validate_semantic_validation_receipt` in `host_grounder_receipt.py`. Therefore
+the observed runtime code alone does not identify which subgate failed.
+
+The narrow process-local locator described below implements that approach:
+wrap `build_semantic_validation_receipt`, capture only an allowlisted module
+tag and deepest source line on failure, then preserve the original result or
+exception unchanged. It does not inspect exception text/arguments, frame
+locals, or model content, and does not persist payloads. No production edit or
+additional provider call was made during this inspection.
+
+## Next semantic-receipt locator preregistration — 2026-09-30
+
+This is a new, standalone bounded one-shot under the standing continuous
+M0–M8 authorization. It does not reopen the completed post-format-correction
+protocol above, and changes no provider or methodology. Until this new run
+executes, the latest outcome remains `SEMANTIC_VERDICT_REJECTED` with the exact
+receipt/verdict subgate unknown; this preregistration is not M2 success.
+
+- Use the same official IREN SEC filing URL and existing source/request limits:
+  at most one Tavily Basic Extract request (one reserved credit), 100 KB Extract
+  response, and 20 KB accepted body.
+- Allow at most one `deepseek-flash` discovery call (6,000 output tokens,
+  45-second timeout), then only if all current strict gates pass at most one
+  semantic call (3,000 output tokens, 18-second timeout). Explicitly disable
+  thinking for each call; retain the 40 KB model response-byte cap.
+- Stop on any strict-gate failure. No retry or alternate path.
+
+Together, the run allows one Extract and at most two model-role calls. The
+implemented external locator is
+`/private/tmp/ch_live_grounder_semantic_diagnostic.py`. Its process-local
+wrapper reports only an allowlisted semantic/receipt/schema tag and deepest
+known source line, returns successful results unchanged, and re-raises the
+same error unchanged. On constructor failure only, it also reparses the verdict
+with the original parser and identical bounds. If parsing succeeds, it reports
+only exact aggregate integer counts for `quote_missing_from_registered_body`,
+`quote_unique`, `quote_ambiguous`, `span_matches`, `span_mismatches`, and
+`unknown_source`; all six remain null if parsing fails. Body checks use only the
+source mapping passed to the builder. No quote, body, source ID, index,
+argument, exception text, frame local, or model output is emitted or persisted.
+These counts cannot repair or admit a receipt.
+
+Compilation and synthetic offline validation passed, covering unchanged error
+and success identity, parse-failure null counts, a unique quote with bad span,
+a missing quote, overlapping ambiguous occurrences, an unknown source, and
+an oversized end index. Independent pre-execution safety review and targeted
+re-review of the counts-only delta passed. No live call or reservation has occurred under this new
+protocol; the cumulative Extract reservation count remains eleven until its
+execution. Main will commit this preregistration before execution.
+No retry is authorized under this protocol.
