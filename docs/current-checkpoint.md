@@ -33,15 +33,16 @@ do not authenticate the verifier call. The low-level Builder still accepts
 mappings for controlled structural use. An internal same-run Event path now
 uses pre-registered source bodies, separate bounded producer/verifier calls and
 an internally constructed v0.2 receipt. It has only fake-client validation;
-source acquisition, live model trial, product Host integration and EI acceptance
-remain open.
+production source-acquisition integration, a completed live model trial,
+product Host integration and EI acceptance remain open.
 
-The first [bounded internal Grounder live trial](standalone-grounder-live-trial-2026-09-29.md)
-stopped at Tavily Extract `MALFORMED_RESPONSE` after one reserved request/credit;
-no source body or model call was obtained. The failing response field is unknown.
-This does not alter the fake-client runtime validation or establish live EI
-acceptance. A separately bounded schema-path diagnostic is the next source
-transport step; no retry is implied.
+The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
+now records the null-title adapter diagnosis and four post-fix runs using the
+same complete 9,420-byte SEC body. All four stopped in discovery: outer
+`DISCOVERY_CALL_FAILED`, then underlying `TRUNCATED_RESPONSE`, `TIMEOUT`, and
+`TRUNCATED_RESPONSE`; none reached semantic validation or EI acceptance. Stop
+increasing caps; next is an offline prompt/output-boundary audit. No product
+success is established.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas

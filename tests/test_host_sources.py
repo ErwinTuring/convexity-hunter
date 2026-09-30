@@ -337,11 +337,30 @@ class HostSourcesTests(unittest.TestCase):
         self.assertEqual(result.bodies[0].body, "body")
         self.assertFalse(hasattr(result.bodies[0], "title"))
 
-    def test_extract_rejects_non_string_optional_title(self):
+    def test_extract_accepts_null_optional_title_and_discards_it(self):
         response = SyntheticResponse(
             response_body(
                 extract_payload(
                     [{"url": SEARCH_URL, "raw_content": "body", "title": None}],
+                    [],
+                )
+            ),
+            final_url="https://api.tavily.com/extract",
+        )
+        client = self.make_client(SyntheticTransport([response]))
+
+        result = client.extract((SEARCH_URL,))
+
+        self.assertEqual(result.urls, (SEARCH_URL,))
+        self.assertEqual(result.bodies[0].url, SEARCH_URL)
+        self.assertEqual(result.bodies[0].body, "body")
+        self.assertFalse(hasattr(result.bodies[0], "title"))
+
+    def test_extract_still_rejects_non_string_non_null_optional_title(self):
+        response = SyntheticResponse(
+            response_body(
+                extract_payload(
+                    [{"url": SEARCH_URL, "raw_content": "body", "title": 123}],
                     [],
                 )
             ),
@@ -359,6 +378,40 @@ class HostSourcesTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "MALFORMED_RESPONSE")
         self.assertEqual(client.remaining_request_budget, 0)
         self.assertEqual(client.remaining_credit_budget, 0)
+
+    def test_extract_still_rejects_non_string_source_body_with_null_title(self):
+        response = SyntheticResponse(
+            response_body(
+                extract_payload(
+                    [{"url": SEARCH_URL, "raw_content": {"not": "text"}, "title": None}],
+                    [],
+                )
+            ),
+            final_url="https://api.tavily.com/extract",
+        )
+        client = self.make_client(SyntheticTransport([response]))
+
+        with self.assertRaises(TavilyTransportError) as raised:
+            client.extract((SEARCH_URL,))
+
+        self.assertEqual(raised.exception.code, "MALFORMED_RESPONSE")
+
+    def test_extract_still_rejects_unrequested_result_url_with_null_title(self):
+        response = SyntheticResponse(
+            response_body(
+                extract_payload(
+                    [{"url": SECOND_URL, "raw_content": "body", "title": None}],
+                    [],
+                )
+            ),
+            final_url="https://api.tavily.com/extract",
+        )
+        client = self.make_client(SyntheticTransport([response]))
+
+        with self.assertRaises(TavilyTransportError) as raised:
+            client.extract((SEARCH_URL,))
+
+        self.assertEqual(raised.exception.code, "MALFORMED_RESPONSE")
 
     def test_extract_still_rejects_other_unknown_success_fields(self):
         response = SyntheticResponse(

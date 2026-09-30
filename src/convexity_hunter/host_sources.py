@@ -1047,7 +1047,11 @@ class TavilySourceClient:
                 raise _safe_error("MALFORMED_RESPONSE")
             if type(item["raw_content"]) is not str:
                 raise _safe_error("MALFORMED_RESPONSE")
-            if "title" in item and type(item["title"]) is not str:
+            if (
+                "title" in item
+                and item["title"] is not None
+                and type(item["title"]) is not str
+            ):
                 raise _safe_error("MALFORMED_RESPONSE")
             successes[url] = item["raw_content"]
         for item in failed_results:
