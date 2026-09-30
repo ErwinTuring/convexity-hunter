@@ -37,27 +37,29 @@ production source-acquisition integration, a completed end-to-end live Grounder 
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
-records the completed post-format run and subsequent semantic diagnostics. The
-latest one used the same complete 9,420-byte SEC body; discovery passed the
-DTO/stage/run/coverage gates (7 claims, 0 hypotheses, 6 bindings). Its single
-semantic call reached the 3,000-token output cap and ended in
-`TRUNCATED_RESPONSE` / `SEMANTIC_CALL_FAILED`; the receipt locator was not
-reached, and submission/EI was not reached. Thus the current blocker for that
-run is semantic output-budget exhaustion, while the exact receipt/verdict
-subgate from the earlier completed semantic response remains unknown. This is
-not evidence of a false model judgment or poor source quality. Cumulative
-Tavily reservations are twelve; settled usage is unknown. No retry was made.
+records the completed diagnostics. The latest one used the same complete
+9,420-byte SEC body; discovery stopped normally (5,012 prompt, 1,492
+completion, 6,504 total tokens; 4,590 content bytes) and passed DTO/stage/run
+checks (4 claims, 0 hypotheses, 3 bindings). Semantic stopped normally (5,098
+prompt, 2,217 completion, 7,315 total tokens; 6,265 content bytes), but receipt
+construction returned `SEMANTIC_VERDICT_REJECTED` at
+`host_grounder_semantic.py:310`. The exact-body span gate saw 11 refs with
+unique quote occurrences, 0 ambiguous/missing/unknown-source refs, 0 matches,
+and 11 mismatches. No receipt or submission/EI was produced; the binding-offset
+cross-check at lines 324–328 was not reached, so producer-offset correctness
+remains unknown. The earlier completed semantic response's exact receipt
+subgate is still unknown. Cumulative Tavily reservations are thirteen; settled
+usage is unknown. No retry was made.
 
 The prompt-only JSON shape correction against the locked DTO is implemented
 and independently reviewed; 37 focused model/schema/runtime tests, compilation,
-and diff-check passed. The locator's counts-only diagnostic passed offline
-validation, but its fields/counters remained null in the live run because
-truncation occurred before receipt construction. A distinct 6,000-token,
-45-second-per-role output-budget verification is preregistered under standing
-M0–M8 authorization, preserving byte caps and strict gates with no retries. Its
-external script passed offline validation and independent safety review; it has
-not run and awaits Main's preregistration commit before execution. The new
-preregistration is not M2 success.
+and diff-check passed. Independent review core-PASSed the quote-localization
+contract after two text clarifications. It is **FROZEN —
+SUBSEQUENT_BUILD_READY**: v0.2 quote-only wire DTOs map to strictly revalidated
+internal v0.1 shapes, with exact provenance in a closed same-run audit sidecar;
+receipt/Builder v0.2 remain unchanged and legacy APIs fail closed. Runtime
+implementation is absent, and no M2/product success is claimed. See the
+[frozen contract](host-grounder-quote-localization-v0.1.md).
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas

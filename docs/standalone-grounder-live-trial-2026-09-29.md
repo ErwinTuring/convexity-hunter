@@ -306,13 +306,12 @@ reservation accounting, not settled usage or a bill.
 
 ## Next separate semantic output-budget verification preregistration — 2026-09-30
 
-This is a new, separately bounded one-shot under the standing continuous
-M0–M8 authorization. It is not a retry under the completed locator protocol
-and is not a request for a prettier response: the prior semantic call reached
-its 3,000-token output cap and was truncated. The latest observed blocker
-remains semantic output-budget exhaustion; the earlier receipt/verdict
-subgate remains unknown because the locator was not reached. This preregistration
-is not M2 success.
+At preregistration, this was a new, separately bounded one-shot under the
+standing continuous M0–M8 authorization. It was not a retry under the completed
+locator protocol or a request for a prettier response: the prior semantic call
+reached its 3,000-token output cap and was truncated. At that time, the earlier
+receipt/verdict subgate remained unknown because the locator was not reached.
+This preregistration was not M2 success; its execution is recorded below.
 
 - Use the same official IREN SEC filing URL and existing source/request bounds:
   at most one Tavily Basic Extract request (one reserved credit), 100 KB Extract
@@ -333,6 +332,48 @@ on the offline-validated locator. Its offline check confirms the semantic-role
 configuration and does not make provider calls. At preregistration the
 cumulative Tavily reservation count is twelve; the next Extract would bring it
 to thirteen if executed. Reservation totals are not settled billing. This
-protocol's independent safety review and offline validation passed. It has not
-run and awaits Main's preregistration commit before execution; no retry is
-authorized.
+Independent safety review and offline validation passed before execution. Main
+committed the preregistration before the one-shot recorded below; no retry is
+authorized under that protocol.
+
+## Executed semantic 6,000-token verification — 2026-09-30
+
+The preregistered one-shot used the same official IREN SEC filing and complete
+9,420-byte body (SHA-256 prefix `89536ce6ff75`). One Tavily Extract request and
+credit were reserved, bringing cumulative reservations to thirteen; this is
+not settled billing. Discovery made one call (`finish_reason=stop`) in 4.760
+seconds: 5,012 prompt, 1,492 completion, 6,504 total tokens, and 4,590 content
+UTF-8 bytes. Reasoning-token metadata was null. The DTO passed with 4 claims,
+0 hypotheses, and 3 bindings; stage/run identity flags were true.
+
+Semantic verification made one call (`finish_reason=stop`) in 6.766 seconds:
+5,098 prompt, 2,217 completion, 7,315 total tokens, and 6,265 content UTF-8
+bytes. Reasoning-token metadata was null. Receipt construction failed as
+`SEMANTIC_VERDICT_REJECTED`; the safe locator reported gate `semantic`, module
+`semantic`, line 310. At `host_grounder_semantic.py:309–310`, the exact-body
+slice check failed after the source/hash guard for the failing reference; the
+diagnostic did not separately count hash mismatches. Counts: 11 refs with
+unique quote occurrences, 0 ambiguous, 0 missing, 0 span matches, 11 span
+mismatches, and 0 unknown sources. No receipt or submission/EI was produced;
+no retry occurred.
+
+The related check at `host_grounder_semantic.py:324–328` also requires verifier
+references for supported field bindings to match the envelope binding's
+source, quote, start, and end. That comparison follows the failing span check
+and was not reached; this run did not establish whether the producer binding
+offsets themselves were correct. The prior exact receipt subgate from the
+earlier normally completed semantic response remains unknown.
+
+## Tier-A contract freeze: Host-derived spans
+
+Independent review core-PASSed this contract after two text clarifications.
+Status is **FROZEN — SUBSEQUENT_BUILD_READY**; runtime implementation remains
+absent. The frozen path uses exact wire `schema_version` values
+`grounder-output-v0.2` and `semantic-verdict-v0.2`, maps Host-derived spans to
+strictly revalidated internal `grounder-output-v0.1` and
+`semantic-verdict-v0.1` shapes, and records provenance in a closed same-run
+sidecar. Receipt/Builder v0.2 stay unchanged; legacy APIs remain fail-closed.
+The exact sidecar keys/version literals, canonical UTF-8 digest rules,
+same-run external digest record, unchanged gates, and adversarial cases are
+frozen in the [contract](host-grounder-quote-localization-v0.1.md). This is
+build authorization only, not M2 or product success.

@@ -18,26 +18,34 @@ no source truth or live product Grounder is claimed. An earlier bounded external
 live trial stopped at the producer schema array-type check
 (`dto_failed_gate=schema`, `host_grounder_schema.py:136`; exact field unknown)
 before semantic verification. The separately preregistered post-format run
-passed the discovery DTO/stage/run/coverage gates (6 claims, 0 hypotheses, 7
-bindings) and completed one semantic call before `SEMANTIC_VERDICT_REJECTED`;
-its exact receipt/verdict subgate remains unknown. A later one-shot again
-passed discovery (7 claims, 0 hypotheses, 6 bindings), but the semantic call
-reached the 3,000-token output cap and ended in `TRUNCATED_RESPONSE` /
-`SEMANTIC_CALL_FAILED` before the receipt locator ran. Submission/EI was not
-reached. The latest blocking layer is semantic output-budget exhaustion; it
-does not identify the prior receipt subgate, establish a false model judgment,
-or show poor source quality. Cumulative Tavily reservations are twelve; settled
-usage is unknown, and no retry occurred. The prompt-only format correction is
+passed discovery (6 claims, 0 hypotheses, 7 bindings) and completed one
+semantic call before `SEMANTIC_VERDICT_REJECTED`; its exact receipt/verdict
+subgate remains unknown. A later 6,000-token one-shot used the same complete
+9,420-byte source. Discovery stopped normally (5,012 prompt, 1,492 completion,
+6,504 total tokens; 4,590 content bytes) and passed with 4 claims, 0
+hypotheses, and 3 bindings. Semantic stopped normally (5,098 prompt, 2,217
+completion, 7,315 total tokens; 6,265 content bytes), but receipt construction
+failed at `host_grounder_semantic.py:310`, the exact-body evidence-span check.
+There were 11 refs whose quotes each had one occurrence, 0 ambiguous/missing/unknown-source refs,
+0 matching spans, and 11 mismatches. No receipt or submission/EI was produced;
+the later binding-span cross-check was not reached, so producer-offset
+correctness remains unknown. The prior receipt subgate remains unknown. This
+does not establish a false model judgment or poor source quality. Cumulative
+Tavily reservations are thirteen; settled usage is unknown, and no retry
+occurred. The prompt-only format correction is
 implemented against the unchanged DTO and independently reviewed; 37 focused
-model/schema/runtime tests, compilation, and diff-check passed. The separate
-receipt locator passed synthetic offline validation, but produced no live
-locator/count values because the response was truncated before receipt
-construction. A new 6,000-token, 45-second-per-role output-budget verification
-is preregistered under standing M0–M8 authorization with existing byte caps and
-strict gates, no retries, and one Extract plus at most one call per role. Its
-external script passed offline validation and independent safety review; it
-has not run and awaits Main's preregistration commit before execution. This is
-not M2 success. Production source
+model/schema/runtime tests, compilation, and diff-check passed. The earlier
+3,000-token response truncated before locator diagnostics; the latest reached
+the exact-span gate. Independent review core-PASSed the quote-localization
+contract after two text clarifications. It is **FROZEN —
+SUBSEQUENT_BUILD_READY**: quote-only producer/verifier v0.2 wire DTOs map to
+strictly revalidated internal v0.1 shapes; Semantic Validation v0.3 binds
+provenance in a closed same-run audit sidecar. Receipt/Builder v0.2 and legacy
+API behavior remain unchanged and fail-closed. The quote-localization runtime
+is absent; production source acquisition and product Host integration remain
+M2 work, with no product success claimed. See the [frozen
+contract](host-grounder-quote-localization-v0.1.md).
+Production source
 acquisition and product Host integration remain M2 work; no product success is
 claimed.
 
@@ -52,8 +60,8 @@ The low-level `Mapping` Builder API is structural only; a separate internal
 same-run v0.2 orchestration path now exists with fake-client coverage. The
 bounded live-trial outcomes are recorded in
 [the trial log](standalone-grounder-live-trial-2026-09-29.md). The latest
-semantic call was truncated at its output-token cap before receipt validation;
-no semantic truth or EI acceptance is claimed.
+semantic call stopped normally but receipt validation rejected its exact-body
+spans; no semantic truth or EI acceptance is claimed.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed
