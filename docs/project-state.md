@@ -14,28 +14,32 @@ verified closures from that snapshot into at most one existing EI submission;
 reassessment excludes only its own hypothesis. This is a non-live Builder:
 its receipt must come from a trusted Host semantic verifier call. An internal
 same-run Event path now supplies that call and constructs a v0.2 receipt;
-no source truth or live product Grounder is claimed. A bounded external live
-trial reached discovery but stopped at the producer schema array-type check
+no source truth or live product Grounder is claimed. An earlier bounded external
+live trial stopped at the producer schema array-type check
 (`dto_failed_gate=schema`, `host_grounder_schema.py:136`; exact field unknown)
 before semantic verification. The separately preregistered post-format run
-then passed the discovery DTO/stage/run/coverage gates (6 claims, 0 hypotheses,
-7 bindings) and completed one semantic call, but stopped at
-`SEMANTIC_VERDICT_REJECTED` before submission/EI. The exact receipt/verdict
-subgate is unknown; this does not prove the model's judgment false or source
-quality poor. Cumulative Tavily reservations are eleven; settled usage is
-unknown. That one-shot protocol is complete with no retry. The prompt-only
-format correction is implemented against the unchanged DTO and independently
-reviewed; 37 focused model/schema/runtime tests, compilation, and diff-check
-passed. A read-only inspection located the broad receipt-builder catch; a
-module/line-only locator is preregistered as a separate one-shot under standing
-M0–M8 authorization. The outside-repository script passed compilation,
-synthetic offline validation, but the latest counts-only delta awaits targeted
-reviewer re-review; it has made no provider call. This standalone run allows
-one Extract and at most two model-role calls under existing budgets/caps, with
-no retries; the completed protocol above remains closed and reservations remain
-eleven until execution. The latest result remains `SEMANTIC_VERDICT_REJECTED`;
-this is not M2 success. Production source acquisition and product Host
-integration remain M2 work; no product success is claimed.
+passed the discovery DTO/stage/run/coverage gates (6 claims, 0 hypotheses, 7
+bindings) and completed one semantic call before `SEMANTIC_VERDICT_REJECTED`;
+its exact receipt/verdict subgate remains unknown. A later one-shot again
+passed discovery (7 claims, 0 hypotheses, 6 bindings), but the semantic call
+reached the 3,000-token output cap and ended in `TRUNCATED_RESPONSE` /
+`SEMANTIC_CALL_FAILED` before the receipt locator ran. Submission/EI was not
+reached. The latest blocking layer is semantic output-budget exhaustion; it
+does not identify the prior receipt subgate, establish a false model judgment,
+or show poor source quality. Cumulative Tavily reservations are twelve; settled
+usage is unknown, and no retry occurred. The prompt-only format correction is
+implemented against the unchanged DTO and independently reviewed; 37 focused
+model/schema/runtime tests, compilation, and diff-check passed. The separate
+receipt locator passed synthetic offline validation, but produced no live
+locator/count values because the response was truncated before receipt
+construction. A new 6,000-token, 45-second-per-role output-budget verification
+is preregistered under standing M0–M8 authorization with existing byte caps and
+strict gates, no retries, and one Extract plus at most one call per role. Its
+external script passed offline validation and independent safety review; it
+has not run and awaits Main's preregistration commit before execution. This is
+not M2 success. Production source
+acquisition and product Host integration remain M2 work; no product success is
+claimed.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted
@@ -46,10 +50,10 @@ references; 10 focused tests and independent review plus targeted re-review
 pass. In isolation this remains a non-live, unauthenticated low-level helper.
 The low-level `Mapping` Builder API is structural only; a separate internal
 same-run v0.2 orchestration path now exists with fake-client coverage. The
-bounded live-trial outcome is recorded in
-[the trial log](standalone-grounder-live-trial-2026-09-29.md); it did not reach
-semantic verification. No semantic truth is claimed; EI acceptance remains
-separate.
+bounded live-trial outcomes are recorded in
+[the trial log](standalone-grounder-live-trial-2026-09-29.md). The latest
+semantic call was truncated at its output-token cap before receipt validation;
+no semantic truth or EI acceptance is claimed.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed

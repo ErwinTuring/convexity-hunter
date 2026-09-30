@@ -279,3 +279,60 @@ re-review of the counts-only delta passed. No live call or reservation has occur
 protocol; the cumulative Extract reservation count remains eleven until its
 execution. Main will commit this preregistration before execution.
 No retry is authorized under this protocol.
+
+## Executed semantic-receipt locator protocol — 2026-09-30
+
+The separately preregistered one-shot used the same official IREN SEC filing
+and complete 9,420-byte body (SHA-256 prefix `89536ce6ff75`). One Tavily Basic
+Extract request reserved one credit. Discovery finished normally (`stop`) in
+6.629 seconds: 5,009 prompt, 2,330 completion, 7,339 total tokens, and 7,004
+content UTF-8 bytes. The DTO passed with 7 claims, 0 hypotheses, 6 bindings,
+and true stage/run identity flags.
+
+Semantic verification made one transport call and stopped with `length` after
+9.170 seconds: 5,882 prompt, 3,000 completion (the configured output-token
+cap), 8,882 total tokens, and 8,474 content UTF-8 bytes. The underlying error
+was `TRUNCATED_RESPONSE`; the outer runtime reported `SEMANTIC_CALL_FAILED`.
+The semantic-receipt locator and its evidence-reference counters were not
+reached, so all locator fields/counts are null. No receipt was produced and
+submission/EI was not reached. No retry occurred. This run's immediate blocker
+is semantic output-budget exhaustion at the 3,000-token cap; it does not
+resolve the exact receipt/verdict subgate from the earlier completed semantic
+response. The outcome does not establish a false model judgment or poor source
+quality.
+
+This Extract brings cumulative Tavily reservations to twelve. This is
+reservation accounting, not settled usage or a bill.
+
+## Next separate semantic output-budget verification preregistration — 2026-09-30
+
+This is a new, separately bounded one-shot under the standing continuous
+M0–M8 authorization. It is not a retry under the completed locator protocol
+and is not a request for a prettier response: the prior semantic call reached
+its 3,000-token output cap and was truncated. The latest observed blocker
+remains semantic output-budget exhaustion; the earlier receipt/verdict
+subgate remains unknown because the locator was not reached. This preregistration
+is not M2 success.
+
+- Use the same official IREN SEC filing URL and existing source/request bounds:
+  at most one Tavily Basic Extract request (one reserved credit), 100 KB Extract
+  response, and 20 KB accepted body.
+- Allow at most one discovery and, only if all strict gates pass, at most one
+  semantic call. Both roles use `max_tokens=6000` and a 45-second timeout;
+  explicitly disable thinking. Preserve the existing 80 KB model-input and
+  40 KB model-output byte caps and all other budgets, request bounds, and strict
+  gates.
+- Stop on any strict-gate failure. No retry or alternate path.
+
+The sole intended runtime change is raising the semantic role's token and time
+limits to the discovery role's existing 6,000-token/45-second values; discovery
+is unchanged. No prompt, parser, DTO/schema, receipt, transport, or verifier
+semantics change is authorized. The new external diagnostic is
+`/private/tmp/ch_live_grounder_semantic_6000_diagnostic.py`, mechanically based
+on the offline-validated locator. Its offline check confirms the semantic-role
+configuration and does not make provider calls. At preregistration the
+cumulative Tavily reservation count is twelve; the next Extract would bring it
+to thirteen if executed. Reservation totals are not settled billing. This
+protocol's independent safety review and offline validation passed. It has not
+run and awaits Main's preregistration commit before execution; no retry is
+authorized.

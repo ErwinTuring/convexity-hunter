@@ -37,25 +37,27 @@ production source-acquisition integration, a completed end-to-end live Grounder 
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
-records the earlier transport/discovery diagnostics and the completed
-post-format-correction validation. That run used the same complete 9,420-byte
-SEC body, passed the discovery DTO/stage/run/coverage gates (6 claims, 0
-hypotheses, 7 bindings), and completed one semantic call normally before
-`SEMANTIC_VERDICT_REJECTED`; submission/EI was not reached. The exact receipt
-subgate is unknown; this is not evidence that the model's judgment was false
-or source quality poor. Cumulative Tavily reservations are eleven; settled
-usage is unknown. The preregistered protocol is complete with no retry. The
-prompt-only JSON shape correction against the locked DTO is implemented and
-independently reviewed; 37 focused model/schema/runtime tests, compilation,
-and diff-check passed. Read-only inspection found the runtime's broad receipt
-builder catch. A distinct one-shot semantic-receipt locator is preregistered
-under standing M0–M8 authorization. Its external script passed compilation and
-synthetic offline validation, but the newly added counts-only delta still needs
-targeted reviewer re-review; no provider call has been made. The standalone
-protocol allows one Extract and at most two model-role calls with existing
-budgets/caps and no retries. The previous protocol remains closed; reservations
-remain eleven until the new run. The latest outcome remains
-`SEMANTIC_VERDICT_REJECTED`; this preregistration is not M2 success.
+records the completed post-format run and subsequent semantic diagnostics. The
+latest one used the same complete 9,420-byte SEC body; discovery passed the
+DTO/stage/run/coverage gates (7 claims, 0 hypotheses, 6 bindings). Its single
+semantic call reached the 3,000-token output cap and ended in
+`TRUNCATED_RESPONSE` / `SEMANTIC_CALL_FAILED`; the receipt locator was not
+reached, and submission/EI was not reached. Thus the current blocker for that
+run is semantic output-budget exhaustion, while the exact receipt/verdict
+subgate from the earlier completed semantic response remains unknown. This is
+not evidence of a false model judgment or poor source quality. Cumulative
+Tavily reservations are twelve; settled usage is unknown. No retry was made.
+
+The prompt-only JSON shape correction against the locked DTO is implemented
+and independently reviewed; 37 focused model/schema/runtime tests, compilation,
+and diff-check passed. The locator's counts-only diagnostic passed offline
+validation, but its fields/counters remained null in the live run because
+truncation occurred before receipt construction. A distinct 6,000-token,
+45-second-per-role output-budget verification is preregistered under standing
+M0–M8 authorization, preserving byte caps and strict gates with no retries. Its
+external script passed offline validation and independent safety review; it has
+not run and awaits Main's preregistration commit before execution. The new
+preregistration is not M2 success.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas
