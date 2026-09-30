@@ -37,15 +37,17 @@ production source-acquisition integration, a completed live model trial,
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
-records the null-title adapter diagnosis, four post-fix discovery attempts,
-and a final trial after reviewed offline discovery/semantic DTO guidance and
-Host source-metadata corrections. The final attempt used the same complete
-9,420-byte SEC body, 6,000-token/45-second discovery cap, and still ended in
-`TRUNCATED_RESPONSE` after about 24.2 seconds; semantic calls and EI acceptance
-remain zero. Seven total Tavily requests/credits were reserved across these
-operations; settled usage is unknown. Stop retries/cap increases. Next is a
-bounded read-only DeepSeek structured-output and completion-token-semantics
-preflight from official docs or safe metadata. No product success is
+records the null-title adapter diagnosis, post-fix discovery attempts, and
+bounded DeepSeek documentation preflight. The latest reviewed thinking-disabled
+one-shot used the same complete 9,420-byte SEC body; discovery stopped normally
+after 13.796 seconds (4,197 prompt / 4,435 completion / 8,632 total tokens;
+14,493 content bytes; reasoning metadata null), then failed with
+`PRODUCER_ENVELOPE_INVALID`. Semantic calls and submission were not reached.
+The preflight supports, but does not prove, the thinking-toggle hypothesis for
+this trial. Cumulative Tavily reservations are nine requests/credits; settled
+usage is unknown. Stop blind calls. Prepare an offline DTO diagnostic, then at
+most one separately bounded one-shot to identify the rejection gate; the exact
+gate is unknown and the payload is no longer available. No product success is
 established.
 
 Future Event run-input provenance is frozen in

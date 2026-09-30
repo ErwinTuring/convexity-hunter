@@ -14,8 +14,10 @@ verified closures from that snapshot into at most one existing EI submission;
 reassessment excludes only its own hypothesis. This is a non-live Builder:
 its receipt must come from a trusted Host semantic verifier call. An internal
 same-run Event path now supplies that call and constructs a v0.2 receipt;
-no source truth or live product Grounder is claimed. Source acquisition,
-real-model trial and product Host integration remain M2 work.
+no source truth or live product Grounder is claimed. A bounded external live
+trial reached model discovery but stopped at producer-envelope validation
+before semantic verification; production source acquisition and product Host
+integration remain M2 work.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted
@@ -25,17 +27,19 @@ verifier verdict and constructs a deterministic receipt from bounded exact-body
 references; 10 focused tests and independent review plus targeted re-review
 pass. In isolation this remains a non-live, unauthenticated low-level helper.
 The low-level `Mapping` Builder API is structural only; a separate internal
-same-run v0.2 orchestration path now exists with fake-client coverage. No
-semantic truth or real-trial result is claimed; EI
-acceptance remains separate.
+same-run v0.2 orchestration path now exists with fake-client coverage. The
+bounded live-trial outcome is recorded in
+[the trial log](standalone-grounder-live-trial-2026-09-29.md); it did not reach
+semantic verification. No semantic truth is claimed; EI acceptance remains
+separate.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed
 deltas in [Builder v0.2](host-grounder-builder-v0.2.md) and [Semantic
 Validation v0.2](host-grounder-semantic-validation-v0.2.md). Production v0.1
 public Builder behavior and structural fixture hashes remain unchanged; pure
-run-input binding and internal v0.2 runtime are implemented, but no live Host
-run exists.
+run-input binding and internal v0.2 runtime are implemented. No completed live
+Host run or EI acceptance exists.
 
 The pre-Core source batch gate is implemented and independently reviewed.
 It rejects empty, invalid or wrongly bound source batches before Core and

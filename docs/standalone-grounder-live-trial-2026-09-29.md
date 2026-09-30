@@ -85,16 +85,74 @@ correction, one final no-retry trial used the same official SEC filing and
 complete 9,420-byte body (stable SHA-256 prefix `89536ce6ff75`). Tavily Basic
 Extract reserved one request/credit. Discovery used a 6,000-token output cap
 and 45-second timeout, then returned underlying `TRUNCATED_RESPONSE` after
-about 24.2 seconds. The semantic call count was zero; no EI acceptance was
+24.246 seconds. The semantic call count was zero; no EI acceptance was
 reached.
 
-Across the recorded operations, reserved request/credit counts total seven:
-one initial 2026-09-29 attempt, one 2026-09-30 schema diagnostic, four
-post-fix discovery trials, and this final DTO-guidance trial. Settled provider
-usage remains unknown; no billing claim is made.
+The prior pre-next-run reservation total of seven omitted a separate
+concision-only discovery trial recorded below. The corrected pre-next-run
+count is eight Tavily Extract requests and eight reserved credits: one initial
+attempt, one schema diagnostic, four post-fix trials, one concision-only trial,
+and this final DTO-guidance trial. This is a reservation-count correction, not
+settled provider usage or a bill; settled usage remains unknown.
 
-The offline DTO prompt omission is corrected, but live runtime remains blocked
-at discovery truncation. Stop retries and further cap increases. The next
-bounded step is a read-only preflight of DeepSeek structured-output support
-and completion-token semantics using official documentation or already-safe
-metadata; do not infer the truncation cause or make another provider call.
+At that point, the offline DTO prompt omission was corrected, but live runtime
+remained blocked at discovery truncation. Stop retries and further cap
+increases. The bounded read-only DeepSeek documentation preflight is recorded
+below; it supports a cause hypothesis but does not establish the cause.
+
+## Separate concision-only trial — 2026-09-30
+
+Continuation execution evidence records a distinct concision-only trial, not
+the final DTO-guidance trial above. It used the same complete 9,420-byte body
+and SHA-256 prefix `89536ce6ff75`; discovery used 6,000 tokens and a 45-second
+timeout, then returned `TRUNCATED_RESPONSE` after 24.256 seconds. Semantic calls
+were zero. It contributes one reserved Tavily Extract request and credit to
+the corrected count above; settled usage is unknown.
+
+## Read-only DeepSeek documentation preflight — 2026-09-30
+
+DeepSeek documents thinking as enabled by default at high effort and provides
+`thinking: {"type":"disabled"}` to turn it off. The trial set
+`thinking_enabled=False` but declared only `("json_mode",)`; `host_model`
+serializes the thinking toggle only when the `"thinking"` capability is
+declared. The request therefore omitted the disable setting and inherited the
+provider default. With a 6,000-token completion cap, reasoning-token use is a
+strong truncation hypothesis, not a proved cause: the prior responses did not
+retain safe reasoning-token usage metadata. DeepSeek defines `finish_reason`
+`length` as reaching the token or context limit. See the official [Thinking
+Mode](https://api-docs.deepseek.com/guides/thinking_mode/) and [Chat
+Completions](https://api-docs.deepseek.com/api/create-chat-completion/)
+documentation.
+
+The trial's `response_format: {"type":"json_object"}` requests JSON output,
+not schema-constrained output. DeepSeek documents native `json_schema` format
+for the Responses API, not this Chat Completions payload. See [JSON
+Output](https://api-docs.deepseek.com/guides/json_mode/) and the [Responses
+API](https://api-docs.deepseek.com/api/create-response/). This preflight made
+no provider call and establishes neither live success nor semantic
+correctness.
+
+## Reviewed thinking-disabled one-shot — 2026-09-30
+
+One reviewed run used the corrected explicit thinking-disabled request with the
+same complete 9,420-byte body and SHA-256 prefix `89536ce6ff75`. Tavily Extract
+reserved one request/credit. Discovery made one transport call and finished
+normally (`stop`) in 13.796 seconds: 4,197 prompt, 4,435 completion, 8,632 total
+tokens, and 14,493 content UTF-8 bytes. Reasoning bytes/tokens were null, not
+reported as zero. The runtime then raised
+`HostGrounderRuntimeError(PRODUCER_ENVELOPE_INVALID)`; semantic calls were
+zero and submission was not reached.
+
+This successful discovery completion with thinking explicitly disabled
+supports the toggle hypothesis for this trial, but does not establish it as the
+sole or universal cause of earlier truncations. Adding this operation to the
+corrected pre-next-run count of eight gives nine reserved Tavily Extract
+requests and nine reserved credits. This is reservation accounting only, not
+settled provider usage or a bill; settled usage remains unknown.
+
+Stop blind provider calls. `PRODUCER_ENVELOPE_INVALID` covers schema parsing,
+stage/run identity, ordered coverage, and canonical-size checks; the exact
+rejection gate is not yet known, and the payload is no longer available. Next,
+prepare an offline DTO diagnostic; after that, at most one separately bounded
+one-shot may identify the rejection gate. Do not treat normal model transport
+completion as Grounder or EI acceptance.
