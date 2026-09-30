@@ -101,5 +101,19 @@ this versioned path. Existing v0.1/v0.2 APIs remain exact and fail-closed.
 | Raw/normalized byte cap or run/input/hash mismatch | Reject; sidecar and verifier input remain bound to this run. |
 | Unique quote with unresolved/contradicted verdict | Preserve verdict; lexical location does not upgrade support. |
 
-No runtime implementation is included in this contract; it is ready for the
-subsequent build under the frozen scope above.
+This contract, including the ownership addendum below, is frozen for the
+subsequent build under the scope above.
+
+## Ownership addendum — single-run audit holder
+
+The explicit quote-localization route requires a caller-created,
+repr-hidden, write-once in-memory holder bound to the exact `run_id` and
+`canonical_input_hash`. Reject an unbound or reused holder before model calls.
+Immediately after discovery, retain the exact producer UTF-8 bytes and SHA-256
+before parsing. After strict normalization succeeds, finalize and retain the
+closed sidecar and its external digest before the semantic call. Producer
+parse/gate failure therefore leaves raw bytes/hash retained without a
+finalized sidecar; any later semantic or Builder failure leaves the finalized
+audit accessible through the caller's holder. Exceptions and logs never carry
+the raw content, normalized bytes, or sidecar JSON. This ownership guarantee
+adds no persistence service and does not change legacy APIs.

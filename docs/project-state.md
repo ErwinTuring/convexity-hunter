@@ -41,13 +41,17 @@ contract after two text clarifications. It is **FROZEN —
 SUBSEQUENT_BUILD_READY**: quote-only producer/verifier v0.2 wire DTOs map to
 strictly revalidated internal v0.1 shapes; Semantic Validation v0.3 binds
 provenance in a closed same-run audit sidecar. Receipt/Builder v0.2 and legacy
-API behavior remain unchanged and fail-closed. The quote-localization runtime
-is absent; production source acquisition and product Host integration remain
-M2 work, with no product success claimed. See the [frozen
+API behavior remain unchanged and fail-closed. The bounded BUILD now adds an
+explicit v0.2 runtime route, Host-derived exact spans, strict internal v0.1
+revalidation, and a caller-owned write-once holder bound to run/input. It retains
+exact producer bytes/hash before parsing, then finalized sidecar before the
+semantic call, including across later failures. Receipt/Builder v0.2 and legacy
+APIs are unchanged. 81 Host-Grounder tests (including adversarial coverage), 18
+Host-Model tests, compilation, diff-check, and the 1,602-test full suite pass.
+Independent review passed; Main will commit the working diff. No live call,
+source acquisition, or product Host success is claimed. See the [frozen
 contract](host-grounder-quote-localization-v0.1.md).
-Production source
-acquisition and product Host integration remain M2 work; no product success is
-claimed.
+Production source acquisition and product Host integration remain M2 work.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted

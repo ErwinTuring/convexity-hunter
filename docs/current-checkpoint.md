@@ -55,10 +55,15 @@ The prompt-only JSON shape correction against the locked DTO is implemented
 and independently reviewed; 37 focused model/schema/runtime tests, compilation,
 and diff-check passed. Independent review core-PASSed the quote-localization
 contract after two text clarifications. It is **FROZEN —
-SUBSEQUENT_BUILD_READY**: v0.2 quote-only wire DTOs map to strictly revalidated
-internal v0.1 shapes, with exact provenance in a closed same-run audit sidecar;
-receipt/Builder v0.2 remain unchanged and legacy APIs fail closed. Runtime
-implementation is absent, and no M2/product success is claimed. See the
+SUBSEQUENT_BUILD_READY**. The bounded BUILD adds an explicit v0.2 quote-only
+route, strict internal v0.1 revalidation, independently derived producer and
+verifier spans. A caller-owned write-once holder bound to run/input retains
+exact producer bytes/hash before parsing and the finalized sidecar before the
+semantic call, including on later failure; receipt/Builder v0.2 and legacy
+APIs remain unchanged. 81 Host-Grounder tests, 18 Host-Model tests,
+compilation, diff-check, and the 1,602-test full suite pass. Independent review
+passed; the working diff awaits Main's commit. No live call or M2/product
+success is claimed. See the
 [frozen contract](host-grounder-quote-localization-v0.1.md).
 
 Future Event run-input provenance is frozen in

@@ -367,8 +367,10 @@ earlier normally completed semantic response remains unknown.
 ## Tier-A contract freeze: Host-derived spans
 
 Independent review core-PASSed this contract after two text clarifications.
-Status is **FROZEN — SUBSEQUENT_BUILD_READY**; runtime implementation remains
-absent. The frozen path uses exact wire `schema_version` values
+Status is **FROZEN — SUBSEQUENT_BUILD_READY**. The bounded implementation was
+independently reviewed and passed 81 focused Host-Grounder tests, 18
+Host-Model tests, compilation, diff-check, and the 1,602-test full suite. No
+live call or M2/product success is claimed. The frozen path uses exact wire `schema_version` values
 `grounder-output-v0.2` and `semantic-verdict-v0.2`, maps Host-derived spans to
 strictly revalidated internal `grounder-output-v0.1` and
 `semantic-verdict-v0.1` shapes, and records provenance in a closed same-run
@@ -377,3 +379,38 @@ The exact sidecar keys/version literals, canonical UTF-8 digest rules,
 same-run external digest record, unchanged gates, and adversarial cases are
 frozen in the [contract](host-grounder-quote-localization-v0.1.md). This is
 build authorization only, not M2 or product success.
+
+## Quote-localization validation preregistration — 2026-09-30
+
+This is a separate, not-yet-executed one-shot using the frozen quote-only
+Host-localization route. The latest executed outcome remains the semantic
+6,000-token run's `SEMANTIC_VERDICT_REJECTED`; cumulative Tavily reservations
+remain thirteen until this protocol runs. The new script is
+`/private/tmp/ch_live_grounder_quote_localization_v0_1.py`. Its synthetic
+offline validation and compilation passed; no live call has been made. Main
+will commit this preregistration before any execution.
+
+- Reuse only the same official SEC URL and require the same complete 9,420-byte
+  body with SHA-256 prefix `89536ce6ff75`; otherwise stop before model calls.
+- Allow at most one Tavily Basic Extract request/credit (18-second timeout,
+  100 KB response cap, 110 KB byte budget, 20 KB accepted body cap).
+- Allow at most one `deepseek-flash` discovery and, only after every existing
+  strict gate passes, at most one semantic call. Both use 6,000 output tokens,
+  45 seconds, JSON-object mode, explicit thinking-disabled capability, one
+  request budget, 80 KB input and 40 KB output byte caps.
+- Preserve all DTO, identity, coverage, evidence, receipt, Builder, source, and
+  EI gates. Stop on any failure; no retry, alternate source, or fallback.
+
+The explicit versioned route uses quote-only producer/verifier DTOs, Host
+unique-exact quote localization, and the caller-owned run/input-bound
+write-once audit holder. The script reports only bounded usage/shape counters,
+normalization status, and the sidecar digest; it never prints or persists raw
+content, normalized payloads, sidecar JSON, or credentials. Offline validation
+confirmed the synthetic route finalizes the holder, yields strict internal
+v0.1 normalization, preserves stage/run checks, and emits only the safe digest
+and aggregate fields. Independent review passed for the holder change; this
+pre-registration is not a live result or M2 success.
+
+If executed, one Extract would raise cumulative reservation accounting from
+thirteen to fourteen; this is not a settled usage or billing claim. No live
+execution is authorized by this preparation step.

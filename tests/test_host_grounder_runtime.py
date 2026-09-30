@@ -3,7 +3,10 @@ import hashlib
 import inspect
 import json
 import unittest
+import copy
 from dataclasses import replace
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from convexity_hunter.event_entry import UserEventInput
 from convexity_hunter.host_grounder_builder import HostBuildContext, HostSourceBody
@@ -14,9 +17,18 @@ from convexity_hunter.host_grounder_run_input import (
 )
 from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT,
+    DISCOVERY_SYSTEM_PROMPT_V0_2,
     SEMANTIC_SYSTEM_PROMPT,
+    SEMANTIC_SYSTEM_PROMPT_V0_3,
     HostGrounderRuntimeError,
     run_host_grounder_same_run,
+    run_host_grounder_same_run_quote_localization_v0_1,
+)
+from convexity_hunter.host_grounder_quote_localization import (
+    QuoteLocalizationAuditHolder,
+    make_quote_localization_audit,
+    parse_grounder_output_v0_2,
+    parse_semantic_verdict_v0_2,
 )
 from convexity_hunter.host_grounder_schema import parse_model_output_envelope
 from convexity_hunter.host_model import ModelRuntimeConfig, ModelTransportReceipt
@@ -168,6 +180,26 @@ def _verdict(envelope, *, envelope_hash=None):
     }
 
 
+def _quote_only_output(envelope):
+    wire = copy.deepcopy(envelope)
+    wire["schema_version"] = "grounder-output-v0.2"
+    for binding in wire["field_bindings"]:
+        binding.pop("start")
+        binding.pop("end")
+    return wire
+
+
+def _quote_only_verdict(verdict):
+    wire = copy.deepcopy(verdict)
+    wire["schema_version"] = "semantic-verdict-v0.2"
+    for section in ("claims", "hypotheses", "field_bindings", "coverage"):
+        for record in wire[section]:
+            for ref in record["evidence_refs"]:
+                ref.pop("start")
+                ref.pop("end")
+    return wire
+
+
 def _fixture():
     user_input = UserEventInput(description="Assess the reported ACME filing.")
     run_input = HostGrounderRunInput(
@@ -260,6 +292,13 @@ def _clients(discovery_json, semantic_json, *, discovery_max_bytes=500_000):
         _FakeClient(_config("discovery", max_input_bytes=discovery_max_bytes), discovery_json, "discovery", calls),
         _FakeClient(_config("semantic"), semantic_json, "semantic", calls),
         calls,
+    )
+
+
+def _audit_holder(run_input):
+    return QuoteLocalizationAuditHolder(
+        run_id=run_input.run_id,
+        canonical_input_hash=run_input.canonical_input_hash,
     )
 
 
@@ -674,6 +713,424 @@ class HostGrounderRuntimeTests(unittest.TestCase):
         self.assertNotIn(_BODY, rendered)
         self.assertNotIn(discovery_json, rendered)
         self.assertNotIn(semantic_json, rendered)
+
+
+class HostGrounderQuoteLocalizationTests(unittest.TestCase):
+    def test_v2_prompts_are_separately_versioned_and_quote_only(self):
+        self.assertIn("host-grounder-discovery-prompt-v0.2", DISCOVERY_SYSTEM_PROMPT_V0_2)
+        self.assertIn('"schema_version": "grounder-output-v0.2"', DISCOVERY_SYSTEM_PROMPT_V0_2)
+        self.assertIn("field_bindings[] keys: field_path, source_id, quote, semantic_role, status", DISCOVERY_SYSTEM_PROMPT_V0_2)
+        self.assertIn("host-grounder-semantic-verifier-prompt-v0.3", SEMANTIC_SYSTEM_PROMPT_V0_3)
+        self.assertIn("evidence_refs[] exact keys: source_id, body_sha256, quote", SEMANTIC_SYSTEM_PROMPT_V0_3)
+        self.assertNotIn("evidence_refs[] exact keys: source_id, body_sha256, start, end, quote", SEMANTIC_SYSTEM_PROMPT_V0_3)
+
+    def test_explicit_v2_route_retains_frozen_audit_and_preserves_receipt_outcomes(self):
+        run_input, context, envelope, _discovery_json, _semantic_json = _fixture()
+        producer_text = json.dumps(_quote_only_output(envelope), ensure_ascii=False)
+        verifier_text = json.dumps(_quote_only_verdict(_verdict(envelope)), ensure_ascii=False)
+        discovery, semantic, calls = _clients(producer_text, verifier_text)
+        holder = _audit_holder(run_input)
+
+        result = run_host_grounder_same_run_quote_localization_v0_1(
+            run_input,
+            context,
+            discovery_client=discovery,
+            semantic_client=semantic,
+            audit_holder=holder,
+            max_json_bytes=100_000,
+            max_source_body_bytes=20_000,
+        )
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertIs(calls[0][1], DISCOVERY_SYSTEM_PROMPT_V0_2)
+        self.assertIs(calls[1][1], SEMANTIC_SYSTEM_PROMPT_V0_3)
+        self.assertIsNotNone(result.build_result.submission)
+        receipt = result.build_result.semantic_validation.receipt
+        self.assertEqual(receipt["schema_version"], "semantic-validation-v0.2")
+        self.assertEqual(receipt["validator_version"], "host-grounder-semantic-verifier-prompt-v0.3")
+        self.assertEqual(receipt["verified_claim_ids"], ("claim-1",))
+        self.assertEqual(result.build_result.coverage[0].validator_status, "supported")
+
+        audit = result.audit
+        self.assertIs(holder.audit, audit)
+        self.assertTrue(holder.finalized)
+        self.assertEqual(audit.producer_content_utf8, producer_text.encode("utf-8"))
+        self.assertEqual(holder.producer_content_utf8, producer_text.encode("utf-8"))
+        self.assertEqual(
+            holder.producer_content_sha256,
+            hashlib.sha256(producer_text.encode("utf-8")).hexdigest(),
+        )
+        normalized = json.loads(audit.normalized_envelope_utf8)
+        self.assertEqual(normalized["schema_version"], "grounder-output-v0.1")
+        self.assertEqual(normalized["field_bindings"][0]["start"], _BODY.index("ACME"))
+        verifier_payload = json.loads(calls[1][2])
+        expected_hash = hashlib.sha256(audit.normalized_envelope_utf8).hexdigest()
+        self.assertEqual(verifier_payload["envelope_sha256"], expected_hash)
+
+        sidecar = json.loads(audit.sidecar_utf8)
+        self.assertEqual(
+            set(sidecar),
+            {
+                "schema_version", "run_id", "canonical_input_hash",
+                "producer_wire_version", "producer_prompt_version",
+                "producer_content_sha256", "normalized_envelope_sha256",
+                "source_body_hashes", "verifier_wire_version", "validator_version",
+                "localizer_version",
+            },
+        )
+        self.assertEqual(sidecar["schema_version"], "host-grounder-quote-localization-audit-v0.1")
+        self.assertEqual(sidecar["run_id"], _RUN_ID)
+        self.assertEqual(sidecar["canonical_input_hash"], run_input.canonical_input_hash)
+        self.assertEqual(sidecar["producer_wire_version"], "grounder-output-v0.2")
+        self.assertEqual(sidecar["producer_prompt_version"], "host-grounder-discovery-prompt-v0.2")
+        self.assertEqual(sidecar["producer_content_sha256"], hashlib.sha256(producer_text.encode("utf-8")).hexdigest())
+        self.assertEqual(sidecar["verifier_wire_version"], "semantic-verdict-v0.2")
+        self.assertEqual(sidecar["validator_version"], "host-grounder-semantic-verifier-prompt-v0.3")
+        self.assertEqual(sidecar["localizer_version"], "host-grounder-quote-localizer-v0.1")
+        self.assertEqual(sidecar["normalized_envelope_sha256"], expected_hash)
+        self.assertEqual(sidecar["source_body_hashes"], [{"source_id": "source-1", "sha256": _sha(_BODY)}])
+        self.assertEqual(audit.sidecar_sha256, hashlib.sha256(audit.sidecar_utf8).hexdigest())
+        self.assertNotIn("sidecar_sha256", sidecar)
+        self.assertEqual(
+            audit.sidecar_utf8,
+            json.dumps(sidecar, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8"),
+        )
+        rendered = repr(result) + repr(audit) + repr(holder)
+        self.assertNotIn(producer_text, rendered)
+        self.assertNotIn(_BODY, rendered)
+
+    def test_localizes_unicode_codepoint_spans_without_normalizing_crlf(self):
+        body = "prefix 😀\r\nexact\r\ntext\r\nsuffix"
+        quote = "exact\r\ntext"
+        source_bodies = {
+            "source-1": HostSourceBody(body, _sha(body), "https://source.example/report", _NOW, "Fixture")
+        }
+        wire_output = _quote_only_output(_envelope())
+        wire_output["field_bindings"] = [wire_output["field_bindings"][0]]
+        wire_output["field_bindings"][0]["quote"] = quote
+        parsed, normalized = parse_grounder_output_v0_2(
+            json.dumps(wire_output, ensure_ascii=False),
+            100_000,
+            max_string_bytes=10_000,
+            max_array_items=20,
+            source_bodies=source_bodies,
+        )
+        start, end = parsed["field_bindings"][0]["start"], parsed["field_bindings"][0]["end"]
+        self.assertEqual(start, body.index(quote))
+        self.assertEqual(body[start:end], quote)
+        self.assertIn(b"\\r\\n", normalized)
+
+        wire_verdict = _quote_only_verdict(_verdict(_envelope()))
+        wire_verdict["source_body_hashes"][0]["sha256"] = _sha(body)
+        for section in ("claims", "hypotheses", "field_bindings", "coverage"):
+            for record in wire_verdict[section]:
+                for ref in record["evidence_refs"]:
+                    ref["body_sha256"] = _sha(body)
+                    ref["quote"] = quote
+        parsed_verdict = json.loads(
+            parse_semantic_verdict_v0_2(
+                json.dumps(wire_verdict, ensure_ascii=False),
+                100_000,
+                max_string_bytes=10_000,
+                max_array_items=20,
+                source_bodies=source_bodies,
+            )
+        )
+        ref = parsed_verdict["claims"][0]["evidence_refs"][0]
+        self.assertEqual((ref["start"], ref["end"]), (body.index(quote), body.index(quote) + len(quote)))
+        self.assertEqual(body[ref["start"]:ref["end"]], quote)
+
+    def test_overlap_and_missing_quotes_fail_closed(self):
+        for body, quote, expected in (("aaaa", "aaa", "ambiguous"), ("abc", "missing", "missing")):
+            with self.subTest(expected=expected):
+                wire = _quote_only_output(_envelope())
+                wire["field_bindings"] = [wire["field_bindings"][0]]
+                wire["field_bindings"][0]["quote"] = quote
+                source_bodies = {
+                    "source-1": HostSourceBody(body, _sha(body), "https://source.example/report", _NOW, "Fixture")
+                }
+                with self.assertRaisesRegex(ValueError, expected):
+                    parse_grounder_output_v0_2(
+                        json.dumps(wire), 100_000, max_string_bytes=10_000,
+                        max_array_items=20, source_bodies=source_bodies,
+                    )
+
+        body = "aaaa"
+        source_bodies = {
+            "source-1": HostSourceBody(body, _sha(body), "https://source.example/report", _NOW, "Fixture")
+        }
+        verifier = _quote_only_verdict(_verdict(_envelope()))
+        verifier["source_body_hashes"][0]["sha256"] = _sha(body)
+        verifier["claims"][0]["evidence_refs"] = [
+            {"source_id": "source-1", "body_sha256": _sha(body), "quote": "aaa"}
+        ]
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            parse_semantic_verdict_v0_2(
+                json.dumps(verifier), 100_000, max_string_bytes=10_000,
+                max_array_items=20, source_bodies=source_bodies,
+            )
+
+    def test_v2_closed_wire_rejects_legacy_offsets_and_unknown_keys(self):
+        source_bodies = {"source-1": HostSourceBody(_BODY, _sha(_BODY), "https://source.example/report", _NOW, "Fixture")}
+        for extra in ({"start": 0, "end": 1}, {"model_offset": 0}):
+            wire = _quote_only_output(_envelope())
+            wire["field_bindings"][0].update(extra)
+            with self.subTest(producer_extra=extra), self.assertRaises(ValueError):
+                parse_grounder_output_v0_2(
+                    json.dumps(wire), 100_000, max_string_bytes=10_000,
+                    max_array_items=20, source_bodies=source_bodies,
+                )
+
+        for extra in ({"start": 0, "end": 1}, {"model_offset": 0}):
+            wire = _quote_only_verdict(_verdict(_envelope()))
+            wire["claims"][0]["evidence_refs"][0].update(extra)
+            with self.subTest(verifier_extra=extra), self.assertRaises(ValueError):
+                parse_semantic_verdict_v0_2(
+                    json.dumps(wire), 100_000, max_string_bytes=10_000,
+                    max_array_items=20, source_bodies=source_bodies,
+                )
+
+        wire = _quote_only_output(_envelope())
+        wire["unknown_root_key"] = "not allowed"
+        with self.assertRaises(ValueError):
+            parse_grounder_output_v0_2(
+                json.dumps(wire), 100_000, max_string_bytes=10_000,
+                max_array_items=20, source_bodies=source_bodies,
+            )
+
+    def test_raw_normalized_caps_and_source_hash_mismatch_fail_closed(self):
+        wire = _quote_only_output(_envelope())
+        raw = json.dumps(wire, ensure_ascii=False, separators=(",", ":"))
+        source_bodies = {"source-1": HostSourceBody(_BODY, _sha(_BODY), "https://source.example/report", _NOW, "Fixture")}
+        with self.assertRaisesRegex(ValueError, "max_input_bytes"):
+            parse_grounder_output_v0_2(
+                raw, len(raw.encode("utf-8")) - 1, max_string_bytes=10_000,
+                max_array_items=20, source_bodies=source_bodies,
+            )
+        with self.assertRaisesRegex(ValueError, "normalized envelope"):
+            parse_grounder_output_v0_2(
+                raw, len(raw.encode("utf-8")), max_string_bytes=10_000,
+                max_array_items=20, source_bodies=source_bodies,
+            )
+
+        verdict_raw = json.dumps(
+            _quote_only_verdict(_verdict(_envelope())),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        with self.assertRaisesRegex(ValueError, "max_input_bytes"):
+            parse_semantic_verdict_v0_2(
+                verdict_raw, len(verdict_raw.encode("utf-8")) - 1,
+                max_string_bytes=10_000, max_array_items=20, source_bodies=source_bodies,
+            )
+        with self.assertRaisesRegex(ValueError, "normalized verdict"):
+            parse_semantic_verdict_v0_2(
+                verdict_raw, len(verdict_raw.encode("utf-8")),
+                max_string_bytes=10_000, max_array_items=20, source_bodies=source_bodies,
+            )
+
+        bad_source = {"source-1": SimpleNamespace(body=_BODY, body_sha256="0" * 64)}
+        with self.assertRaisesRegex(ValueError, "hash"):
+            parse_grounder_output_v0_2(
+                json.dumps(wire), 100_000, max_string_bytes=10_000,
+                max_array_items=20, source_bodies=bad_source,
+            )
+
+    def test_verifier_hash_run_and_outcome_contracts_remain_strict(self):
+        wire = _quote_only_verdict(_verdict(_envelope()))
+        wire["claims"][0]["outcome"] = "unresolved"
+        wire["claims"][0]["evidence_refs"] = []
+        source_bodies = {"source-1": HostSourceBody(_BODY, _sha(_BODY), "https://source.example/report", _NOW, "Fixture")}
+        parsed = json.loads(
+            parse_semantic_verdict_v0_2(
+                json.dumps(wire), 100_000, max_string_bytes=10_000,
+                max_array_items=20, source_bodies=source_bodies,
+            )
+        )
+        self.assertEqual(parsed["claims"][0]["outcome"], "unresolved")
+        self.assertEqual(parsed["claims"][0]["evidence_refs"], [])
+
+        bad_hash = _quote_only_verdict(_verdict(_envelope()))
+        bad_hash["claims"][0]["evidence_refs"][0]["body_sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "hash"):
+            parse_semantic_verdict_v0_2(
+                json.dumps(bad_hash), 100_000, max_string_bytes=10_000,
+                max_array_items=20, source_bodies=source_bodies,
+            )
+
+    def test_bad_run_identity_stops_at_its_explicit_route_gate(self):
+        run_input, context, envelope, _discovery_json, _semantic_json = _fixture()
+        producer = _quote_only_output(envelope)
+        producer["request_id"] = "other-run"
+        producer_text = json.dumps(producer)
+        producer_holder = _audit_holder(run_input)
+        discovery, semantic, calls = _clients(
+            producer_text, json.dumps(_quote_only_verdict(_verdict(envelope)))
+        )
+        with self.assertRaisesRegex(HostGrounderRuntimeError, "PRODUCER_ENVELOPE_INVALID"):
+            run_host_grounder_same_run_quote_localization_v0_1(
+                run_input, context, discovery_client=discovery, semantic_client=semantic,
+                audit_holder=producer_holder,
+                max_json_bytes=100_000, max_source_body_bytes=20_000,
+            )
+        self.assertEqual([call[0] for call in calls], ["discovery"])
+        self.assertEqual(producer_holder.producer_content_utf8, producer_text.encode("utf-8"))
+        self.assertEqual(
+            producer_holder.producer_content_sha256,
+            hashlib.sha256(producer_text.encode("utf-8")).hexdigest(),
+        )
+        self.assertIsNone(producer_holder.audit)
+        self.assertFalse(producer_holder.finalized)
+
+        verifier = _quote_only_verdict(_verdict(envelope))
+        verifier["run_id"] = "other-run"
+        discovery, semantic, calls = _clients(json.dumps(_quote_only_output(envelope)), json.dumps(verifier))
+        verifier_holder = _audit_holder(run_input)
+        with self.assertRaisesRegex(HostGrounderRuntimeError, "SEMANTIC_VERDICT_REJECTED"):
+            run_host_grounder_same_run_quote_localization_v0_1(
+                run_input, context, discovery_client=discovery, semantic_client=semantic,
+                audit_holder=verifier_holder,
+                max_json_bytes=100_000, max_source_body_bytes=20_000,
+            )
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertIsNotNone(verifier_holder.audit)
+        self.assertTrue(verifier_holder.finalized)
+
+    def test_semantic_transport_failure_retains_finalized_audit_and_sanitizes_error(self):
+        run_input, context, envelope, _discovery_json, _semantic_json = _fixture()
+        discovery, semantic, calls = _clients(
+            json.dumps(_quote_only_output(envelope)),
+            json.dumps(_quote_only_verdict(_verdict(envelope))),
+        )
+        holder = _audit_holder(run_input)
+
+        def fail_semantic(system_prompt, source_prompt):
+            calls.append(("semantic", system_prompt, source_prompt))
+            raise RuntimeError("PRIVATE_SYNTHETIC_SENTINEL")
+
+        semantic.complete = fail_semantic
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            run_host_grounder_same_run_quote_localization_v0_1(
+                run_input, context, discovery_client=discovery, semantic_client=semantic,
+                audit_holder=holder, max_json_bytes=100_000, max_source_body_bytes=20_000,
+            )
+        self.assertEqual(raised.exception.code, "SEMANTIC_CALL_FAILED")
+        self.assertEqual(str(raised.exception), "SEMANTIC_CALL_FAILED")
+        self.assertNotIn("PRIVATE_SYNTHETIC_SENTINEL", repr(raised.exception))
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertTrue(holder.finalized)
+        self.assertIsNotNone(holder.audit)
+
+    def test_builder_failure_retains_finalized_audit_without_exposing_exception(self):
+        run_input, context, envelope, _discovery_json, _semantic_json = _fixture()
+        discovery, semantic, calls = _clients(
+            json.dumps(_quote_only_output(envelope)),
+            json.dumps(_quote_only_verdict(_verdict(envelope))),
+        )
+        holder = _audit_holder(run_input)
+        with patch(
+            "convexity_hunter.host_grounder_runtime._build_host_grounder_v0_2",
+            side_effect=ValueError("PRIVATE_SYNTHETIC_SENTINEL"),
+        ):
+            with self.assertRaises(HostGrounderRuntimeError) as raised:
+                run_host_grounder_same_run_quote_localization_v0_1(
+                    run_input, context, discovery_client=discovery, semantic_client=semantic,
+                    audit_holder=holder, max_json_bytes=100_000, max_source_body_bytes=20_000,
+                )
+        self.assertEqual(raised.exception.code, "BUILDER_REJECTED")
+        self.assertEqual(str(raised.exception), "BUILDER_REJECTED")
+        self.assertNotIn("PRIVATE_SYNTHETIC_SENTINEL", repr(raised.exception))
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertTrue(holder.finalized)
+        self.assertIsNotNone(holder.audit)
+
+    def test_reused_or_cross_run_holder_is_rejected_before_model_calls(self):
+        run_input, context, envelope, _discovery_json, _semantic_json = _fixture()
+        discovery, semantic, _first_calls = _clients(
+            json.dumps(_quote_only_output(envelope)),
+            json.dumps(_quote_only_verdict(_verdict(envelope))),
+        )
+        holder = _audit_holder(run_input)
+        with self.assertRaises(AttributeError):
+            holder._state = "new"
+        run_host_grounder_same_run_quote_localization_v0_1(
+            run_input, context, discovery_client=discovery, semantic_client=semantic,
+            audit_holder=holder, max_json_bytes=100_000, max_source_body_bytes=20_000,
+        )
+
+        discovery, semantic, calls = _clients(
+            json.dumps(_quote_only_output(envelope)),
+            json.dumps(_quote_only_verdict(_verdict(envelope))),
+        )
+        with self.assertRaisesRegex(HostGrounderRuntimeError, "AUDIT_HOLDER_INVALID"):
+            run_host_grounder_same_run_quote_localization_v0_1(
+                run_input, context, discovery_client=discovery, semantic_client=semantic,
+                audit_holder=holder, max_json_bytes=100_000, max_source_body_bytes=20_000,
+            )
+        self.assertEqual(calls, [])
+
+        cross_run_holder = QuoteLocalizationAuditHolder(
+            run_id="different-run", canonical_input_hash=run_input.canonical_input_hash
+        )
+        discovery, semantic, calls = _clients(
+            json.dumps(_quote_only_output(envelope)),
+            json.dumps(_quote_only_verdict(_verdict(envelope))),
+        )
+        with self.assertRaisesRegex(HostGrounderRuntimeError, "AUDIT_HOLDER_INVALID"):
+            run_host_grounder_same_run_quote_localization_v0_1(
+                run_input, context, discovery_client=discovery, semantic_client=semantic,
+                audit_holder=cross_run_holder,
+                max_json_bytes=100_000, max_source_body_bytes=20_000,
+            )
+        self.assertEqual(calls, [])
+
+    def test_supported_binding_requires_exact_independently_localized_quote(self):
+        run_input, context, envelope, _discovery_json, _semantic_json = _fixture()
+        verifier = _verdict(envelope)
+        verifier["field_bindings"][0]["evidence_refs"] = [_ref(_QUOTE)]
+        discovery, semantic, _calls = _clients(
+            json.dumps(_quote_only_output(envelope)),
+            json.dumps(_quote_only_verdict(verifier)),
+        )
+        result = run_host_grounder_same_run_quote_localization_v0_1(
+            run_input, context, discovery_client=discovery, semantic_client=semantic,
+            audit_holder=_audit_holder(run_input),
+            max_json_bytes=100_000, max_source_body_bytes=20_000,
+        )
+        self.assertIsNone(result.build_result.submission)
+        self.assertNotIn(
+            0,
+            result.build_result.semantic_validation.receipt["verified_binding_indices"],
+        )
+
+    def test_unknown_source_and_sorted_sidecar_source_hashes(self):
+        wire = _quote_only_output(_envelope())
+        wire["field_bindings"][0]["source_id"] = "unregistered"
+        source_bodies = {"source-1": HostSourceBody(_BODY, _sha(_BODY), "https://source.example/report", _NOW, "Fixture")}
+        with self.assertRaisesRegex(ValueError, "registered"):
+            parse_grounder_output_v0_2(
+                json.dumps(wire), 100_000, max_string_bytes=10_000,
+                max_array_items=20, source_bodies=source_bodies,
+            )
+
+        sources = {
+            "z-source": HostSourceBody("z body", _sha("z body"), "https://source.example/z", _NOW, "Z"),
+            "a-source": HostSourceBody("a body", _sha("a body"), "https://source.example/a", _NOW, "A"),
+        }
+        audit = make_quote_localization_audit(
+            run_id=_RUN_ID,
+            canonical_input_hash="a" * 64,
+            source_bodies=sources,
+            producer_content_utf8=b"synthetic raw bytes",
+            normalized_envelope_utf8=b"{}",
+        )
+        sidecar = json.loads(audit.sidecar_utf8)
+        self.assertEqual(
+            [item["source_id"] for item in sidecar["source_body_hashes"]],
+            ["a-source", "z-source"],
+        )
+        self.assertNotIn(b"synthetic raw bytes", audit.sidecar_utf8)
+        self.assertEqual(audit.sidecar_sha256, hashlib.sha256(audit.sidecar_utf8).hexdigest())
 
 
 if __name__ == "__main__":
