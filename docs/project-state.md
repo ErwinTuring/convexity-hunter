@@ -52,16 +52,52 @@ Independent review passed; implementation and preregistration were committed
 and pushed as `b759e24`. The subsequent one-shot reserved one Tavily Extract
 request/credit but failed with `TavilyTransportError(NETWORK_ERROR)` before a
 source body was returned; no discovery, semantic call, or audit was produced.
-No retry or escalation rerun occurred. Cumulative Tavily reservations are
-fourteen, with settled usage unknown. A later local TCP connect-only check to
-`127.0.0.1:7890` failed with errno 1 under `use_default` and succeeded under
-`require_escalated`, without sending a request. Since the failed script had
-`proxy_configured=false`, sandbox denial is a possible, unproved cause. A new
-escalation-required protocol is preregistered but not executed; the prior
-one-shot remains closed. No completed live Grounder, source body, or product
-Host success is claimed. See the [frozen
-contract](host-grounder-quote-localization-v0.1.md).
+No retry or escalation rerun occurred under that first one-shot. A later local
+TCP connect-only check to `127.0.0.1:7890` failed with errno 1 under
+`use_default` and succeeded under `require_escalated`, without sending a
+request. Since the failed script had `proxy_configured=false`, sandbox denial
+was a possible, unproved cause. The separately preregistered
+network-context-corrected protocol then ran exactly once with
+`sandbox_permissions=require_escalated` and the unchanged script. It returned
+the complete pinned 9,420-byte source (SHA-256 prefix `89536ce6ff75`);
+discovery stopped normally in 6.604 seconds (5,017 prompt, 2,174 completion,
+7,191 total tokens; 6,427 content bytes). The quote-wire DTO failed closed at
+the schema gate, `PRODUCER_ENVELOPE_INVALID` at `quote_localization:103`; the
+safe gate label `schema` is a parse-stage classification, not proof of
+malformed JSON or a generic schema defect. Static code at
+`host_grounder_quote_localization.py:103` raises `ValueError("quote is ambiguous")`
+on the second exact occurrence; the search advances one code point, so
+overlapping occurrences count. Thus at least one producer binding quote had
+multiple exact occurrences in its identified body. The binding field/index,
+number of ambiguous bindings, and total occurrence count remain unknown.
+Producer bytes were retained but not normalized and the audit was not
+finalized. No semantic call, receipt, submission, or EI result
+followed, and no retry occurred. Cumulative Tavily reservations are fifteen,
+not settled usage or billing. This demonstrates source and discovery
+completion for this run only, not a completed live Grounder or product Host
+success. See the [frozen contract](host-grounder-quote-localization-v0.1.md)
+and [trial record](standalone-grounder-live-trial-2026-09-29.md).
 Production source acquisition and product Host integration remain M2 work.
+
+After the latest run, the explicit route received a bounded prompt revision
+under new identities: discovery v0.3 and verifier v0.4. Evidence quotes must
+remain verbatim and uniquely locatable with sufficient context; overlaps count,
+while paraphrases, spliced quotes, and ambiguous numeric-only quotes are
+disallowed. Under the existing rules, unresolvable items stay unresolved. Old
+v0.2/v0.3 prompt constants, DTOs, runtime gates, and acceptance semantics
+remain unchanged. New audit sidecars use schema v0.2 with the same keys;
+historical v0.1 sidecars remain unchanged. Focused validation passed 24
+runtime, 8 schema, and 18 model tests plus compilation. Mill's final
+independent review passed. The verifier may support a selected `contradicted` outcome and does
+not downgrade it solely because of that label. No live call or retry occurred.
+
+A separate follow-up validation preregistration is drafted in the trial record
+and remains unexecuted pending Main commit/push and a quota decision. Mill's
+independent review passed. It
+keeps the reviewed script, pinned source, budgets, and strict gates unchanged,
+requiring `sandbox_permissions=require_escalated` from startup. Cumulative
+reservations remain 15; execution would make 16, not settled usage or billing.
+No live call is authorized here.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted
@@ -73,9 +109,10 @@ pass. In isolation this remains a non-live, unauthenticated low-level helper.
 The low-level `Mapping` Builder API is structural only; a separate internal
 same-run v0.2 orchestration path now exists with fake-client coverage. The
 bounded live-trial outcomes are recorded in
-[the trial log](standalone-grounder-live-trial-2026-09-29.md). The latest
+[the trial log](standalone-grounder-live-trial-2026-09-29.md). The prior
 semantic call stopped normally but receipt validation rejected its exact-body
-spans; no semantic truth or EI acceptance is claimed.
+spans; the latest run stopped earlier at quote-wire schema validation. No
+semantic truth or EI acceptance is claimed.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed

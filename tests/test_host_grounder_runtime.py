@@ -18,8 +18,10 @@ from convexity_hunter.host_grounder_run_input import (
 from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT,
     DISCOVERY_SYSTEM_PROMPT_V0_2,
+    DISCOVERY_SYSTEM_PROMPT_V0_3,
     SEMANTIC_SYSTEM_PROMPT,
     SEMANTIC_SYSTEM_PROMPT_V0_3,
+    SEMANTIC_SYSTEM_PROMPT_V0_4,
     HostGrounderRuntimeError,
     run_host_grounder_same_run,
     run_host_grounder_same_run_quote_localization_v0_1,
@@ -716,13 +718,46 @@ class HostGrounderRuntimeTests(unittest.TestCase):
 
 
 class HostGrounderQuoteLocalizationTests(unittest.TestCase):
-    def test_v2_prompts_are_separately_versioned_and_quote_only(self):
+    def test_clarified_prompts_have_new_versions_and_preserve_previous_versions(self):
         self.assertIn("host-grounder-discovery-prompt-v0.2", DISCOVERY_SYSTEM_PROMPT_V0_2)
         self.assertIn('"schema_version": "grounder-output-v0.2"', DISCOVERY_SYSTEM_PROMPT_V0_2)
         self.assertIn("field_bindings[] keys: field_path, source_id, quote, semantic_role, status", DISCOVERY_SYSTEM_PROMPT_V0_2)
+        self.assertIn("Binding quotes must be unchanged exact text from their identified registered bodies.", DISCOVERY_SYSTEM_PROMPT_V0_2)
+        self.assertNotIn("overlapping occurrences count as multiple", DISCOVERY_SYSTEM_PROMPT_V0_2)
+        self.assertIn("host-grounder-discovery-prompt-v0.3", DISCOVERY_SYSTEM_PROMPT_V0_3)
+        self.assertIn('"schema_version": "grounder-output-v0.2"', DISCOVERY_SYSTEM_PROMPT_V0_3)
+        for requirement in (
+            "unchanged verbatim quote with enough surrounding context to occur exactly once in its identified registered body",
+            "overlapping occurrences count as multiple",
+            "Do not paraphrase, splice separate passages, or use a numeric-only quote that is ambiguous",
+            "leave the field unresolved under the existing DTO rules and emit no binding",
+            "Never invent quote text or choose a position",
+        ):
+            self.assertIn(requirement, DISCOVERY_SYSTEM_PROMPT_V0_3)
+            self.assertNotIn(requirement, DISCOVERY_SYSTEM_PROMPT)
+            self.assertNotIn(requirement, DISCOVERY_SYSTEM_PROMPT_V0_2)
         self.assertIn("host-grounder-semantic-verifier-prompt-v0.3", SEMANTIC_SYSTEM_PROMPT_V0_3)
         self.assertIn("evidence_refs[] exact keys: source_id, body_sha256, quote", SEMANTIC_SYSTEM_PROMPT_V0_3)
-        self.assertNotIn("evidence_refs[] exact keys: source_id, body_sha256, start, end, quote", SEMANTIC_SYSTEM_PROMPT_V0_3)
+        self.assertIn("For a supported field binding, cite the exact envelope binding source_id and quote", SEMANTIC_SYSTEM_PROMPT_V0_3)
+        self.assertNotIn("Every evidence_refs[].quote must be unchanged verbatim", SEMANTIC_SYSTEM_PROMPT_V0_3)
+        self.assertIn("host-grounder-semantic-verifier-prompt-v0.4", SEMANTIC_SYSTEM_PROMPT_V0_4)
+        self.assertIn("evidence_refs[] exact keys: source_id, body_sha256, quote", SEMANTIC_SYSTEM_PROMPT_V0_4)
+        self.assertNotIn("evidence_refs[] exact keys: source_id, body_sha256, start, end, quote", SEMANTIC_SYSTEM_PROMPT_V0_4)
+        for requirement in (
+            "Every evidence_refs[].quote must be unchanged verbatim text with enough surrounding context to occur exactly once in its cited registered body",
+            "overlapping occurrences count as multiple",
+            "Do not paraphrase, splice separate passages, or use a numeric-only quote that is ambiguous",
+            "A unique exact quote may support any selected assessment, including a contradicted assessment; do not treat a contradicted outcome as unsupported solely because of its label",
+            "Use unresolved only where the existing verdict rules require it",
+            "if unique quote evidence cannot establish the selected assessment, leave the applicable verdict unresolved and emit no reference",
+            "Never invent quote text or choose a position",
+        ):
+            self.assertIn(requirement, SEMANTIC_SYSTEM_PROMPT_V0_4)
+            self.assertNotIn(requirement, SEMANTIC_SYSTEM_PROMPT)
+            self.assertNotIn(requirement, SEMANTIC_SYSTEM_PROMPT_V0_3)
+        self.assertIn("Binding start/end are zero-based Unicode-code-point indices", DISCOVERY_SYSTEM_PROMPT)
+        self.assertIn("The Host derives binding offsets; never emit start/end", DISCOVERY_SYSTEM_PROMPT_V0_2)
+        self.assertIn("evidence_refs[] exact keys: source_id, body_sha256, start, end, quote", SEMANTIC_SYSTEM_PROMPT)
 
     def test_explicit_v2_route_retains_frozen_audit_and_preserves_receipt_outcomes(self):
         run_input, context, envelope, _discovery_json, _semantic_json = _fixture()
@@ -742,12 +777,12 @@ class HostGrounderQuoteLocalizationTests(unittest.TestCase):
         )
 
         self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
-        self.assertIs(calls[0][1], DISCOVERY_SYSTEM_PROMPT_V0_2)
-        self.assertIs(calls[1][1], SEMANTIC_SYSTEM_PROMPT_V0_3)
+        self.assertIs(calls[0][1], DISCOVERY_SYSTEM_PROMPT_V0_3)
+        self.assertIs(calls[1][1], SEMANTIC_SYSTEM_PROMPT_V0_4)
         self.assertIsNotNone(result.build_result.submission)
         receipt = result.build_result.semantic_validation.receipt
         self.assertEqual(receipt["schema_version"], "semantic-validation-v0.2")
-        self.assertEqual(receipt["validator_version"], "host-grounder-semantic-verifier-prompt-v0.3")
+        self.assertEqual(receipt["validator_version"], "host-grounder-semantic-verifier-prompt-v0.4")
         self.assertEqual(receipt["verified_claim_ids"], ("claim-1",))
         self.assertEqual(result.build_result.coverage[0].validator_status, "supported")
 
@@ -778,14 +813,14 @@ class HostGrounderQuoteLocalizationTests(unittest.TestCase):
                 "localizer_version",
             },
         )
-        self.assertEqual(sidecar["schema_version"], "host-grounder-quote-localization-audit-v0.1")
+        self.assertEqual(sidecar["schema_version"], "host-grounder-quote-localization-audit-v0.2")
         self.assertEqual(sidecar["run_id"], _RUN_ID)
         self.assertEqual(sidecar["canonical_input_hash"], run_input.canonical_input_hash)
         self.assertEqual(sidecar["producer_wire_version"], "grounder-output-v0.2")
-        self.assertEqual(sidecar["producer_prompt_version"], "host-grounder-discovery-prompt-v0.2")
+        self.assertEqual(sidecar["producer_prompt_version"], "host-grounder-discovery-prompt-v0.3")
         self.assertEqual(sidecar["producer_content_sha256"], hashlib.sha256(producer_text.encode("utf-8")).hexdigest())
         self.assertEqual(sidecar["verifier_wire_version"], "semantic-verdict-v0.2")
-        self.assertEqual(sidecar["validator_version"], "host-grounder-semantic-verifier-prompt-v0.3")
+        self.assertEqual(sidecar["validator_version"], "host-grounder-semantic-verifier-prompt-v0.4")
         self.assertEqual(sidecar["localizer_version"], "host-grounder-quote-localizer-v0.1")
         self.assertEqual(sidecar["normalized_envelope_sha256"], expected_hash)
         self.assertEqual(sidecar["source_body_hashes"], [{"source_id": "source-1", "sha256": _sha(_BODY)}])
@@ -1125,6 +1160,9 @@ class HostGrounderQuoteLocalizationTests(unittest.TestCase):
             normalized_envelope_utf8=b"{}",
         )
         sidecar = json.loads(audit.sidecar_utf8)
+        self.assertEqual(sidecar["schema_version"], "host-grounder-quote-localization-audit-v0.1")
+        self.assertEqual(sidecar["producer_prompt_version"], "host-grounder-discovery-prompt-v0.2")
+        self.assertEqual(sidecar["validator_version"], "host-grounder-semantic-verifier-prompt-v0.3")
         self.assertEqual(
             [item["source_id"] for item in sidecar["source_body_hashes"]],
             ["a-source", "z-source"],

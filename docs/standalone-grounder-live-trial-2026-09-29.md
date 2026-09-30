@@ -473,4 +473,96 @@ This changes only the execution network context after the connect-only evidence;
 it is not a prettier-reply experiment. At preregistration cumulative Tavily
 reservations are fourteen; execution would make the count fifteen if the Extract
 reservation occurs, not a settled usage or billing claim. The preregistration
-is not execution or M2 success. Main must commit it before the single run.
+is not execution or M2 success. Main committed and pushed it before the single
+run recorded below.
+
+## Executed network-context-corrected quote-localization protocol — 2026-09-30
+
+The unchanged `/private/tmp/ch_live_grounder_quote_localization_v0_1.py` was
+executed exactly once with `sandbox_permissions=require_escalated` from the
+start, using:
+
+```sh
+PYTHONPYCACHEPREFIX=/private/tmp/ch-mvp-pycache python3 /private/tmp/ch_live_grounder_quote_localization_v0_1.py
+```
+
+The process exited 0 and emitted only sanitized aggregate diagnostics. Tavily
+transport was invoked once; one Extract request and credit were reserved. It
+returned the complete pinned 9,420-byte SEC body (SHA-256 prefix
+`89536ce6ff75`), and `proxy_configured=true`. Discovery was invoked once and
+stopped normally after 6.604 seconds: 5,017 prompt, 2,174 completion, and 7,191
+total tokens; content was 6,427 UTF-8 bytes. `finish_reason=stop`; reasoning
+token and reasoning-content-byte metadata were null.
+
+The quote-only producer DTO then failed with
+`PRODUCER_ENVELOPE_INVALID` at the `schema` gate in `quote_localization`,
+production line 103. Here `schema` is the safe diagnostic's parse-stage gate
+label, not proof of malformed JSON or a generic schema defect. The static
+implementation at `host_grounder_quote_localization.py:103` raises
+`ValueError("quote is ambiguous")` on the second exact occurrence; advancing
+the search start by one code point counts overlapping matches. This proves
+that at least one producer binding quote had multiple exact occurrences in its
+identified body. The exact binding field/index, number of ambiguous bindings,
+and total occurrence count remain unknown; no quote text was exposed. Claim,
+hypothesis, and binding counts, stage/run flags, and quote occurrence/span
+counters were null because parsing failed. Producer bytes were retained with
+status `producer_retained_not_normalized`; audit finalization was false and the
+sidecar digest was null. Semantic call/reservation/transport counts were zero.
+No receipt, submission, or EI outcome was produced. No semantic judgment or
+EI result was reached. No retry or alternate call occurred.
+
+The Extract reservation raises cumulative Tavily reservations from fourteen
+to fifteen. This is reservation accounting, not settled usage or billing.
+The run resolves the prior network-context uncertainty only for this
+execution: source retrieval and discovery completed under the escalated
+context. It does not prove the previous `NETWORK_ERROR` cause, and it did not
+complete quote localization, semantic validation, or a live Grounder run.
+
+## Post-run versioned prompt clarification — 2026-09-30
+
+Static review localized the producer failure to an ambiguous binding quote;
+the exact binding field/index and total match counts remain unknown. The new
+`DISCOVERY_SYSTEM_PROMPT_V0_3` now explicitly asks for a unique, unchanged
+verbatim binding quote with enough context and no model-selected position. The
+new `SEMANTIC_SYSTEM_PROMPT_V0_4` applies the same uniqueness/context rule to
+every verifier evidence reference. Both count overlapping matches, prohibit
+paraphrase/splicing and ambiguous numeric-only quotes. Unresolvable items
+remain governed by existing rules. A unique quote may support a selected
+`contradicted` assessment; the prompt does not downgrade it solely because of
+that label. Legacy prompts, wire DTOs, schema/receipt/verifier behavior, and
+acceptance semantics are unchanged; no wire DTO or verifier outcome change was
+made. New explicit-route
+audit sidecars use schema `host-grounder-quote-localization-audit-v0.2` with the
+same closed key set; prior v0.1 records remain unchanged. Focused validation
+passed 24 runtime, 8 schema, and 18 model tests plus compilation. Mill's final
+independent review passed; documentation link/fence checks and diff-check
+passed. No live retry was made.
+
+## Draft follow-up validation preregistration — 2026-09-30
+
+This is a separate bounded validation of the clarified prompt text, not a
+retry of the completed network-context-corrected protocol. Mill's independent
+review passed. It is not committed or executed; Main will decide after commit
+and quota check. No live call is authorized by this draft.
+
+- Use the unchanged reviewed script
+  `/private/tmp/ch_live_grounder_quote_localization_v0_1.py` and require
+  `sandbox_permissions=require_escalated` from startup; never try the default
+  sandbox first. The script uses the updated v0.3 discovery and v0.4 verifier
+  prompt constants.
+- Require the same official SEC URL and complete 9,420-byte body with SHA-256
+  prefix `89536ce6ff75`; otherwise stop before any model call.
+- Keep the same bounds: at most one Tavily Basic Extract request/credit (one
+  URL, 8 KB request, 100 KB response, 18-second timeout/time budget, 110 KB
+  byte budget, 20 KB accepted-body cap), then at most one `deepseek-flash`
+  discovery call and, only if strict gates pass, at most one semantic call.
+  Each role keeps 6,000 output tokens, a 45-second timeout, JSON-object mode,
+  thinking disabled, and 80 KB input/40 KB output byte caps.
+- Preserve every existing strict gate and all other source/request bounds.
+  No retry, alternate source, fallback, schema/DTO/parser/runtime change, or
+  output-cap change.
+
+The sole intended input difference is the versioned prompt clarification; the
+script and execution budgets stay unchanged. Current cumulative Tavily
+reservations are fifteen. If the Extract reservation occurs, the next run
+would bring that count to sixteen; this is not settled usage or billing.

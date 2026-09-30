@@ -117,3 +117,31 @@ finalized sidecar; any later semantic or Builder failure leaves the finalized
 audit accessible through the caller's holder. Exceptions and logs never carry
 the raw content, normalized bytes, or sidecar JSON. This ownership guarantee
 adds no persistence service and does not change legacy APIs.
+
+## Revision addendum — quote-prompt identity refinement (2026-09-30)
+
+The version literals above describe the original explicit-route audit and
+remain valid for historical records. The subsequent prompt clarification has
+distinct identities: producer prompt
+`host-grounder-discovery-prompt-v0.3` and verifier prompt
+`host-grounder-semantic-verifier-prompt-v0.4`. New explicit-route audit
+sidecars therefore use schema version
+`host-grounder-quote-localization-audit-v0.2`, preserving the exact same closed
+key set and canonical serialization. The original v0.2/v0.3 prompt constants
+and v0.1 sidecar records remain unchanged.
+
+The producer/verifier wire DTOs remain `grounder-output-v0.2` and
+`semantic-verdict-v0.2`; normalized internal DTOs remain v0.1. Localization,
+validation, receipt construction, supported/contradicted/unresolved outcomes,
+and all acceptance semantics are unchanged. The revision only gives the
+clarified prompt text and resulting new audit records non-colliding version
+identities.
+
+For the new verifier prompt, a unique exact reference may support the selected
+`contradicted` assessment. Do not downgrade it solely because it is
+contradicted; unresolved remains controlled by the existing verdict rules.
+
+Mill's final independent review of this identity/prompt clarification passed.
+Focused validation passed 24 runtime, 8 schema, and 18 model tests, touched-file
+compilation, documentation link/fence checks, and `git diff --check`. No full
+suite or live call was run under this revision.

@@ -37,27 +37,61 @@ production source-acquisition integration, a completed end-to-end live Grounder 
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
-records the completed diagnostics. The previous completed semantic diagnostic
-used the same complete
-9,420-byte SEC body; discovery stopped normally (5,012 prompt, 1,492
-completion, 6,504 total tokens; 4,590 content bytes) and passed DTO/stage/run
-checks (4 claims, 0 hypotheses, 3 bindings). Semantic stopped normally (5,098
-prompt, 2,217 completion, 7,315 total tokens; 6,265 content bytes), but receipt
-construction returned `SEMANTIC_VERDICT_REJECTED` at
-`host_grounder_semantic.py:310`. The exact-body span gate saw 11 refs with
-unique quote occurrences, 0 ambiguous/missing/unknown-source refs, 0 matches,
-and 11 mismatches. No receipt or submission/EI was produced; the binding-offset
-cross-check at lines 324–328 was not reached, so producer-offset correctness
-remains unknown. The earlier completed semantic response's exact receipt
-subgate is still unknown. The next, quote-localization one-shot then reserved
-one Tavily Extract request/credit but failed with `NETWORK_ERROR` before a
-source body was returned: body bytes/hash, discovery, semantic, and audit were
-all absent. A later connect-only check to `127.0.0.1:7890` returned errno 1
-under `use_default` and succeeded under `require_escalated`; it sent no request.
-The script had reported `proxy_configured=false`, so sandbox network denial is
-a possible, unproved cause. A separate escalation-required protocol is
-preregistered, not executed; the prior one-shot remains closed. Cumulative
-Tavily reservations are fourteen; settled usage is unknown.
+records the completed diagnostics. A prior completed semantic diagnostic used
+the same complete 9,420-byte SEC body; discovery passed DTO/stage/run checks
+(4 claims, 0 hypotheses, 3 bindings), while semantic receipt construction
+returned `SEMANTIC_VERDICT_REJECTED` at `host_grounder_semantic.py:310`. The
+exact-body span gate found 11 unique quote occurrences, 0 ambiguous/missing/
+unknown-source refs, 0 matches, and 11 mismatches. The binding-offset
+cross-check was not reached, so producer-offset correctness remains unknown.
+The exact receipt subgate of the earlier completed semantic response remains
+unknown.
+The subsequent default-sandbox quote-localization run reserved one Extract
+request/credit but failed with `NETWORK_ERROR` before a body was returned. A
+connect-only check to `127.0.0.1:7890` returned errno 1 under `use_default` and
+succeeded under `require_escalated`; it sent no request. That run reported
+`proxy_configured=false`, so sandbox denial remained a possible, unproved
+cause.
+
+The separately preregistered network-context-corrected protocol then ran
+exactly once with `sandbox_permissions=require_escalated`, using the unchanged
+script. Extract returned the complete pinned 9,420-byte body (SHA-256 prefix
+`89536ce6ff75`). Discovery stopped normally in 6.604 seconds (5,017 prompt,
+2,174 completion, 7,191 total tokens; 6,427 content bytes), then failed with
+`PRODUCER_ENVELOPE_INVALID` at the quote-wire DTO schema gate,
+`quote_localization:103`. The safe gate label `schema` is a parse-stage
+classification, not proof of malformed JSON or a generic schema defect.
+Static code at `host_grounder_quote_localization.py:103` shows
+`ValueError("quote is ambiguous")` on the second exact occurrence; the search
+advances one code point, so overlapping occurrences count. This establishes
+that at least one producer binding quote had multiple exact occurrences in its
+identified body. The binding field/index, number of ambiguous bindings, and
+total occurrence count are unknown. Producer bytes were retained but not
+normalized; the localization audit was not finalized. Semantic was not
+called, and no receipt, submission, or EI result was produced. No retry
+occurred. This establishes successful source/discovery transport for this run,
+not successful quote localization, semantic validation, a completed live
+Grounder, or M2/product success. Cumulative Tavily reservations are fifteen;
+this is reservation accounting, not settled usage or a bill.
+
+After that run, the explicit route received a bounded quote-selection prompt
+revision under new identities: discovery prompt v0.3 and verifier prompt v0.4.
+It requires unchanged exact quotes with enough verbatim context to be unique
+(counting overlaps), forbids paraphrase/splicing/ambiguous numeric-only quotes,
+and leaves unresolvable items unresolved under existing rules. Old v0.2/v0.3
+prompt constants, wire DTOs, localization/verifier gates, and accepted-outcome
+semantics remain unchanged. New audit sidecars use schema v0.2 with the same
+keys; historical v0.1 sidecars remain unchanged. Focused validation passed 24
+runtime, 8 schema, and 18 model tests plus compilation. Mill's final
+independent review passed. A unique verifier quote can support a selected
+`contradicted` outcome; the prompt does not downgrade it solely because of
+that label. This was not a live rerun.
+
+A separate follow-up validation preregistration is drafted in the trial record,
+not executed. It retains the reviewed script, source pin, budgets, and strict
+gates and requires upfront `sandbox_permissions=require_escalated`. Cumulative
+reservations remain 15; execution would reserve number 16. Main commit/push
+and quota decision are pending; no live call is authorized here.
 
 The prompt-only JSON shape correction against the locked DTO is implemented
 and independently reviewed; 37 focused model/schema/runtime tests, compilation,

@@ -300,6 +300,10 @@ class QuoteLocalizationAuditHolder:
         self,
         normalized_envelope_utf8: bytes,
         source_bodies: Mapping[str, object],
+        *,
+        audit_schema_version: str,
+        producer_prompt_version: str,
+        validator_version: str,
     ) -> QuoteLocalizationAudit:
         with self._lock:
             if self._state != "producer_retained" or type(normalized_envelope_utf8) is not bytes:
@@ -310,6 +314,9 @@ class QuoteLocalizationAuditHolder:
                 source_bodies=source_bodies,
                 producer_content_utf8=self._producer_content_utf8,
                 normalized_envelope_utf8=normalized_envelope_utf8,
+                audit_schema_version=audit_schema_version,
+                producer_prompt_version=producer_prompt_version,
+                validator_version=validator_version,
             )
             object.__setattr__(self, "_audit", audit)
             object.__setattr__(self, "_state", "finalized")
@@ -323,6 +330,9 @@ def make_quote_localization_audit(
     source_bodies: Mapping[str, object],
     producer_content_utf8: bytes,
     normalized_envelope_utf8: bytes,
+    audit_schema_version: str = "host-grounder-quote-localization-audit-v0.1",
+    producer_prompt_version: str = "host-grounder-discovery-prompt-v0.2",
+    validator_version: str = "host-grounder-semantic-verifier-prompt-v0.3",
 ) -> QuoteLocalizationAudit:
     source_hashes = []
     for source_id in sorted(source_bodies):
@@ -335,16 +345,16 @@ def make_quote_localization_audit(
             raise ValueError("source registry hash mismatch")
         source_hashes.append({"source_id": source_id, "sha256": body_sha256})
     sidecar = {
-        "schema_version": "host-grounder-quote-localization-audit-v0.1",
+        "schema_version": audit_schema_version,
         "run_id": run_id,
         "canonical_input_hash": canonical_input_hash,
         "producer_wire_version": "grounder-output-v0.2",
-        "producer_prompt_version": "host-grounder-discovery-prompt-v0.2",
+        "producer_prompt_version": producer_prompt_version,
         "producer_content_sha256": hashlib.sha256(producer_content_utf8).hexdigest(),
         "normalized_envelope_sha256": hashlib.sha256(normalized_envelope_utf8).hexdigest(),
         "source_body_hashes": source_hashes,
         "verifier_wire_version": "semantic-verdict-v0.2",
-        "validator_version": "host-grounder-semantic-verifier-prompt-v0.3",
+        "validator_version": validator_version,
         "localizer_version": "host-grounder-quote-localizer-v0.1",
     }
     sidecar_bytes = _canonical_bytes(sidecar)
