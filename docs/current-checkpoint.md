@@ -37,12 +37,16 @@ production source-acquisition integration, a completed live model trial,
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
-now records the null-title adapter diagnosis and four post-fix runs using the
-same complete 9,420-byte SEC body. All four stopped in discovery: outer
-`DISCOVERY_CALL_FAILED`, then underlying `TRUNCATED_RESPONSE`, `TIMEOUT`, and
-`TRUNCATED_RESPONSE`; none reached semantic validation or EI acceptance. Stop
-increasing caps; next is an offline prompt/output-boundary audit. No product
-success is established.
+records the null-title adapter diagnosis, four post-fix discovery attempts,
+and a final trial after reviewed offline discovery/semantic DTO guidance and
+Host source-metadata corrections. The final attempt used the same complete
+9,420-byte SEC body, 6,000-token/45-second discovery cap, and still ended in
+`TRUNCATED_RESPONSE` after about 24.2 seconds; semantic calls and EI acceptance
+remain zero. Seven total Tavily requests/credits were reserved across these
+operations; settled usage is unknown. Stop retries/cap increases. Next is a
+bounded read-only DeepSeek structured-output and completion-token-semantics
+preflight from official docs or safe metadata. No product success is
+established.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas

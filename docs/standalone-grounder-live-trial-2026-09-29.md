@@ -73,6 +73,28 @@ four further requests/credits. Provider-reported settled usage is unknown; no
 billing claim is made. No raw body, response, model output or secret was
 persisted. No Host Grounder semantic result or EI acceptance was reached.
 
-Stop increasing token/time caps. The next step is an offline prompt/output-
-boundary audit, not another live call. These transport outcomes establish no
-product success or semantic correctness.
+The post-fix trials established no product success or semantic correctness.
+The subsequent offline review corrected discovery/semantic DTO guidance and
+exposed Host source metadata to the producer; it did not itself establish a
+live result.
+
+## Final DTO-guidance trial — 2026-09-30
+
+After the reviewed discovery/semantic DTO guidance and Host source-metadata
+correction, one final no-retry trial used the same official SEC filing and
+complete 9,420-byte body (stable SHA-256 prefix `89536ce6ff75`). Tavily Basic
+Extract reserved one request/credit. Discovery used a 6,000-token output cap
+and 45-second timeout, then returned underlying `TRUNCATED_RESPONSE` after
+about 24.2 seconds. The semantic call count was zero; no EI acceptance was
+reached.
+
+Across the recorded operations, reserved request/credit counts total seven:
+one initial 2026-09-29 attempt, one 2026-09-30 schema diagnostic, four
+post-fix discovery trials, and this final DTO-guidance trial. Settled provider
+usage remains unknown; no billing claim is made.
+
+The offline DTO prompt omission is corrected, but live runtime remains blocked
+at discovery truncation. Stop retries and further cap increases. The next
+bounded step is a read-only preflight of DeepSeek structured-output support
+and completion-token semantics using official documentation or already-safe
+metadata; do not infer the truncation cause or make another provider call.
