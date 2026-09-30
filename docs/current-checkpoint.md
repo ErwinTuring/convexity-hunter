@@ -33,22 +33,26 @@ do not authenticate the verifier call. The low-level Builder still accepts
 mappings for controlled structural use. An internal same-run Event path now
 uses pre-registered source bodies, separate bounded producer/verifier calls and
 an internally constructed v0.2 receipt. It has only fake-client validation;
-production source-acquisition integration, a completed live model trial,
+production source-acquisition integration, a completed end-to-end live Grounder run,
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
 records the null-title adapter diagnosis, post-fix discovery attempts, and
-bounded DeepSeek documentation preflight. The latest reviewed thinking-disabled
-one-shot used the same complete 9,420-byte SEC body; discovery stopped normally
-after 13.796 seconds (4,197 prompt / 4,435 completion / 8,632 total tokens;
-14,493 content bytes; reasoning metadata null), then failed with
-`PRODUCER_ENVELOPE_INVALID`. Semantic calls and submission were not reached.
-The preflight supports, but does not prove, the thinking-toggle hypothesis for
-this trial. Cumulative Tavily reservations are nine requests/credits; settled
-usage is unknown. Stop blind calls. Prepare an offline DTO diagnostic, then at
-most one separately bounded one-shot to identify the rejection gate; the exact
-gate is unknown and the payload is no longer available. No product success is
-established.
+the bounded DeepSeek documentation preflight, and the subsequent one-shot DTO
+array-type diagnostic. The latest run used the same complete 9,420-byte SEC
+body and stopped at `host_grounder_schema.py:136` (`bounded_array` rejected a
+non-array value; `dto_failed_gate=schema`, exact field unknown, payload not
+retained).
+Discovery ended normally (`stop`) after 8.707 seconds (4,201 prompt / 2,845
+completion / 7,046 total tokens; 9,404 content bytes; reasoning metadata null).
+Semantic calls were zero. Cumulative Tavily reservations are ten
+requests/credits; settled usage is unknown. That diagnostic protocol is
+exhausted and remains historical. The prompt-only JSON shape correction
+against the locked DTO is implemented and independently reviewed; 37 focused
+model/schema/runtime tests, compilation, and diff-check passed. A distinct
+post-correction validation is preregistered under the standing M0–M8
+authorization in the trial log, with no new provider or methodology; it has
+not yet run. No full suite or product success is claimed.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas

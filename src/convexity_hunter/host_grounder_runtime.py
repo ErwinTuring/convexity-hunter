@@ -38,7 +38,62 @@ Answer only the supplied subquestions. Include each distinct, directly relevant 
 
 Preserve material qualifiers, attribution, negation, modality, and counterevidence. Never turn attributed, hypothetical, or negated wording into an unqualified asserted fact. If support is missing, ambiguous, or conflicting, do not fill gaps by inference; leave the point unresolved in the applicable coverage or gap fields.
 
-Closed DTO contract (grounder-output-v0.1): every object below has exactly its listed keys; include all keys, no extras. Root keys: schema_version, stage, request_id, claims, hypotheses, coverage, field_bindings. Set schema_version to grounder-output-v0.1, stage to semantic, and request_id to the supplied run_id. Array-valued fields are arrays, never null; claims, hypotheses, and field_bindings may be empty, but coverage must be complete. Non-null scalar strings are nonempty.
+Closed DTO contract (grounder-output-v0.1): return exactly one JSON object; every object below has exactly its listed keys, no extras. Root keys: schema_version, stage, request_id, claims, hypotheses, coverage, field_bindings. Set schema_version to grounder-output-v0.1, stage to semantic, and request_id to the supplied run_id. JSON array-valued fields (use `[]` for no entries, never `{}`, `null`, or a string) are: root `claims`, `hypotheses`, `coverage`, `field_bindings`; `claims[].entity_refs`, `claims[].dependency_claim_ids`, `claims[].uncertainty`, `claims[].falsification_conditions`; `hypotheses[].supporting_claim_ids`, `hypotheses[].contradicting_claim_ids`, `hypotheses[].uncertainties`, `hypotheses[].falsification_conditions`, `hypotheses[].reassessment.basis_claim_ids` when reassessment is non-null; and `coverage[].claim_ids`. `claims`, `hypotheses`, and `field_bindings` may be empty only when no evidence-supported record belongs there; coverage must contain exactly one entry per supplied subquestion. Non-null scalar strings are nonempty.
+
+FORMAT-ONLY JSON shape example: strings beginning `FORMAT_ONLY_` and the sample date `9999-12-31` are non-evidence placeholders. Never copy or emit any marker or the sample date, infer facts from them, or invent substitute facts. The enum literals are syntax examples only; choose permitted values according to the evidence. The single sample claim, hypothesis, coverage entry, and empty `field_bindings` are not required counts or a required empty answer; include only records supported by registered bodies, and always cover every supplied subquestion in order. Example:
+```json
+{
+  "schema_version": "grounder-output-v0.1",
+  "stage": "semantic",
+  "request_id": "FORMAT_ONLY_RUN_ID_DO_NOT_COPY",
+  "claims": [
+    {
+      "claim_id": "FORMAT_ONLY_CLAIM_ID_DO_NOT_COPY",
+      "kind": "observed_fact",
+      "source_id": "FORMAT_ONLY_SOURCE_ID_DO_NOT_COPY",
+      "locator": "FORMAT_ONLY_LOCATOR_DO_NOT_COPY",
+      "quote": "FORMAT_ONLY_QUOTE_DO_NOT_COPY_9999-12-31",
+      "text": "FORMAT_ONLY_TEXT_DO_NOT_COPY_9999-12-31",
+      "entity_refs": [],
+      "event_date": null,
+      "published_at": null,
+      "dependency_claim_ids": [],
+      "uncertainty": [],
+      "falsification_conditions": []
+    }
+  ],
+  "hypotheses": [
+    {
+      "hypothesis_id": "FORMAT_ONLY_HYPOTHESIS_ID_DO_NOT_COPY",
+      "underlying_symbol": null,
+      "impact_path": null,
+      "distribution_mode": null,
+      "distribution_hypothesis": null,
+      "expected_window": null,
+      "reassessment": {
+        "reassessment_by": "9999-12-31",
+        "methodology": "source-backed-milestone:FORMAT_ONLY_CLAIM_ID_DO_NOT_COPY:9999-12-31",
+        "basis_kind": "source_backed_milestone",
+        "basis_claim_ids": ["FORMAT_ONLY_CLAIM_ID_DO_NOT_COPY"]
+      },
+      "supporting_claim_ids": ["FORMAT_ONLY_CLAIM_ID_DO_NOT_COPY"],
+      "contradicting_claim_ids": [],
+      "contradiction_review": null,
+      "uncertainties": [],
+      "falsification_conditions": []
+    }
+  ],
+  "coverage": [
+    {
+      "subquestion_id": "FORMAT_ONLY_SUBQUESTION_ID_DO_NOT_COPY",
+      "status": "unresolved",
+      "claim_ids": [],
+      "gap": "FORMAT_ONLY_GAP_DO_NOT_COPY"
+    }
+  ],
+  "field_bindings": []
+}
+```
 
 claims[] keys: claim_id, kind, source_id, locator, quote, text, entity_refs, event_date, published_at, dependency_claim_ids, uncertainty, falsification_conditions. claim_id, source_id, locator, quote, and text are nonempty strings; kind is observed_fact or interpretation. event_date is ISO YYYY-MM-DD or null; published_at is RFC3339 with timezone or null. List fields are arrays, not null (empty is allowed when applicable).
 

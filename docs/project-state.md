@@ -15,9 +15,16 @@ reassessment excludes only its own hypothesis. This is a non-live Builder:
 its receipt must come from a trusted Host semantic verifier call. An internal
 same-run Event path now supplies that call and constructs a v0.2 receipt;
 no source truth or live product Grounder is claimed. A bounded external live
-trial reached model discovery but stopped at producer-envelope validation
-before semantic verification; production source acquisition and product Host
-integration remain M2 work.
+trial reached discovery but stopped at the producer schema array-type check
+(`dto_failed_gate=schema`, `host_grounder_schema.py:136`; exact field unknown)
+before semantic verification. Cumulative Tavily reservations are ten; settled usage is
+unknown. That diagnostic protocol is exhausted and remains historical. The
+prompt-only format correction is implemented against the unchanged DTO and
+independently reviewed; 37 focused model/schema/runtime tests, compilation, and
+diff-check passed. A distinct post-correction validation is preregistered
+within standing M0–M8 authorization, with no new provider or methodology; it
+has not yet run. Production source acquisition and product Host integration
+remain M2 work; no product success is claimed.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted

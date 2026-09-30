@@ -150,9 +150,55 @@ corrected pre-next-run count of eight gives nine reserved Tavily Extract
 requests and nine reserved credits. This is reservation accounting only, not
 settled provider usage or a bill; settled usage remains unknown.
 
-Stop blind provider calls. `PRODUCER_ENVELOPE_INVALID` covers schema parsing,
-stage/run identity, ordered coverage, and canonical-size checks; the exact
-rejection gate is not yet known, and the payload is no longer available. Next,
-prepare an offline DTO diagnostic; after that, at most one separately bounded
-one-shot may identify the rejection gate. Do not treat normal model transport
-completion as Grounder or EI acceptance.
+At that point, the next step was an offline DTO diagnostic followed by at most
+one separately bounded one-shot to identify the rejection gate. That
+diagnostic and its outcome are recorded below. Do not treat normal model
+transport completion as Grounder or EI acceptance.
+
+## DTO array-type diagnostic one-shot — 2026-09-30
+
+The separately bounded diagnostic used the same complete 9,420-byte SEC body
+and SHA-256 prefix `89536ce6ff75`, one Tavily Extract request/credit, and one
+discovery call. Discovery finished normally (`stop`) in 8.707 seconds: 4,201
+prompt, 2,845 completion, 7,046 total tokens, and 9,404 content UTF-8 bytes.
+Reasoning metadata was null. The safe diagnostic reported
+`dto_failed_gate=schema`, module tag `schema`, and line 136 of
+`host_grounder_schema.py`, where `bounded_array` rejects a non-array Python
+value. The exact array field is unknown; claim/hypothesis/binding counts and
+stage/run-match flags remained null because parsing failed. The runtime
+raised `PRODUCER_ENVELOPE_INVALID`; semantic calls were zero. No raw response
+or model content was persisted.
+
+This adds one reserved Tavily Extract request/credit to a cumulative total of
+ten reservations. This is reservation accounting, not settled usage or a bill;
+settled usage remains unknown. No further live calls are authorized under this
+exhausted diagnostic protocol. That restriction is historical to that protocol;
+the separate post-correction validation preregistered below is within the
+standing M0–M8 authorization. The prompt-only formatting correction against the
+unchanged locked DTO is implemented and independently reviewed: no parser,
+schema, Builder, receipt, cap, transport, or verifier-semantic change. Thirty-
+seven focused model/schema/runtime tests passed, as did source compilation and
+`git diff --check`; no full suite was run. No product success is established.
+
+## New post-format-correction validation preregistration — 2026-09-30
+
+This is one separately bounded validation under the user's standing continuous
+M0–M8 authorization, distinct from and not a reopening of the exhausted
+diagnostic protocol above. It introduces no provider or methodology change and
+is preregistration only; no call or credit reservation has yet occurred under
+this protocol.
+
+- Use the same official IREN SEC filing URL and the existing reviewed DTO
+  diagnostic script unchanged.
+- Allow one Tavily Basic Extract request (one credit reserved), then at most
+  one `deepseek-flash` discovery call (6,000 output tokens, 45-second timeout).
+  If discovery clears all existing strict gates, allow at most one semantic
+  call (3,000 output tokens, 18-second timeout). Both model requests explicitly
+  disable thinking.
+- Preserve the existing request/source limits and byte caps: 100 KB Extract
+  response, 20 KB accepted source body, and 40 KB model response. Stop on any
+  strict-gate failure; no retry or alternate path.
+
+The cumulative prior Tavily reservation count remains ten until execution; if
+the new Extract is made, its reservation is counted separately. Reservation
+counts are not settled usage or billing claims.
