@@ -37,7 +37,8 @@ production source-acquisition integration, a completed end-to-end live Grounder 
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
-records the completed diagnostics. The latest one used the same complete
+records the completed diagnostics. The previous completed semantic diagnostic
+used the same complete
 9,420-byte SEC body; discovery stopped normally (5,012 prompt, 1,492
 completion, 6,504 total tokens; 4,590 content bytes) and passed DTO/stage/run
 checks (4 claims, 0 hypotheses, 3 bindings). Semantic stopped normally (5,098
@@ -48,8 +49,15 @@ unique quote occurrences, 0 ambiguous/missing/unknown-source refs, 0 matches,
 and 11 mismatches. No receipt or submission/EI was produced; the binding-offset
 cross-check at lines 324–328 was not reached, so producer-offset correctness
 remains unknown. The earlier completed semantic response's exact receipt
-subgate is still unknown. Cumulative Tavily reservations are thirteen; settled
-usage is unknown. No retry was made.
+subgate is still unknown. The next, quote-localization one-shot then reserved
+one Tavily Extract request/credit but failed with `NETWORK_ERROR` before a
+source body was returned: body bytes/hash, discovery, semantic, and audit were
+all absent. A later connect-only check to `127.0.0.1:7890` returned errno 1
+under `use_default` and succeeded under `require_escalated`; it sent no request.
+The script had reported `proxy_configured=false`, so sandbox network denial is
+a possible, unproved cause. A separate escalation-required protocol is
+preregistered, not executed; the prior one-shot remains closed. Cumulative
+Tavily reservations are fourteen; settled usage is unknown.
 
 The prompt-only JSON shape correction against the locked DTO is implemented
 and independently reviewed; 37 focused model/schema/runtime tests, compilation,
@@ -62,8 +70,8 @@ exact producer bytes/hash before parsing and the finalized sidecar before the
 semantic call, including on later failure; receipt/Builder v0.2 and legacy
 APIs remain unchanged. 81 Host-Grounder tests, 18 Host-Model tests,
 compilation, diff-check, and the 1,602-test full suite pass. Independent review
-passed; the working diff awaits Main's commit. No live call or M2/product
-success is claimed. See the
+passed; implementation and preregistration were committed and pushed as
+`b759e24`. No completed live Grounder or M2/product success is claimed. See the
 [frozen contract](host-grounder-quote-localization-v0.1.md).
 
 Future Event run-input provenance is frozen in

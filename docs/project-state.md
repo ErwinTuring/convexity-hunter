@@ -48,8 +48,18 @@ exact producer bytes/hash before parsing, then finalized sidecar before the
 semantic call, including across later failures. Receipt/Builder v0.2 and legacy
 APIs are unchanged. 81 Host-Grounder tests (including adversarial coverage), 18
 Host-Model tests, compilation, diff-check, and the 1,602-test full suite pass.
-Independent review passed; Main will commit the working diff. No live call,
-source acquisition, or product Host success is claimed. See the [frozen
+Independent review passed; implementation and preregistration were committed
+and pushed as `b759e24`. The subsequent one-shot reserved one Tavily Extract
+request/credit but failed with `TavilyTransportError(NETWORK_ERROR)` before a
+source body was returned; no discovery, semantic call, or audit was produced.
+No retry or escalation rerun occurred. Cumulative Tavily reservations are
+fourteen, with settled usage unknown. A later local TCP connect-only check to
+`127.0.0.1:7890` failed with errno 1 under `use_default` and succeeded under
+`require_escalated`, without sending a request. Since the failed script had
+`proxy_configured=false`, sandbox denial is a possible, unproved cause. A new
+escalation-required protocol is preregistered but not executed; the prior
+one-shot remains closed. No completed live Grounder, source body, or product
+Host success is claimed. See the [frozen
 contract](host-grounder-quote-localization-v0.1.md).
 Production source acquisition and product Host integration remain M2 work.
 

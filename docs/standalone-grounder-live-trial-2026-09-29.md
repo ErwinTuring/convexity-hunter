@@ -382,13 +382,13 @@ build authorization only, not M2 or product success.
 
 ## Quote-localization validation preregistration — 2026-09-30
 
-This is a separate, not-yet-executed one-shot using the frozen quote-only
-Host-localization route. The latest executed outcome remains the semantic
-6,000-token run's `SEMANTIC_VERDICT_REJECTED`; cumulative Tavily reservations
-remain thirteen until this protocol runs. The new script is
-`/private/tmp/ch_live_grounder_quote_localization_v0_1.py`. Its synthetic
-offline validation and compilation passed; no live call has been made. Main
-will commit this preregistration before any execution.
+At preregistration this was a separate one-shot using the frozen quote-only
+Host-localization route. The latest prior outcome was the semantic 6,000-token
+run's `SEMANTIC_VERDICT_REJECTED`, with thirteen cumulative Tavily reservations.
+The script is `/private/tmp/ch_live_grounder_quote_localization_v0_1.py`; its
+synthetic offline validation and compilation passed. Mill's script safety
+review passed. Implementation and preregistration were committed and pushed
+as `b759e24` before the one-shot.
 
 - Reuse only the same official SEC URL and require the same complete 9,420-byte
   body with SHA-256 prefix `89536ce6ff75`; otherwise stop before model calls.
@@ -411,6 +411,66 @@ v0.1 normalization, preserves stage/run checks, and emits only the safe digest
 and aggregate fields. Independent review passed for the holder change; this
 pre-registration is not a live result or M2 success.
 
-If executed, one Extract would raise cumulative reservation accounting from
-thirteen to fourteen; this is not a settled usage or billing claim. No live
-execution is authorized by this preparation step.
+The preregistration projected one Extract reservation, bringing the cumulative
+count from thirteen to fourteen; the observed reservation is recorded below.
+Reservation accounting is not a settled usage or billing claim.
+
+## Executed quote-localization validation — 2026-09-30
+
+The committed one-shot script ran exactly once. It reserved one Tavily Extract
+request and credit and invoked the transport once, but failed with
+`TavilyTransportError` / `NETWORK_ERROR`; HTTP status was null. The source was
+not complete, with zero body bytes and no SHA-256 prefix. Discovery and
+semantic invocation, reservation, and transport counts were all zero. Their
+response metadata, DTO diagnostics, and quote-localization audit fields remain
+null; no holder was finalized, and no receipt, submission, or EI result was
+produced.
+
+No retry or escalated rerun was made: the sole Extract slot was already
+reserved and the no-retry protocol was exhausted. The transport error does not
+establish whether the provider received the request; settled usage and billing
+remain unknown. Cumulative Tavily reservations are fourteen, not a settled
+usage total. This run did not reach or test quote localization, model behavior,
+semantic validation, or EI acceptance.
+
+## Read-only local proxy connectivity diagnosis — 2026-09-30
+
+The failed run command was
+`PYTHONPYCACHEPREFIX=/private/tmp/ch-mvp-pycache python3 /private/tmp/ch_live_grounder_quote_localization_v0_1.py`
+with `sandbox_permissions=use_default` (the tool default). The script process
+completed with exit code 0 and no session ID; its sanitized result recorded
+`proxy_configured=false`, one Tavily transport invocation, and one request and
+credit reservation before `NETWORK_ERROR`. It recorded no HTTP status, body,
+or model calls.
+
+A separate TCP connect-and-close check to `127.0.0.1:7890` returned errno 1
+under `use_default`; the same check with `sandbox_permissions=require_escalated`
+connected successfully. Neither check sent HTTP data or contacted a provider.
+This shows the default sandbox could not reach that local socket and escalation
+could; because the run had no configured proxy, this is a possible cause of
+the Tavily failure, not proof of its cause or of whether Tavily received the
+request.
+
+## New network-context-corrected protocol preregistration — 2026-09-30
+
+This is a new, separately preregistered operation, not a retry or reopening of
+the closed one-shot above. The reviewed script code remains unchanged at
+`/private/tmp/ch_live_grounder_quote_localization_v0_1.py`. Any execution must
+start with `sandbox_permissions=require_escalated`; do not first try the default
+sandbox.
+
+- Use the same SEC URL and pinned complete body (9,420 bytes, SHA-256 prefix
+  `89536ce6ff75`); otherwise stop before model calls.
+- Allow one Tavily Basic Extract request/credit (one URL, 8 KB request, 100 KB
+  response, 18-second timeout/time budget, 110 KB byte budget, 20 KB accepted
+  body cap), then at most one discovery and one semantic call.
+- Both model roles remain at 6,000 output tokens and 45 seconds, with one
+  request each, JSON-object mode, thinking disabled, 80 KB input/40 KB output
+  caps, and all existing strict gates.
+- No retries, alternate source, fallback, prompt change, or output-cap increase.
+
+This changes only the execution network context after the connect-only evidence;
+it is not a prettier-reply experiment. At preregistration cumulative Tavily
+reservations are fourteen; execution would make the count fifteen if the Extract
+reservation occurs, not a settled usage or billing claim. The preregistration
+is not execution or M2 success. Main must commit it before the single run.
