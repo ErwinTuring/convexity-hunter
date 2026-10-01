@@ -110,3 +110,26 @@ non-callable configuration fails before calls with
 failures use `HOST_CONTEXT_PREPARATION_REJECTED`. Invalid receipts retain
 `SEMANTIC_VERDICT_REJECTED`. No exception details are emitted. Host supplies
 existing listing/fact evidence; no new evidence type or provider is defined.
+
+## Sanitized failure-stage extension
+
+Status: **FROZEN / BUILD_READY; EXTENSION NOT YET IMPLEMENTED** after the
+bounded read-only preflight. This is operation-level observability only.
+
+Freeze `HostGrounderRuntimeError(code, *, failure_stage=None)` with exactly
+`None`, `"semantic_wire_parse"`, `"semantic_receipt_construction"`, or
+`"semantic_receipt_validation"` as permitted values. Reject other values with
+a static error. Populate non-null stages only in the explicit catalog v0.2
+route when that exact operation fails. Legacy routes retain `None`.
+
+Keep `.code`, `.args`, `str`, existing `repr` and suppressed exception chaining
+unchanged. Stage labels contain no exception text, payloads, model assertions,
+identifiers or source data. They neither change fail-closed behavior nor
+authenticate the verifier. Split the existing combined parser/construction
+catch and label the separate pre-preparer receipt-validation catch; perform
+no extra calls or retries. A stage says where rejection occurred, not why.
+The spent IREN trial's unexposed stage remains unknown retrospectively.
+
+Offline tests must inject each failure, prove zero preparer/Builder calls,
+preserve legacy stage `None` and error representations, and reject arbitrary
+stage values. No fresh live experiment is part of this extension.
