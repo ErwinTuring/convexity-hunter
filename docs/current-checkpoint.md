@@ -62,7 +62,10 @@ freeze. Its bounded implementation is now present behind a new explicit route;
 compileall and diff checks. Independent implementation review passed after
 restoring the registered publication-metadata constraint in the new prompt.
 Validation remains fake-client only; live behavior is unvalidated and no
-semantic or M2/product success is claimed.
+semantic or M2/product success is claimed. Its registered one-shot live trial
+stopped at source-body pin mismatch (9,423 vs 9,420 bytes); neither model role
+was called. The protocol ended without retry; source-version handling must be
+declared before any new trial.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas

@@ -39,7 +39,10 @@ freeze. Its bounded implementation is now present behind a new explicit route;
 compileall and diff checks. Independent implementation review passed after
 restoring the registered publication-metadata constraint in the new prompt.
 Validation remains fake-client only; live behavior is unvalidated. No semantic
-or product M2/EI success is claimed.
+or product M2/EI success is claimed. Its registered one-shot live trial stopped
+at source-body pin mismatch (9,423 vs 9,420 bytes), before either model role.
+No retry was made; a new source-version protocol is required for further live
+validation.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted

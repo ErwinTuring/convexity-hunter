@@ -595,7 +595,8 @@ establish semantic failure or a completed live Grounder/M2 outcome.
 
 ## Evidence-catalog route one-shot preregistration — 2026-10-01
 
-**PREREGISTERED / NOT EXECUTED.** This is a new bounded mechanism-validation
+**EXECUTED ONCE / SOURCE_BODY_MISMATCH.** The following protocol was registered
+before execution. This is a new bounded mechanism-validation
 protocol for `run_host_grounder_same_run_evidence_catalog_v0_1`, not a retry of
 the completed quote-localization attempts above. The reviewed external runner
 is `/private/tmp/ch_live_grounder_evidence_catalog_v0_1.py`, SHA-256
@@ -655,3 +656,84 @@ authorized by this preregistration.
 Current cumulative Tavily reservations are sixteen. If this protocol reaches
 and reserves its Extract request, the cumulative reservation count becomes
 seventeen; this is reservation accounting, not settled usage or billing.
+
+### Registered execution result — 2026-10-01
+
+The reviewed script hash was unchanged and its explicit live mode ran once
+with escalation from the start. The single Extract returned 9,423 UTF-8 bytes,
+SHA-256 prefix `00ecc509846b`, rather than the registered 9,420-byte body and
+`89536ce6ff75` prefix. The source pin gate stopped the protocol with
+`SOURCE_BODY_MISMATCH` before discovery or semantic invocation. Neither role
+was called; there was no retry or replacement source, normalized envelope,
+semantic receipt, Builder submission, or EI result.
+
+One Tavily transport invocation reserved one request/credit, bringing cumulative
+reservations to seventeen, not settled usage or billing. The mismatch establishes
+only that this extracted body differs from the registered source snapshot; it
+does not identify the cause, prove an incomplete source, or establish semantic
+failure. No raw source/model payload was persisted. A future source-version
+protocol must be separately declared; silently replacing the old pin and
+rerunning this completed protocol is not authorized.
+
+### Source-body drift follow-up — 2026-10-01
+
+The preceding run's one-URL Tavily result passed the client checks for
+`coverage=COMPLETE`, one returned body, zero failed extracts, exact URL, and a
+nonempty body. The runner then failed only its historical byte/hash pin with
+`SOURCE_BODY_MISMATCH`. Here, `COMPLETE` means the requested extraction had no
+failed URL entry; it is not proof that the extracted text is the complete
+official filing. The runner's `source_complete=false` was its post-pin
+acceptance flag, not evidence of incomplete Tavily coverage.
+
+The observed body was 9,423 UTF-8 bytes with SHA-256 prefix
+`00ecc509846b`. The 3-byte difference from the old 9,420-byte pin does not
+identify its cause. The run stopped before constructing a Host source object,
+per-run source snapshot, or audit record. Its body was not retained after
+process exit, so it cannot be reused; only the reported length and hash prefix
+remain. The prior pin and its result remain unchanged. The completed run brings
+cumulative Tavily request/credit reservations to seventeen; this is reservation
+accounting, not settled usage or billing.
+
+### Source-snapshot acquisition protocol v0.1 — 2026-10-01
+
+**PREREGISTERED / NOT EXECUTED.** This is a new source-only acquisition, not a retry
+and not a replacement of the historical pin. Main reviewed the bounded runner;
+this protocol must be committed before any live call. The external runner is
+`/private/tmp/ch_live_grounder_source_snapshot_v0_1.py`, SHA-256
+`d41bda5c689dccc6bdcdd38fccd4bb0e42cf0378a21bdd9e40fb45bb10c4f331`.
+Compilation and its synthetic offline writer check passed; the offline check
+made zero network calls and is not an Extract result.
+
+If later authorized, run only the explicit source-only mode:
+
+```sh
+PYTHONPYCACHEPREFIX=/private/tmp/ch-mvp-pycache python3 /private/tmp/ch_live_grounder_source_snapshot_v0_1.py --extract
+```
+
+- Make at most one Tavily Basic Extract request/credit for the same SEC URL
+  above. Retain the existing request/response, 18-second timeout and time,
+  110 KB aggregate-byte, one-URL, and 20 KB body bounds. No retry or fallback.
+- Persist only the exact returned registered body as UTF-8 bytes plus a
+  separate metadata file in a unique directory directly under `/private/tmp`.
+  The directory is mode `0700`; files are mode `0600`. Metadata records the
+  exact source URL and ID, retrieval time, byte length, full SHA-256, and
+  `PENDING_BODY_REVIEW`. Do not save the provider/HTTP response envelope,
+  credentials, or body in the repository, Git, or logs; command output contains
+  aggregate metadata only.
+- Review source quality from the retained body itself before adopting it.
+  Tavily `coverage=COMPLETE` records successful extraction coverage for the
+  requested URL only; it is not evidence that the body is a complete or
+  authoritative rendering of the official filing. The snapshot is a stable
+  input artifact, not factual authority. Neither it nor the prior 3-byte
+  mismatch establishes why the bodies differ.
+- A later model-only run requires its own preregistration and authorization. It
+  must verify the retained file against its full hash and byte count, then
+  supply that same exact body to both model roles in one Host per-run snapshot.
+  It must not Extract again. The exited 9,423-byte body is unavailable and is
+  not this snapshot.
+
+The source-only runner has a one-request/one-credit ceiling. Cumulative
+reservations currently stand at seventeen; if this new Extract reserves its
+request/credit, the count would become eighteen. These are reservations, not a
+settled bill. No source-only Extract or model call is authorized or executed by
+this registration alone; Main will explicitly authorize the single execution.
