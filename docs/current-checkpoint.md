@@ -11,6 +11,13 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
+Next narrow M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
+is FROZEN / SUBSEQUENT_BUILD_READY after independent review. The target opt-in
+catalog runtime v0.2 permits trusted, fill-only preparation after receipt
+validation, preserving run/input/source authority. Production implementation
+is absent at this freeze checkpoint. This resolves the dynamic-ID handoff
+design, not independent listing/date verification or live EI acceptance.
+
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
 parser, receipt identity/lexical validator, and deterministic Builder are
@@ -40,7 +47,7 @@ acceptance remain open.
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
 is the authoritative per-run chronology. Earlier quote-localization trial
 (2026-10-01): the pinned
-pinned 9,420-byte source returned (SHA-256 prefix `89536ce6ff75`); discovery
+9,420-byte source returned (SHA-256 prefix `89536ce6ff75`); discovery
 stopped normally (5,093 prompt, 1,860 completion, 6,953 total tokens; 5.619s;
 `finish_reason=stop`). Producer localization failed at `quote_localization:106`:
 static code raises `quote is missing` when a producer binding quote has no
