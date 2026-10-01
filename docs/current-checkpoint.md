@@ -57,11 +57,22 @@ respected the existing schema. The successor closed `failure_check` diagnostic
 is now frozen and implemented after independent review: seven literal parser
 check categories, opt-in v0.2 only, with unchanged public parser/legacy errors
 and evidence gates. Sixteen focused/107 related tests, compileall and diff
-checks passed; no full-suite rerun or additional live call. All spent attempts
-remain immutable and their unknown details stay unknown. Next executable unit,
-after quota recovery: a separately registered one-shot trial with a new runner
-and production pin, exposing only the closed check label alongside existing
-safe diagnostics. Do not reuse old runners or weaken parsing to force success.
+checks passed; no full-suite rerun was part of that extension. Main later ran
+the full regression at pinned production commit
+`46876fda3473f72e43671040529bc3427f467047`: 1,628 tests passed in 296.423
+seconds; the urllib3/LibreSSL warning was non-fatal.
+
+After independent safety-review PASS and docs-only prereg commit/push
+`dea77fe566e3344997e6fa9373640bde472a3055`, Main authorized exactly one new
+check-diagnostic run. It stopped at discovery: `DISCOVERY_CALL_FAILED`,
+`failure_stage=null`, `failure_check=null`, transport code
+`TRUNCATED_RESPONSE`, HTTP status null; discovery1/reserved1, semantic0,
+source0, preparer0. Token usage and producer/semantic counts are unavailable;
+partitions remain null. The attempt is spent, with no retry. Exact sanitized
+stdout is hash-bound in the [trial record](standalone-iren-check-diagnostic-trial-2026-10-02.md).
+Next lawful step is offline review of the existing `finish_reason="length"`
+to `TRUNCATED_RESPONSE` mapping and its `tests/test_host_model.py` case. Do not
+infer a response body, tune prompts, or make another call.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO

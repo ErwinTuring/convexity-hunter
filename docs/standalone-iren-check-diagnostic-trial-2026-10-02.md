@@ -1,7 +1,7 @@
 # IREN closed parser-check diagnostic preregistration — 2026-10-02
 
-Status: **PREPARED / NOT EXECUTED / NOT AUTHORIZED**. This is a new
-independent attempt. It inherits mechanics only from the [10-01 transport
+Status: **EXECUTED / SPENT — `DISCOVERY_CALL_FAILED`; failure stage/check null**.
+This is a new independent attempt. It inherits mechanics only from the [10-01 transport
 diagnostic](standalone-iren-transport-diagnostic-trial-2026-10-01.md) and its
 [base diagnostic preregistration](standalone-iren-diagnostic-trial-2026-10-01.md);
 their authorizations are spent and all prior runners, markers, registrations,
@@ -23,8 +23,7 @@ RunID: `iren-transport-check-model-only-20261002-cc929c9173de42a9bbd43b24e0a3f12
   `ecbe186fd5e85c4fdbb0c93ede0b0b4569415b372dc8be80605615ab494fb9b8`.
 - New exclusive marker:
   `/private/tmp/.iren-transport-check-model-only-20261002-cc929c9173de42a9bbd43b24e0a3f121.attempted`;
-  absent during preparation; future claim uses `O_CREAT|O_EXCL`, mode 0600,
-  never clear or retry.
+  claimed once by this execution, mode 0600, 8 bytes; retained and never cleared.
 
 The delta is limited to the new identity/paths/marker, code-state pins, and a
 sanitized `failure_check` report field. Emit it only from the exact
@@ -57,11 +56,11 @@ nonunique, 0 overlong); full discovery request 48,493 bytes; semantic base
 request remains producer-dependent and must pass the unchanged 80,000-byte
 guard.
 
-No invocation is authorized here. After independent delta review, this
-docs-only preregistration must be committed/pushed; a distinct descendant
-prereg commit must bind this RunID and both hashes above. Main's separate,
-direct one-shot authorization bound to that commit remains required. Runner
-flags alone confer no authority. This preparation makes no commit or call.
+Main's separate one-shot authorization and the preregistration-commit gate were
+satisfied for this run: docs-only commit
+`dea77fe566e3344997e6fa9373640bde472a3055` was pushed, and Main directly
+authorized the exact runner invocation after independent safety review PASS.
+Runner flags alone confer no authority; this record authorizes no further call.
 
 ## Offline validation
 
@@ -78,3 +77,26 @@ Main also ran the full regression at the pinned production baseline: 1,628
 tests passed in 296.423 seconds. The existing urllib3/LibreSSL warning was
 non-fatal. This is repository validation, not live Grounder acceptance.
 Independent narrow runner/protocol safety review passed before registration.
+
+## Authorized one-shot result — 2026-10-02
+
+Exactly one invocation exited 1. It returned exact `HostGrounderRuntimeError`
+code `DISCOVERY_CALL_FAILED`; `failure_stage=null` and `failure_check=null`.
+Discovery calls/reserved: 1/1, elapsed 18.099 seconds, transport code
+`TRUNCATED_RESPONSE`, HTTP status null. Token usage was not reported. Semantic
+calls/reserved: 0/0; semantic transport fields null. Source calls 0 and
+preparer calls 0. No producer counts or receipt were validated; claim,
+hypothesis, binding and coverage counts and all semantic partitions remain
+null. No submission or EI result exists.
+
+Exact sanitized stdout is retained at
+`/private/tmp/ch_iren_transport_check_diagnostic_2026-10-02.result.json`, mode
+0600, 2,585 bytes, SHA-256
+`c8dd940a1ccd40fd56952bf8e95021b637148abb85f185f4ffff350f5cefafca`. No raw
+response was retained. This attempt is spent; no retry or fallback.
+
+Next lawful step, offline only: inspect the existing `finish_reason="length"`
+mapping to `TRUNCATED_RESPONSE` in `host_model.py` and its existing
+`test_tool_calls_refusal_and_length_stop_are_rejected` case in
+`tests/test_host_model.py`. Do not infer a response body, tune prompts, or make
+another call.

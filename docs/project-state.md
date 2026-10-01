@@ -54,11 +54,22 @@ was subsequently frozen, implemented and independently reviewed. Seven fixed
 operation labels are available only through opt-in v0.2; public parser bytes,
 legacy errors and fail-closed gates remain unchanged. Sixteen focused tests
 (both invocation patterns), 107 related tests, compileall and diff checks pass;
-no full-suite rerun for this diagnostic-only extension and no new live calls.
-The last full 1,622-test pass predates the diagnostic extensions. Next unit
-after quota recovery is one independently preregistered check-diagnostic trial
-with a fresh runner/pin; no spent protocol is reopened or exact historical
-cause inferred. This remains internal mechanism work, not product EI acceptance.
+no full-suite rerun was part of that extension. Main later ran the full
+regression at pinned production commit
+`46876fda3473f72e43671040529bc3427f467047`: 1,628 passed in 296.423 seconds;
+the urllib3/LibreSSL warning was non-fatal.
+
+After independent safety-review PASS and docs-only prereg commit/push
+`dea77fe566e3344997e6fa9373640bde472a3055`, Main authorized exactly one
+check-diagnostic call. It stopped at discovery with
+`DISCOVERY_CALL_FAILED`, `TRUNCATED_RESPONSE`, HTTP status null,
+`failure_stage=null`, `failure_check=null`; discovery1/reserved1, semantic0,
+source0, preparer0. Usage was unavailable; producer/semantic counts and
+partitions remain null. The attempt is spent; no retry. See the [trial record](standalone-iren-check-diagnostic-trial-2026-10-02.md)
+for the sanitized stdout hash. Next lawful step is offline review of the
+existing `finish_reason="length"` to `TRUNCATED_RESPONSE` mapping and its
+`tests/test_host_model.py` case. No response-body inference, prompt tuning,
+spent-protocol reuse, or further call.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed
