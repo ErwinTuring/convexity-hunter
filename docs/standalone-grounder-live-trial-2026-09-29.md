@@ -566,3 +566,29 @@ The sole intended input difference is the versioned prompt clarification; the
 script and execution budgets stay unchanged. Current cumulative Tavily
 reservations are fifteen. If the Extract reservation occurs, the next run
 would bring that count to sixteen; this is not settled usage or billing.
+
+## Executed quote-localization follow-up — 2026-10-01
+
+The unchanged reviewed script `/private/tmp/ch_live_grounder_quote_localization_v0_1.py`
+was run exactly once with `sandbox_permissions=require_escalated` from startup.
+The complete pinned SEC body was returned: 9,420 bytes, SHA-256 prefix
+`89536ce6ff75`. Discovery completed once and stopped normally in 5.619 seconds
+with 5,093 prompt, 1,860 completion, and 6,953 total tokens; content was 6,040
+UTF-8 bytes and `finish_reason=stop`. Reasoning-token and reasoning-content
+metadata were null.
+
+The producer DTO failed closed as `PRODUCER_ENVELOPE_INVALID`, diagnostic gate
+`schema`, module `quote_localization`, production line 106. Static code at
+`host_grounder_quote_localization.py:106` raises `ValueError("quote is missing")`
+after finding no exact occurrence. In this parser that lookup is for a
+producer `field_bindings[].quote`; at least one such quote had no exact match
+in the body selected by its registered source ID. The exact binding field or
+index and number of missing quotes are unknown. No quote text was exposed or
+persisted. Producer bytes were retained but not normalized, and the audit
+sidecar was not finalized.
+
+Semantic had zero reservations, invocations, or completed calls. No receipt,
+submission, or EI outcome followed; no retry occurred. The Extract reserved one
+request and credit, raising cumulative Tavily reservations from 15 to 16. This
+is reservation accounting, not settled usage or billing. This result does not
+establish semantic failure or a completed live Grounder/M2 outcome.

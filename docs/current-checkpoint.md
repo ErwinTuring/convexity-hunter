@@ -37,76 +37,30 @@ production source-acquisition integration, a completed end-to-end live Grounder 
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
-records the completed diagnostics. A prior completed semantic diagnostic used
-the same complete 9,420-byte SEC body; discovery passed DTO/stage/run checks
-(4 claims, 0 hypotheses, 3 bindings), while semantic receipt construction
-returned `SEMANTIC_VERDICT_REJECTED` at `host_grounder_semantic.py:310`. The
-exact-body span gate found 11 unique quote occurrences, 0 ambiguous/missing/
-unknown-source refs, 0 matches, and 11 mismatches. The binding-offset
-cross-check was not reached, so producer-offset correctness remains unknown.
-The exact receipt subgate of the earlier completed semantic response remains
-unknown.
-The subsequent default-sandbox quote-localization run reserved one Extract
-request/credit but failed with `NETWORK_ERROR` before a body was returned. A
-connect-only check to `127.0.0.1:7890` returned errno 1 under `use_default` and
-succeeded under `require_escalated`; it sent no request. That run reported
-`proxy_configured=false`, so sandbox denial remained a possible, unproved
-cause.
+is the authoritative per-run chronology. Latest (2026-10-01): the complete
+pinned 9,420-byte source returned (SHA-256 prefix `89536ce6ff75`); discovery
+stopped normally (5,093 prompt, 1,860 completion, 6,953 total tokens; 5.619s;
+`finish_reason=stop`). Producer localization failed at `quote_localization:106`:
+static code raises `quote is missing` when a producer binding quote has no
+exact occurrence in its registered body. The exact field/index/count are
+unknown. Semantic was not called; no receipt or submission followed. No retry
+occurred. Cumulative Tavily reservations are 16, not settled usage or billing.
 
-The separately preregistered network-context-corrected protocol then ran
-exactly once with `sandbox_permissions=require_escalated`, using the unchanged
-script. Extract returned the complete pinned 9,420-byte body (SHA-256 prefix
-`89536ce6ff75`). Discovery stopped normally in 6.604 seconds (5,017 prompt,
-2,174 completion, 7,191 total tokens; 6,427 content bytes), then failed with
-`PRODUCER_ENVELOPE_INVALID` at the quote-wire DTO schema gate,
-`quote_localization:103`. The safe gate label `schema` is a parse-stage
-classification, not proof of malformed JSON or a generic schema defect.
-Static code at `host_grounder_quote_localization.py:103` shows
-`ValueError("quote is ambiguous")` on the second exact occurrence; the search
-advances one code point, so overlapping occurrences count. This establishes
-that at least one producer binding quote had multiple exact occurrences in its
-identified body. The binding field/index, number of ambiguous bindings, and
-total occurrence count are unknown. Producer bytes were retained but not
-normalized; the localization audit was not finalized. Semantic was not
-called, and no receipt, submission, or EI result was produced. No retry
-occurred. This establishes successful source/discovery transport for this run,
-not successful quote localization, semantic validation, a completed live
-Grounder, or M2/product success. Cumulative Tavily reservations are fifteen;
-this is reservation accounting, not settled usage or a bill.
+The [quote-localization contract](host-grounder-quote-localization-v0.1.md)
+remains frozen. The explicit route uses producer/verifier wire v0.2 mapped to
+strict internal v0.1, discovery/verifier prompts v0.3/v0.4, Semantic Validation
+v0.3, and audit sidecar schema v0.2; receipt/Builder v0.2 and legacy behavior
+remain unchanged. The prompt clarification is committed at `079ebb7`; 50
+focused runtime/schema/model tests, compilation, diff-check, and Mill review
+passed. The 1,602-test full suite last passed at `b759e24`, before that prompt
+commit; it was not rerun.
 
-After that run, the explicit route received a bounded quote-selection prompt
-revision under new identities: discovery prompt v0.3 and verifier prompt v0.4.
-It requires unchanged exact quotes with enough verbatim context to be unique
-(counting overlaps), forbids paraphrase/splicing/ambiguous numeric-only quotes,
-and leaves unresolvable items unresolved under existing rules. Old v0.2/v0.3
-prompt constants, wire DTOs, localization/verifier gates, and accepted-outcome
-semantics remain unchanged. New audit sidecars use schema v0.2 with the same
-keys; historical v0.1 sidecars remain unchanged. Focused validation passed 24
-runtime, 8 schema, and 18 model tests plus compilation. Mill's final
-independent review passed. A unique verifier quote can support a selected
-`contradicted` outcome; the prompt does not downgrade it solely because of
-that label. This was not a live rerun.
-
-A separate follow-up validation preregistration is drafted in the trial record,
-not executed. It retains the reviewed script, source pin, budgets, and strict
-gates and requires upfront `sandbox_permissions=require_escalated`. Cumulative
-reservations remain 15; execution would reserve number 16. Main commit/push
-and quota decision are pending; no live call is authorized here.
-
-The prompt-only JSON shape correction against the locked DTO is implemented
-and independently reviewed; 37 focused model/schema/runtime tests, compilation,
-and diff-check passed. Independent review core-PASSed the quote-localization
-contract after two text clarifications. It is **FROZEN —
-SUBSEQUENT_BUILD_READY**. The bounded BUILD adds an explicit v0.2 quote-only
-route, strict internal v0.1 revalidation, independently derived producer and
-verifier spans. A caller-owned write-once holder bound to run/input retains
-exact producer bytes/hash before parsing and the finalized sidecar before the
-semantic call, including on later failure; receipt/Builder v0.2 and legacy
-APIs remain unchanged. 81 Host-Grounder tests, 18 Host-Model tests,
-compilation, diff-check, and the 1,602-test full suite pass. Independent review
-passed; implementation and preregistration were committed and pushed as
-`b759e24`. No completed live Grounder or M2/product success is claimed. See the
-[frozen contract](host-grounder-quote-localization-v0.1.md).
+A bounded read-only preflight finds a Host-generated evidence-catalog ID route
+viable without changing receipt semantics: catalog entries must be exact
+registered-body spans whose quotes already pass overlap-aware uniqueness;
+full bodies remain verifier context. Contract/methodology acceptance and any
+new implementation remain pending. No semantic or M2/product success is
+claimed.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas
