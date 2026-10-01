@@ -11,9 +11,10 @@ independent review plus targeted re-review pass. It returns a frozen envelope
 snapshot after strict revalidation. `host_grounder_builder` now projects only
 verified closures from that snapshot into at most one existing EI submission;
 13 focused tests and independent review plus targeted re-review pass. A stale
-reassessment excludes only its own hypothesis. This is a non-live Builder:
-its receipt must come from a trusted Host semantic verifier call. An internal
-same-run Event path now supplies that call and constructs a v0.2 receipt;
+reassessment excludes only its own hypothesis. The low-level Builder does not
+authenticate live calls; its receipt must come from a trusted Host semantic
+verifier call. A bounded internal catalog trial now supplies the real call
+and constructs a v0.2 receipt;
 no source truth or live product Grounder is claimed.
 
 Earlier quote-localization trial: the 2026-10-01 run returned the pinned source
@@ -38,20 +39,14 @@ freeze. Its bounded implementation is now present behind a new explicit route;
 70 focused tests and the full 1,612-test regression suite pass, along with
 compileall and diff checks. Independent implementation review passed after
 restoring the registered publication-metadata constraint in the new prompt.
-Validation remains fake-client only; live behavior is unvalidated. No semantic
-or product M2/EI success is claimed. Its registered one-shot live trial stopped
-at source-body pin mismatch (9,423 vs 9,420 bytes), before either model role.
-No retry was made; a new source-version protocol is required for further live
-validation. The separately registered source-only acquisition retained a
-9,423-byte external snapshot. Local catalog readiness found 48 eligible entries:
-the original 32-entry/array bound fails; a separately declared 64-entry/array
-preflight also fails the unchanged 24 KB catalog ceiling. No evidence was
-truncated and neither model was called. Those preflights stopped at catalog
-capacity, not proven semantic failure. Cumulative Tavily reservations
-are eighteen, not settled usage or billing. Exact local sizing measures 24,070
-catalog bytes and 47,295 discovery-request bytes. A distinct 32 KiB model-only
-protocol includes all 48 entries while retaining the 80 KB request ceiling;
-offline checks pass, but its real execution has not occurred.
+Latest: the distinct 32 KiB model-only protocol included all 48 eligible entries
+from the retained source, with no refetch or truncation and the 80 KB model
+ceiling unchanged. Its one-shot execution completed both roles, finalized audit,
+and returned 4 claims, 1 coverage, zero hypotheses and no submission. This
+validates the bounded internal mechanism, not authoritative facts, EI acceptance,
+or production product M2 completion. The trial log retains exact measurements
+and earlier source/capacity failures. Tavily reservations remain eighteen,
+not settled billing; this model-only run added none.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted
@@ -72,8 +67,8 @@ Future Event run-input provenance is frozen in
 deltas in [Builder v0.2](host-grounder-builder-v0.2.md) and [Semantic
 Validation v0.2](host-grounder-semantic-validation-v0.2.md). Production v0.1
 public Builder behavior and structural fixture hashes remain unchanged; pure
-run-input binding and internal v0.2 runtime are implemented. No completed live
-Host run or EI acceptance exists.
+run-input binding and internal v0.2 runtime are implemented. No completed
+production product Host run or EI acceptance exists.
 
 The pre-Core source batch gate is implemented and independently reviewed.
 It rejects empty, invalid or wrongly bound source batches before Core and

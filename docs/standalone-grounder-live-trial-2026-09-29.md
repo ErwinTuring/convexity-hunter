@@ -771,7 +771,8 @@ credentials, raw HTTP/provider envelopes, or source bodies entered Git/logs.
 
 ### Bounded model-only catalog preregistration v0.1 — 2026-10-01
 
-**NOT EXECUTED; NOT LIVE AUTHORIZATION.** This distinct preregistration follows
+**EXECUTED ONCE; BOUNDED FACTS-ONLY RUN COMPLETED.** The following protocol
+was registered before execution. This distinct preregistration follows
 the catalog-capacity preflight. It does not amend or replace any completed
 trial. Main must explicitly authorize the registered one-shot execution under
 the user's continuing bounded-work authorization before invoking the runner's
@@ -855,3 +856,36 @@ rehashing it after a documentation commit.
 This preregistration authorizes no invocation by itself. Old protocol records
 remain unchanged. Cumulative source reservations remain eighteen; no source
 request or model request was made here.
+
+#### Registered model-only result — 2026-10-01
+
+After protocol commit `0476009` and final independent safety/registration
+review, Main authorized exactly one escalated `--model-only` execution under
+the user's continuing bounded-work authorization. The script hash and retained
+source integrity/permissions matched registration. The runner exited 0; no
+Extract, refetch, retry, fallback, or production-code change occurred.
+
+The complete catalog contained 48 entries from 60 paragraphs, with 12 nonunique
+and zero overlong exclusions, occupying 24,070 bytes within the 32,768-byte
+ceiling. Discovery and semantic each made one call. Their complete requests
+were 47,295 and 62,744 bytes, both within 80,000 bytes. Both completed with
+`finish_reason=stop`; error fields were empty. Discovery used 14,619 prompt /
+1,747 completion / 16,366 total tokens in 5.663 seconds. Semantic used 18,433 /
+2,105 / 20,538 tokens in 6.823 seconds. The combined reported token count is
+36,904; no settled fee was reported.
+
+The audit finalized, and the strict normalization, semantic receipt construction,
+and Builder returned a bounded result: 4 claims, 1 coverage record, zero
+hypotheses, and no submission. The sanitized output did not expose claim
+support/rejection distribution, coverage status, or Builder reason; those remain
+unknown rather than inferred. Zero hypotheses is valid for this facts-only
+question. No EI submission or acceptance occurred, and no hypothesis was
+manufactured to advance the workflow.
+
+This closes the measured-capacity blocker and proves completion of this
+bounded internal live mechanism, not authoritative factual truth or an
+independently integrated Event product. The source review status remains
+`PENDING_BODY_REVIEW`; a stable snapshot and a fallible semantic receipt do
+not prove full official-source completeness. Model/audit payloads remained
+in memory and were not persisted or logged. Cumulative Tavily reservations
+remain eighteen; this model-only execution added none.

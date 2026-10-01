@@ -19,7 +19,7 @@ review. The Builder consumes the frozen validated envelope snapshot and can
 produce a partial EI submission without dropping unrelated verified
 hypotheses. It requires a trusted Host-produced semantic receipt. An internal
 same-run Event path now makes a fallible verifier call, but live Host/source
-integration remains absent; structural/lexical checks
+production integration remains absent; structural/lexical checks
 and synthetic receipts do not establish factual entailment or live EI
 acceptance.
 
@@ -32,9 +32,10 @@ implemented with 10 focused tests and independent review; in isolation they
 do not authenticate the verifier call. The low-level Builder still accepts
 mappings for controlled structural use. An internal same-run Event path now
 uses pre-registered source bodies, separate bounded producer/verifier calls and
-an internally constructed v0.2 receipt. It has only fake-client validation;
-production source-acquisition integration, a completed end-to-end live Grounder run,
-product Host integration and EI acceptance remain open.
+an internally constructed v0.2 receipt. A bounded internal catalog trial has
+now completed both real model roles and returned a facts-only Builder result;
+production source-acquisition integration, product Host integration and EI
+acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
 is the authoritative per-run chronology. Earlier quote-localization trial
@@ -62,29 +63,21 @@ freeze. Its bounded implementation is now present behind a new explicit route;
 70 focused tests and the full 1,612-test regression suite pass, along with
 compileall and diff checks. Independent implementation review passed after
 restoring the registered publication-metadata constraint in the new prompt.
-Validation remains fake-client only; live behavior is unvalidated and no
-semantic or M2/product success is claimed. Its registered one-shot live trial
-stopped at source-body pin mismatch (9,423 vs 9,420 bytes); neither model role
-was called. The protocol ended without retry; source-version handling must be
-declared before any new trial. A separately registered source-only acquisition
-then retained a 9,423-byte snapshot outside the repository; neither model was
-called. Local readiness found 48 eligible entries (60 paragraphs, 12 nonunique,
-zero overlong): the original 32-entry/array capacity fails. An independently
-declared 64-entry/array local preflight also fails the unchanged 24 KB catalog
-byte ceiling. Neither preflight called a model or truncated evidence. Further
-validation under those bounds was blocked by catalog capacity, not established
-semantic failure. Exact local sizing now measures 24,070 catalog bytes and
-47,295 discovery-request bytes. A distinct 32 KiB catalog protocol retains all
-48 entries and the 80 KB model-input ceiling; offline safety/guard checks pass,
-but its real model-only execution has not occurred. Cumulative Tavily
-reservations remain eighteen (not billing).
+Latest: a separately registered 32 KiB model-only trial consumed the retained
+source without refetch, included all 48 eligible entries, completed discovery
+and semantic, finalized audit, and returned 4 claims, 1 coverage record, zero
+hypotheses and no submission. Both requests fit the unchanged 80 KB ceiling.
+This is a completed internal facts-only mechanism, not EI acceptance or
+product M2 completion. The trial log retains earlier source/capacity failures
+and exact measurements. Cumulative Tavily reservations remain eighteen (not
+billing); the model-only run added none.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas
 in [Builder v0.2](host-grounder-builder-v0.2.md) and [Semantic Validation
 v0.2](host-grounder-semantic-validation-v0.2.md). Pure input binding and an
 internal v0.2 same-run runtime are implemented; public v0.1 Builder behavior
-remains unchanged. No live Host run has been established.
+remains unchanged. No production product Host run has been established.
 
 Latest continuation: [Sep27 Skill host validation](standalone-skill-validation-2026-09-27.md).
 The pinned native protocol controller and guarded launcher passed independent

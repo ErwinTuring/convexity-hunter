@@ -3,7 +3,8 @@
 Status: **FROZEN — SUBSEQUENT_BUILD_READY** after independent targeted
 contract review and Main freeze. Implementation was absent at that freeze;
 the explicit route is now implemented with synthetic/regression validation,
-but has not completed live validation. See the current checkpoint for runtime
+and has completed one bounded facts-only live mechanism trial, not product
+integration or EI acceptance. See the current checkpoint for runtime
 evidence. This contract defines the explicit catalog route;
 existing v0.1/v0.2 wire routes and APIs keep their exact behavior and fail
 closed, with no legacy reinterpretation.
