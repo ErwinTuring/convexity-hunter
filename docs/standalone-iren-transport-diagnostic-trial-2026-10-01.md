@@ -1,6 +1,6 @@
 # IREN transport-diagnostic preregistration — 2026-10-01
 
-Status: PREPARED / NOT EXECUTED / NOT LIVE AUTHORIZATION. Await independent delta review, Main's prereg commit/push and separate direct authorization.
+Status: EXECUTED / SPENT — SEMANTIC_VERDICT_REJECTED at semantic_wire_parse. The preparation and authorization gates below are historical; the result section records their completion.
 
 This independent attempt inherits the unchanged prereg mechanics from the [prior diagnostic protocol](standalone-iren-diagnostic-trial-2026-10-01.md), not its spent authorization. All prior runners, registrations and receipts remain immutable. No production/test/state edits, model/source/network calls or real credential resolution occur during this preparation.
 
@@ -30,3 +30,52 @@ Exact local measurement:48 catalog entries,60 paragraphs (12nonunique/0overlong)
 Syntax PASS;14 original mechanics functions exact AST unchanged, model-only function exact after only client-factory substitution. Default fake runtime PASS:producer1/verifier1, external requests0, real credential resolutions0. Reviewed helper53 cases PASS; actual mixin+metered-wrapper composition6 cases PASS (same exception, single fake call, success receipt identity and existing timing/metering preserved). Existing stage10/prereg-gate8/code-guard12/preparer8/source-negative2/exclusive-marker2 cases PASS; oversized request guard preserved. Synthetic EI incomplete is composition evidence only, not real entailment or live acceptance.
 
 Stop on any future failure; preserve only sanitized stdout and available audit-stage booleans, no raw payload retention. This document authorizes no execution or retry. Main chooses the next step after independent delta review and registration commit.
+
+## Authorized one-shot result — 2026-10-01
+
+Main reported independent delta review PASS and prereg committed/pushed at
+`6d635818aa62cf27a25e302eaa281ab0bb99fb9f`; clean HEAD and exact registered
+runner/prereg/helper hashes verified before execution. Main authorized one
+escalated invocation with `--model-only --prereg-commit
+6d635818aa62cf27a25e302eaa281ab0bb99fb9f --main-authorized`.
+This attempt is now spent. No retries, fallback, alternate or source calls.
+
+Exit1: `HostGrounderRuntimeError`, `SEMANTIC_VERDICT_REJECTED`, actual
+`failure_stage=semantic_wire_parse`. Both roles returned transport receipts;
+both role transport_error_code/transport_http_status fields are null, meaning
+no safe transport failure was caught, not an asserted HTTP status. The stage
+locates the parse operation only; the exact parser rejection reason is unknown.
+This does not retroactively locate the old hypothesis run's unknown stage or
+explain the prior discovery-call failure with unrecorded transport reason.
+
+| Role | Calls/reserved | Elapsed seconds | Sent/received bytes | Prompt/completion/total tokens | Finish |
+| --- | --- | ---: | --- | --- | --- |
+| Discovery | 1/1 | 12.261 | 48,481/15,529 | 14,785/3,731/18,516 | stop |
+| Semantic | 1/1 | 13.866 | 68,792/14,433 | 19,629/4,153/23,782 | stop |
+
+Total reported tokens42,298; separate provider transport count is not exposed.
+Discovery/semantic content byte counts14,283/13,551; no content inspected or
+retained durably. Source calls0; original body/hash/historical retrieval and
+Host date proof remain unchanged. Actual semantic request68,792 bytes fits80KB.
+
+Audit finalized=true, catalog and producer audit retained in memory only.
+Producer envelope counts validated:11claims,1hypothesis,1field binding,4coverage.
+These are producer assertions, not verified facts or supported hypotheses.
+receipt_validated=false; verified/rejected partitions and coverage statuses
+remain null. Preparer calls0; no submission, Builder diagnostic counts/EI
+status/EI issue counts null. No durable raw audit retention is claimed.
+
+Exact sanitized stdout only:
+`/private/tmp/ch_iren_transport_model_only_v0_2.result.json`, regular0600,
+3,035 bytes, SHA256
+`0d52a619bd66ae53f1206976fd28ecf7ee27575a3e8db5821731c1893438f194`.
+Runner/prereg/helper remain unchanged; no production/test changes or commit.
+
+Lawful next step is offline inspection of the existing v0.3 verifier prompt,
+`parse_semantic_verdict_v0_3` and existing synthetic parser fixtures: check their
+closed schema/identity/reference requirements for deterministic alignment and
+exercise the rejected branches with fake verdicts. Do not inspect live raw
+verdicts, tune prompts or relax validation to force acceptance. Aggregate alone
+does not identify which branch failed. If alignment reveals no deterministic
+defect, report that limit; any new parser-reason instrumentation would need its
+own bounded review/authorization, not a live retry or claimed recovered cause.

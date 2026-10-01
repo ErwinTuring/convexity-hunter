@@ -41,8 +41,17 @@ validated producer counts, receipt, preparer, Builder or EI followed. Exact
 sanitized stdout is retained externally and hash-bound in the trial record.
 Both attempts are spent; neither protocol permits another call. This
 diagnostic execution did not reach or locate the old semantic rejection.
-Next is offline runner-level retention of closed, sanitized transport error
-codes before the runtime suppresses them; no production change or live retry.
+The independently reviewed external safe-transport helper and separately
+[registered transport trial](standalone-iren-transport-diagnostic-trial-2026-10-01.md)
+subsequently completed both role calls once. It failed at
+`SEMANTIC_VERDICT_REJECTED`, actual `failure_stage=semantic_wire_parse`;
+both transport code/status fields null. Producer11claims/1hypothesis/1binding/
+4coverage are assertions only; receipt/partitions/preparer/Builder/EI remain
+unavailable. Reported usage42,298 tokens; source0, no retry. This third attempt
+is spent and does not retroactively locate either earlier failure. Next is
+offline prompt/parser alignment review with existing synthetic verdict fixtures,
+not raw live payload inspection, prompt tuning, validation relaxation or another
+call. Exact parser rejection reason remains unknown.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO

@@ -32,9 +32,21 @@ or EI followed; partitions remain null. Exact sanitized stdout is externally
 retained and hash-bound in its trial record. It did not reach the three
 semantic diagnostic operations and cannot locate the old unknown-stage
 rejection. Both protocols are spent; neither authorizes a retry. Production
-and the executed runner remain unchanged. Next bounded offline task: preserve
-closed sanitized transport codes in a future runner before runtime suppression,
-without raw errors or another live call.
+and the executed runner remain unchanged.
+
+After independent safe-helper/delta review and separate registration/authorization,
+the [transport-diagnostic trial](standalone-iren-transport-diagnostic-trial-2026-10-01.md)
+completed producer/verifier once each and stopped at `SEMANTIC_VERDICT_REJECTED`,
+actual `failure_stage=semantic_wire_parse`. Both role transport code/status fields
+are null; no safe transport failure was caught. Producer11claims/1hypothesis/
+1binding/4coverage are assertions only; semantic partitions/coverage statuses
+remain null, with no validated receipt/preparer/Builder/EI. Usage42,298 tokens,
+source0; no retries. Exact sanitized stdout is externally retained/hash-bound
+in the trial record. All three attempts are spent; historical failure stages
+and reasons are not retroactively inferred. Next lawful offline task: inspect
+existing v0.3 prompt/parser requirements and synthetic fixtures for deterministic
+alignment, without raw live verdicts, prompt tuning, relaxed validation or new
+calls. Exact parser rejection branch remains unknown.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed
