@@ -33,6 +33,8 @@ from .host_grounder_evidence_catalog import (
     build_host_evidence_catalog,
     parse_grounder_output_v0_3,
     parse_semantic_verdict_v0_3,
+    _SemanticVerdictProgress,
+    _parse_semantic_verdict_v0_3,
 )
 from .host_grounder_quote_localization import (
     QuoteLocalizationAudit,
@@ -286,7 +288,10 @@ SEMANTIC_SYSTEM_PROMPT_V0_5 = (
 class HostGrounderRuntimeError(RuntimeError):
     """Sanitized fail-closed error; never retains model or source payloads."""
 
-    def __init__(self, code: str, *, failure_stage: Optional[str] = None) -> None:
+    def __init__(
+        self, code: str, *, failure_stage: Optional[str] = None,
+        failure_check: Optional[str] = None,
+    ) -> None:
         if failure_stage is not None and (
             type(failure_stage) is not str
             or failure_stage not in (
@@ -296,8 +301,19 @@ class HostGrounderRuntimeError(RuntimeError):
             )
         ):
             raise ValueError("invalid failure_stage")
+        if failure_check is not None and (
+            type(failure_check) is not str
+            or failure_check not in (
+                "wire_decode", "topshape", "run_binding", "catalog_validation",
+                "producer_binding_alignment", "evidence_ref_expansion",
+                "internal_verdict_validation",
+            )
+            or failure_stage != "semantic_wire_parse"
+        ):
+            raise ValueError("invalid failure_check")
         self.code = code
         self.failure_stage = failure_stage
+        self.failure_check = failure_check
         super().__init__(code)
 
     def __repr__(self) -> str:
@@ -1254,8 +1270,13 @@ def _run_host_grounder_same_run_evidence_catalog(
         role="SEMANTIC",
     )
 
+    progress = _SemanticVerdictProgress() if context_preparer is not None else None
+    verdict_parser = (
+        _parse_semantic_verdict_v0_3 if progress is not None else parse_semantic_verdict_v0_3
+    )
+    parser_options = {"progress": progress} if progress is not None else {}
     try:
-        normalized_verdict = parse_semantic_verdict_v0_3(
+        normalized_verdict = verdict_parser(
             semantic_call.content,
             max_json_bytes,
             max_string_bytes=run_input.bounds.max_string_bytes,
@@ -1265,6 +1286,7 @@ def _run_host_grounder_same_run_evidence_catalog(
             source_bodies=frozen_context.source_bodies,
             catalog=catalog,
             producer_binding_evidence_ids=producer_binding_evidence_ids,
+            **parser_options,
         )
     except Exception:
         raise HostGrounderRuntimeError(
@@ -1272,6 +1294,7 @@ def _run_host_grounder_same_run_evidence_catalog(
             failure_stage=(
                 "semantic_wire_parse" if context_preparer is not None else None
             ),
+            failure_check=progress.failure_check if progress is not None else None,
         ) from None
 
     try:

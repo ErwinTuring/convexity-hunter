@@ -134,8 +134,11 @@ The spent IREN trial's unexposed stage remains unknown retrospectively.
 
 ## Closed parser-check diagnostic — successor contract
 
-Status: FROZEN / SUBSEQUENT_BUILD_READY / PRODUCTION ABSENT. Independent
-contract review passed; Main freezes the exact boundary below before BUILD.
+Status: FROZEN / IMPLEMENTED — INTERNAL OPT-IN ROUTE ONLY. Independent
+contract and implementation reviews passed. Sixteen focused tests (both
+invocation patterns), 107 related tests, compileall and diff checks passed.
+No full-suite rerun or live call belongs to this diagnostic-only extension;
+the last 1,622-test full pass predates both diagnostic extensions.
 Read-only preflight found no demonstrable prompt/parser contradiction. Eight
 synthetic probes respected the existing schema. The new live trial located
 `semantic_wire_parse`, not its exact failed check; do not infer that check

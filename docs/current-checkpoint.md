@@ -51,7 +51,17 @@ unavailable. Reported usage42,298 tokens; source0, no retry. This third attempt
 is spent and does not retroactively locate either earlier failure. Next is
 offline prompt/parser alignment review with existing synthetic verdict fixtures,
 not raw live payload inspection, prompt tuning, validation relaxation or another
-call. Exact parser rejection reason remains unknown.
+call. Exact parser rejection reason remains unknown. Bounded offline review
+found no demonstrable prompt/parser contradiction; eight synthetic probes
+respected the existing schema. The successor closed `failure_check` diagnostic
+is now frozen and implemented after independent review: seven literal parser
+check categories, opt-in v0.2 only, with unchanged public parser/legacy errors
+and evidence gates. Sixteen focused/107 related tests, compileall and diff
+checks passed; no full-suite rerun or additional live call. All spent attempts
+remain immutable and their unknown details stay unknown. Next executable unit,
+after quota recovery: a separately registered one-shot trial with a new runner
+and production pin, exposing only the closed check label alongside existing
+safe diagnostics. Do not reuse old runners or weaken parsing to force success.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO

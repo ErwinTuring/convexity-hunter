@@ -48,6 +48,18 @@ existing v0.3 prompt/parser requirements and synthetic fixtures for deterministi
 alignment, without raw live verdicts, prompt tuning, relaxed validation or new
 calls. Exact parser rejection branch remains unknown.
 
+Offline prompt/parser review found no demonstrable defect; eight synthetic
+probes matched the contract. The [closed parser-check diagnostic](host-grounder-context-preparation-v0.1.md)
+was subsequently frozen, implemented and independently reviewed. Seven fixed
+operation labels are available only through opt-in v0.2; public parser bytes,
+legacy errors and fail-closed gates remain unchanged. Sixteen focused tests
+(both invocation patterns), 107 related tests, compileall and diff checks pass;
+no full-suite rerun for this diagnostic-only extension and no new live calls.
+The last full 1,622-test pass predates the diagnostic extensions. Next unit
+after quota recovery is one independently preregistered check-diagnostic trial
+with a fresh runner/pin; no spent protocol is reopened or exact historical
+cause inferred. This remains internal mechanism work, not product EI acceptance.
+
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed
 field-path and receipt clarification is part of the contract. The first

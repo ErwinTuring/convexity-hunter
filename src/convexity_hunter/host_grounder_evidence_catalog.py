@@ -421,6 +421,13 @@ def parse_grounder_output_v0_3(
     return parsed, normalized
 
 
+class _SemanticVerdictProgress:
+    __slots__ = ("failure_check",)
+
+    def __init__(self) -> None:
+        self.failure_check = None
+
+
 def parse_semantic_verdict_v0_3(
     raw_json: str,
     max_input_bytes: int,
@@ -434,20 +441,53 @@ def parse_semantic_verdict_v0_3(
     producer_binding_evidence_ids: tuple,
 ) -> bytes:
     """Expand verifier catalog IDs and strictly parse internal verdict v0.1."""
+    return _parse_semantic_verdict_v0_3(
+        raw_json, max_input_bytes,
+        max_string_bytes=max_string_bytes, max_array_items=max_array_items,
+        run_id=run_id, canonical_input_hash=canonical_input_hash,
+        source_bodies=source_bodies, catalog=catalog,
+        producer_binding_evidence_ids=producer_binding_evidence_ids,
+    )
+
+
+def _parse_semantic_verdict_v0_3(
+    raw_json: str,
+    max_input_bytes: int,
+    *,
+    max_string_bytes: int,
+    max_array_items: int,
+    run_id: str,
+    canonical_input_hash: str,
+    source_bodies: Mapping[str, HostSourceBody],
+    catalog: HostEvidenceCatalog,
+    producer_binding_evidence_ids: tuple,
+    progress: _SemanticVerdictProgress | None = None,
+) -> bytes:
+    """Expand verifier catalog IDs and strictly parse internal verdict v0.1."""
+    if progress is not None:
+        progress.failure_check = "wire_decode"
     max_input_bytes = _limit(max_input_bytes, "max_input_bytes")
     max_string_bytes = _limit(max_string_bytes, "max_string_bytes")
     max_array_items = _limit(max_array_items, "max_array_items")
     wire = _decode(raw_json, max_input_bytes)
+    if progress is not None:
+        progress.failure_check = "topshape"
     if set(wire) != _VERDICT_TOP or wire.get("schema_version") != "semantic-verdict-v0.3":
         raise ValueError("verifier wire DTO has an invalid closed shape or version")
+    if progress is not None:
+        progress.failure_check = "run_binding"
     if wire.get("run_id") != run_id:
         raise ValueError("verifier run_id does not match Host run")
+    if progress is not None:
+        progress.failure_check = "catalog_validation"
     catalog.validate_sources(
         source_bodies,
         run_id=run_id,
         canonical_input_hash=canonical_input_hash,
         max_string_bytes=max_string_bytes,
     )
+    if progress is not None:
+        progress.failure_check = "producer_binding_alignment"
     if type(producer_binding_evidence_ids) is not tuple:
         raise ValueError("producer binding evidence IDs must be an exact tuple")
     producer_binding_evidence_ids = tuple(
@@ -474,6 +514,8 @@ def parse_semantic_verdict_v0_3(
             ):
                 raise ValueError("supported binding does not reuse producer evidence_id")
 
+    if progress is not None:
+        progress.failure_check = "evidence_ref_expansion"
     internal = dict(wire)
     internal["schema_version"] = "semantic-verdict-v0.1"
     for section in _VERDICT_SECTIONS:
@@ -513,6 +555,8 @@ def parse_semantic_verdict_v0_3(
             expanded_records.append(record)
         internal[section] = expanded_records
 
+    if progress is not None:
+        progress.failure_check = "internal_verdict_validation"
     normalized = _normalized_bytes(internal, max_input_bytes, "normalized verdict")
     parsed = parse_semantic_verdict(
         normalized.decode("utf-8", errors="strict"),

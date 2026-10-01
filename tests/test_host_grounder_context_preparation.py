@@ -1,4 +1,5 @@
 import datetime
+import copy
 import json
 import unittest
 from dataclasses import replace
@@ -7,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from convexity_hunter import host_grounder_builder as builder_module
 from convexity_hunter import host_grounder_runtime as runtime_module
+from convexity_hunter import host_grounder_evidence_catalog as catalog_module
 from convexity_hunter.event_intelligence import MethodologizedDateRange
 from convexity_hunter.host_grounder_evidence_catalog import (
     HostEvidenceCatalogAuditHolder,
@@ -212,7 +214,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
 
     def test_failure_stages_identify_only_the_three_v0_2_operations(self):
         for operation, stage in (
-            ("parse_semantic_verdict_v0_3", "semantic_wire_parse"),
+            ("_parse_semantic_verdict_v0_3", "semantic_wire_parse"),
             ("build_semantic_validation_receipt", "semantic_receipt_construction"),
             ("validate_semantic_validation_receipt", "semantic_receipt_validation"),
         ):
@@ -225,6 +227,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
                     self._invoke(preparer)
             error = raised.exception
             self.assertEqual(error.failure_stage, stage)
+            self.assertIsNone(error.failure_check)
             self.assertEqual(error.code, "SEMANTIC_VERDICT_REJECTED")
             self.assertEqual(error.args, ("SEMANTIC_VERDICT_REJECTED",))
             self.assertEqual(str(error), "SEMANTIC_VERDICT_REJECTED")
@@ -273,6 +276,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
                     )
             error = raised.exception
             self.assertIsNone(error.failure_stage)
+            self.assertIsNone(error.failure_check)
             self.assertEqual(error.code, "SEMANTIC_VERDICT_REJECTED")
             self.assertEqual(error.args, ("SEMANTIC_VERDICT_REJECTED",))
             self.assertEqual(str(error), "SEMANTIC_VERDICT_REJECTED")
@@ -283,6 +287,109 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
             self.assertIsNone(error.__cause__)
             self.assertTrue(error.__suppress_context__)
             builder.assert_not_called()
+
+    def test_parser_check_categories_stop_before_preparer_and_builder(self):
+        real_parser = catalog_module._parse_semantic_verdict_v0_3
+        for check in (
+            "wire_decode", "topshape", "run_binding", "catalog_validation",
+            "producer_binding_alignment", "evidence_ref_expansion",
+            "internal_verdict_validation",
+        ):
+            def reject(raw, cap, **options):
+                wire = json.loads(raw)
+                if check == "wire_decode":
+                    raw = "PRIVATE_DIAGNOSTIC_SENTINEL"
+                elif check == "topshape":
+                    wire["extra"] = "PRIVATE_DIAGNOSTIC_SENTINEL"
+                elif check == "run_binding":
+                    wire["run_id"] = "PRIVATE_DIAGNOSTIC_SENTINEL"
+                elif check == "catalog_validation":
+                    options["source_bodies"] = {}
+                elif check == "producer_binding_alignment":
+                    options["producer_binding_evidence_ids"] = []
+                elif check == "evidence_ref_expansion":
+                    wire["claims"][0]["evidence_refs"][0]["evidence_id"] = "PRIVATE_DIAGNOSTIC_SENTINEL"
+                else:
+                    wire["claims"][0]["rationale"] = None
+                if check != "wire_decode":
+                    raw = _canonical(wire)
+                return real_parser(raw, cap, **options)
+
+            preparer = Mock()
+            with self.subTest(check=check), patch.object(
+                runtime_module, "_parse_semantic_verdict_v0_3", side_effect=reject,
+            ), patch.object(runtime_module, "_build_host_grounder_v0_2") as builder:
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    self._invoke(preparer)
+            error = raised.exception
+            self.assertEqual(error.failure_check, check)
+            self.assertEqual(error.failure_stage, "semantic_wire_parse")
+            self.assertEqual(error.args, ("SEMANTIC_VERDICT_REJECTED",))
+            self.assertEqual(str(error), "SEMANTIC_VERDICT_REJECTED")
+            self.assertEqual(repr(error), "HostGrounderRuntimeError(code='SEMANTIC_VERDICT_REJECTED')")
+            self.assertIsNone(error.__cause__)
+            self.assertTrue(error.__suppress_context__)
+            self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", str(error) + repr(error))
+            preparer.assert_not_called()
+            builder.assert_not_called()
+
+    def test_public_and_diagnostic_parser_bytes_and_first_failure_are_identical(self):
+        run, context = _fixture()
+        catalog, producer, _, _, wire = _wire_bundle(run, context)
+        options = dict(
+            max_string_bytes=run.bounds.max_string_bytes,
+            max_array_items=run.bounds.max_array_items,
+            run_id=run.run_id, canonical_input_hash=run.canonical_input_hash,
+            source_bodies=context.source_bodies, catalog=catalog,
+            producer_binding_evidence_ids=tuple(x["evidence_id"] for x in producer["field_bindings"]),
+        )
+        for outcome in ("supported", "contradicted", "unresolved"):
+            value = copy.deepcopy(wire)
+            value["claims"][0]["outcome"] = outcome
+            if outcome == "unresolved":
+                value["claims"][0]["evidence_refs"] = []
+            raw = _canonical(value)
+            progress = catalog_module._SemanticVerdictProgress()
+            self.assertEqual(
+                catalog_module.parse_semantic_verdict_v0_3(raw, 100_000, **options),
+                catalog_module._parse_semantic_verdict_v0_3(raw, 100_000, progress=progress, **options),
+            )
+        value = copy.deepcopy(wire)
+        value["extra"] = True
+        value["run_id"] = "wrong-run"
+        value["claims"][0]["evidence_refs"][0]["evidence_id"] = "unknown"
+        for expected in ("topshape", "run_binding", "evidence_ref_expansion"):
+            progress = catalog_module._SemanticVerdictProgress()
+            with self.assertRaises(ValueError) as public:
+                catalog_module.parse_semantic_verdict_v0_3(_canonical(value), 100_000, **options)
+            with self.assertRaises(ValueError) as diagnostic:
+                catalog_module._parse_semantic_verdict_v0_3(_canonical(value), 100_000, progress=progress, **options)
+            self.assertEqual(type(public.exception), type(diagnostic.exception))
+            self.assertEqual(public.exception.args, diagnostic.exception.args)
+            self.assertEqual(progress.failure_check, expected)
+            if expected == "topshape":
+                del value["extra"]
+            elif expected == "run_binding":
+                value["run_id"] = run.run_id
+
+    def test_failure_check_is_closed_and_requires_wire_parse_stage(self):
+        checks = (
+            "wire_decode", "topshape", "run_binding", "catalog_validation",
+            "producer_binding_alignment", "evidence_ref_expansion",
+            "internal_verdict_validation",
+        )
+        for check in checks:
+            error = HostGrounderRuntimeError("CODE", failure_stage="semantic_wire_parse", failure_check=check)
+            self.assertEqual(error.failure_check, check)
+            self.assertEqual(error.args, ("CODE",))
+            self.assertEqual(repr(error), "HostGrounderRuntimeError(code='CODE')")
+            for stage in (None, "semantic_receipt_construction", "semantic_receipt_validation"):
+                with self.assertRaisesRegex(ValueError, "^invalid failure_check$"):
+                    HostGrounderRuntimeError("CODE", failure_stage=stage, failure_check=check)
+        for check in ("PRIVATE_DIAGNOSTIC_SENTINEL", "", True, 1, [], {}, object()):
+            with self.assertRaisesRegex(ValueError, "^invalid failure_check$"):
+                HostGrounderRuntimeError("CODE", failure_stage="semantic_wire_parse", failure_check=check)
+        self.assertIsNone(HostGrounderRuntimeError("CODE").failure_check)
 
     def test_snapshot_and_source_mutations_are_sanitized_and_stop_builder(self):
         callbacks = (
