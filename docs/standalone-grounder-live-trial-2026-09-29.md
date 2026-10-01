@@ -696,7 +696,8 @@ accounting, not settled usage or billing.
 
 ### Source-snapshot acquisition protocol v0.1 — 2026-10-01
 
-**PREREGISTERED / NOT EXECUTED.** This is a new source-only acquisition, not a retry
+**EXECUTED ONCE / SNAPSHOT RETAINED.** The following source-only acquisition
+was registered before execution. It is not a retry
 and not a replacement of the historical pin. Main reviewed the bounded runner;
 this protocol must be committed before any live call. The external runner is
 `/private/tmp/ch_live_grounder_source_snapshot_v0_1.py`, SHA-256
@@ -737,3 +738,33 @@ reservations currently stand at seventeen; if this new Extract reserves its
 request/credit, the count would become eighteen. These are reservations, not a
 settled bill. No source-only Extract or model call is authorized or executed by
 this registration alone; Main will explicitly authorize the single execution.
+
+#### Acquisition and local catalog readiness result — 2026-10-01
+
+Main authorized the registered source-only execution after script review and
+commit. Its hash matched registration; the escalated one-shot Extract returned
+one entry and no failures. The 9,423-byte UTF-8 body was retained outside the
+repository with full SHA-256
+`00ecc509846b657702081827db78a220b8ff51a9bacd19537339575e17ee6e29`.
+The unique private directory is mode 0700 and its body/metadata files mode
+0600. Local checks verified hash, length, encoding, and metadata agreement.
+Only finite structural markers were checked; they do not prove official filing
+completeness, issuer identity, or factual authority. The source review remains
+limited to those checks; no model or EI result was produced.
+
+Local catalog preflight found 60 paragraphs, 12 excluded as nonunique, none
+overlong, and 48 eligible entries. The registered 32-entry/32-array limits
+therefore fail before model invocation. Main separately declared a local
+64-entry/64-array capacity preflight, retaining 128 candidate paragraphs,
+8,000-byte strings, and the 24,000-byte catalog ceiling. This includes every
+eligible entry rather than selecting Top-N, but the complete catalog still
+exceeds the unchanged byte ceiling. No valid catalog or model-input byte count
+was returned, and neither model request was constructed. No further capacity
+increase, truncation, new script, retry, or model-only live protocol followed.
+
+This establishes a declared operational-capacity blocker for this retained
+source, not a provider-semantic or EI rejection. A future complete-catalog
+capacity protocol requires explicit preregistration and request-budget checks;
+this record does not authorize further tuning or invocation. Cumulative Tavily
+reservations are eighteen (not settled usage/billing). No new model calls,
+credentials, raw HTTP/provider envelopes, or source bodies entered Git/logs.

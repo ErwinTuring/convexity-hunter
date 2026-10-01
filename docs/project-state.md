@@ -42,7 +42,13 @@ Validation remains fake-client only; live behavior is unvalidated. No semantic
 or product M2/EI success is claimed. Its registered one-shot live trial stopped
 at source-body pin mismatch (9,423 vs 9,420 bytes), before either model role.
 No retry was made; a new source-version protocol is required for further live
-validation.
+validation. The separately registered source-only acquisition retained a
+9,423-byte external snapshot. Local catalog readiness found 48 eligible entries:
+the original 32-entry/array bound fails; a separately declared 64-entry/array
+preflight also fails the unchanged 24 KB catalog ceiling. No evidence was
+truncated and neither model was called. Live validation remains blocked at
+catalog capacity, not proven semantic failure. Cumulative Tavily reservations
+are eighteen, not settled usage or billing.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted

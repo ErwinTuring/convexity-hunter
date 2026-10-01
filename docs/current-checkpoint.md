@@ -65,7 +65,14 @@ Validation remains fake-client only; live behavior is unvalidated and no
 semantic or M2/product success is claimed. Its registered one-shot live trial
 stopped at source-body pin mismatch (9,423 vs 9,420 bytes); neither model role
 was called. The protocol ended without retry; source-version handling must be
-declared before any new trial.
+declared before any new trial. A separately registered source-only acquisition
+then retained a 9,423-byte snapshot outside the repository; neither model was
+called. Local readiness found 48 eligible entries (60 paragraphs, 12 nonunique,
+zero overlong): the original 32-entry/array capacity fails. An independently
+declared 64-entry/array local preflight also fails the unchanged 24 KB catalog
+byte ceiling. Neither preflight called a model or truncated evidence. Further
+live validation is blocked by the declared catalog capacity, not established
+semantic failure. Cumulative Tavily reservations are eighteen (not billing).
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas
