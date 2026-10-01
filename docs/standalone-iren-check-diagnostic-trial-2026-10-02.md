@@ -100,3 +100,26 @@ mapping to `TRUNCATED_RESPONSE` in `host_model.py` and its existing
 `test_tool_calls_refusal_and_length_stop_are_rejected` case in
 `tests/test_host_model.py`. Do not infer a response body, tune prompts, or make
 another call.
+
+## Offline finding and next capacity boundary
+
+The exact existing fake-transport length-stop test passed. The mapping rejects
+the response before content/usage parsing; it is correct, not an implementation
+defect. The safe code establishes a provider length-stop signal, not which
+limit caused it or whether 6,000 completion tokens were consumed.
+
+The 6,000-token cap is this preregistered run's operational bound, not a global
+contract or user account budget. Repository workflow delegates ordinary
+execution to Main; its portfolio risk policy is separate from model diagnostic
+bounds. No aggregate API monetary/token ceiling or prohibition on a fresh
+bounded capacity registration was found. Main chooses a new, independently
+registered capacity probe: producer at most 8,000 tokens, verifier at most
+6,000, one call each, all byte/parser limits and prompts unchanged. This is
+not permission to reuse this spent protocol or increase application defaults.
+No monetary charge is estimated, and completion is not guaranteed.
+
+The [official Chat Completions documentation](https://api-docs.deepseek.com/api/create-chat-completion/)
+checked 2026-10-02 documents an 8K non-thinking default and describes length
+stops as token/context-limit events. It does not prove which limit applied to
+this account's failed request. Any new invocation still requires reviewed
+artifacts, committed preregistration and separate Main execution authorization.

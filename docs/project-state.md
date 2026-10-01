@@ -66,10 +66,13 @@ check-diagnostic call. It stopped at discovery with
 `failure_stage=null`, `failure_check=null`; discovery1/reserved1, semantic0,
 source0, preparer0. Usage was unavailable; producer/semantic counts and
 partitions remain null. The attempt is spent; no retry. See the [trial record](standalone-iren-check-diagnostic-trial-2026-10-02.md)
-for the sanitized stdout hash. Next lawful step is offline review of the
-existing `finish_reason="length"` to `TRUNCATED_RESPONSE` mapping and its
-`tests/test_host_model.py` case. No response-body inference, prompt tuning,
-spent-protocol reuse, or further call.
+for the sanitized stdout hash. Offline review and the existing fake-transport
+length-stop test passed: no mapping defect, exact limiting cause/usage unknown.
+The 6,000-token cap belongs to that run, not a global user cost policy. Main
+chooses one new preregistered producer-8,000/verifier-6,000 capacity probe;
+byte/parser limits, prompts, source/input and call counts remain unchanged.
+Artifacts must pass review and be registered before separate Main execution
+authorization. No spent-protocol reuse, inferred costs or application defaults.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed

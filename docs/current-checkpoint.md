@@ -70,9 +70,13 @@ check-diagnostic run. It stopped at discovery: `DISCOVERY_CALL_FAILED`,
 source0, preparer0. Token usage and producer/semantic counts are unavailable;
 partitions remain null. The attempt is spent, with no retry. Exact sanitized
 stdout is hash-bound in the [trial record](standalone-iren-check-diagnostic-trial-2026-10-02.md).
-Next lawful step is offline review of the existing `finish_reason="length"`
-to `TRUNCATED_RESPONSE` mapping and its `tests/test_host_model.py` case. Do not
-infer a response body, tune prompts, or make another call.
+Offline review and the existing fake-transport length-stop test passed; the
+mapping is correct. Neither the exact limiting cause nor token usage is known.
+The 6,000-token limit is per-run, not a global user budget. Main's next ordinary
+execution boundary is a separately registered producer-8,000/verifier-6,000
+capacity probe with unchanged byte/parser limits, input, prompts and one-call
+budgets. No spent run is reopened; no completion or monetary cost is inferred.
+Review/registration and separate Main authorization must precede the new call.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
