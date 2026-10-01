@@ -79,6 +79,9 @@ Receipt rejection alone cannot distinguish model non-support from deterministic
 Host quote/binding/dependency rejection. Individual live outcomes were not
 retained; their exact causes remain unknown. Next isolate those layers with a
 separately preregistered synthetic calibration, not another product success claim.
+The [two-date calibration](standalone-iren-semantic-calibration-2026-10-02.md)
+is prepared with six offline controls passing. It separates model outcomes,
+Host receipt partitions and offline fixtures; no live invocation has occurred.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
