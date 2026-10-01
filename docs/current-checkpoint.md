@@ -20,7 +20,12 @@ source authority. This resolves dynamic-ID handoff, not independent listing/
 date verification or live product EI acceptance. Retained SEC source supports
 IREN agreement date and a qualified future availability milestone; exact MIC
 and instrument currency still lack independent Host proof. No new live call
-has been made for this unit.
+was made during its BUILD. A subsequent [preregistered IREN trial](standalone-iren-hypothesis-trial-2026-10-01.md)
+called producer/verifier once each without refetch. Producer normalized 11
+claims and one hypothesis; runtime stopped at `SEMANTIC_VERDICT_REJECTED`
+before receipt/preparer/Builder/EI. Exact cause and semantic partitions remain
+unknown. No retry; next is offline sanitized failure-stage diagnostics, not
+prompt chasing or a claimed live product acceptance.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO

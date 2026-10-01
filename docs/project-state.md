@@ -8,7 +8,13 @@ bind to independently Host-evidenced metadata without changing EI or source
 authority. This is internal composition, not a complete production Host or
 live product Grounder acceptance. The next retained-source IREN experiment
 must preserve missing exact listing/MIC/currency proof, not infer it from
-USD financing amounts or copy the historical ACCEPTED result.
+USD financing amounts or copy the historical ACCEPTED result. The subsequent
+[one-shot live trial](standalone-iren-hypothesis-trial-2026-10-01.md) completed
+both model calls but stopped at `SEMANTIC_VERDICT_REJECTED` before preparation
+or EI. Producer assertions were 11 claims/one hypothesis; semantic support is
+unknown. No retry/refetch. Next bounded dependency: offline sanitized
+failure-stage diagnostics; exact rejection cause is not recoverable from
+retained aggregate evidence.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed

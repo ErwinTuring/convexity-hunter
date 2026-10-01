@@ -1,11 +1,39 @@
 # Retained-source IREN hypothesis trial — 2026-10-01
 
-Status: **PREREGISTERED / NOT EXECUTED**. Independent runner static safety
-review passed. Main authorizes one model-only invocation after this protocol
-is committed and the clean code/source/runner pins are confirmed. The external
-prepared JSON remains a historical preparation artifact with no authorization;
-this durable Main gate supplies authorization. This protocol does not claim
-live EI or independent product success.
+Status: **EXECUTED ONCE / SEMANTIC_VERDICT_REJECTED**. Independent runner static
+safety review passed; Main authorized the run after preregistration commit
+`c0c851fa4a161e9177b6ff91dc0a2951e8630fa8`. This is a failed internal live
+semantic stage, not live EI or independent product success. The external
+prepared JSON remains the historical preparation artifact, not authorization.
+
+## Actual result
+
+- Producer and verifier each called/reserved once; both finished `stop`.
+  Source calls zero; no retry, fallback or new attempt.
+- Producer envelope structurally normalized: 11 claims, 1 hypothesis, 4 field
+  bindings, 4 coverage entries. These are assertions, not semantic support.
+- Producer audit finalized in memory. Runtime stopped at
+  `SEMANTIC_VERDICT_REJECTED`, exit 1; exact rejection cause was not exposed.
+  Do not infer invalid facts, absent events or bad source quality from this code.
+- Receipt not validated; verified/rejected partitions and coverage outcomes
+  unknown. Preparer calls zero; no submission, Builder result or EI assessment.
+- Producer: request 48,483 bytes; 12.945 seconds; 15,031 prompt / 3,816
+  completion / 18,847 total reported tokens.
+- Verifier: request 76,313 bytes (within 80,000); 12.347 seconds; 21,449
+  prompt / 3,571 completion / 25,020 total reported tokens.
+- Total reported tokens 43,867; monetary cost unknown. No Tavily request or
+  reservation was added. No raw model/verdict/audit payload was persisted.
+- Exact sanitized stdout retained outside Git: 2,846 bytes; SHA-256
+  `a57f798c935c5f29c10ae27c17ae8c690a6578cdbe4fe5d2d3a73b339f2d6580`.
+  Role call/reservation counts are observed; a separate provider-transport
+  invocation count was not exposed and remains unknown.
+
+Next bounded work is offline failure-stage observability: distinguish verifier
+wire parsing from semantic receipt construction without exposing payloads or
+weakening either gate. The actual rejection cannot be reconstructed from this
+aggregate, and must remain unknown. Do not replay this spent protocol or change
+prompts/queries to manufacture acceptance. Independent MIC/currency proof and
+production Host preparation remain separate unresolved dependencies.
 
 ## Frozen experiment boundary
 
