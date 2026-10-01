@@ -132,6 +132,51 @@ catch and label the separate pre-preparer receipt-validation catch; perform
 no extra calls or retries. A stage says where rejection occurred, not why.
 The spent IREN trial's unexposed stage remains unknown retrospectively.
 
+## Closed parser-check diagnostic — successor contract
+
+Status: FROZEN / SUBSEQUENT_BUILD_READY / PRODUCTION ABSENT. Independent
+contract review passed; Main freezes the exact boundary below before BUILD.
+Read-only preflight found no demonstrable prompt/parser contradiction. Eight
+synthetic probes respected the existing schema. The new live trial located
+`semantic_wire_parse`, not its exact failed check; do not infer that check
+retrospectively or tune prompts to force acceptance.
+
+Extend `HostGrounderRuntimeError` with keyword-only `failure_check=None`.
+Permit only `None` or these exact static strings; non-null requires
+`failure_stage="semantic_wire_parse"`:
+
+| Check | Existing operations, in unchanged execution order |
+| --- | --- |
+| `wire_decode` | Limit validation and JSON decoding |
+| `topshape` | Closed top-level keys and schema version |
+| `run_binding` | Exact wire run ID |
+| `catalog_validation` | Registered source/catalog validation |
+| `producer_binding_alignment` | Producer ID tuple, binding count/index and supported-ref alignment |
+| `evidence_ref_expansion` | Section/ref shape, bounds, duplicates, unknown IDs and catalog expansion |
+| `internal_verdict_validation` | Normalization/cap, internal verdict parser and final normalized bytes |
+
+These labels identify operations, never factual truth or detailed causes.
+Preserve `.code`, `.args`, `str`, existing `repr` and suppressed chaining.
+Receipt-construction/validation failures have no check label. Legacy routes
+retain `None`; accepted/rejected inputs and first-failure precedence stay
+unchanged. No exception text, args, identifiers, payloads or arbitrary values
+are read into diagnostics.
+
+Keep the public catalog verdict parser's signature and bytes return unchanged.
+Move its current body to one private helper with an optional tiny private
+progress holder, assigning literal labels before existing check groups. The
+helper must not catch/translate/store exceptions or invoke callbacks. The
+public wrapper delegates without a holder. Only opt-in runtime v0.2 creates a
+holder and calls the private helper; its existing catch copies the closed
+label into the sanitized error. No generic telemetry facility or wire change.
+
+Authorized BUILD scope after review/freeze: catalog module, runtime module and
+focused tests only. Tests cover each category, first-failure precedence,
+identical valid public/diagnostic bytes, legacy errors, illegal stage/check
+combinations, no payload leakage, and zero preparer/Builder calls on failure.
+No model/source requests, live trials, retries or prompt changes are part of
+this work unit. This contract does not reopen any spent protocol.
+
 Offline tests must inject each failure, prove zero preparer/Builder calls,
 preserve legacy stage `None` and error representations, and reject arbitrary
 stage values. No fresh live experiment is part of this extension.
