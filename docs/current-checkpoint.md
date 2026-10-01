@@ -55,12 +55,11 @@ focused runtime/schema/model tests, compilation, diff-check, and Mill review
 passed. The 1,602-test full suite last passed at `b759e24`, before that prompt
 commit; it was not rerun.
 
-A bounded read-only preflight finds a Host-generated evidence-catalog ID route
-viable without changing receipt semantics: catalog entries must be exact
-registered-body spans whose quotes already pass overlap-aware uniqueness;
-full bodies remain verifier context. Contract/methodology acceptance and any
-new implementation remain pending. No semantic or M2/product success is
-claimed.
+The [Host Grounder Evidence Catalog v0.1 contract](host-grounder-evidence-catalog-v0.1.md)
+is FROZEN and SUBSEQUENT_BUILD_READY after independent targeted review and Main
+freeze. It is a ready next target, not runtime evidence: production
+implementation is absent and live behavior remains unvalidated. No semantic
+or M2/product success is claimed.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas

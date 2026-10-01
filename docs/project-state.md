@@ -32,10 +32,11 @@ unchanged. At clean `079ebb7`, 50 focused runtime/schema/model tests,
 compilation, diff-check, and Mill review passed. The 1,602-test full suite last
 passed at `b759e24`, before the prompt-only update.
 
-A bounded read-only preflight finds a Host-generated evidence-catalog route
-viable while preserving strict receipt quote uniqueness and full-body verifier
-context. Contract/methodology acceptance and implementation remain pending;
-no semantic or product M2/EI success is claimed.
+The [Host Grounder Evidence Catalog v0.1 contract](host-grounder-evidence-catalog-v0.1.md)
+is FROZEN and SUBSEQUENT_BUILD_READY after independent targeted review and Main
+freeze. It is a ready next target, not runtime evidence: production
+implementation is absent and live behavior remains unvalidated. No semantic
+or product M2/EI success is claimed.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted
