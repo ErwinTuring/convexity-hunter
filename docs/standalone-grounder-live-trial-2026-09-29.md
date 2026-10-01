@@ -768,3 +768,90 @@ capacity protocol requires explicit preregistration and request-budget checks;
 this record does not authorize further tuning or invocation. Cumulative Tavily
 reservations are eighteen (not settled usage/billing). No new model calls,
 credentials, raw HTTP/provider envelopes, or source bodies entered Git/logs.
+
+### Bounded model-only catalog preregistration v0.1 — 2026-10-01
+
+**NOT EXECUTED; NOT LIVE AUTHORIZATION.** This distinct preregistration follows
+the catalog-capacity preflight. It does not amend or replace any completed
+trial. Main must explicitly authorize the registered one-shot execution under
+the user's continuing bounded-work authorization before invoking the runner's
+`--model-only` mode. No source acquisition, model call, retry, commit,
+or production-code change occurred while preparing this protocol.
+
+Prepared runner: `/private/tmp/ch_live_grounder_catalog_model_only_v0_1.py`,
+SHA-256
+`71c991911b5333cc1f596d2aa08bb98d21bd923f7de573d6b43139ed37e87e4e`,
+33,148 bytes. Its default mode is offline with fake clients. It reuses the
+existing Grounder runtime and reviewed bounded configuration/error/report
+helpers. It has no source-acquisition integration. The model-only branch uses
+the existing `ModelCredential` external resolver; it never reads credential
+files itself. Aggregate-only reporting excludes source/model payloads and
+exception messages, arguments, and locals. Audit payloads remain in memory and
+are not persisted.
+
+The registered immutable input is
+`/private/tmp/ch_grounder_source_snapshot_a8lfydaw/registered-body.utf8`,
+9,423 bytes, SHA-256
+`00ecc509846b657702081827db78a220b8ff51a9bacd19537339575e17ee6e29`.
+Preparation rechecked its strict UTF-8 decoding, full hash and length, the
+0700 directory and 0600 files, and the metadata's original retrieval time
+`2026-10-01T07:54:21.398098+00:00`. The Host source record carries that
+retrieval timestamp, not the run time. Metadata remains
+`PENDING_BODY_REVIEW`; retrieval coverage and this stable snapshot do not
+establish source completeness, issuer identity, authority, or freshness. The
+same unchanged body is bound in one new run and supplied to both model roles;
+there is no refetch. Registered run ID:
+`catalog-model-only-20261001-71e458b3c38846c7a5f72ed1774d153c`.
+
+#### Exact local sizing and fixed bounds
+
+The first sizing pass used the repository catalog builder with an explicit
+262,144-byte catalog ceiling solely for local measurement. It made two fake
+transport invocations through the existing model client with credential
+resolution mocked and zero external requests. Results:
+
+- 60 candidate paragraphs; 12 nonunique exclusions; zero overlong; 48 eligible
+  entries.
+- Complete canonical catalog: **24,070 bytes**. The old 24,000-byte cap is 70
+  bytes too small. The preregistered runtime cap is **32,768 bytes**; the
+  measurement-only 262,144-byte ceiling is not a runtime authorization.
+- Complete serialized discovery request body: **47,295 bytes**, including the
+  system/user messages and model JSON/thinking options.
+- Semantic base request body: **42,589 bytes**, measured with the normalized
+  envelope string empty and a fixed 64-character digest placeholder. This is
+  base overhead only, not a prediction or guarantee for the producer-dependent
+  semantic request.
+
+Fixed limits: catalog entries 64; arrays 64; candidate paragraphs 128;
+strings 8,000 bytes; source body 20,000 bytes; normalized JSON 40,000 bytes.
+Each `deepseek-flash` role retains request budget 1, maximum input 80,000 bytes,
+maximum output 40,000 bytes, 6,000 output tokens, 45-second timeout, JSON mode,
+and thinking disabled. No model cap is raised. Before the semantic call, the
+existing runtime must measure and enforce the **complete actual request**
+against 80,000 bytes. If the producer envelope makes it too large, semantic is
+not called; no truncation, retry, or fallback is allowed. Thus this sizing does
+not guarantee that an unknown producer result will fit.
+
+#### Offline checks and repository code-state guard
+
+Syntax compilation passed. Default offline execution passed the focused fake-
+client route: one synthetic discovery request (47,295 bytes), one synthetic
+semantic request (43,574 bytes), finalized in-memory audit, zero external
+requests, and zero hypotheses. The facts-only zero-hypothesis result is an
+offline structural fixture, not a model, semantic, or EI result. Source/model
+payloads were not printed or persisted.
+
+The runner's code-state guard keeps the script hash stable across a docs-only
+protocol commit: registered baseline `6bcb031bb2993fefaf8b6758a6a3d96da7d4ac3d`
+must be an ancestor of `HEAD`; the baseline-to-`HEAD` committed path set must
+be entirely under `docs/`; and current worktree, index, and untracked paths
+must also be docs-only. Consequently `src/`, `tests/`, and other non-document
+paths must be clean. A synthetic subprocess-spy test passed nine cases covering
+docs-only descendant acceptance and rejection of committed, worktree, staged,
+and untracked source/test changes, plus a non-descendant baseline. It performed
+no commit. The guard does not require changing the runner's pinned baseline or
+rehashing it after a documentation commit.
+
+This preregistration authorizes no invocation by itself. Old protocol records
+remain unchanged. Cumulative source reservations remain eighteen; no source
+request or model request was made here.

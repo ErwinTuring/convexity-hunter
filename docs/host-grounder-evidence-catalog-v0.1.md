@@ -1,8 +1,10 @@
 # Host Grounder Evidence Catalog Contract v0.1
 
 Status: **FROZEN — SUBSEQUENT_BUILD_READY** after independent targeted
-contract review and Main freeze. Production implementation is absent and this
-route has not been live-validated. It defines a new explicit catalog route;
+contract review and Main freeze. Implementation was absent at that freeze;
+the explicit route is now implemented with synthetic/regression validation,
+but has not completed live validation. See the current checkpoint for runtime
+evidence. This contract defines the explicit catalog route;
 existing v0.1/v0.2 wire routes and APIs keep their exact behavior and fail
 closed, with no legacy reinterpretation.
 

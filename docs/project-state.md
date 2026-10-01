@@ -16,11 +16,11 @@ its receipt must come from a trusted Host semantic verifier call. An internal
 same-run Event path now supplies that call and constructs a v0.2 receipt;
 no source truth or live product Grounder is claimed.
 
-Current live blocker: the 2026-10-01 run returned the complete pinned source
+Earlier quote-localization trial: the 2026-10-01 run returned the pinned source
 and completed discovery, then failed quote localization because a producer
 binding quote had no exact occurrence in its registered body
 (`quote_localization:106`). The exact field/index is unknown; semantic was not
-called. Cumulative Tavily reservations are 16, not settled usage or billing.
+called. Its cumulative Tavily reservations were 16, not settled usage or billing.
 The [trial record](standalone-grounder-live-trial-2026-09-29.md) preserves the
 per-run chronology and measurements.
 
@@ -46,9 +46,12 @@ validation. The separately registered source-only acquisition retained a
 9,423-byte external snapshot. Local catalog readiness found 48 eligible entries:
 the original 32-entry/array bound fails; a separately declared 64-entry/array
 preflight also fails the unchanged 24 KB catalog ceiling. No evidence was
-truncated and neither model was called. Live validation remains blocked at
-catalog capacity, not proven semantic failure. Cumulative Tavily reservations
-are eighteen, not settled usage or billing.
+truncated and neither model was called. Those preflights stopped at catalog
+capacity, not proven semantic failure. Cumulative Tavily reservations
+are eighteen, not settled usage or billing. Exact local sizing measures 24,070
+catalog bytes and 47,295 discovery-request bytes. A distinct 32 KiB model-only
+protocol includes all 48 entries while retaining the 80 KB request ceiling;
+offline checks pass, but its real execution has not occurred.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
 is frozen and SUBSEQUENT_BUILD_READY after independent review and targeted
@@ -60,8 +63,8 @@ pass. In isolation this remains a non-live, unauthenticated low-level helper.
 The low-level `Mapping` Builder API is structural only; a separate internal
 same-run v0.2 orchestration path now exists with fake-client coverage. The
 bounded live-trial outcomes are recorded in
-[the trial log](standalone-grounder-live-trial-2026-09-29.md); the latest run
-stopped at producer quote localization before semantic validation. No semantic
+[the trial log](standalone-grounder-live-trial-2026-09-29.md); the earlier
+quote-localization run stopped before semantic validation. No semantic
 truth or EI acceptance is claimed.
 
 Future Event run-input provenance is frozen in

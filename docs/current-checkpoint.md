@@ -37,14 +37,15 @@ production source-acquisition integration, a completed end-to-end live Grounder 
 product Host integration and EI acceptance remain open.
 
 The [bounded internal Grounder live-trial record](standalone-grounder-live-trial-2026-09-29.md)
-is the authoritative per-run chronology. Latest (2026-10-01): the complete
+is the authoritative per-run chronology. Earlier quote-localization trial
+(2026-10-01): the pinned
 pinned 9,420-byte source returned (SHA-256 prefix `89536ce6ff75`); discovery
 stopped normally (5,093 prompt, 1,860 completion, 6,953 total tokens; 5.619s;
 `finish_reason=stop`). Producer localization failed at `quote_localization:106`:
 static code raises `quote is missing` when a producer binding quote has no
 exact occurrence in its registered body. The exact field/index/count are
 unknown. Semantic was not called; no receipt or submission followed. No retry
-occurred. Cumulative Tavily reservations are 16, not settled usage or billing.
+occurred. Its cumulative Tavily reservations were 16, not settled usage or billing.
 
 The [quote-localization contract](host-grounder-quote-localization-v0.1.md)
 remains frozen. The explicit route uses producer/verifier wire v0.2 mapped to
@@ -71,8 +72,12 @@ called. Local readiness found 48 eligible entries (60 paragraphs, 12 nonunique,
 zero overlong): the original 32-entry/array capacity fails. An independently
 declared 64-entry/array local preflight also fails the unchanged 24 KB catalog
 byte ceiling. Neither preflight called a model or truncated evidence. Further
-live validation is blocked by the declared catalog capacity, not established
-semantic failure. Cumulative Tavily reservations are eighteen (not billing).
+validation under those bounds was blocked by catalog capacity, not established
+semantic failure. Exact local sizing now measures 24,070 catalog bytes and
+47,295 discovery-request bytes. A distinct 32 KiB catalog protocol retains all
+48 entries and the 80 KB model-input ceiling; offline safety/guard checks pass,
+but its real model-only execution has not occurred. Cumulative Tavily
+reservations remain eighteen (not billing).
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas
