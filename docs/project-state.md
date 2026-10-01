@@ -68,8 +68,11 @@ validated. Producer: 17 claims, all rejected; 0 hypotheses, 4 unresolved
 coverage records, 0 bindings. Builder diagnostics: validator rejection17,
 missing bindings39, no projectable hypothesis1. No submission; EI status null,
 not product acceptance. This attempt is spent. The [trial record](standalone-iren-capacity-trial-2026-10-02.md)
-contains the sanitized stdout hash and a specific synthetic-fixture-only next
-step; no raw response or retry is permitted by this protocol.
+contains the sanitized stdout hash. Receipt rejection does not imply a
+non-supported model verdict: deterministic Host quote, binding and dependency
+checks can reject supported verdicts. The discarded live outcomes cannot be
+reconstructed. A separate synthetic calibration may isolate these layers;
+no raw response or retry is permitted by the spent capacity protocol.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed

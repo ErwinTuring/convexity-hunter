@@ -98,9 +98,12 @@ bindings. Builder diagnostics: `CLAIM_REJECTED_BY_VALIDATOR` 17,
 `FIELD_BINDING_MISSING` 39, `NO_PROJECTABLE_HYPOTHESIS` 1. No submission;
 EI status is null. This is not an `ACCEPTED` result or product acceptance.
 
-Rejected partitions mean the verifier did not support these producer claims;
-they do not prove that the underlying public facts are false. The aggregate
-does not retain their texts, outcomes or rationales. Discovery used only 4,229
+Receipt rejection does not establish that the model classified a claim as
+unsupported. Deterministic Host checks can also reject a model-supported claim
+for missing exact quote references, required field bindings or dependency
+closure. The aggregate does not retain individual model outcomes, claim texts
+or rationales, so the specific live rejection causes remain unknown. The public
+facts have not thereby been disproved. Discovery used only 4,229
 completion tokens, below the old 6,000 cap; the independent output differed,
 so successful completion cannot be causally attributed to raising the cap.
 
@@ -109,5 +112,7 @@ Exact sanitized stdout is retained at
 3,252 bytes, SHA-256
 `43b7a42a725ad53935a6d26a62c96c693608c3dd2303e0b61202576bba67c494`.
 No raw response was retained. The attempt is spent. Specific offline next
-step: map the existing producer validator and binding diagnostics against
-synthetic fixtures; do not infer a particular live rejection or tune prompts.
+step: isolate verifier outcomes from Host receipt checks with a separately
+preregistered synthetic positive/negative source-fact calibration. This cannot
+recover the discarded live verdicts or establish product Grounder success;
+do not infer a particular live rejection or tune prompts to obtain acceptance.

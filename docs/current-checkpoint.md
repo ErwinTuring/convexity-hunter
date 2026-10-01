@@ -73,8 +73,12 @@ unresolved coverage records, 0 bindings. Builder diagnostics were 17
 `CLAIM_REJECTED_BY_VALIDATOR`, 39 `FIELD_BINDING_MISSING`, and 1
 `NO_PROJECTABLE_HYPOTHESIS`; no submission, EI status null. This is not EI
 acceptance. The one-shot attempt is spent, with no retry. Exact sanitized
-stdout hash and offline-only next step are in the
+stdout hash is in the
 [capacity trial record](standalone-iren-capacity-trial-2026-10-02.md).
+Receipt rejection alone cannot distinguish model non-support from deterministic
+Host quote/binding/dependency rejection. Individual live outcomes were not
+retained; their exact causes remain unknown. Next isolate those layers with a
+separately preregistered synthetic calibration, not another product success claim.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
