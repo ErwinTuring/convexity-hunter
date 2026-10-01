@@ -80,8 +80,12 @@ Host quote/binding/dependency rejection. Individual live outcomes were not
 retained; their exact causes remain unknown. Next isolate those layers with a
 separately preregistered synthetic calibration, not another product success claim.
 The [two-date calibration](standalone-iren-semantic-calibration-2026-10-02.md)
-is prepared with six offline controls passing. It separates model outcomes,
-Host receipt partitions and offline fixtures; no live invocation has occurred.
+passed six offline controls and independent safety review. After preregistration
+commit/push and Main authorization, its sole model invocation passed: supported
+May 29 / contradicted May 28, Host verified/rejected respectively. Model
+coverage supported became Host unresolved due to the negative control. The
+attempt is spent; this is not product Grounder or EI acceptance. Next inspect
+producer/Builder binding compatibility and remaining independent Host evidence.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO

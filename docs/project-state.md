@@ -74,9 +74,13 @@ checks can reject supported verdicts. The discarded live outcomes cannot be
 reconstructed. A separate synthetic calibration may isolate these layers;
 no raw response or retry is permitted by the spent capacity protocol.
 The [low-level two-date calibration](standalone-iren-semantic-calibration-2026-10-02.md)
-has six passing offline controls, including supported-verdict Host rejection
-and offline/live result isolation. This is synthetic preparation, not a real
-Event Grounder result; live execution remains separately gated.
+passed six offline controls and independent safety review. Its separately
+authorized sole model call then passed both date controls: positive supported
+and Host-verified; negative contradicted and Host-rejected. Model-supported
+coverage remained Host-unresolved because it included the rejected control.
+The attempt is spent, not an EI or real product Grounder success. Producer /
+Builder compatibility and independent Host evidence remain the next bounded
+preflight; no production behavior changed.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed

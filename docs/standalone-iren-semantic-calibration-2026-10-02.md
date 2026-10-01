@@ -1,6 +1,6 @@
 # IREN low-level semantic date calibration — 2026-10-02
 
-Status: **PREPARED / OFFLINE CHECKS PASS / MODEL-ONLY NOT AUTHORIZED OR EXECUTED**.
+Status: **COMPLETED / CALIBRATION PASS / ATTEMPT SPENT**.
 This is a small external semantic calibration, not production behavior, a
 product Grounder run, or investment analysis.
 
@@ -121,6 +121,38 @@ Both passed. The offline run reports one fake verifier transport and passes:
 - offline golden outcomes remain separate when a simulated model-only run
   fails closed.
 
-No live/model/network call or real credential resolution occurred. No
+During preparation, no live/model/network call or real credential resolution occurred. No
 production/test file, Git index, or commit was changed. Preparation itself
 does not authorize or execute the future model-only mode.
+
+## Actual one-shot result
+
+After independent safety review and targeted result-isolation re-review PASS,
+preregistration commit `3164b578f2e7f727d5a8acdc43c3641925bfec6a` was pushed.
+Main then directly authorized exactly one model-only invocation. It exited 0
+with `PASS`; the one-shot marker is present and the attempt is spent.
+
+| Synthetic control | Model claim outcome | Model date-binding outcome | Host receipt |
+| --- | --- | --- | --- |
+| May 29 | supported | supported | verified |
+| May 28 | contradicted | contradicted | rejected |
+
+The verifier's single coverage outcome was supported, but Host receipt
+coverage was unresolved because its roots include the rejected negative
+control. This directly illustrates why model outcomes and Host partitions
+must be reported separately. Source/producer/Builder/EI/Core calls were zero;
+one semantic attempt and one client-method entry were recorded. The latter
+is not separate transport telemetry. No retry or fallback occurred.
+
+Exact sanitized stdout is retained outside Git at
+`/private/tmp/ch_iren_semantic_calibration_2026-10-02.result.json`, mode 0600,
+SHA-256 `e094a45bb57df1bff2d6252d710673a55ae142a01c7bb06392a9c5211b7770ce`.
+No raw model verdict or rationale was retained. Token usage and monetary cost
+were not retained by this calibration and must not be estimated as measured.
+
+This establishes only the two synthetic date controls under the existing
+verifier/parser/receipt chain. It neither recovers the prior 17 live claim
+outcomes nor proves general semantic reliability, EI acceptance or an
+independently operating product Grounder. Next inspect producer/Builder
+field-binding compatibility and remaining independent Host evidence, without
+inventing hypotheses, dates or listing identity.
