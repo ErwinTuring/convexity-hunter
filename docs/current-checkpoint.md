@@ -63,20 +63,18 @@ the full regression at pinned production commit
 seconds; the urllib3/LibreSSL warning was non-fatal.
 
 After independent safety-review PASS and docs-only prereg commit/push
-`dea77fe566e3344997e6fa9373640bde472a3055`, Main authorized exactly one new
-check-diagnostic run. It stopped at discovery: `DISCOVERY_CALL_FAILED`,
-`failure_stage=null`, `failure_check=null`, transport code
-`TRUNCATED_RESPONSE`, HTTP status null; discovery1/reserved1, semantic0,
-source0, preparer0. Token usage and producer/semantic counts are unavailable;
-partitions remain null. The attempt is spent, with no retry. Exact sanitized
-stdout is hash-bound in the [trial record](standalone-iren-check-diagnostic-trial-2026-10-02.md).
-Offline review and the existing fake-transport length-stop test passed; the
-mapping is correct. Neither the exact limiting cause nor token usage is known.
-The 6,000-token limit is per-run, not a global user budget. Main's next ordinary
-execution boundary is a separately registered producer-8,000/verifier-6,000
-capacity probe with unchanged byte/parser limits, input, prompts and one-call
-budgets. No spent run is reopened; no completion or monetary cost is inferred.
-Review/registration and separate Main authorization must precede the new call.
+`199c32258b9251dcc4442543a95da01553f41ba3`, Main authorized exactly one
+capacity-probe invocation. Discovery (cap 8,000) and semantic (cap 6,000)
+both completed with `finish_reason=stop`, one reserved call each, and reported
+usage 19,202 / 25,885 tokens respectively. `error_code`, failure stage/check,
+and transport error/status fields are null. Source calls 0; preparer calls 1.
+Receipt validated: 17 claims (0 verified, 17 rejected), 0 hypotheses, 4
+unresolved coverage records, 0 bindings. Builder diagnostics were 17
+`CLAIM_REJECTED_BY_VALIDATOR`, 39 `FIELD_BINDING_MISSING`, and 1
+`NO_PROJECTABLE_HYPOTHESIS`; no submission, EI status null. This is not EI
+acceptance. The one-shot attempt is spent, with no retry. Exact sanitized
+stdout hash and offline-only next step are in the
+[capacity trial record](standalone-iren-capacity-trial-2026-10-02.md).
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO

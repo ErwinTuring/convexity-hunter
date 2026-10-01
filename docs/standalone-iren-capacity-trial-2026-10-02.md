@@ -1,6 +1,6 @@
 # IREN capacity diagnostic preregistration — 2026-10-02
 
-Status: **PREPARED / OFFLINE PASS — NOT EXECUTED; no live authorization or attempt marker.**
+Status: **EXECUTED / SPENT — both calls completed; no EI acceptance.**
 
 This independent protocol reuses only the reviewed CHECK runner mechanics in
 [the prior CHECK trial](standalone-iren-check-diagnostic-trial-2026-10-02.md)
@@ -76,5 +76,38 @@ Inherited failure-check cases 37, transport composition 6, prereg gates 8,
 code guards 12, preparer 8, source negatives 2 and exclusive-marker cases 2
 passed. Minimal AST comparison against the CHECK runner: 22/25 existing
 functions identical; only `measure`, `offline`, and `main` changed, with two
-role-cap helpers added. No production or test file changed, no commit was made,
-and no invocation was attempted.
+role-cap helpers added. No production or test file changed.
+
+## Authorized one-shot result — 2026-10-02
+
+After independent safety-review PASS, docs-only prereg commit/push
+`199c32258b9251dcc4442543a95da01553f41ba3`, and separate direct Main
+authorization, exactly one invocation exited 0. Both roles completed normally
+(`finish_reason=stop`); `error_code`, `failure_stage`, `failure_check`, and both
+transport error/status pairs are null. Each role used one reserved request;
+source calls were 0 and preparer calls 1. No retry or fallback occurred.
+
+| Role | Cap | Sent/received bytes | Prompt/completion/total tokens |
+| --- | ---: | ---: | ---: |
+| Discovery | 8,000 | 48,499 / 16,880 | 14,973 / 4,229 / 19,202 |
+| Semantic | 6,000 | 77,262 / 13,484 | 21,836 / 4,049 / 25,885 |
+
+Receipt validation completed. Producer counts: 17 claims (0 verified, 17
+rejected), 0 hypotheses, 4 coverage records (all unresolved), and 0 field
+bindings. Builder diagnostics: `CLAIM_REJECTED_BY_VALIDATOR` 17,
+`FIELD_BINDING_MISSING` 39, `NO_PROJECTABLE_HYPOTHESIS` 1. No submission;
+EI status is null. This is not an `ACCEPTED` result or product acceptance.
+
+Rejected partitions mean the verifier did not support these producer claims;
+they do not prove that the underlying public facts are false. The aggregate
+does not retain their texts, outcomes or rationales. Discovery used only 4,229
+completion tokens, below the old 6,000 cap; the independent output differed,
+so successful completion cannot be causally attributed to raising the cap.
+
+Exact sanitized stdout is retained at
+`/private/tmp/ch_iren_transport_capacity_2026-10-02.result.json`, mode 0600,
+3,252 bytes, SHA-256
+`43b7a42a725ad53935a6d26a62c96c693608c3dd2303e0b61202576bba67c494`.
+No raw response was retained. The attempt is spent. Specific offline next
+step: map the existing producer validator and binding diagnostics against
+synthetic fixtures; do not infer a particular live rejection or tune prompts.

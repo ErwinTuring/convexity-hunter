@@ -59,20 +59,17 @@ regression at pinned production commit
 `46876fda3473f72e43671040529bc3427f467047`: 1,628 passed in 296.423 seconds;
 the urllib3/LibreSSL warning was non-fatal.
 
-After independent safety-review PASS and docs-only prereg commit/push
-`dea77fe566e3344997e6fa9373640bde472a3055`, Main authorized exactly one
-check-diagnostic call. It stopped at discovery with
-`DISCOVERY_CALL_FAILED`, `TRUNCATED_RESPONSE`, HTTP status null,
-`failure_stage=null`, `failure_check=null`; discovery1/reserved1, semantic0,
-source0, preparer0. Usage was unavailable; producer/semantic counts and
-partitions remain null. The attempt is spent; no retry. See the [trial record](standalone-iren-check-diagnostic-trial-2026-10-02.md)
-for the sanitized stdout hash. Offline review and the existing fake-transport
-length-stop test passed: no mapping defect, exact limiting cause/usage unknown.
-The 6,000-token cap belongs to that run, not a global user cost policy. Main
-chooses one new preregistered producer-8,000/verifier-6,000 capacity probe;
-byte/parser limits, prompts, source/input and call counts remain unchanged.
-Artifacts must pass review and be registered before separate Main execution
-authorization. No spent-protocol reuse, inferred costs or application defaults.
+The separately preregistered capacity probe was authorized after review and
+docs-only commit/push `199c32258b9251dcc4442543a95da01553f41ba3`. Exactly one
+call per role completed normally: discovery cap 8,000 reported 19,202 tokens;
+semantic cap 6,000 reported 25,885. Both finish reasons were `stop`; error,
+stage/check and transport fields are null. Source0, preparer1, receipt
+validated. Producer: 17 claims, all rejected; 0 hypotheses, 4 unresolved
+coverage records, 0 bindings. Builder diagnostics: validator rejection17,
+missing bindings39, no projectable hypothesis1. No submission; EI status null,
+not product acceptance. This attempt is spent. The [trial record](standalone-iren-capacity-trial-2026-10-02.md)
+contains the sanitized stdout hash and a specific synthetic-fixture-only next
+step; no raw response or retry is permitted by this protocol.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed
