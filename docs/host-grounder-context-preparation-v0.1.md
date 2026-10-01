@@ -75,6 +75,12 @@ below may differ; the returned context is immutable for its Builder call.
   after independent Host listing evidence establishes the exact `UnderlyingKey`.
   Model text cannot establish listing identity or currency; unknown/conflicting
   evidence means no entry.
+  `listing_mic` remains optional under the existing `UnderlyingKey` contract;
+  unknown MIC may remain `None` without inventing a registry mapping or adding
+  a new acceptance gate. Required symbol/share-class/security-type and USD
+  trading-currency evidence must still independently identify the listing.
+  Preserve unknown MIC in the key/provenance; the runtime does not automatically
+  create an uncertainty statement for it.
 - Preserve an existing `event_date_range` by object identity. Fill only when
   absent, from independent Host evidence and methodology. Never derive it from
   model dates, `UserEventInput.event_date`, publication time, or reassessment.

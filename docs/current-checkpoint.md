@@ -18,8 +18,8 @@ review passed after constructor-bypass correction; 101 related tests and the
 trusted, fill-only preparation after receipt validation, preserving run/input/
 source authority. This resolves dynamic-ID handoff, not independent listing/
 date verification or live product EI acceptance. Retained SEC source supports
-IREN agreement date and a qualified future availability milestone; exact MIC
-and instrument currency still lack independent Host proof. No new live call
+IREN agreement date and a qualified future availability milestone; listing
+identity and instrument currency still lack independent Host proof. No new live call
 was made during its BUILD. A subsequent [preregistered IREN trial](standalone-iren-hypothesis-trial-2026-10-01.md)
 called producer/verifier once each without refetch. Producer normalized 11
 claims and one hypothesis; runtime stopped at `SEMANTIC_VERDICT_REJECTED`
@@ -91,8 +91,13 @@ rejection cause. The [binding clarification](host-grounder-context-preparation-v
 is implemented: internal catalog v0.2 dispatches/audits producer v0.5, while
 v0.1 retains byte-identical v0.4. No gate or wire changes. Independent review,
 33 focused/1,635 full-suite tests, compileall and compatibility/diff checks
-passed. No live v0.5 run yet; independent listing MIC/currency evidence remains
+passed. No live v0.5 run yet; independent listing identity/currency evidence remains
 missing, and source/Host identity capability is the next bounded preflight.
+That preflight confirms MIC is optional: `listing_mic=None` is lawful through
+Host preparation, Builder and EI. Do not add a MIC-registry prerequisite.
+Independent symbol/share-class/security-type and USD evidence is still required;
+the retained SEC identity row has not yet been Host-reviewed and currency is
+unproven. MIC remains unknown, not inferred from an exchange name or US prefix.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO

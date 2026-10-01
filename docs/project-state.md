@@ -89,6 +89,11 @@ unchanged. Final validation passed 33 focused and 1,635 full-suite tests,
 compileall, declared-export/signature compatibility and diff checks. This is
 instruction completeness, not proof that a live product Grounder can reach EI
 acceptance; independent Host listing evidence is still missing.
+Read-only identity preflight confirms `listing_mic` is optional across the
+existing path. Unknown MIC alone is not a new blocker; retain `None` and its
+uncertainty. Current gaps are independently reviewed IREN symbol/share class /
+security type and explicit USD trading-currency evidence. No registry policy,
+operating/segment MIC mapping or production behavior was changed.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed
