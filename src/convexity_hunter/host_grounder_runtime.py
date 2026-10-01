@@ -286,8 +286,18 @@ SEMANTIC_SYSTEM_PROMPT_V0_5 = (
 class HostGrounderRuntimeError(RuntimeError):
     """Sanitized fail-closed error; never retains model or source payloads."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, failure_stage: Optional[str] = None) -> None:
+        if failure_stage is not None and (
+            type(failure_stage) is not str
+            or failure_stage not in (
+                "semantic_wire_parse",
+                "semantic_receipt_construction",
+                "semantic_receipt_validation",
+            )
+        ):
+            raise ValueError("invalid failure_stage")
         self.code = code
+        self.failure_stage = failure_stage
         super().__init__(code)
 
     def __repr__(self) -> str:
@@ -1256,6 +1266,15 @@ def _run_host_grounder_same_run_evidence_catalog(
             catalog=catalog,
             producer_binding_evidence_ids=producer_binding_evidence_ids,
         )
+    except Exception:
+        raise HostGrounderRuntimeError(
+            "SEMANTIC_VERDICT_REJECTED",
+            failure_stage=(
+                "semantic_wire_parse" if context_preparer is not None else None
+            ),
+        ) from None
+
+    try:
         receipt = build_semantic_validation_receipt(
             envelope,
             normalized_verdict.decode("utf-8", errors="strict"),
@@ -1272,7 +1291,12 @@ def _run_host_grounder_same_run_evidence_catalog(
             receipt_schema_version=_RECEIPT_SCHEMA_VERSION,
         )
     except Exception:
-        raise HostGrounderRuntimeError("SEMANTIC_VERDICT_REJECTED") from None
+        raise HostGrounderRuntimeError(
+            "SEMANTIC_VERDICT_REJECTED",
+            failure_stage=(
+                "semantic_receipt_construction" if context_preparer is not None else None
+            ),
+        ) from None
 
     build_context = frozen_context
     build_envelope = envelope
@@ -1293,7 +1317,10 @@ def _run_host_grounder_same_run_evidence_catalog(
                 expected_schema_version=_RECEIPT_SCHEMA_VERSION,
             )
         except Exception:
-            raise HostGrounderRuntimeError("SEMANTIC_VERDICT_REJECTED") from None
+            raise HostGrounderRuntimeError(
+                "SEMANTIC_VERDICT_REJECTED",
+                failure_stage="semantic_receipt_validation",
+            ) from None
 
         try:
             captured_bytes = validated_snapshot.canonical_bytes

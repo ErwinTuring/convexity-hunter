@@ -27,6 +27,14 @@ before receipt/preparer/Builder/EI. Exact cause and semantic partitions remain
 unknown. No retry; next is offline sanitized failure-stage diagnostics, not
 prompt chasing or a claimed live product acceptance.
 
+Failure-stage diagnostics are now implemented: opt-in v0.2 can distinguish
+wire parsing, receipt construction and pre-preparer receipt validation while
+preserving the same rejection code and legacy stage `None`. Independent review,
+13 focused/104 related tests, compileall and diff checks passed. The full suite
+was not rerun for this diagnostic-only extension; its previous 1,622-test pass
+predates the extension. Historical rejection stage stays unknown. A new live
+run would require a separate preregistration; never reuse the spent trial.
+
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
 parser, receipt identity/lexical validator, and deterministic Builder are

@@ -16,6 +16,13 @@ unknown. No retry/refetch. Next bounded dependency: offline sanitized
 failure-stage diagnostics; exact rejection cause is not recoverable from
 retained aggregate evidence.
 
+The bounded diagnostic extension is implemented and independently reviewed.
+Only three closed operation-stage labels are added for opt-in v0.2; legacy
+behavior and evidence gates stay unchanged. Thirteen focused/104 related tests,
+compileall and diff checks pass; no full-suite rerun for this diagnostic-only
+change. The last full 1,622-test pass predates it. This does not retroactively
+locate the spent trial's cause or establish live product Grounder acceptance.
+
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed
 field-path and receipt clarification is part of the contract. The first

@@ -113,8 +113,10 @@ existing listing/fact evidence; no new evidence type or provider is defined.
 
 ## Sanitized failure-stage extension
 
-Status: **FROZEN / BUILD_READY; EXTENSION NOT YET IMPLEMENTED** after the
-bounded read-only preflight. This is operation-level observability only.
+Status: **FROZEN / IMPLEMENTED** after bounded read-only preflight and
+independent diff review. Thirteen focused tests and 104 related tests,
+compileall and diff checks passed. This is operation-level observability only;
+the full suite was not rerun for this behavior-preserving extension.
 
 Freeze `HostGrounderRuntimeError(code, *, failure_stage=None)` with exactly
 `None`, `"semantic_wire_parse"`, `"semantic_receipt_construction"`, or

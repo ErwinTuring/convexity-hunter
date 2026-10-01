@@ -3,7 +3,7 @@ import json
 import unittest
 from dataclasses import replace
 from types import MappingProxyType
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from convexity_hunter import host_grounder_builder as builder_module
 from convexity_hunter import host_grounder_runtime as runtime_module
@@ -22,6 +22,7 @@ from tests.test_host_grounder_evidence_catalog import (
     _canonical,
     _catalog_for,
     _fixture,
+    _runtime as _legacy_runtime,
     _wire_envelope,
     _wire_bundle,
     _wire_verdict,
@@ -208,6 +209,80 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
         self.assertEqual(invoked, [])
         self.assertEqual([entry[0] for entry in calls], ["discovery", "semantic"])
         self.assertNotIn("private validation detail", str(raised.exception))
+
+    def test_failure_stages_identify_only_the_three_v0_2_operations(self):
+        for operation, stage in (
+            ("parse_semantic_verdict_v0_3", "semantic_wire_parse"),
+            ("build_semantic_validation_receipt", "semantic_receipt_construction"),
+            ("validate_semantic_validation_receipt", "semantic_receipt_validation"),
+        ):
+            preparer = Mock()
+            with self.subTest(stage=stage), patch.object(
+                runtime_module, operation,
+                side_effect=ValueError("PRIVATE_DIAGNOSTIC_SENTINEL"),
+            ), patch.object(runtime_module, "_build_host_grounder_v0_2") as builder:
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    self._invoke(preparer)
+            error = raised.exception
+            self.assertEqual(error.failure_stage, stage)
+            self.assertEqual(error.code, "SEMANTIC_VERDICT_REJECTED")
+            self.assertEqual(error.args, ("SEMANTIC_VERDICT_REJECTED",))
+            self.assertEqual(str(error), "SEMANTIC_VERDICT_REJECTED")
+            self.assertEqual(
+                repr(error),
+                "HostGrounderRuntimeError(code='SEMANTIC_VERDICT_REJECTED')",
+            )
+            self.assertIsNone(error.__cause__)
+            self.assertTrue(error.__suppress_context__)
+            self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", str(error) + repr(error))
+            preparer.assert_not_called()
+            builder.assert_not_called()
+
+    def test_failure_stage_accepts_only_closed_values_with_static_rejection(self):
+        for stage in (
+            None,
+            "semantic_wire_parse",
+            "semantic_receipt_construction",
+            "semantic_receipt_validation",
+        ):
+            with self.subTest(stage=stage):
+                error = HostGrounderRuntimeError("CODE", failure_stage=stage)
+                self.assertEqual(error.failure_stage, stage)
+                self.assertEqual(error.args, ("CODE",))
+                self.assertEqual(str(error), "CODE")
+                self.assertEqual(repr(error), "HostGrounderRuntimeError(code='CODE')")
+        for stage in ("PRIVATE_DIAGNOSTIC_SENTINEL", "", 1, True, [], {}, object()):
+            with self.subTest(stage_type=type(stage).__name__):
+                with self.assertRaises(ValueError) as raised:
+                    HostGrounderRuntimeError("CODE", failure_stage=stage)
+                self.assertEqual(str(raised.exception), "invalid failure_stage")
+                self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", repr(raised.exception))
+
+    def test_legacy_catalog_semantic_errors_keep_none_stage_and_representations(self):
+        self.assertIsNone(HostGrounderRuntimeError("CODE").failure_stage)
+        for operation in (
+            "parse_semantic_verdict_v0_3", "build_semantic_validation_receipt"
+        ):
+            with self.subTest(operation=operation), patch.object(
+                runtime_module, operation,
+                side_effect=ValueError("PRIVATE_DIAGNOSTIC_SENTINEL"),
+            ), patch.object(runtime_module, "_build_host_grounder_v0_2") as builder:
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    _legacy_runtime(
+                        self.run_input, self.context, self.producer, self.verdict
+                    )
+            error = raised.exception
+            self.assertIsNone(error.failure_stage)
+            self.assertEqual(error.code, "SEMANTIC_VERDICT_REJECTED")
+            self.assertEqual(error.args, ("SEMANTIC_VERDICT_REJECTED",))
+            self.assertEqual(str(error), "SEMANTIC_VERDICT_REJECTED")
+            self.assertEqual(
+                repr(error),
+                "HostGrounderRuntimeError(code='SEMANTIC_VERDICT_REJECTED')",
+            )
+            self.assertIsNone(error.__cause__)
+            self.assertTrue(error.__suppress_context__)
+            builder.assert_not_called()
 
     def test_snapshot_and_source_mutations_are_sanitized_and_stop_builder(self):
         callbacks = (
