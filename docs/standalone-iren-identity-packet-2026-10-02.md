@@ -54,6 +54,46 @@ currency. Record unknown evidence as unknown; no automatic context binding.
 
 ## Result
 
-Not executed at preregistration. Main may authorize exactly one invocation
-after this document is committed and pushed. Record its sanitized outcome
-here afterward; do not repeat the operation to improve the result.
+After preregistration commit/push
+`71c7b90d130c93c03fb578ab6fc8050ff9ea6e2e`, Main authorized the sole invocation.
+It returned `NO_ALLOWED_SEARCH_RESULT`: Basic Search returned two results,
+neither matched the exact allowed URL. Extract was not called; no body
+snapshot exists. The attempt marker is spent. No retry or fallback occurred.
+
+Search reserved one request/credit and reported one credit; request/response
+bytes were 387/2,926. No account usage-counter or billing query was performed.
+This is source-selection noncoverage under the frozen URL grammar, not proof
+that IREN identity information is absent or Tavily cannot retrieve it. Rejected
+URLs were not retained, so their exact mismatch categories are unknown.
+
+Exact sanitized result is externally retained at
+`/private/tmp/ch_iren_identity_packet_2026-10-02_result_y34by8tt.json` (0600),
+SHA-256 `98c304b32d26082fd1855bcf6795624c6c684415efd7b69dd596a3305e25397d`.
+No identity/currency binding, model, Builder, EI or Core execution followed.
+Required independently verified USD trading-currency evidence remains missing.
+
+## Retained SEC body — separate offline review
+
+Luna/max inspected the existing SEC Form 8-K body without acquisition or model
+calls. Its SHA-256 remains
+`00ecc509846b657702081827db78a220b8ff51a9bacd19537339575e17ee6e29`.
+The source is the [retained IREN filing](https://www.sec.gov/Archives/edgar/data/1878848/000114036126023427/ef20075181_8k.htm).
+
+| Body location | Supported statement | Exact excerpt SHA-256 |
+| --- | --- | --- |
+| Lines 23–25; `[257,325)` | Registrant IREN LIMITED | `a42c1f0e0f985613658b4b601a7f83a6c498a4d9b3ba6a4056a812e8ba965e12` |
+| Line 70; `[1615,1708)` | Columns identify class, symbol and registered exchange | `9bab9df651ceb7c533886ba9e057fa622840591d2a527a21ec428d378f4b0b0f` |
+| Line 71; `[1709,1785)` | Ordinary shares, no par value; IREN; The Nasdaq Stock Market LLC | `5d16f325e7cb5028cdb8d34eef5da6dcc1e8d3caee6c8d10010fffa3dbe260ab` |
+
+Offsets are zero-based half-open Unicode code-point ranges in the exact decoded
+body; line hashes exclude line endings. This supports the filing's stated
+symbol/share class/registered exchange only. It does not prove USD trading
+currency, MIC, current listing status or a provider-specific security-type
+normalization. Whole-body metadata stays `PENDING_BODY_REVIEW`; this limited
+Codex-assisted inspection does not mark every statement verified or establish
+an independently running Host identity verifier. No context binding was made.
+
+Next lawful work is an independently supported current listing/security-type
+and trading-currency evidence path, with its provenance and Host validation
+explicit. Do not replay this spent Search or infer the missing fields to enable
+EI. No new user credential or payment action has been demonstrated necessary.

@@ -94,6 +94,13 @@ existing path. Unknown MIC alone is not a new blocker; retain `None` and its
 uncertainty. Current gaps are independently reviewed IREN symbol/share class /
 security type and explicit USD trading-currency evidence. No registry policy,
 operating/segment MIC mapping or production behavior was changed.
+The [single identity source packet](standalone-iren-identity-packet-2026-10-02.md)
+ended at `NO_ALLOWED_SEARCH_RESULT`: two Search results, no permitted URL,
+one reported credit, no Extract or retry. This is bounded URL-selection
+noncoverage, not proof of absent public identity data. USD remains unproven.
+Offline SEC cover-row review now supports the historical filing's stated
+ordinary-share class/symbol/registered exchange, not current listing, currency
+or independently deployed Host verification. No production changes were made.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed

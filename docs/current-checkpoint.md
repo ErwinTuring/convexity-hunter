@@ -98,6 +98,15 @@ Host preparation, Builder and EI. Do not add a MIC-registry prerequisite.
 Independent symbol/share-class/security-type and USD evidence is still required;
 the retained SEC identity row has not yet been Host-reviewed and currency is
 unproven. MIC remains unknown, not inferred from an exchange name or US prefix.
+The [bounded identity source packet](standalone-iren-identity-packet-2026-10-02.md)
+used one Tavily Basic Search (one reported credit). Both returned results failed
+the frozen exact Nasdaq URL grammar; no Extract/body snapshot, retry or
+fallback followed. This does not prove source/provider absence. The spent
+attempt did not resolve USD trading currency or run model/Builder/EI/Core.
+Separate offline review of the retained SEC body supports its IREN ordinary-share
+cover row and registered exchange. Exact locations/hashes are in the source
+packet record. This is limited Codex-assisted review, not current listing/USD
+proof, a whole-body verification or an independent standalone Host capability.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
