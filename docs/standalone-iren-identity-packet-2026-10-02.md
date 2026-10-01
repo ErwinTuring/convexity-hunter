@@ -81,7 +81,7 @@ The source is the [retained IREN filing](https://www.sec.gov/Archives/edgar/data
 
 | Body location | Supported statement | Exact excerpt SHA-256 |
 | --- | --- | --- |
-| Lines 23–25; `[257,325)` | Registrant IREN LIMITED | `a42c1f0e0f985613658b4b601a7f83a6c498a4d9b3ba6a4056a812e8ba965e12` |
+| Lines 23–25; `[257,325)` | Registrant IREN LIMITED | `f155b279ee5b19f2ff90f43f1f51e08a77cbe7528c4880fb24eea8788e07105c` |
 | Line 70; `[1615,1708)` | Columns identify class, symbol and registered exchange | `9bab9df651ceb7c533886ba9e057fa622840591d2a527a21ec428d378f4b0b0f` |
 | Line 71; `[1709,1785)` | Ordinary shares, no par value; IREN; The Nasdaq Stock Market LLC | `5d16f325e7cb5028cdb8d34eef5da6dcc1e8d3caee6c8d10010fffa3dbe260ab` |
 
