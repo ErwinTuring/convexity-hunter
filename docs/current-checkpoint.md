@@ -11,12 +11,16 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Approved target applicability — 2026-09-18
 
-Next narrow M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
-is FROZEN / SUBSEQUENT_BUILD_READY after independent review. The target opt-in
-catalog runtime v0.2 permits trusted, fill-only preparation after receipt
-validation, preserving run/input/source authority. Production implementation
-is absent at this freeze checkpoint. This resolves the dynamic-ID handoff
-design, not independent listing/date verification or live EI acceptance.
+Latest narrow M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
+is frozen and implemented behind opt-in catalog runtime v0.2. Independent
+review passed after constructor-bypass correction; 101 related tests and the
+1,622-test full suite passed, plus compileall and diff checks. It permits
+trusted, fill-only preparation after receipt validation, preserving run/input/
+source authority. This resolves dynamic-ID handoff, not independent listing/
+date verification or live product EI acceptance. Retained SEC source supports
+IREN agreement date and a qualified future availability milestone; exact MIC
+and instrument currency still lack independent Host proof. No new live call
+has been made for this unit.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO

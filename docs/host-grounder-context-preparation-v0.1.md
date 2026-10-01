@@ -1,9 +1,10 @@
 # Host Grounder Context Preparation Contract v0.1
 
-Status: **FROZEN / SUBSEQUENT_BUILD_READY — PRODUCTION IMPLEMENTATION ABSENT**.
-Main accepted the independent contract review and corrected its tuple-container
-identity finding. This freezes one opt-in evidence-catalog runtime route v0.2;
-current production behavior remains unchanged.
+Status: **FROZEN / IMPLEMENTED — INTERNAL OPT-IN ROUTE ONLY**.
+Main accepted independent contract and implementation review, including fixes
+for tuple-container identity and returned-context constructor bypass. The
+catalog runtime v0.2 is implemented; legacy routes remain unchanged. No live
+product Grounder or EI acceptance follows from this implementation.
 
 ## Scope and compatibility
 
@@ -88,11 +89,10 @@ below may differ; the returned context is immutable for its Builder call.
 
 ## Minimal integration shape and attack cases
 
-Add only the explicit `run_host_grounder_same_run_evidence_catalog_v0_2` path
+The implementation adds only the explicit `run_host_grounder_same_run_evidence_catalog_v0_2` path
 with a required preparer; leave v0.1 unchanged. The current v0.1 function
 snapshots context before discovery and passes it unchanged to Builder, so it
-has no post-verification hook. This target is not implemented; v0.1 does not
-use it.
+has no post-verification hook. The new v0.2 route is opt-in; v0.1 does not use it.
 
 Attack cases: absent preparer fails before calls; zero calls on validation
 failure/exactly one on success; receipt/run/hash/coverage/body mismatch stops;

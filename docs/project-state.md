@@ -1,11 +1,14 @@
 # Project State
 
-Current bounded M2 target: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
-is FROZEN / SUBSEQUENT_BUILD_READY after independent review and correction of
-the tuple-container identity requirement. The opt-in catalog runtime v0.2 is
-not yet implemented. It will bind actual verified producer IDs to independently
-Host-evidenced metadata without changing EI or source authority. No live
-product Grounder acceptance follows from this contract freeze.
+Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
+is frozen and implemented in opt-in catalog runtime v0.2. Independent review
+passed after constructor-bypass correction; 101 related tests, full 1,622-test
+regression, compileall and diff check passed. Actual verified producer IDs can
+bind to independently Host-evidenced metadata without changing EI or source
+authority. This is internal composition, not a complete production Host or
+live product Grounder acceptance. The next retained-source IREN experiment
+must preserve missing exact listing/MIC/currency proof, not infer it from
+USD financing amounts or copy the historical ACCEPTED result.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed

@@ -12,7 +12,7 @@ import json
 from dataclasses import dataclass, field, replace
 from datetime import timezone
 from types import MappingProxyType
-from typing import Mapping, Optional
+from typing import Callable, Mapping, Optional
 
 from .host_grounder_builder import (
     HostBuildContext,
@@ -20,6 +20,7 @@ from .host_grounder_builder import (
     HostSourceBody,
     _build_host_grounder_v0_2,
 )
+from .event_intelligence import MethodologizedDateRange
 from .host_grounder_run_input import (
     HostGrounderRunInput,
     validate_host_context_binding,
@@ -40,7 +41,12 @@ from .host_grounder_quote_localization import (
     parse_semantic_verdict_v0_2,
 )
 from .host_grounder_schema import parse_model_output_envelope
+from .host_grounder_receipt import (
+    ValidatedEnvelopeSnapshot,
+    validate_semantic_validation_receipt,
+)
 from .host_grounder_semantic import build_semantic_validation_receipt
+from .market_data import UnderlyingKey
 from .host_model import ChatCompletionsClient, ModelRuntimeConfig, ModelTransportReceipt
 
 
@@ -539,6 +545,306 @@ def _snapshot_source_context(context: HostBuildContext) -> HostBuildContext:
         raise HostGrounderRuntimeError("SOURCE_REGISTRY_INVALID") from None
 
 
+def _capture_preparation_context(context: HostBuildContext) -> dict:
+    """Capture independent values before trusted preparation can run."""
+    if type(context) is not HostBuildContext:
+        raise ValueError("invalid Host context")
+    sources = tuple(
+        (
+            source_id,
+            source,
+            (
+                source.body,
+                source.body_sha256,
+                source.final_locator,
+                source.retrieved_at,
+                source.title,
+                source.published_at,
+            ),
+        )
+        for source_id, source in sorted(context.source_bodies.items())
+    )
+    bindings = []
+    for pair in sorted(context.underlying_bindings):
+        if type(pair) is not tuple or len(pair) != 2:
+            raise ValueError("invalid underlying binding key")
+        value = context.underlying_bindings[pair]
+        if type(value) is not tuple or len(value) != 2:
+            raise ValueError("invalid underlying binding value")
+        key, reference = value
+        if type(key) is not UnderlyingKey:
+            raise ValueError("invalid underlying key object")
+        bindings.append(
+            (
+                (pair[0], pair[1]),
+                key,
+                (key.symbol, key.listing_mic, key.security_type, key.currency),
+                reference,
+            )
+        )
+    date_range = context.event_date_range
+    date_values = (
+        None
+        if date_range is None
+        else (date_range.start_date, date_range.end_date, date_range.methodology)
+    )
+    policy = context.caller_policy_provenance
+    policy_values = (
+        None
+        if policy is None
+        else (
+            policy.run_id,
+            policy.canonical_input_hash,
+            policy.reassessment_by,
+            policy.rationale,
+            policy.authorization_source,
+        )
+    )
+    return {
+        "raw_input": context.raw_input,
+        "fixed": (
+            context.submission_id,
+            context.event_id,
+            context.producer_id,
+            context.producer_version,
+            context.observed_at,
+            context.run_id,
+            context.canonical_input_hash,
+        ),
+        "sources": sources,
+        "source_bodies": MappingProxyType(
+            {source_id: values[0] for source_id, _, values in sources}
+        ),
+        "description": context.event_description_binding,
+        "date_range": date_range,
+        "date_values": date_values,
+        "bindings": tuple(bindings),
+        "policy": policy,
+        "policy_values": policy_values,
+    }
+
+
+def _matches_preparation_context(
+    context: HostBuildContext,
+    captured: Mapping[str, object],
+    *,
+    include_fill_fields: bool,
+) -> bool:
+    """Compare callback-visible objects to pre-callback saved values."""
+    if type(context) is not HostBuildContext or context.raw_input is not captured["raw_input"]:
+        return False
+    if (
+        context.submission_id,
+        context.event_id,
+        context.producer_id,
+        context.producer_version,
+        context.observed_at,
+        context.run_id,
+        context.canonical_input_hash,
+    ) != captured["fixed"]:
+        return False
+
+    saved_sources = captured["sources"]
+    current_sources = tuple(sorted(context.source_bodies.items()))
+    if len(current_sources) != len(saved_sources):
+        return False
+    for (source_id, source), (saved_id, saved_source, saved_values) in zip(
+        current_sources, saved_sources
+    ):
+        if source_id != saved_id or source is not saved_source:
+            return False
+        values = (
+            source.body,
+            source.body_sha256,
+            source.final_locator,
+            source.retrieved_at,
+            source.title,
+            source.published_at,
+        )
+        if values != saved_values:
+            return False
+        HostSourceBody(*values)
+
+    policy = context.caller_policy_provenance
+    if policy is not captured["policy"]:
+        return False
+    policy_values = (
+        None
+        if policy is None
+        else (
+            policy.run_id,
+            policy.canonical_input_hash,
+            policy.reassessment_by,
+            policy.rationale,
+            policy.authorization_source,
+        )
+    )
+    if policy_values != captured["policy_values"]:
+        return False
+
+    if include_fill_fields:
+        if context.event_description_binding != captured["description"]:
+            return False
+        date_range = context.event_date_range
+        date_values = (
+            None
+            if date_range is None
+            else (date_range.start_date, date_range.end_date, date_range.methodology)
+        )
+        if date_range is not captured["date_range"] or date_values != captured["date_values"]:
+            return False
+        current_bindings = _capture_preparation_context(context)["bindings"]
+        saved_bindings = captured["bindings"]
+        if len(current_bindings) != len(saved_bindings):
+            return False
+        for current, saved in zip(current_bindings, saved_bindings):
+            if current[0] != saved[0] or current[1] is not saved[1]:
+                return False
+            if current[2] != saved[2] or current[3] is not saved[3]:
+                return False
+    return True
+
+
+def _capture_run_input(run_input: HostGrounderRunInput) -> tuple:
+    if type(run_input) is not HostGrounderRunInput:
+        raise ValueError("invalid run input")
+    return (
+        run_input.run_id,
+        run_input.user_input,
+        run_input.subquestions,
+        run_input.bounds,
+        run_input.canonical_json,
+        run_input.canonical_bytes,
+        run_input.canonical_input_hash,
+        run_input.subquestion_ids,
+    )
+
+
+def _run_input_matches_capture(run_input: HostGrounderRunInput, captured: tuple) -> bool:
+    try:
+        current = _capture_run_input(run_input)
+        if (
+            current[0] != captured[0]
+            or current[1] is not captured[1]
+            or current[2] != captured[2]
+            or current[3] is not captured[3]
+            or current[4:] != captured[4:]
+        ):
+            return False
+        rebuilt = HostGrounderRunInput(
+            run_input.run_id,
+            run_input.user_input,
+            run_input.subquestions,
+            run_input.bounds,
+        )
+        return (
+            rebuilt.canonical_json == captured[4]
+            and rebuilt.canonical_bytes == captured[5]
+            and rebuilt.canonical_input_hash == captured[6]
+            and rebuilt.subquestion_ids == captured[7]
+        )
+    except Exception:
+        return False
+
+
+def _validate_prepared_context(
+    prepared: object,
+    captured: Mapping[str, object],
+    envelope: Mapping[str, object],
+    receipt: Mapping[str, object],
+) -> HostBuildContext:
+    if type(prepared) is not HostBuildContext:
+        raise ValueError("prepared context changed frozen Host identity")
+    # Re-run HostBuildContext invariants and freeze caller-provided mappings.
+    # This also rejects UnderlyingKey objects corrupted after their construction.
+    prepared = replace(prepared)
+    if not _matches_preparation_context(prepared, captured, include_fill_fields=False):
+        raise ValueError("prepared context changed frozen Host identity")
+
+    description = prepared.event_description_binding
+    if captured["description"] is not None:
+        if description != captured["description"]:
+            raise ValueError("existing description binding changed")
+    elif description is not None:
+        claims_by_id = {item["claim_id"]: item for item in envelope["claims"]}
+        claim = claims_by_id.get(description)
+        if (
+            type(description) is not str
+            or description not in receipt["verified_claim_ids"]
+            or claim is None
+            or claim["kind"] != "observed_fact"
+            or claim["source_id"] not in captured["source_bodies"]
+        ):
+            raise ValueError("description binding is not a verified sourced fact")
+
+    date_range = prepared.event_date_range
+    if captured["date_range"] is not None:
+        if date_range is not captured["date_range"]:
+            raise ValueError("existing event date range changed")
+    elif date_range is not None:
+        if type(date_range) is not MethodologizedDateRange:
+            raise ValueError("new date range has invalid type")
+        if MethodologizedDateRange(
+            date_range.start_date, date_range.end_date, date_range.methodology
+        ) != date_range:
+            raise ValueError("new date range is invalid")
+
+    saved_bindings = captured["bindings"]
+    old_keys = {item[0] for item in saved_bindings}
+    hypotheses_by_id = {item["hypothesis_id"]: item for item in envelope["hypotheses"]}
+    verified_hypotheses = set(receipt["verified_hypothesis_ids"])
+    verified_binding_indices = set(receipt["verified_binding_indices"])
+    verified_underlying_symbols = set()
+    for hypothesis_index, hypothesis in enumerate(envelope["hypotheses"]):
+        expected_path = "/hypotheses/{}/underlying_symbol".format(hypothesis_index)
+        matching_indices = tuple(
+            binding_index
+            for binding_index, binding in enumerate(envelope["field_bindings"])
+            if binding["field_path"] == expected_path
+            and binding["semantic_role"] == "entity"
+        )
+        if len(matching_indices) == 1 and matching_indices[0] in verified_binding_indices:
+            verified_underlying_symbols.add(
+                (hypothesis["hypothesis_id"], hypothesis["underlying_symbol"])
+            )
+    current_bindings = prepared.underlying_bindings
+    if len(current_bindings) < len(saved_bindings):
+        raise ValueError("existing underlying binding removed")
+    for pair, key, key_values, reference in saved_bindings:
+        value = current_bindings.get(pair)
+        if (
+            type(value) is not tuple
+            or len(value) != 2
+            or value[0] is not key
+            or value[1] is not reference
+            or (key.symbol, key.listing_mic, key.security_type, key.currency) != key_values
+        ):
+            raise ValueError("existing underlying binding changed")
+    for pair, value in current_bindings.items():
+        if type(pair) is not tuple or len(pair) != 2:
+            raise ValueError("invalid underlying binding key")
+        hypothesis_id, symbol = pair
+        if (hypothesis_id, symbol) in old_keys:
+            continue
+        if type(value) is not tuple or len(value) != 2:
+            raise ValueError("invalid new underlying binding")
+        key, reference = value
+        hypothesis = hypotheses_by_id.get(hypothesis_id)
+        if (
+            type(hypothesis_id) is not str
+            or type(symbol) is not str
+            or hypothesis_id not in verified_hypotheses
+            or hypothesis is None
+            or hypothesis["underlying_symbol"] != symbol
+            or (hypothesis_id, symbol) not in verified_underlying_symbols
+            or type(key) is not UnderlyingKey
+            or key.symbol != symbol
+            or reference is None
+        ):
+            raise ValueError("new underlying binding is not independently keyed")
+    return prepared
+
+
 def run_host_grounder_same_run(
     run_input: HostGrounderRunInput,
     context: HostBuildContext,
@@ -802,7 +1108,7 @@ def run_host_grounder_same_run_quote_localization_v0_1(
     )
 
 
-def run_host_grounder_same_run_evidence_catalog_v0_1(
+def _run_host_grounder_same_run_evidence_catalog(
     run_input: HostGrounderRunInput,
     context: HostBuildContext,
     *,
@@ -814,6 +1120,12 @@ def run_host_grounder_same_run_evidence_catalog_v0_1(
     max_catalog_entries: int,
     max_catalog_bytes: int,
     max_catalog_paragraphs: int,
+    context_preparer: Optional[
+        Callable[
+            [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
+            HostBuildContext,
+        ]
+    ] = None,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Run the explicit paragraph-catalog v0.3 wire path exactly once per role."""
     max_json_bytes = _positive_int(max_json_bytes, "JSON_LIMIT_INVALID")
@@ -962,11 +1274,114 @@ def run_host_grounder_same_run_evidence_catalog_v0_1(
     except Exception:
         raise HostGrounderRuntimeError("SEMANTIC_VERDICT_REJECTED") from None
 
+    build_context = frozen_context
+    build_envelope = envelope
+    build_receipt = receipt
+    if context_preparer is not None:
+        source_snapshot = MappingProxyType(dict(bodies))
+        try:
+            validated_snapshot = validate_semantic_validation_receipt(
+                envelope,
+                receipt,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                request_subquestion_ids=run_input.subquestion_ids,
+                source_bodies=source_snapshot,
+                max_input_bytes=max_json_bytes,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                expected_schema_version=_RECEIPT_SCHEMA_VERSION,
+            )
+        except Exception:
+            raise HostGrounderRuntimeError("SEMANTIC_VERDICT_REJECTED") from None
+
+        try:
+            captured_bytes = validated_snapshot.canonical_bytes
+            captured_hash = validated_snapshot.envelope_hash
+            if hashlib.sha256(captured_bytes).hexdigest() != captured_hash:
+                raise ValueError("validated snapshot hash mismatch")
+            captured_context = _capture_preparation_context(frozen_context)
+            captured_run_input = _capture_run_input(run_input)
+            readonly_receipt = MappingProxyType(dict(receipt))
+            captured_receipt = tuple(
+                (key, readonly_receipt[key]) for key in sorted(readonly_receipt)
+            )
+            preparation_envelope = parse_model_output_envelope(
+                captured_bytes.decode("utf-8", errors="strict"),
+                max_json_bytes,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+            )
+        except Exception:
+            raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED") from None
+
+        try:
+            prepared_context = context_preparer(
+                validated_snapshot, readonly_receipt, frozen_context
+            )
+        except Exception:
+            raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED") from None
+
+        try:
+            if (
+                validated_snapshot.canonical_bytes != captured_bytes
+                or validated_snapshot.envelope_hash != captured_hash
+                or hashlib.sha256(captured_bytes).hexdigest() != captured_hash
+                or tuple(
+                    (key, readonly_receipt[key]) for key in sorted(readonly_receipt)
+                )
+                != captured_receipt
+                or not _matches_preparation_context(
+                    frozen_context, captured_context, include_fill_fields=True
+                )
+                or not _run_input_matches_capture(run_input, captured_run_input)
+            ):
+                raise ValueError("preparer changed captured run evidence")
+
+            receipt_snapshot = validate_semantic_validation_receipt(
+                parse_model_output_envelope(
+                    captured_bytes.decode("utf-8", errors="strict"),
+                    max_json_bytes,
+                    max_string_bytes=run_input.bounds.max_string_bytes,
+                    max_array_items=run_input.bounds.max_array_items,
+                ),
+                readonly_receipt,
+                run_id=captured_run_input[0],
+                canonical_input_hash=captured_run_input[6],
+                request_subquestion_ids=captured_run_input[7],
+                source_bodies=captured_context["source_bodies"],
+                max_input_bytes=max_json_bytes,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                expected_schema_version=_RECEIPT_SCHEMA_VERSION,
+            )
+            if (
+                receipt_snapshot.canonical_bytes != captured_bytes
+                or receipt_snapshot.envelope_hash != captured_hash
+            ):
+                raise ValueError("receipt no longer binds captured snapshot")
+
+            build_context = _validate_prepared_context(
+                prepared_context,
+                captured_context,
+                preparation_envelope,
+                readonly_receipt,
+            )
+            build_envelope = parse_model_output_envelope(
+                captured_bytes.decode("utf-8", errors="strict"),
+                max_json_bytes,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+            )
+            build_receipt = readonly_receipt
+        except Exception:
+            raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED") from None
+
     try:
         result = _build_host_grounder_v0_2(
-            envelope,
-            receipt,
-            context=frozen_context,
+            build_envelope,
+            build_receipt,
+            context=build_context,
             request_subquestion_ids=run_input.subquestion_ids,
             max_input_bytes=max_json_bytes,
             max_string_bytes=run_input.bounds.max_string_bytes,
@@ -979,4 +1394,69 @@ def run_host_grounder_same_run_evidence_catalog_v0_1(
         _call_summary(discovery_call, "discovery"),
         _call_summary(semantic_call, "semantic"),
         audit,
+    )
+
+
+def run_host_grounder_same_run_evidence_catalog_v0_1(
+    run_input: HostGrounderRunInput,
+    context: HostBuildContext,
+    *,
+    discovery_client: ChatCompletionsClient,
+    semantic_client: ChatCompletionsClient,
+    audit_holder: HostEvidenceCatalogAuditHolder,
+    max_json_bytes: int,
+    max_source_body_bytes: int,
+    max_catalog_entries: int,
+    max_catalog_bytes: int,
+    max_catalog_paragraphs: int,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Run the unchanged paragraph-catalog v0.1 route."""
+    return _run_host_grounder_same_run_evidence_catalog(
+        run_input,
+        context,
+        discovery_client=discovery_client,
+        semantic_client=semantic_client,
+        audit_holder=audit_holder,
+        max_json_bytes=max_json_bytes,
+        max_source_body_bytes=max_source_body_bytes,
+        max_catalog_entries=max_catalog_entries,
+        max_catalog_bytes=max_catalog_bytes,
+        max_catalog_paragraphs=max_catalog_paragraphs,
+    )
+
+
+def run_host_grounder_same_run_evidence_catalog_v0_2(
+    run_input: HostGrounderRunInput,
+    context: HostBuildContext,
+    *,
+    discovery_client: ChatCompletionsClient,
+    semantic_client: ChatCompletionsClient,
+    audit_holder: HostEvidenceCatalogAuditHolder,
+    max_json_bytes: int,
+    max_source_body_bytes: int,
+    max_catalog_entries: int,
+    max_catalog_bytes: int,
+    max_catalog_paragraphs: int,
+    host_context_preparer: Optional[
+        Callable[
+            [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
+            HostBuildContext,
+        ]
+    ] = None,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Run the catalog route with one explicit post-receipt Host preparation."""
+    if not callable(host_context_preparer):
+        raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
+    return _run_host_grounder_same_run_evidence_catalog(
+        run_input,
+        context,
+        discovery_client=discovery_client,
+        semantic_client=semantic_client,
+        audit_holder=audit_holder,
+        max_json_bytes=max_json_bytes,
+        max_source_body_bytes=max_source_body_bytes,
+        max_catalog_entries=max_catalog_entries,
+        max_catalog_bytes=max_catalog_bytes,
+        max_catalog_paragraphs=max_catalog_paragraphs,
+        context_preparer=host_context_preparer,
     )
