@@ -12,9 +12,8 @@ USD financing amounts or copy the historical ACCEPTED result. The subsequent
 [one-shot live trial](standalone-iren-hypothesis-trial-2026-10-01.md) completed
 both model calls but stopped at `SEMANTIC_VERDICT_REJECTED` before preparation
 or EI. Producer assertions were 11 claims/one hypothesis; semantic support is
-unknown. No retry/refetch. Next bounded dependency: offline sanitized
-failure-stage diagnostics; exact rejection cause is not recoverable from
-retained aggregate evidence.
+unknown. No retry/refetch. The old semantic stage and exact rejection cause
+are not recoverable from retained aggregate evidence.
 
 The bounded diagnostic extension is implemented and independently reviewed.
 Only three closed operation-stage labels are added for opt-in v0.2; legacy
@@ -22,6 +21,20 @@ behavior and evidence gates stay unchanged. Thirteen focused/104 related tests,
 compileall and diff checks pass; no full-suite rerun for this diagnostic-only
 change. The last full 1,622-test pass predates it. This does not retroactively
 locate the spent trial's cause or establish live product Grounder acceptance.
+
+The independently preregistered
+[diagnostic model-only run](standalone-iren-diagnostic-trial-2026-10-01.md)
+was authorized and executed exactly once after safety-review PASS and prereg
+commit/push. It returned `DISCOVERY_CALL_FAILED`, actual `failure_stage=null`:
+discovery1/reserved1, elapsed18.138s, semantic0/source0. Token usage and underlying
+reason are unknown. No validated producer counts/receipt, preparer, Builder
+or EI followed; partitions remain null. Exact sanitized stdout is externally
+retained and hash-bound in its trial record. It did not reach the three
+semantic diagnostic operations and cannot locate the old unknown-stage
+rejection. Both protocols are spent; neither authorizes a retry. Production
+and the executed runner remain unchanged. Next bounded offline task: preserve
+closed sanitized transport codes in a future runner before runtime suppression,
+without raw errors or another live call.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed

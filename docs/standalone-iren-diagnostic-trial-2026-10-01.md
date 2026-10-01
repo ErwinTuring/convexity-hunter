@@ -1,6 +1,6 @@
 # IREN diagnostic model-only preregistration — 2026-10-01
 
-Status: PREPARED / NOT EXECUTED / NOT LIVE AUTHORIZATION. Independent safety review and Main's prereg commit/push and separate direct authorization are pending. No prior protocol or spent attempt is reopened.
+Status: EXECUTED / SPENT — DISCOVERY_CALL_FAILED. The preparation and authorization requirements below are historical; the result section records their completion. No prior protocol or spent attempt is reopened.
 
 ## Registered artifacts and independent attempt
 
@@ -59,3 +59,49 @@ Actual semantic request depends on new producer output and is unknown beforehand
 Syntax PASS. Default fake-client runtime PASS, one synthetic producer and verifier, zero external requests. Deterministic checks:12 existing code guards (including docs-only descendant),8 preparer,2 source-integrity negatives,2 exclusive-marker,10 failure-stage cases (including injected failures at all three runtime operations),8 prereg-gate cases. Request ceiling guard PASS. Synthetic3claims (2verified/1rejected),1verified hypothesis,2verified bindings,4coverage (2supported/2unresolved), unchanged description, independent Host date, no underlying key; EI incomplete. Synthetic verdicts do not establish actual entailment.
 
 No model/source/network calls, production/test/state edits or commit during preparation. Await independent safety review and Main's committed prereg plus direct authorization. Main owns execution authorization and result recording.
+
+## Authorized one-shot result — 2026-10-01
+
+Main reported independent safety review PASS and committed/pushed prereg
+`004451c690b1831ae966608fe9ca4bbc77d7eee3`; clean HEAD verified before execution.
+Runner and external-prereg hashes above remained unchanged. One explicitly
+authorized escalated invocation used the actual CLI arguments `--model-only
+--prereg-commit 004451c690b1831ae966608fe9ca4bbc77d7eee3 --main-authorized`.
+No retry, alternate, fallback or source request followed. This independent
+attempt is spent; the preparation status above is historical, not current
+authorization for another invocation.
+
+Outcome: exit1, `HostGrounderRuntimeError`, `DISCOVERY_CALL_FAILED`, actual
+reported `failure_stage=null`. Discovery calls/reservations1/1, elapsed18.138s;
+semantic calls/reservations0/0, source calls0. Token usage, finish reason,
+actual sent/received byte counts and separate provider transport count were
+not exposed and remain unknown. Measured discovery request48,483 bytes and
+semantic base44,884 bytes are prereg measurements, not proof of provider receipt.
+Underlying discovery failure reason is unknown; no raw error was inspected.
+None of the three semantic diagnostic operations was reached. This is not a
+new observation of the old run's unknown semantic rejection stage.
+
+Source integrity/permissions and independent Host date anchor verified.
+Catalog retained in memory; producer audit absent; audit_finalized=false,
+producer_envelope_counts_validated=false, receipt_validated=false.
+Claim/hypothesis/binding/coverage totals and semantic partitions remain null;
+preparer calls0, no submission, Builder diagnostics/EI status/issue counts null.
+No durable raw audit retention is claimed.
+
+Exact sanitized stdout only is retained externally in
+`/private/tmp/ch_iren_diagnostic_model_only_v0_2.result.json`, regular mode0600,
+2,390 bytes, SHA256
+`79fa8e2be2e181d8946d7297802fc0380d18db8c44423fd93efcc7b233a39519`.
+It contains no raw source/model/verdict text or credentials. The historical
+hypothesis run remains `SEMANTIC_VERDICT_REJECTED`, stage unknown; this new
+diagnostic run failed earlier with an actual null stage. Neither establishes
+live EI acceptance or locates the prior rejection. Stop this protocol; any
+further invocation requires a new independently preregistered and explicitly
+authorized attempt, not a retry of this one.
+
+Offline follow-up: the metered client records successful receipts but only
+timing/reservation on failure; runtime `_call_once` suppresses the original
+exception. `ModelTransportError` has sanitized code/status, but this run did
+not retain its type or fields, so no exact cause can be recovered. A future
+external runner may capture only exact-type, closed-allowlisted codes and valid
+HTTP status before re-raising unchanged. This is not authorization to rerun.

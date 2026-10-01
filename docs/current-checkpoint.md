@@ -24,16 +24,25 @@ was made during its BUILD. A subsequent [preregistered IREN trial](standalone-ir
 called producer/verifier once each without refetch. Producer normalized 11
 claims and one hypothesis; runtime stopped at `SEMANTIC_VERDICT_REJECTED`
 before receipt/preparer/Builder/EI. Exact cause and semantic partitions remain
-unknown. No retry; next is offline sanitized failure-stage diagnostics, not
-prompt chasing or a claimed live product acceptance.
+unknown. No retry; the spent trial's semantic stage remains unknown, not a
+claimed live product acceptance.
 
 Failure-stage diagnostics are now implemented: opt-in v0.2 can distinguish
 wire parsing, receipt construction and pre-preparer receipt validation while
 preserving the same rejection code and legacy stage `None`. Independent review,
 13 focused/104 related tests, compileall and diff checks passed. The full suite
 was not rerun for this diagnostic-only extension; its previous 1,622-test pass
-predates the extension. Historical rejection stage stays unknown. A new live
-run would require a separate preregistration; never reuse the spent trial.
+predates the extension. Historical rejection stage stays unknown. The separately
+[preregistered diagnostic trial](standalone-iren-diagnostic-trial-2026-10-01.md)
+was authorized once after prereg commit and safety review. It stopped earlier:
+`DISCOVERY_CALL_FAILED`, actual `failure_stage=null`, discovery1/reserved1
+(18.138s), semantic0/source0. Usage and underlying reason are unknown; no
+validated producer counts, receipt, preparer, Builder or EI followed. Exact
+sanitized stdout is retained externally and hash-bound in the trial record.
+Both attempts are spent; neither protocol permits another call. This
+diagnostic execution did not reach or locate the old semantic rejection.
+Next is offline runner-level retention of closed, sanitized transport error
+codes before the runtime suppresses them; no production change or live retry.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
