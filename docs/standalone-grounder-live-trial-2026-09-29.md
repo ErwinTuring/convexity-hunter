@@ -592,3 +592,66 @@ submission, or EI outcome followed; no retry occurred. The Extract reserved one
 request and credit, raising cumulative Tavily reservations from 15 to 16. This
 is reservation accounting, not settled usage or billing. This result does not
 establish semantic failure or a completed live Grounder/M2 outcome.
+
+## Evidence-catalog route one-shot preregistration — 2026-10-01
+
+**PREREGISTERED / NOT EXECUTED.** This is a new bounded mechanism-validation
+protocol for `run_host_grounder_same_run_evidence_catalog_v0_1`, not a retry of
+the completed quote-localization attempts above. The reviewed external runner
+is `/private/tmp/ch_live_grounder_evidence_catalog_v0_1.py`, SHA-256
+`4e408943f14d56653fc24879dde3b28ee0909829d65147f8b1942cb887f1834e`.
+Its synthetic offline route check passed with fake model transport, including
+the explicit JSON-object request, `thinking=disabled`, 6,000-token/45-second
+role configuration, one request per role, and audit finalization. This is
+offline-only evidence, not a live provider result or M2 success. The runner's
+default mode is offline; this preregistration does not execute its live mode.
+Main must explicitly authorize this registered one-shot execution under the
+user's continuing bounded-work authorization; it must start with
+`sandbox_permissions=require_escalated`; invoke only the explicit `--live`
+mode, not the default offline mode.
+
+Prepared invocation (not run):
+
+```sh
+PYTHONPYCACHEPREFIX=/private/tmp/ch-mvp-pycache python3 /private/tmp/ch_live_grounder_evidence_catalog_v0_1.py --live
+```
+
+- Pin `https://www.sec.gov/Archives/edgar/data/1878848/000114036126023427/ef20075181_8k.htm`
+  and the complete extracted body at 9,420 UTF-8 bytes with SHA-256 prefix
+  `89536ce6ff75`; stop before model calls on any mismatch.
+- Allow one Tavily Basic Extract request and credit for one URL, with the
+  existing 8 KB request, 100 KB response, 18-second timeout/time budget,
+  110 KB byte budget, and 20 KB accepted-body cap. Then allow at most one
+  discovery call and at most one semantic call.
+- Keep both `deepseek-flash` roles at request budget 1, 6,000 output tokens,
+  45 seconds, JSON-object mode, explicit thinking disabled, 80 KB input and
+  40 KB output caps. Preserve `max_json_bytes=40,000`, 8,000-byte string and
+  32-item array limits, the 20 KB source-body cap, and every existing strict
+  identity, coverage, receipt, verifier, and Builder gate.
+- Pass explicit catalog limits: `max_catalog_entries=32`,
+  `max_catalog_paragraphs=128`, and `max_catalog_bytes=24,000`. The entry
+  ceiling shares the existing 32-item array bound; paragraph counting is
+  separate. Any exceeded catalog bound fails closed without partial output
+  or truncation. The full source/catalog/prompts must still fit the existing
+  80 KB model-input bound.
+- Use discovery prompt `host-grounder-discovery-prompt-v0.4` with producer
+  wire `grounder-output-v0.3`; use verifier prompt/validator
+  `host-grounder-semantic-verifier-prompt-v0.5` with verifier wire
+  `semantic-verdict-v0.3`. Internal normalized producer/verifier shapes remain
+  v0.1; semantic receipt schema `semantic-validation-v0.2` and existing
+  receipt/Builder behavior are unchanged. The retained audit uses schema
+  `host-grounder-quote-localization-audit-v0.3`; catalog schema and generator
+  are `host-grounder-evidence-catalog-v0.1` and
+  `host-evidence-paragraph-generator-v0.1`.
+
+The Host catalog assigns deterministic IDs to exact registered paragraph
+spans; that lexical localization does not establish factual meaning or
+semantic support. The semantic verifier still assesses evidence against the
+registered full source body. A facts-only result with zero hypotheses is not
+itself a failure; no hypothesis or EI outcome is to be forced. No retry,
+alternate source, fallback, or semantic interpretation by catalog ID is
+authorized by this preregistration.
+
+Current cumulative Tavily reservations are sixteen. If this protocol reaches
+and reserves its Extract request, the cumulative reservation count becomes
+seventeen; this is reservation accounting, not settled usage or billing.

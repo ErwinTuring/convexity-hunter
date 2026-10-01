@@ -57,9 +57,12 @@ commit; it was not rerun.
 
 The [Host Grounder Evidence Catalog v0.1 contract](host-grounder-evidence-catalog-v0.1.md)
 is FROZEN and SUBSEQUENT_BUILD_READY after independent targeted review and Main
-freeze. It is a ready next target, not runtime evidence: production
-implementation is absent and live behavior remains unvalidated. No semantic
-or M2/product success is claimed.
+freeze. Its bounded implementation is now present behind a new explicit route;
+70 focused tests and the full 1,612-test regression suite pass, along with
+compileall and diff checks. Independent implementation review passed after
+restoring the registered publication-metadata constraint in the new prompt.
+Validation remains fake-client only; live behavior is unvalidated and no
+semantic or M2/product success is claimed.
 
 Future Event run-input provenance is frozen in
 [Run Input v0.1](host-grounder-run-input-v0.1.md), with reviewed contract deltas

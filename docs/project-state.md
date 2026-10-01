@@ -34,8 +34,11 @@ passed at `b759e24`, before the prompt-only update.
 
 The [Host Grounder Evidence Catalog v0.1 contract](host-grounder-evidence-catalog-v0.1.md)
 is FROZEN and SUBSEQUENT_BUILD_READY after independent targeted review and Main
-freeze. It is a ready next target, not runtime evidence: production
-implementation is absent and live behavior remains unvalidated. No semantic
+freeze. Its bounded implementation is now present behind a new explicit route;
+70 focused tests and the full 1,612-test regression suite pass, along with
+compileall and diff checks. Independent implementation review passed after
+restoring the registered publication-metadata constraint in the new prompt.
+Validation remains fake-client only; live behavior is unvalidated. No semantic
 or product M2/EI success is claimed.
 
 The [Host Semantic Validation v0.1 contract](host-grounder-semantic-validation-v0.1.md)
