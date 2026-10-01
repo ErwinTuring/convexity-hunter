@@ -31,7 +31,12 @@ EVIDENCE_CATALOG_SCHEMA_VERSION = "host-grounder-evidence-catalog-v0.1"
 EVIDENCE_CATALOG_GENERATOR_VERSION = "host-evidence-paragraph-generator-v0.1"
 _AUDIT_SCHEMA_VERSION = "host-grounder-quote-localization-audit-v0.3"
 _PRODUCER_WIRE_VERSION = "grounder-output-v0.3"
-_PRODUCER_PROMPT_VERSION = "host-grounder-discovery-prompt-v0.4"
+_PRODUCER_PROMPT_VERSION_V0_4 = "host-grounder-discovery-prompt-v0.4"
+_PRODUCER_PROMPT_VERSION_V0_5 = "host-grounder-discovery-prompt-v0.5"
+_PRODUCER_PROMPT_VERSIONS = frozenset(
+    (_PRODUCER_PROMPT_VERSION_V0_4, _PRODUCER_PROMPT_VERSION_V0_5)
+)
+_PRODUCER_PROMPT_VERSION = _PRODUCER_PROMPT_VERSION_V0_4
 _VERIFIER_WIRE_VERSION = "semantic-verdict-v0.3"
 _VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.5"
 _RESOLVER_VERSION = "host-evidence-catalog-resolver-v0.1"
@@ -588,7 +593,7 @@ class HostEvidenceCatalogAuditHolder:
     __slots__ = (
         "_run_id", "_canonical_input_hash", "_state", "_catalog_utf8",
         "_catalog_sha256", "_producer_content_utf8", "_producer_content_sha256",
-        "_audit", "_lock",
+        "_producer_prompt_version", "_audit", "_lock",
     )
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -613,6 +618,7 @@ class HostEvidenceCatalogAuditHolder:
         self._catalog_sha256 = None
         self._producer_content_utf8 = None
         self._producer_content_sha256 = None
+        self._producer_prompt_version = None
         self._audit = None
         self._lock = threading.Lock()
 
@@ -649,6 +655,8 @@ class HostEvidenceCatalogAuditHolder:
         canonical_input_hash: str,
         catalog_utf8: bytes,
         catalog_sha256: str,
+        *,
+        producer_prompt_version: str = _PRODUCER_PROMPT_VERSION,
     ) -> None:
         with self._lock:
             if (
@@ -657,10 +665,13 @@ class HostEvidenceCatalogAuditHolder:
                 or canonical_input_hash != self._canonical_input_hash
                 or type(catalog_utf8) is not bytes
                 or hashlib.sha256(catalog_utf8).hexdigest() != catalog_sha256
+                or type(producer_prompt_version) is not str
+                or producer_prompt_version not in _PRODUCER_PROMPT_VERSIONS
             ):
                 raise ValueError("audit holder is not fresh for this run/catalog")
             object.__setattr__(self, "_catalog_utf8", bytes(catalog_utf8))
             object.__setattr__(self, "_catalog_sha256", catalog_sha256)
+            object.__setattr__(self, "_producer_prompt_version", producer_prompt_version)
             object.__setattr__(self, "_state", "catalog_retained")
 
     def _capture_producer_content(self, content_utf8: bytes) -> None:
@@ -679,6 +690,7 @@ class HostEvidenceCatalogAuditHolder:
         normalized_envelope_utf8: bytes,
         *,
         catalog: HostEvidenceCatalog,
+        expected_producer_prompt_version: str = _PRODUCER_PROMPT_VERSION,
     ) -> HostEvidenceCatalogAudit:
         with self._lock:
             if (
@@ -686,6 +698,11 @@ class HostEvidenceCatalogAuditHolder:
                 or type(normalized_envelope_utf8) is not bytes
                 or catalog.canonical_utf8 != self._catalog_utf8
                 or catalog.catalog_sha256 != self._catalog_sha256
+                or type(self._producer_prompt_version) is not str
+                or self._producer_prompt_version not in _PRODUCER_PROMPT_VERSIONS
+                or type(expected_producer_prompt_version) is not str
+                or expected_producer_prompt_version not in _PRODUCER_PROMPT_VERSIONS
+                or self._producer_prompt_version != expected_producer_prompt_version
             ):
                 raise ValueError("audit holder cannot be finalized")
             normalized_copy = bytes(normalized_envelope_utf8)
@@ -694,7 +711,7 @@ class HostEvidenceCatalogAuditHolder:
                 "run_id": self._run_id,
                 "canonical_input_hash": self._canonical_input_hash,
                 "producer_wire_version": _PRODUCER_WIRE_VERSION,
-                "producer_prompt_version": _PRODUCER_PROMPT_VERSION,
+                "producer_prompt_version": self._producer_prompt_version,
                 "producer_content_sha256": self._producer_content_sha256,
                 "normalized_envelope_sha256": hashlib.sha256(normalized_copy).hexdigest(),
                 "source_body_hashes": [

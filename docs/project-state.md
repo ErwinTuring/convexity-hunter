@@ -81,6 +81,14 @@ coverage remained Host-unresolved because it included the rejected control.
 The attempt is spent, not an EI or real product Grounder success. Producer /
 Builder compatibility and independent Host evidence remain the next bounded
 preflight; no production behavior changed.
+The subsequent [producer-binding clarification](host-grounder-context-preparation-v0.1.md#producer-binding-completeness-clarification--frozen-successor)
+is implemented and reviewed: catalog v0.2 alone uses producer prompt v0.5;
+v0.1 preserves literal v0.4. Audit finalization must match the dispatched
+version. Wires, verifier, receipt gates and public callable signatures remain
+unchanged. Final validation passed 33 focused and 1,635 full-suite tests,
+compileall, declared-export/signature compatibility and diff checks. This is
+instruction completeness, not proof that a live product Grounder can reach EI
+acceptance; independent Host listing evidence is still missing.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed

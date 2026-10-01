@@ -30,6 +30,8 @@ from .host_grounder_evidence_catalog import (
     HostEvidenceCatalog,
     HostEvidenceCatalogAudit,
     HostEvidenceCatalogAuditHolder,
+    _PRODUCER_PROMPT_VERSION_V0_4,
+    _PRODUCER_PROMPT_VERSION_V0_5,
     build_host_evidence_catalog,
     parse_grounder_output_v0_3,
     parse_semantic_verdict_v0_3,
@@ -242,6 +244,33 @@ DISCOVERY_SYSTEM_PROMPT_V0_4 = _discovery_v0_4_prefix + (
     "final_locator. Never invent or select text outside a catalog entry. The "
     "catalog contains every eligible unique exact paragraph and is not ranked or "
     "truncated. Producer labels are candidate assertions, not validation."
+)
+
+DISCOVERY_SYSTEM_PROMPT_V0_5 = _replace_prompt_fragment(
+    DISCOVERY_SYSTEM_PROMPT_V0_4,
+    "Prompt version: host-grounder-discovery-prompt-v0.4.",
+    "Prompt version: host-grounder-discovery-prompt-v0.5.",
+) + (
+    "\n\nProducer binding-completeness clarification (catalog runtime v0.2 only): "
+    "for every non-null consumed value, emit exactly one field_bindings entry "
+    "with the corresponding field_path and semantic_role from this exhaustive "
+    "map: /claims/{i}/event_date=date; /claims/{i}/entity_refs/{j}=entity; "
+    "/hypotheses/{i}/underlying_symbol=entity; "
+    "/hypotheses/{i}/impact_path=hypothesis; "
+    "/hypotheses/{i}/distribution_mode=hypothesis; "
+    "/hypotheses/{i}/distribution_hypothesis=hypothesis; "
+    "/hypotheses/{i}/expected_window/start_date=date; "
+    "/hypotheses/{i}/expected_window/end_date=date; "
+    "/hypotheses/{i}/reassessment/reassessment_by=date. Copy the binding's "
+    "evidence_id from the supplied catalog. If catalog evidence cannot link a "
+    "value, leave a nullable scalar or whole window/reassessment null, omit the "
+    "unsupported entity_refs item, emit no binding for that omitted/null value, "
+    "disclose the gap, and leave each affected unanswered subquestion "
+    "unresolved. Empty hypotheses remain valid when none is supported. Never "
+    "manufacture facts, bindings, temporal authority, or hypotheses; never force "
+    "a hypothesis or supported coverage to complete the schema. Keep "
+    "interpretations labeled as interpretations. Producer bindings and labels "
+    "do not confer Host or EI authority."
 )
 
 SEMANTIC_SYSTEM_PROMPT_V0_5 = _replace_prompt_fragment(
@@ -1146,6 +1175,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     max_catalog_entries: int,
     max_catalog_bytes: int,
     max_catalog_paragraphs: int,
+    producer_prompt_version: str = _PRODUCER_PROMPT_VERSION_V0_4,
     context_preparer: Optional[
         Callable[
             [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
@@ -1155,6 +1185,14 @@ def _run_host_grounder_same_run_evidence_catalog(
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Run the explicit paragraph-catalog v0.3 wire path exactly once per role."""
     max_json_bytes = _positive_int(max_json_bytes, "JSON_LIMIT_INVALID")
+    if type(producer_prompt_version) is not str:
+        raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
+    if producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_4:
+        discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_4
+    elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_5:
+        discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_5
+    else:
+        raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
     if discovery_client is semantic_client:
         raise HostGrounderRuntimeError("MODEL_CLIENTS_MUST_BE_SEPARATE")
     discovery_config = _check_client(discovery_client, "discovery")
@@ -1197,6 +1235,7 @@ def _run_host_grounder_same_run_evidence_catalog(
             run_input.canonical_input_hash,
             catalog.canonical_utf8,
             catalog.catalog_sha256,
+            producer_prompt_version=producer_prompt_version,
         )
     except Exception:
         raise HostGrounderRuntimeError("AUDIT_HOLDER_INVALID") from None
@@ -1204,7 +1243,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     discovery_call = _call_once(
         discovery_client,
         discovery_config,
-        DISCOVERY_SYSTEM_PROMPT_V0_4,
+        discovery_system_prompt,
         discovery_prompt,
         role="DISCOVERY",
     )
@@ -1241,6 +1280,7 @@ def _run_host_grounder_same_run_evidence_catalog(
         audit = audit_holder._finalize(
             normalized_envelope_bytes,
             catalog=catalog,
+            expected_producer_prompt_version=producer_prompt_version,
         )
     except Exception:
         raise HostGrounderRuntimeError("AUDIT_RETENTION_FAILED") from None
@@ -1508,5 +1548,6 @@ def run_host_grounder_same_run_evidence_catalog_v0_2(
         max_catalog_entries=max_catalog_entries,
         max_catalog_bytes=max_catalog_bytes,
         max_catalog_paragraphs=max_catalog_paragraphs,
+        producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_5,
         context_preparer=host_context_preparer,
     )

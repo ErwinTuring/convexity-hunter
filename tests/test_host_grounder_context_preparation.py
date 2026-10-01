@@ -15,6 +15,8 @@ from convexity_hunter.host_grounder_evidence_catalog import (
     parse_grounder_output_v0_3,
 )
 from convexity_hunter.host_grounder_runtime import (
+    DISCOVERY_SYSTEM_PROMPT_V0_5,
+    SEMANTIC_SYSTEM_PROMPT_V0_5,
     HostGrounderRuntimeError,
     run_host_grounder_same_run_evidence_catalog_v0_2,
 )
@@ -28,6 +30,7 @@ from tests.test_host_grounder_evidence_catalog import (
     _wire_envelope,
     _wire_bundle,
     _wire_verdict,
+    _catalog_for,
 )
 
 
@@ -89,6 +92,187 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
             host_context_preparer=preparer,
         )
         return result, calls
+
+    def _parse_producer(self, producer):
+        catalog = _catalog_for(self.run_input, self.context)
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=self.run_input.bounds.max_string_bytes,
+            max_array_items=self.run_input.bounds.max_array_items,
+            run_id=self.run_input.run_id,
+            canonical_input_hash=self.run_input.canonical_input_hash,
+            source_bodies=self.context.source_bodies,
+            catalog=catalog,
+        )
+        verdict = _wire_verdict(
+            self.run_input, self.context, catalog, envelope, envelope_bytes
+        )
+        verdict["hypotheses"] = verdict["hypotheses"][:len(producer["hypotheses"])]
+        for index, hypothesis in enumerate(verdict["hypotheses"]):
+            hypothesis["hypothesis_id"] = producer["hypotheses"][index]["hypothesis_id"]
+        return verdict
+
+    def test_v02_dispatches_and_audits_v05_without_changing_other_versions(self):
+        result, calls = self._invoke(lambda snapshot, receipt, original: original)
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertEqual(calls[0][1], DISCOVERY_SYSTEM_PROMPT_V0_5)
+        self.assertEqual(calls[1][1], SEMANTIC_SYSTEM_PROMPT_V0_5)
+        self.assertEqual(sidecar["producer_prompt_version"], "host-grounder-discovery-prompt-v0.5")
+        self.assertEqual(sidecar["schema_version"], "host-grounder-quote-localization-audit-v0.3")
+        self.assertEqual(
+            set(sidecar),
+            {
+                "schema_version", "run_id", "canonical_input_hash", "producer_wire_version",
+                "producer_prompt_version", "producer_content_sha256", "normalized_envelope_sha256",
+                "source_body_hashes", "verifier_wire_version", "validator_version",
+                "localizer_version", "catalog_schema_version", "catalog_generator_version",
+                "catalog_sha256",
+            },
+        )
+        self.assertEqual(sidecar["producer_wire_version"], "grounder-output-v0.3")
+        self.assertEqual(sidecar["verifier_wire_version"], "semantic-verdict-v0.3")
+        self.assertEqual(sidecar["validator_version"], "host-grounder-semantic-verifier-prompt-v0.5")
+        self.assertEqual(
+            result.build_result.semantic_validation.receipt["schema_version"],
+            "semantic-validation-v0.2",
+        )
+        self.assertEqual(len(calls), 2)
+
+    def test_nonnull_consumed_field_without_verified_binding_is_not_projected(self):
+        producer = copy.deepcopy(self.producer)
+        producer["field_bindings"] = [
+            item
+            for item in producer["field_bindings"]
+            if item["field_path"] != "/hypotheses/0/distribution_hypothesis"
+        ]
+        verdict = self._parse_producer(producer)
+
+        result, calls = self._invoke(
+            lambda snapshot, receipt, original: original,
+            producer=producer,
+            verdict=verdict,
+        )
+        diagnostics = result.build_result.diagnostics
+        self.assertEqual(len(calls), 2)
+        self.assertIsNone(result.build_result.submission)
+        self.assertTrue(
+            any(
+                item.code == "HYPOTHESIS_REJECTED_BY_VALIDATOR"
+                and "required field binding is not supported" in item.reason
+                for item in diagnostics
+            )
+        )
+
+    def test_bound_but_unresolved_and_omitted_hypotheses_are_never_auto_supported(self):
+        unresolved_verdict = copy.deepcopy(self.verdict)
+        unresolved_verdict["hypotheses"][0]["outcome"] = "unresolved"
+        unresolved_verdict["hypotheses"][0]["evidence_refs"] = []
+        for binding in unresolved_verdict["field_bindings"]:
+            binding["outcome"] = "unresolved"
+            binding["evidence_refs"] = []
+
+        bound_result, bound_calls = self._invoke(
+            lambda snapshot, receipt, original: original,
+            verdict=unresolved_verdict,
+        )
+        self.assertEqual(len(bound_calls), 2)
+        self.assertEqual(
+            bound_result.build_result.semantic_validation.receipt[
+                "verified_hypothesis_ids"
+            ],
+            (),
+        )
+        self.assertIsNone(bound_result.build_result.submission)
+
+        omitted_producer = copy.deepcopy(self.producer)
+        omitted_producer["hypotheses"] = []
+        omitted_producer["field_bindings"] = []
+        omitted_verdict = self._parse_producer(omitted_producer)
+        omitted_verdict["hypotheses"] = []
+        omitted_verdict["field_bindings"] = []
+        omitted_result, omitted_calls = self._invoke(
+            lambda snapshot, receipt, original: original,
+            producer=omitted_producer,
+            verdict=omitted_verdict,
+        )
+        self.assertEqual(len(omitted_calls), 2)
+        self.assertEqual(
+            omitted_result.build_result.semantic_validation.receipt[
+                "verified_hypothesis_ids"
+            ],
+            (),
+        )
+        self.assertIsNone(omitted_result.build_result.submission)
+
+    def test_unapproved_producer_prompt_version_fails_before_calls(self):
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            runtime_module._run_host_grounder_same_run_evidence_catalog(
+                self.run_input,
+                self.context,
+                discovery_client=_FakeClient("discovery", _canonical(self.producer), calls),
+                semantic_client=_FakeClient("semantic", _canonical(self.verdict), calls),
+                audit_holder=HostEvidenceCatalogAuditHolder(
+                    run_id=self.run_input.run_id,
+                    canonical_input_hash=self.run_input.canonical_input_hash,
+                ),
+                max_json_bytes=100_000,
+                max_source_body_bytes=20_000,
+                max_catalog_entries=100,
+                max_catalog_bytes=100_000,
+                max_catalog_paragraphs=100,
+                producer_prompt_version="host-grounder-discovery-prompt-v0.6",
+            )
+        self.assertEqual(raised.exception.code, "DISCOVERY_PROMPT_VERSION_INVALID")
+        self.assertEqual(calls, [])
+
+    def test_discovery_client_cannot_rewrite_the_pinned_prompt_version(self):
+        for corrupted_version in (
+            "host-grounder-discovery-prompt-v0.4",
+            "host-grounder-discovery-prompt-v0.6",
+            True,
+        ):
+            with self.subTest(corrupted_version=corrupted_version):
+                calls = []
+                holder = HostEvidenceCatalogAuditHolder(
+                    run_id=self.run_input.run_id,
+                    canonical_input_hash=self.run_input.canonical_input_hash,
+                )
+
+                class MutatingDiscovery(_FakeClient):
+                    def complete(client_self, system_prompt, source_prompt):
+                        receipt = super(MutatingDiscovery, client_self).complete(
+                            system_prompt, source_prompt
+                        )
+                        object.__setattr__(
+                            holder, "_producer_prompt_version", corrupted_version
+                        )
+                        return receipt
+
+                discovery = MutatingDiscovery(
+                    "discovery", _canonical(self.producer), calls
+                )
+                semantic = _FakeClient("semantic", _canonical(self.verdict), calls)
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    run_host_grounder_same_run_evidence_catalog_v0_2(
+                        self.run_input,
+                        self.context,
+                        discovery_client=discovery,
+                        semantic_client=semantic,
+                        audit_holder=holder,
+                        max_json_bytes=100_000,
+                        max_source_body_bytes=20_000,
+                        max_catalog_entries=100,
+                        max_catalog_bytes=100_000,
+                        max_catalog_paragraphs=100,
+                        host_context_preparer=lambda snapshot, receipt, original: original,
+                    )
+
+                self.assertEqual(raised.exception.code, "AUDIT_RETENTION_FAILED")
+                self.assertEqual([entry[0] for entry in calls], ["discovery"])
+                self.assertFalse(holder.finalized)
 
     def test_validated_snapshot_dynamic_ids_fill_only_absent_context(self):
         reference = object()

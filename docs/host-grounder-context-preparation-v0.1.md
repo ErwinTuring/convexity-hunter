@@ -111,6 +111,50 @@ failures use `HOST_CONTEXT_PREPARATION_REJECTED`. Invalid receipts retain
 `SEMANTIC_VERDICT_REJECTED`. No exception details are emitted. Host supplies
 existing listing/fact evidence; no new evidence type or provider is defined.
 
+## Producer binding-completeness clarification — frozen successor
+
+Status: **FROZEN / IMPLEMENTED / VALIDATED**. A bounded read-only
+preflight found a prompt-completeness gap, not a parser/Builder contradiction
+or a recovered cause for discarded historical verdicts. Empty hypotheses
+remain lawful when no hypothesis is supported. Structural parsing may accept
+partial evidence; it does not imply Builder projectability.
+
+Freeze `DISCOVERY_SYSTEM_PROMPT_V0_5` only for the existing internal catalog
+runtime v0.2. Derive it from, but do not modify, v0.4. Historical v0.4 UTF-8
+SHA-256 is `c20ffb8681a10233f7395fc221ee88d5b2e8773fbdb7b3b5f9b012fa06e9796b`;
+catalog runtime v0.1 and all legacy paths retain their exact prompt dispatch.
+
+The successor explicitly requires one catalog-evidence binding for every
+non-null claim event date and every entity item, and every non-null hypothesis
+symbol, impact path, distribution mode/hypothesis, expected-window bound and
+reassessment date. If such a value cannot be evidence-linked, leave it null
+(or omit the entity item), disclose the gap and leave the affected unanswered
+subquestion unresolved. Never manufacture bindings, facts, temporal authority
+or hypotheses to complete a schema. Interpretations stay interpretations;
+producer-supported labels never confer Host or EI authority.
+
+Pin the fixed selected producer version when the audit holder begins; its
+finalized version must identify the prompt actually dispatched. Keep audit
+schema `host-grounder-quote-localization-audit-v0.3` and keys unchanged. v0.1
+records producer v0.4; v0.2 records producer v0.5. No public route/argument,
+wire, verifier prompt v0.5, receipt v0.2, evidence gate, call budget, source
+authority, default configuration or EI behavior changes.
+
+Required validation: literal v0.4 hash and legacy dispatch/audit compatibility;
+v0.2 dispatch/audit v0.5; closed audit version validation; unchanged wire,
+verifier, receipt and call counts; bound versus omitted-field controls with
+no automatic support. Independent implementation review is required before
+commit or any new live run. This freeze authorizes BUILD, not live execution.
+
+Implementation and independent review passed after adding a final audit-version
+match check. Mutating the stored version to another permitted version, an
+unknown version or Boolean fails with `AUDIT_RETENTION_FAILED` before the
+semantic call. Validation: 33 focused tests, 1,635 full-suite tests (365.068
+seconds), compileall, public callable-signature/declared-export compatibility
+and diff checks. A pre-fix full-suite attempt was deliberately interrupted and
+is not a passing validation result. The existing urllib3/LibreSSL warning is
+non-fatal. No v0.5 product/model trial was executed by this BUILD.
+
 ## Sanitized failure-stage extension
 
 Status: **FROZEN / IMPLEMENTED** after bounded read-only preflight and

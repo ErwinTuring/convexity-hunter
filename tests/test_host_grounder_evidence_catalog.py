@@ -23,6 +23,7 @@ from convexity_hunter.host_grounder_run_input import (
 )
 from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT_V0_4,
+    DISCOVERY_SYSTEM_PROMPT_V0_5,
     SEMANTIC_SYSTEM_PROMPT_V0_5,
     HostGrounderRuntimeError,
     run_host_grounder_same_run_evidence_catalog_v0_1,
@@ -562,6 +563,88 @@ class EvidenceCatalogWireTests(unittest.TestCase):
 
 
 class EvidenceCatalogRuntimeTests(unittest.TestCase):
+    def test_frozen_v04_hash_and_v05_exhaustive_consumed_binding_map(self):
+        self.assertEqual(
+            hashlib.sha256(DISCOVERY_SYSTEM_PROMPT_V0_4.encode("utf-8")).hexdigest(),
+            "c20ffb8681a10233f7395fc221ee88d5b2e8773fbdb7b3b5f9b012fa06e9796b",
+        )
+        v04_prefix_as_v05 = DISCOVERY_SYSTEM_PROMPT_V0_4.replace(
+            "Prompt version: host-grounder-discovery-prompt-v0.4.",
+            "Prompt version: host-grounder-discovery-prompt-v0.5.",
+            1,
+        )
+        self.assertTrue(DISCOVERY_SYSTEM_PROMPT_V0_5.startswith(v04_prefix_as_v05))
+
+        expected_map = "; ".join(
+            (
+                "/claims/{i}/event_date=date",
+                "/claims/{i}/entity_refs/{j}=entity",
+                "/hypotheses/{i}/underlying_symbol=entity",
+                "/hypotheses/{i}/impact_path=hypothesis",
+                "/hypotheses/{i}/distribution_mode=hypothesis",
+                "/hypotheses/{i}/distribution_hypothesis=hypothesis",
+                "/hypotheses/{i}/expected_window/start_date=date",
+                "/hypotheses/{i}/expected_window/end_date=date",
+                "/hypotheses/{i}/reassessment/reassessment_by=date",
+            )
+        )
+        self.assertIn("map: " + expected_map + ".", DISCOVERY_SYSTEM_PROMPT_V0_5)
+        self.assertNotIn("binding-completeness clarification", DISCOVERY_SYSTEM_PROMPT_V0_4)
+
+    def test_audit_holder_pins_only_closed_producer_prompt_versions(self):
+        run_input, context = _fixture()
+        catalog = _catalog_for(run_input, context)
+        for version in (
+            "host-grounder-discovery-prompt-v0.4",
+            "host-grounder-discovery-prompt-v0.5",
+        ):
+            with self.subTest(version=version):
+                holder = HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                )
+                holder._begin(
+                    run_input.run_id,
+                    run_input.canonical_input_hash,
+                    catalog.canonical_utf8,
+                    catalog.catalog_sha256,
+                    producer_prompt_version=version,
+                )
+                self.assertEqual(holder._producer_prompt_version, version)
+
+        default_holder = HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        )
+        default_holder._begin(
+            run_input.run_id,
+            run_input.canonical_input_hash,
+            catalog.canonical_utf8,
+            catalog.catalog_sha256,
+        )
+        self.assertEqual(
+            default_holder._producer_prompt_version,
+            "host-grounder-discovery-prompt-v0.4",
+        )
+
+        for invalid in (
+            "host-grounder-discovery-prompt-v0.6", "", True, 1, [], {}, object()
+        ):
+            with self.subTest(invalid_type=type(invalid).__name__):
+                holder = HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                )
+                with self.assertRaises(ValueError):
+                    holder._begin(
+                        run_input.run_id,
+                        run_input.canonical_input_hash,
+                        catalog.canonical_utf8,
+                        catalog.catalog_sha256,
+                        producer_prompt_version=invalid,
+                    )
+                self.assertFalse(holder.finalized)
+
     def test_explicit_route_sends_full_body_and_catalog_and_retains_closed_audit(self):
         run_input, context = _fixture()
         catalog, producer, _, _, verdict = _wire_bundle(run_input, context)

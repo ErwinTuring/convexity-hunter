@@ -86,6 +86,13 @@ May 29 / contradicted May 28, Host verified/rejected respectively. Model
 coverage supported became Host unresolved due to the negative control. The
 attempt is spent; this is not product Grounder or EI acceptance. Next inspect
 producer/Builder binding compatibility and remaining independent Host evidence.
+That preflight identified a prompt-completeness gap, not a recovered historical
+rejection cause. The [binding clarification](host-grounder-context-preparation-v0.1.md#producer-binding-completeness-clarification--frozen-successor)
+is implemented: internal catalog v0.2 dispatches/audits producer v0.5, while
+v0.1 retains byte-identical v0.4. No gate or wire changes. Independent review,
+33 focused/1,635 full-suite tests, compileall and compatibility/diff checks
+passed. No live v0.5 run yet; independent listing MIC/currency evidence remains
+missing, and source/Host identity capability is the next bounded preflight.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
