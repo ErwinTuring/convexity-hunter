@@ -112,6 +112,12 @@ Independent snapshot/hash review now passes `READY_FOR_BOUNDED_HOST_KEY`
 authority. No prices were consumed, MIC inferred or identity automation claimed.
 The next bounded step is the unchanged v0.5 producer/Builder/EI path; identity
 evidence is ready, live model/product acceptance is not yet proven.
+The separately preregistered [v0.5 product trial](standalone-iren-v05-product-trial-2026-10-02.md)
+has now run once: `PRODUCER_ENVELOPE_INVALID`, discovery reservation 1,
+semantic/source calls 0. No receipt, preparer, Builder or EI followed.
+Failure stage/check and exact rejection cause remain unknown. Attempt spent,
+no retry/refetch; independent identity readiness is not revoked. Production
+unchanged. Next inspect producer/parser alignment offline.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed

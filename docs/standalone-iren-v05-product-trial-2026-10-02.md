@@ -59,5 +59,26 @@ AST and actual default offline execution passed. Synthetic v0.5 dispatch
 reached Builder and EI INCOMPLETE; six preparer controls passed. The synthetic
 early discovery-failure control reported discovery reservation 1, semantic 0,
 and semantic calls 0. Offline source/model calls and credential reads were 0.
-No production or test files are changed by this experiment. Independent safety
-review and actual execution outcome will be recorded separately.
+No production or test files are changed by this experiment. Independent
+safety review passed on these exact frozen bytes after the counter fix.
+
+## Actual outcome — attempt spent
+
+After preregistration commit/push
+`914e0baa8609078eedf8d1b96feed57b9af5569c` and hash-specific Main authorization,
+the runner executed once and stopped at `PRODUCER_ENVELOPE_INVALID`.
+Actual reserved requests: discovery 1, semantic 0. Source calls 0; no market
+data or Core used. `failure_stage` and `failure_check` are null. Receipt
+partitions are null; no semantic receipt, preparer, Builder or EI assessment
+was reached. Token usage and the exact producer rejection cause are not
+available in the retained sanitized result. This proves neither EI acceptance
+nor a failure of the independently reviewed identity evidence.
+
+External result (mode 0600):
+`/private/tmp/iren-product-event-v05-20261002-83078381557f406ba0d4f27e79bb6e27/iren-product-event-v05-20261002-83078381557f406ba0d4f27e79bb6e27.result.json`.
+SHA-256:
+`86ef28a4a033b45005fb905d39689c02817c74835f760635ac35a8d952424ff3`.
+The exclusive attempt marker remains. No retry, source refetch, prompt tuning
+or acceptance-gate relaxation is authorized by this protocol. Next inspect
+the frozen producer/parser alignment offline; do not infer the missing live
+failure detail or treat another blind request as diagnosis.

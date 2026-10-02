@@ -123,6 +123,13 @@ to issuer/Nasdaq share-class proof. No binding/EI run yet. This removes the
 bounded identity-evidence gap, not the need for same-run semantic verification
 or an independent general-purpose listing resolver. Next: one bounded v0.5
 producer/Builder/EI trial using retained bodies, no source/quote calls.
+That [v0.5 trial](standalone-iren-v05-product-trial-2026-10-02.md) is now spent:
+after preregistration and exact-hash independent safety review, one discovery
+reservation stopped at `PRODUCER_ENVELOPE_INVALID`; semantic/source calls 0.
+Failure stage/check and receipt partitions are null; preparer/Builder/EI were
+not reached. No retry or raw-output retention. Exact cause and usage remain
+unknown. Identity readiness stays intact; next is a narrow offline
+producer/parser alignment check, not another blind live request.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO
