@@ -642,6 +642,23 @@ class HostGrounderRuntimeTests(unittest.TestCase):
             )
         self.assertEqual([call[0] for call in calls], ["discovery"])
 
+    def test_legacy_producer_error_keeps_null_diagnostics(self):
+        run_input, context, _envelope_value, _discovery_json, semantic_json = _fixture()
+        discovery, semantic, calls = _clients("not-json", semantic_json)
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            run_host_grounder_same_run(
+                run_input,
+                context,
+                discovery_client=discovery,
+                semantic_client=semantic,
+                max_json_bytes=100_000,
+                max_source_body_bytes=20_000,
+            )
+        self.assertEqual(raised.exception.code, "PRODUCER_ENVELOPE_INVALID")
+        self.assertIsNone(raised.exception.failure_stage)
+        self.assertIsNone(raised.exception.failure_check)
+        self.assertEqual([call[0] for call in calls], ["discovery"])
+
     def test_bad_verdict_fails_closed_after_exactly_two_calls(self):
         run_input, context, _envelope_value, discovery_json, _semantic_json = _fixture()
         discovery, semantic, calls = _clients(discovery_json, "not json")

@@ -1,5 +1,14 @@
 # Project State
 
+Latest executable boundary (2026-10-02): bounded IREN identity references are
+reviewed; the retained-source v0.5 trial stopped before semantic/Builder/EI at
+`PRODUCER_ENVELOPE_INVALID`. No product acceptance is claimed and the attempt
+is spent. [Producer diagnostics v0.1](host-grounder-producer-diagnostics-v0.1.md)
+is frozen, implemented and independently reviewed. Sixty-one related tests,
+compileall, API/signature compatibility, docs and diff checks passed; no full
+suite rerun for this diagnostic-only change. No fresh live call or Core
+risk-policy default is authorized by the BUILD. Earlier work-unit evidence follows.
+
 Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented in opt-in catalog runtime v0.2. Independent review
 passed after constructor-bypass correction; 101 related tests, full 1,622-test

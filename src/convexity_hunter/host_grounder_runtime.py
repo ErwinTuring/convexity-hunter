@@ -321,12 +321,26 @@ class HostGrounderRuntimeError(RuntimeError):
         self, code: str, *, failure_stage: Optional[str] = None,
         failure_check: Optional[str] = None,
     ) -> None:
+        producer_failure_checks = (
+            "producer_wire_normalization",
+            "producer_run_stage_binding",
+            "producer_coverage_order",
+            "producer_binding_extraction",
+        )
         if failure_stage is not None and (
             type(failure_stage) is not str
             or failure_stage not in (
                 "semantic_wire_parse",
                 "semantic_receipt_construction",
                 "semantic_receipt_validation",
+                "producer_envelope_normalization",
+            )
+            or (
+                failure_stage == "producer_envelope_normalization"
+                and (
+                    code != "PRODUCER_ENVELOPE_INVALID"
+                    or failure_check not in producer_failure_checks
+                )
             )
         ):
             raise ValueError("invalid failure_stage")
@@ -336,8 +350,19 @@ class HostGrounderRuntimeError(RuntimeError):
                 "wire_decode", "topshape", "run_binding", "catalog_validation",
                 "producer_binding_alignment", "evidence_ref_expansion",
                 "internal_verdict_validation",
+                *producer_failure_checks,
             )
-            or failure_stage != "semantic_wire_parse"
+            or not (
+                (
+                    failure_stage == "semantic_wire_parse"
+                    and failure_check not in producer_failure_checks
+                )
+                or (
+                    failure_stage == "producer_envelope_normalization"
+                    and code == "PRODUCER_ENVELOPE_INVALID"
+                    and failure_check in producer_failure_checks
+                )
+            )
         ):
             raise ValueError("invalid failure_check")
         self.code = code
@@ -1253,6 +1278,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     except Exception:
         raise HostGrounderRuntimeError("AUDIT_RETENTION_FAILED") from None
 
+    _producer_failure_check = "producer_wire_normalization"
     try:
         envelope, normalized_envelope_bytes = parse_grounder_output_v0_3(
             discovery_call.content,
@@ -1264,17 +1290,30 @@ def _run_host_grounder_same_run_evidence_catalog(
             source_bodies=frozen_context.source_bodies,
             catalog=catalog,
         )
+        _producer_failure_check = "producer_run_stage_binding"
         if envelope["request_id"] != run_input.run_id or envelope["stage"] != "semantic":
             raise ValueError("producer run/stage mismatch")
+        _producer_failure_check = "producer_coverage_order"
         coverage_ids = tuple(item["subquestion_id"] for item in envelope["coverage"])
         validate_ordered_coverage_ids(run_input, coverage_ids)
+        _producer_failure_check = "producer_wire_normalization"
         envelope_json = normalized_envelope_bytes.decode("utf-8", errors="strict")
+        _producer_failure_check = "producer_binding_extraction"
         producer_wire = json.loads(discovery_call.content)
         producer_binding_evidence_ids = tuple(
             item["evidence_id"] for item in producer_wire["field_bindings"]
         )
     except Exception:
-        raise HostGrounderRuntimeError("PRODUCER_ENVELOPE_INVALID") from None
+        raise HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage=(
+                "producer_envelope_normalization"
+                if context_preparer is not None else None
+            ),
+            failure_check=(
+                _producer_failure_check if context_preparer is not None else None
+            ),
+        ) from None
 
     try:
         audit = audit_holder._finalize(

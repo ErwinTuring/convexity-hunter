@@ -1,9 +1,10 @@
 import datetime
 import copy
+import hashlib
 import json
 import unittest
 from dataclasses import replace
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import Mock, patch
 
 from convexity_hunter import host_grounder_builder as builder_module
@@ -18,6 +19,7 @@ from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT_V0_5,
     SEMANTIC_SYSTEM_PROMPT_V0_5,
     HostGrounderRuntimeError,
+    run_host_grounder_same_run_evidence_catalog_v0_1,
     run_host_grounder_same_run_evidence_catalog_v0_2,
 )
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
@@ -139,6 +141,154 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
             "semantic-validation-v0.2",
         )
         self.assertEqual(len(calls), 2)
+
+    def test_producer_diagnostics_preserve_valid_normalized_bytes_and_audit(self):
+        catalog = _catalog_for(self.run_input, self.context)
+        _, expected_normalized_bytes = parse_grounder_output_v0_3(
+            _canonical(self.producer),
+            100_000,
+            max_string_bytes=self.run_input.bounds.max_string_bytes,
+            max_array_items=self.run_input.bounds.max_array_items,
+            run_id=self.run_input.run_id,
+            canonical_input_hash=self.run_input.canonical_input_hash,
+            source_bodies=self.context.source_bodies,
+            catalog=catalog,
+        )
+
+        result, calls = self._invoke(lambda snapshot, receipt, original: original)
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        producer_bytes = _canonical(self.producer).encode("utf-8")
+        self.assertEqual(result.audit.normalized_envelope_utf8, expected_normalized_bytes)
+        self.assertEqual(result.audit.producer_content_utf8, producer_bytes)
+        self.assertEqual(
+            sidecar["normalized_envelope_sha256"],
+            hashlib.sha256(expected_normalized_bytes).hexdigest(),
+        )
+        self.assertEqual(sidecar["producer_content_sha256"], hashlib.sha256(producer_bytes).hexdigest())
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+
+    def test_producer_normalization_failure_checks_are_closed_and_fail_early(self):
+        catalog = _catalog_for(self.run_input, self.context)
+        parsed_envelope, normalized_bytes = parse_grounder_output_v0_3(
+            _canonical(self.producer),
+            100_000,
+            max_string_bytes=self.run_input.bounds.max_string_bytes,
+            max_array_items=self.run_input.bounds.max_array_items,
+            run_id=self.run_input.run_id,
+            canonical_input_hash=self.run_input.canonical_input_hash,
+            source_bodies=self.context.source_bodies,
+            catalog=catalog,
+        )
+        wrong_binding = dict(parsed_envelope)
+        wrong_binding["request_id"] = "other-run"
+        runtime_json = SimpleNamespace(
+            dumps=json.dumps,
+            loads=Mock(side_effect=ValueError("PRIVATE_DIAGNOSTIC_SENTINEL")),
+        )
+        injections = (
+            (
+                "producer_wire_normalization",
+                lambda: patch.object(
+                    runtime_module,
+                    "parse_grounder_output_v0_3",
+                    side_effect=ValueError("PRIVATE_DIAGNOSTIC_SENTINEL"),
+                ),
+            ),
+            (
+                "producer_run_stage_binding",
+                lambda: patch.object(
+                    runtime_module,
+                    "parse_grounder_output_v0_3",
+                    return_value=(wrong_binding, normalized_bytes),
+                ),
+            ),
+            (
+                "producer_coverage_order",
+                lambda: patch.object(
+                    runtime_module,
+                    "validate_ordered_coverage_ids",
+                    side_effect=ValueError("PRIVATE_DIAGNOSTIC_SENTINEL"),
+                ),
+            ),
+            (
+                "producer_wire_normalization",
+                lambda: patch.object(
+                    runtime_module,
+                    "parse_grounder_output_v0_3",
+                    return_value=(parsed_envelope, object()),
+                ),
+            ),
+            (
+                "producer_binding_extraction",
+                lambda: patch.object(runtime_module, "json", runtime_json),
+            ),
+        )
+        for check, make_injection in injections:
+            preparer = Mock()
+            calls = []
+            discovery = _FakeClient("discovery", _canonical(self.producer), calls)
+            semantic = _FakeClient("semantic", _canonical(self.verdict), calls)
+            with self.subTest(check=check), make_injection(), patch.object(
+                runtime_module, "_build_host_grounder_v0_2"
+            ) as builder:
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    run_host_grounder_same_run_evidence_catalog_v0_2(
+                        self.run_input,
+                        self.context,
+                        discovery_client=discovery,
+                        semantic_client=semantic,
+                        audit_holder=HostEvidenceCatalogAuditHolder(
+                            run_id=self.run_input.run_id,
+                            canonical_input_hash=self.run_input.canonical_input_hash,
+                        ),
+                        max_json_bytes=100_000,
+                        max_source_body_bytes=20_000,
+                        max_catalog_entries=100,
+                        max_catalog_bytes=100_000,
+                        max_catalog_paragraphs=100,
+                        host_context_preparer=preparer,
+                    )
+            error = raised.exception
+            self.assertEqual(error.code, "PRODUCER_ENVELOPE_INVALID")
+            self.assertEqual(error.failure_stage, "producer_envelope_normalization")
+            self.assertEqual(error.failure_check, check)
+            self.assertEqual(error.args, ("PRODUCER_ENVELOPE_INVALID",))
+            self.assertEqual(str(error), "PRODUCER_ENVELOPE_INVALID")
+            self.assertEqual(
+                repr(error),
+                "HostGrounderRuntimeError(code='PRODUCER_ENVELOPE_INVALID')",
+            )
+            self.assertIsNone(error.__cause__)
+            self.assertTrue(error.__suppress_context__)
+            self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", str(error) + repr(error))
+            self.assertEqual([call[0] for call in calls], ["discovery"])
+            preparer.assert_not_called()
+            builder.assert_not_called()
+
+    def test_catalog_v01_producer_errors_keep_null_diagnostics(self):
+        calls = []
+        discovery = _FakeClient("discovery", "not-json", calls)
+        semantic = _FakeClient("semantic", _canonical(self.verdict), calls)
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            run_host_grounder_same_run_evidence_catalog_v0_1(
+                self.run_input,
+                self.context,
+                discovery_client=discovery,
+                semantic_client=semantic,
+                audit_holder=HostEvidenceCatalogAuditHolder(
+                    run_id=self.run_input.run_id,
+                    canonical_input_hash=self.run_input.canonical_input_hash,
+                ),
+                max_json_bytes=100_000,
+                max_source_body_bytes=20_000,
+                max_catalog_entries=100,
+                max_catalog_bytes=100_000,
+                max_catalog_paragraphs=100,
+            )
+        self.assertEqual(raised.exception.code, "PRODUCER_ENVELOPE_INVALID")
+        self.assertIsNone(raised.exception.failure_stage)
+        self.assertIsNone(raised.exception.failure_check)
+        self.assertEqual([call[0] for call in calls], ["discovery"])
 
     def test_nonnull_consumed_field_without_verified_binding_is_not_projected(self):
         producer = copy.deepcopy(self.producer)
@@ -444,6 +594,21 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
                     HostGrounderRuntimeError("CODE", failure_stage=stage)
                 self.assertEqual(str(raised.exception), "invalid failure_stage")
                 self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", repr(raised.exception))
+        for code, check in (
+            ("CODE", "producer_wire_normalization"),
+            ("PRODUCER_ENVELOPE_INVALID", None),
+            ("PRODUCER_ENVELOPE_INVALID", "PRIVATE_DIAGNOSTIC_SENTINEL"),
+        ):
+            with self.subTest(producer_code=code, producer_check=check):
+                with self.assertRaises(ValueError) as raised:
+                    HostGrounderRuntimeError(
+                        code,
+                        failure_stage="producer_envelope_normalization",
+                        failure_check=check,
+                    )
+                if check == "PRIVATE_DIAGNOSTIC_SENTINEL":
+                    self.assertEqual(str(raised.exception), "invalid failure_stage")
+                    self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", repr(raised.exception))
 
     def test_legacy_catalog_semantic_errors_keep_none_stage_and_representations(self):
         self.assertIsNone(HostGrounderRuntimeError("CODE").failure_stage)
@@ -574,6 +739,55 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "^invalid failure_check$"):
                 HostGrounderRuntimeError("CODE", failure_stage="semantic_wire_parse", failure_check=check)
         self.assertIsNone(HostGrounderRuntimeError("CODE").failure_check)
+
+        producer_checks = (
+            "producer_wire_normalization",
+            "producer_run_stage_binding",
+            "producer_coverage_order",
+            "producer_binding_extraction",
+        )
+        for check in producer_checks:
+            error = HostGrounderRuntimeError(
+                "PRODUCER_ENVELOPE_INVALID",
+                failure_stage="producer_envelope_normalization",
+                failure_check=check,
+            )
+            self.assertEqual(error.failure_stage, "producer_envelope_normalization")
+            self.assertEqual(error.failure_check, check)
+            self.assertEqual(error.args, ("PRODUCER_ENVELOPE_INVALID",))
+            self.assertEqual(
+                repr(error),
+                "HostGrounderRuntimeError(code='PRODUCER_ENVELOPE_INVALID')",
+            )
+            for stage in (None, "semantic_wire_parse", "semantic_receipt_construction", "semantic_receipt_validation"):
+                with self.assertRaises(ValueError):
+                    HostGrounderRuntimeError(
+                        "PRODUCER_ENVELOPE_INVALID",
+                        failure_stage=stage,
+                        failure_check=check,
+                    )
+        for check in (
+            "wire_decode",
+            "topshape",
+            "run_binding",
+            "catalog_validation",
+            "producer_binding_alignment",
+            "evidence_ref_expansion",
+            "internal_verdict_validation",
+        ):
+            with self.assertRaises(ValueError):
+                HostGrounderRuntimeError(
+                    "PRODUCER_ENVELOPE_INVALID",
+                    failure_stage="producer_envelope_normalization",
+                    failure_check=check,
+                )
+        with self.assertRaisesRegex(ValueError, "^invalid failure_check$") as raised:
+            HostGrounderRuntimeError(
+                "PRODUCER_ENVELOPE_INVALID",
+                failure_stage="semantic_wire_parse",
+                failure_check="PRIVATE_DIAGNOSTIC_SENTINEL",
+            )
+        self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", str(raised.exception))
 
     def test_snapshot_and_source_mutations_are_sanitized_and_stop_builder(self):
         callbacks = (

@@ -9,7 +9,20 @@ Repository: `ErwinTuring/convexity-hunter`
   `git fetch origin main`, `git rev-parse HEAD`, and
   `git status --short --branch`; Git is the sole code-state authority.
 
-## Approved target applicability — 2026-09-18
+## Current executable boundary — 2026-10-02
+
+Reviewed [IREN identity references](standalone-iren-identity-packet-2026-10-02.md)
+are ready for the bounded Host key. The new [v0.5 product trial](standalone-iren-v05-product-trial-2026-10-02.md)
+stopped at `PRODUCER_ENVELOPE_INVALID`, before semantic/Builder/EI. Its attempt
+is spent; exact cause remains unknown. No live product acceptance is claimed.
+The [closed producer diagnostics contract](host-grounder-producer-diagnostics-v0.1.md)
+is frozen, implemented and independently reviewed. Sixty-one related tests,
+compileall, API/signature compatibility, docs and diff checks passed; no new
+full-suite run. Legacy behavior and acceptance gates remain unchanged.
+No new live request is authorized by that diagnostic BUILD.
+Core research still requires separately approved cost/risk policy inputs.
+
+## Prior bounded work and approved target applicability
 
 Latest narrow M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented behind opt-in catalog runtime v0.2. Independent

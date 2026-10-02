@@ -82,3 +82,11 @@ The exclusive attempt marker remains. No retry, source refetch, prompt tuning
 or acceptance-gate relaxation is authorized by this protocol. Next inspect
 the frozen producer/parser alignment offline; do not infer the missing live
 failure detail or treat another blind request as diagnosis.
+
+The subsequent bounded offline alignment check did not establish a causal
+runtime defect. v0.5 asks for complete consumed-value bindings; parsing a
+structurally valid partial envelope does not grant evidence support or Builder
+projectability. The existing Builder remains fail-closed. No prompt or
+acceptance change follows from that difference. The next narrow unit is
+[closed producer failure diagnostics](host-grounder-producer-diagnostics-v0.1.md),
+not another live trial or reconstruction of the missing historical payload.
