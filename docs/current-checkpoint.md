@@ -82,6 +82,14 @@ Reservations 1/1, source 0, no raw retention/receipt/Builder/EI. Attempt spent;
 the precise call failure is unknown, not presumed timeout or binding mismatch.
 Next: bounded closed-code call diagnosis, not a blind retry or budget increase.
 
+Quota pause: weekly remaining reached approximately 2%; no further live call.
+Worker prepared an external transport-observer runner and reported offline PASS:
+`/private/tmp/iren-transport-observer-20261002-42427e65-16e8-4e17-8d83-ec6ea12e84da/runner.py`,
+SHA-256 `d639cd292c52b8ce1e0dda67808c6e9ce59c29b1765b0253ab6a17336c0627dd`.
+Independent safety review, preregistration and exact-hash Main gate remain
+pending; it is **not live-ready**. Preparation agent stopped and files preserved.
+Resume with these gates, not another producer/model/budget change or raw capture.
+
 ## Prior bounded work and approved target applicability
 
 Latest narrow M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
