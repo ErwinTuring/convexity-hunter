@@ -43,6 +43,14 @@ missing bindings alone do not explain this schema-stage rejection. The raw
 output is unavailable for replay. Further live calls stop until a reproducible
 schema defect or narrowly preregistered exact validation-reason mechanism exists.
 Core research still requires separately approved cost/risk policy inputs.
+The independently reviewed [exact schema-reason experiment](standalone-iren-schema-reason-trial-2026-10-02.md)
+then consumed one discovery reservation and stopped earlier at canonicalization;
+semantic/source 0, schema observer not invoked, no receipt/Builder/EI. Attempt
+spent. Serialization failure versus expanded-size overflow is not distinguished.
+Offline audit ran no synthetic fixture and establishes no numeric limit change.
+Further blind calls stop. A bounded private model-JSON capture/local-replay
+replan requires user authorization because it changes this experiment's raw
+retention boundary; no capture or new live operation is yet authorized.
 
 ## Prior bounded work and approved target applicability
 

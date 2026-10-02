@@ -24,6 +24,12 @@ subsequently stopped at `producer_v0_3_internal_v0_1_schema`, before semantic/
 receipt/Builder/EI. Discovery reservation 1, semantic/source 0. Its census is
 unvalidated structural output only. Attempt spent; offline schema/prompt audit
 is next. No independent Event Grounder product acceptance is claimed.
+The subsequent [exact schema-reason experiment](standalone-iren-schema-reason-trial-2026-10-02.md)
+ran once after independent runner safety review and preregistration. It stopped
+at canonicalization, before the schema observer; discovery reservation 1,
+semantic/source 0. Expanded size and exact cause remain unknown. No production
+change or live EI acceptance. Private model-output retention/local replay is a
+proposed debugging replan pending user authority, not a completed capability.
 
 Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented in opt-in catalog runtime v0.2. Independent review

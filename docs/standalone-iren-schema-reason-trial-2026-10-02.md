@@ -55,3 +55,44 @@ deliberately conservative, not asserted exhaustive.
 Independent review of these exact runner bytes passed: original parser
 result/exception identity, finally-restoration, safe closed reasons, inherited
 pins and exclusive live gate verified; default offline controls rerun passed.
+
+## Actual outcome — attempt spent
+
+After `9f31cbf` was committed/pushed and Main authorized the exact runner,
+one discovery reservation was consumed; semantic/source calls were zero.
+Result: `STOPPED / PRODUCER_ENVELOPE_INVALID`, stage
+`producer_envelope_normalization`, check `producer_v0_3_canonical_size`.
+The schema observer was not invoked: `internal_schema_reason=null`.
+No receipt, preparation, Builder, EI, Core or market data followed. No retry.
+This outcome does not identify the earlier internal-schema failure.
+
+Unvalidated census only: 21,725 UTF-8 bytes, 13 claims, one hypothesis,
+26 field bindings, four coverage entries; root/schema/request/stage matching
+booleans all true. The expanded normalized length is unknown. Review the
+canonicalization failure conditions and resource profile offline before any
+further operation; do not infer size-limit overflow solely from the label.
+
+Result (0600):
+`/private/tmp/iren-producer-diagnostic-schema-reason-20261002-e8f18691-55a6-4261-ba02-ee88177da84e/iren-producer-diagnostic-schema-reason-20261002-e8f18691-55a6-4261-ba02-ee88177da84e.result.json`.
+SHA-256: `bc622642dc794dcf11a49f66778b960be0c7c3e3ba271149e8015f277daf02a5`.
+The exclusive marker remains; raw output is not retained or exposed.
+
+## Bounded offline conclusion and next decision
+
+Read-only inspection confirms normalization serializes before checking length.
+The observed label therefore covers both serialization failure (including
+non-finite float overflow or lone-surrogate text) and expanded bytes exceeding
+40,000. No expanded-size measurement or synthetic fixture was executed in this
+audit. Actual cause remains unknown. Conditional quote-only bound for the
+recorded 39 claim/binding references is 39 × 9,423 = 367,497 bytes; it is not
+the actual expanded size and does not justify selecting a larger limit.
+
+Further blind live attempts are stopped. The proposed root-cause replan is one
+separately authorized private, bounded model-output capture for local replay:
+SEC-only public inputs, external credentials never included in the model input,
+directory 0700/file 0600, no raw stdout/Git/market payload, no schema relaxation.
+This changes the experiment's no-raw-retention boundary and is **pending user
+authorization**, not implemented or executed. No old payload is recoverable and
+no old attempt may be reopened. Alternatively, preserve the current boundary
+and accept that the exact cause remains unavailable without further diagnostic
+instrumentation. Neither option establishes EI or Core readiness.
