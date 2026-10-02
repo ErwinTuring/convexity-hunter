@@ -33,6 +33,8 @@ from .host_grounder_evidence_catalog import (
     _PRODUCER_PROMPT_VERSION_V0_4,
     _PRODUCER_PROMPT_VERSION_V0_5,
     _PRODUCER_PROMPT_VERSION_V0_6,
+    _VERIFIER_PROMPT_VERSION as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
+    _VERIFIER_PROMPT_VERSION_V0_6 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
     build_host_evidence_catalog,
     parse_grounder_output_v0_3,
     _parse_grounder_output_v0_3_with_progress,
@@ -61,7 +63,6 @@ _VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.2"
 _QUOTE_LOCALIZED_PRODUCER_PROMPT_VERSION = "host-grounder-discovery-prompt-v0.3"
 _QUOTE_LOCALIZED_VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.4"
 _QUOTE_LOCALIZATION_AUDIT_SCHEMA_VERSION = "host-grounder-quote-localization-audit-v0.2"
-_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.5"
 _PRODUCER_V0_3_FAILURE_CHECKS = (
     "producer_v0_3_wire_decode",
     "producer_v0_3_root_shape",
@@ -336,6 +337,26 @@ SEMANTIC_SYSTEM_PROMPT_V0_5 = (
     "fallible supported, contradicted, and unresolved assessment rules. "
     + "Identity closure is exact:"
     + _semantic_v0_5_suffix
+)
+
+SEMANTIC_SYSTEM_PROMPT_V0_6 = _replace_prompt_fragment(
+    _replace_prompt_fragment(
+        SEMANTIC_SYSTEM_PROMPT_V0_5,
+        "host-grounder-semantic-verifier-prompt-v0.5.",
+        "host-grounder-semantic-verifier-prompt-v0.6.",
+    ),
+    "For a supported field binding, cite the same catalog evidence_id as the envelope binding.",
+    "For a supported field binding at index i, cite "
+    "producer_binding_evidence_map[i][\"evidence_id\"].",
+) + (
+    "\n\nHost-derived producer_binding_evidence_map (v0.6) is an ordered list of "
+    "{\"index\": 0, \"evidence_id\": \"FORMAT_ONLY_ID\"} items. Index is the "
+    "zero-based producer field_bindings position. The Host supplies this map only "
+    "after producer validation, preserving order and repeated IDs; an empty "
+    "field_bindings array maps to []. This is lexical correspondence only: it "
+    "establishes no truth, support, entailment, source authority, or required "
+    "supported verdict. Contradicted and unresolved outcomes remain independently "
+    "permitted. FORMAT_ONLY_ID is a shape placeholder, not a source fact."
 )
 
 
@@ -1227,6 +1248,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     max_catalog_bytes: int,
     max_catalog_paragraphs: int,
     producer_prompt_version: str = _PRODUCER_PROMPT_VERSION_V0_4,
+    semantic_prompt_version: str = _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
     context_preparer: Optional[
         Callable[
             [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
@@ -1247,6 +1269,14 @@ def _run_host_grounder_same_run_evidence_catalog(
         discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_6
     else:
         raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
+    if type(semantic_prompt_version) is not str:
+        raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
+    if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION:
+        semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_5
+    elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6:
+        semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_6
+    else:
+        raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     if discovery_client is semantic_client:
         raise HostGrounderRuntimeError("MODEL_CLIENTS_MUST_BE_SEPARATE")
     discovery_config = _check_client(discovery_client, "discovery")
@@ -1290,6 +1320,7 @@ def _run_host_grounder_same_run_evidence_catalog(
             catalog.canonical_utf8,
             catalog.catalog_sha256,
             producer_prompt_version=producer_prompt_version,
+            semantic_prompt_version=semantic_prompt_version,
         )
     except Exception:
         raise HostGrounderRuntimeError("AUDIT_HOLDER_INVALID") from None
@@ -1358,11 +1389,17 @@ def _run_host_grounder_same_run_evidence_catalog(
             ),
         ) from None
 
+    producer_binding_evidence_map = [
+        {"index": index, "evidence_id": evidence_id}
+        for index, evidence_id in enumerate(producer_binding_evidence_ids)
+    ]
+
     try:
         audit = audit_holder._finalize(
             normalized_envelope_bytes,
             catalog=catalog,
             expected_producer_prompt_version=producer_prompt_version,
+            expected_semantic_prompt_version=semantic_prompt_version,
         )
     except Exception:
         raise HostGrounderRuntimeError("AUDIT_RETENTION_FAILED") from None
@@ -1372,22 +1409,22 @@ def _run_host_grounder_same_run_evidence_catalog(
         {"subquestion_id": item.subquestion_id, "text": item.text}
         for item in run_input.subquestions
     ]
-    verifier_prompt = _canonical_json(
-        {
-            "run_id": run_input.run_id,
-            "run_input_json": run_input.canonical_json,
-            "ordered_subquestions": ordered_questions,
-            "canonical_envelope_json": envelope_json,
-            "envelope_sha256": envelope_hash,
-            "registered_source_registry_json": registry_json,
-            "evidence_catalog_json": catalog_json,
-        },
-        "SEMANTIC_PROMPT_INVALID",
-    )
+    verifier_input = {
+        "run_id": run_input.run_id,
+        "run_input_json": run_input.canonical_json,
+        "ordered_subquestions": ordered_questions,
+        "canonical_envelope_json": envelope_json,
+        "envelope_sha256": envelope_hash,
+        "registered_source_registry_json": registry_json,
+        "evidence_catalog_json": catalog_json,
+    }
+    if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6:
+        verifier_input["producer_binding_evidence_map"] = producer_binding_evidence_map
+    verifier_prompt = _canonical_json(verifier_input, "SEMANTIC_PROMPT_INVALID")
     semantic_call = _call_once(
         semantic_client,
         semantic_config,
-        SEMANTIC_SYSTEM_PROMPT_V0_5,
+        semantic_system_prompt,
         verifier_prompt,
         role="SEMANTIC",
     )
@@ -1428,7 +1465,7 @@ def _run_host_grounder_same_run_evidence_catalog(
             request_subquestion_ids=run_input.subquestion_ids,
             source_bodies=bodies,
             validator_id="{}/{}".format(semantic_config.provider, semantic_config.model),
-            validator_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
+            validator_version=semantic_prompt_version,
             max_input_bytes=max_json_bytes,
             max_string_bytes=run_input.bounds.max_string_bytes,
             max_array_items=run_input.bounds.max_array_items,
@@ -1708,6 +1745,46 @@ def run_host_grounder_same_run_evidence_catalog_v0_4(
         max_catalog_bytes=max_catalog_bytes,
         max_catalog_paragraphs=max_catalog_paragraphs,
         producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_6,
+        context_preparer=host_context_preparer,
+        producer_diagnostics_v0_3=True,
+    )
+
+
+def run_host_grounder_same_run_evidence_catalog_v0_5(
+    run_input: HostGrounderRunInput,
+    context: HostBuildContext,
+    *,
+    discovery_client: ChatCompletionsClient,
+    semantic_client: ChatCompletionsClient,
+    audit_holder: HostEvidenceCatalogAuditHolder,
+    max_json_bytes: int,
+    max_source_body_bytes: int,
+    max_catalog_entries: int,
+    max_catalog_bytes: int,
+    max_catalog_paragraphs: int,
+    host_context_preparer: Optional[
+        Callable[
+            [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
+            HostBuildContext,
+        ]
+    ] = None,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Run catalog semantics v0.5 with validated producer-binding correspondence."""
+    if not callable(host_context_preparer):
+        raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
+    return _run_host_grounder_same_run_evidence_catalog(
+        run_input,
+        context,
+        discovery_client=discovery_client,
+        semantic_client=semantic_client,
+        audit_holder=audit_holder,
+        max_json_bytes=max_json_bytes,
+        max_source_body_bytes=max_source_body_bytes,
+        max_catalog_entries=max_catalog_entries,
+        max_catalog_bytes=max_catalog_bytes,
+        max_catalog_paragraphs=max_catalog_paragraphs,
+        producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_6,
+        semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
         context_preparer=host_context_preparer,
         producer_diagnostics_v0_3=True,
     )

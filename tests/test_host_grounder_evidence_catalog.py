@@ -9,6 +9,7 @@ from dataclasses import replace
 from unittest.mock import patch
 
 from convexity_hunter import host_grounder_evidence_catalog as catalog_module
+from convexity_hunter import host_grounder_runtime as runtime_module
 from convexity_hunter.event_entry import UserEventInput
 from convexity_hunter.host_grounder_builder import HostBuildContext, HostSourceBody
 from convexity_hunter.host_grounder_evidence_catalog import (
@@ -30,11 +31,13 @@ from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT_V0_5,
     DISCOVERY_SYSTEM_PROMPT_V0_6,
     SEMANTIC_SYSTEM_PROMPT_V0_5,
+    SEMANTIC_SYSTEM_PROMPT_V0_6,
     HostGrounderRuntimeError,
     run_host_grounder_same_run_evidence_catalog_v0_1,
     run_host_grounder_same_run_evidence_catalog_v0_2,
     run_host_grounder_same_run_evidence_catalog_v0_3,
     run_host_grounder_same_run_evidence_catalog_v0_4,
+    run_host_grounder_same_run_evidence_catalog_v0_5,
 )
 from convexity_hunter.host_model import ModelRuntimeConfig, ModelTransportReceipt
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
@@ -742,6 +745,31 @@ class EvidenceCatalogWireTests(unittest.TestCase):
 
 
 class EvidenceCatalogRuntimeTests(unittest.TestCase):
+    def _run_v05(
+        self, run_input, context, producer, verdict, *, semantic_max_input_bytes=500_000
+    ):
+        calls = []
+        result = run_host_grounder_same_run_evidence_catalog_v0_5(
+            run_input,
+            context,
+            discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+            semantic_client=_FakeClient(
+                "semantic", _canonical(verdict), calls,
+                max_input_bytes=semantic_max_input_bytes,
+            ),
+            audit_holder=HostEvidenceCatalogAuditHolder(
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+            ),
+            max_json_bytes=1_048_576,
+            max_source_body_bytes=20_000,
+            max_catalog_entries=64,
+            max_catalog_bytes=32_768,
+            max_catalog_paragraphs=128,
+            host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+        )
+        return result, calls
+
     def test_frozen_v04_hash_and_v05_exhaustive_consumed_binding_map(self):
         self.assertEqual(
             hashlib.sha256(DISCOVERY_SYSTEM_PROMPT_V0_4.encode("utf-8")).hexdigest(),
@@ -792,6 +820,40 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         )
         self.assertNotIn("nonempty strings, never objects", DISCOVERY_SYSTEM_PROMPT_V0_5)
 
+    def test_semantic_v06_has_literal_version_header_and_format_only_map_rule(self):
+        self.assertEqual(
+            hashlib.sha256(SEMANTIC_SYSTEM_PROMPT_V0_5.encode("utf-8")).hexdigest(),
+            "76d67f44806fbcea5f125961b4be1800eb3b14b63de9ad32b467bae6aba203c3",
+        )
+        v05_header = "host-grounder-semantic-verifier-prompt-v0.5."
+        v06_header = "host-grounder-semantic-verifier-prompt-v0.6."
+        self.assertIn(v06_header, SEMANTIC_SYSTEM_PROMPT_V0_6)
+        self.assertNotIn(v05_header, SEMANTIC_SYSTEM_PROMPT_V0_6)
+        v05_as_v06 = SEMANTIC_SYSTEM_PROMPT_V0_5.replace(v05_header, v06_header, 1)
+        obsolete_binding_clause = (
+            "For a supported field binding, cite the same catalog evidence_id as the envelope binding."
+        )
+        indexed_binding_clause = (
+            "For a supported field binding at index i, cite "
+            "producer_binding_evidence_map[i][\"evidence_id\"]."
+        )
+        self.assertIn(obsolete_binding_clause, SEMANTIC_SYSTEM_PROMPT_V0_5)
+        self.assertNotIn(obsolete_binding_clause, SEMANTIC_SYSTEM_PROMPT_V0_6)
+        self.assertIn(indexed_binding_clause, SEMANTIC_SYSTEM_PROMPT_V0_6)
+        v05_as_v06 = v05_as_v06.replace(obsolete_binding_clause, indexed_binding_clause, 1)
+        self.assertTrue(SEMANTIC_SYSTEM_PROMPT_V0_6.startswith(v05_as_v06))
+        self.assertEqual(
+            SEMANTIC_SYSTEM_PROMPT_V0_6[len(v05_as_v06):],
+            "\n\nHost-derived producer_binding_evidence_map (v0.6) is an ordered list of "
+            "{\"index\": 0, \"evidence_id\": \"FORMAT_ONLY_ID\"} items. Index is the "
+            "zero-based producer field_bindings position. The Host supplies this map only "
+            "after producer validation, preserving order and repeated IDs; an empty "
+            "field_bindings array maps to []. This is lexical correspondence only: it "
+            "establishes no truth, support, entailment, source authority, or required "
+            "supported verdict. Contradicted and unresolved outcomes remain independently "
+            "permitted. FORMAT_ONLY_ID is a shape placeholder, not a source fact.",
+        )
+
     def test_audit_holder_pins_only_closed_producer_prompt_versions(self):
         run_input, context = _fixture()
         catalog = _catalog_for(run_input, context)
@@ -828,6 +890,29 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             default_holder._producer_prompt_version,
             "host-grounder-discovery-prompt-v0.4",
         )
+        self.assertEqual(
+            default_holder._semantic_prompt_version,
+            "host-grounder-semantic-verifier-prompt-v0.5",
+        )
+
+        semantic_versions = (
+            "host-grounder-semantic-verifier-prompt-v0.5",
+            "host-grounder-semantic-verifier-prompt-v0.6",
+        )
+        for version in semantic_versions:
+            with self.subTest(semantic_version=version):
+                holder = HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                )
+                holder._begin(
+                    run_input.run_id,
+                    run_input.canonical_input_hash,
+                    catalog.canonical_utf8,
+                    catalog.catalog_sha256,
+                    semantic_prompt_version=version,
+                )
+                self.assertEqual(holder._semantic_prompt_version, version)
 
         for invalid in (
             "host-grounder-discovery-prompt-v0.7", "", True, 1, [], {}, object()
@@ -844,6 +929,24 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                         catalog.canonical_utf8,
                         catalog.catalog_sha256,
                         producer_prompt_version=invalid,
+                    )
+                self.assertFalse(holder.finalized)
+
+        for invalid in (
+            "host-grounder-semantic-verifier-prompt-v0.7", "", True, 1, [], {}, object()
+        ):
+            with self.subTest(invalid_semantic_type=type(invalid).__name__):
+                holder = HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                )
+                with self.assertRaises(ValueError):
+                    holder._begin(
+                        run_input.run_id,
+                        run_input.canonical_input_hash,
+                        catalog.canonical_utf8,
+                        catalog.catalog_sha256,
+                        semantic_prompt_version=invalid,
                     )
                 self.assertFalse(holder.finalized)
 
@@ -867,6 +970,28 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             )
         self.assertFalse(mismatch_holder.finalized)
 
+        semantic_mismatch_holder = HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        )
+        semantic_mismatch_holder._begin(
+            run_input.run_id,
+            run_input.canonical_input_hash,
+            catalog.canonical_utf8,
+            catalog.catalog_sha256,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.6",
+            semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.6",
+        )
+        semantic_mismatch_holder._capture_producer_content(b"{}")
+        with self.assertRaises(ValueError):
+            semantic_mismatch_holder._finalize(
+                b"{}",
+                catalog=catalog,
+                expected_producer_prompt_version="host-grounder-discovery-prompt-v0.6",
+                expected_semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.5",
+            )
+        self.assertFalse(semantic_mismatch_holder.finalized)
+
     def test_catalog_routes_preserve_prompt_map_signature_and_entrypoint_count(self):
         run_input, context = _fixture()
         _catalog, producer, _envelope, _raw, verdict = _wire_bundle(run_input, context)
@@ -883,6 +1008,11 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             ),
             (
                 run_host_grounder_same_run_evidence_catalog_v0_4,
+                DISCOVERY_SYSTEM_PROMPT_V0_6,
+                "host-grounder-discovery-prompt-v0.6",
+            ),
+            (
+                run_host_grounder_same_run_evidence_catalog_v0_5,
                 DISCOVERY_SYSTEM_PROMPT_V0_6,
                 "host-grounder-discovery-prompt-v0.6",
             ),
@@ -910,25 +1040,249 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 )
                 self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
                 self.assertEqual(calls[0][1], expected_prompt)
+                expected_semantic_prompt = (
+                    SEMANTIC_SYSTEM_PROMPT_V0_6
+                    if route is run_host_grounder_same_run_evidence_catalog_v0_5
+                    else SEMANTIC_SYSTEM_PROMPT_V0_5
+                )
+                self.assertEqual(calls[1][1], expected_semantic_prompt)
+                verifier_payload = json.loads(calls[1][2])
+                if route is run_host_grounder_same_run_evidence_catalog_v0_5:
+                    evidence_id = _catalog.entries[0].evidence_id
+                    self.assertEqual(
+                        verifier_payload["producer_binding_evidence_map"],
+                        [
+                            {"index": 0, "evidence_id": evidence_id},
+                            {"index": 1, "evidence_id": evidence_id},
+                        ],
+                    )
+                    self.assertEqual(
+                        result.build_result.semantic_validation.receipt["validator_version"],
+                        "host-grounder-semantic-verifier-prompt-v0.6",
+                    )
+                else:
+                    self.assertNotIn("producer_binding_evidence_map", verifier_payload)
+                    self.assertEqual(
+                        result.build_result.semantic_validation.receipt["validator_version"],
+                        "host-grounder-semantic-verifier-prompt-v0.5",
+                    )
                 self.assertEqual(
                     json.loads(result.audit.sidecar_utf8)["producer_prompt_version"],
                     expected_version,
                 )
+                self.assertEqual(
+                    json.loads(result.audit.sidecar_utf8)["validator_version"],
+                    "host-grounder-semantic-verifier-prompt-v0.6"
+                    if route is run_host_grounder_same_run_evidence_catalog_v0_5
+                    else "host-grounder-semantic-verifier-prompt-v0.5",
+                )
+                if route is run_host_grounder_same_run_evidence_catalog_v0_4:
+                    self.assertEqual(
+                        hashlib.sha256(calls[1][1].encode("utf-8")).hexdigest(),
+                        "76d67f44806fbcea5f125961b4be1800eb3b14b63de9ad32b467bae6aba203c3",
+                    )
+                    self.assertEqual(
+                        hashlib.sha256(calls[1][2].encode("utf-8")).hexdigest(),
+                        "bae8b91bd1d02e8f292722a58612901eebd939f310b3f4e6bdb06d923c4695ae",
+                    )
                 self.assertIs(holder.audit, result.audit)
                 self.assertTrue(holder.finalized)
                 if result_type is None:
                     result_type = type(result)
                 self.assertIs(type(result), result_type)
 
-    def test_v04_requires_preparer_and_keeps_v03_fine_diagnostics(self):
+    def test_v05_map_preserves_empty_repeated_and_reordered_binding_ids(self):
+        run_input, context = _fixture()
+        catalog = _catalog_for(run_input, context)
+        producer = _wire_envelope(run_input, catalog)
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
+        result, calls = self._run_v05(run_input, context, producer, verdict)
+        repeated_id = catalog.entries[0].evidence_id
+        self.assertEqual(
+            json.loads(calls[1][2])["producer_binding_evidence_map"],
+            [
+                {"index": 0, "evidence_id": repeated_id},
+                {"index": 1, "evidence_id": repeated_id},
+            ],
+        )
+        self.assertEqual(
+            json.loads(result.audit.sidecar_utf8)["validator_version"],
+            "host-grounder-semantic-verifier-prompt-v0.6",
+        )
+
+        empty_producer = _wire_envelope(run_input, catalog)
+        empty_producer["field_bindings"] = []
+        empty_envelope, empty_envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(empty_producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        empty_verdict = _wire_verdict(
+            run_input, context, catalog, empty_envelope, empty_envelope_bytes
+        )
+        _, empty_calls = self._run_v05(
+            run_input, context, empty_producer, empty_verdict
+        )
+        self.assertEqual(
+            json.loads(empty_calls[1][2])["producer_binding_evidence_map"], []
+        )
+
+        ordered_run_input, ordered_context = _fixture(
+            "ACME filed a report.\n\nA second source paragraph."
+        )
+        ordered_catalog = _catalog_for(ordered_run_input, ordered_context)
+        ordered_producer = _wire_envelope(ordered_run_input, ordered_catalog)
+        ordered_ids = (
+            ordered_catalog.entries[1].evidence_id,
+            ordered_catalog.entries[0].evidence_id,
+        )
+        for binding, evidence_id in zip(ordered_producer["field_bindings"], ordered_ids):
+            binding["evidence_id"] = evidence_id
+        ordered_envelope, ordered_bytes = parse_grounder_output_v0_3(
+            _canonical(ordered_producer),
+            100_000,
+            max_string_bytes=ordered_run_input.bounds.max_string_bytes,
+            max_array_items=ordered_run_input.bounds.max_array_items,
+            run_id=ordered_run_input.run_id,
+            canonical_input_hash=ordered_run_input.canonical_input_hash,
+            source_bodies=ordered_context.source_bodies,
+            catalog=ordered_catalog,
+        )
+        ordered_verdict = _wire_verdict(
+            ordered_run_input, ordered_context, ordered_catalog,
+            ordered_envelope, ordered_bytes,
+        )
+        for binding_verdict, evidence_id in zip(
+            ordered_verdict["field_bindings"], ordered_ids
+        ):
+            binding_verdict["evidence_refs"] = [{"evidence_id": evidence_id}]
+        _, ordered_calls = self._run_v05(
+            ordered_run_input, ordered_context, ordered_producer, ordered_verdict
+        )
+        self.assertEqual(
+            json.loads(ordered_calls[1][2])["producer_binding_evidence_map"],
+            [
+                {"index": 0, "evidence_id": ordered_ids[0]},
+                {"index": 1, "evidence_id": ordered_ids[1]},
+            ],
+        )
+
+    def test_v05_rejects_wrong_valid_binding_id_and_semantic_request_overflow_pre_call(self):
+        run_input, context = _fixture(
+            "ACME filed a report.\n\nA second source paragraph."
+        )
+        catalog = _catalog_for(run_input, context)
+        producer = _wire_envelope(run_input, catalog)
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
+        verdict["field_bindings"][0]["evidence_refs"] = [
+            {"evidence_id": catalog.entries[1].evidence_id}
+        ]
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as wrong_id:
+            run_host_grounder_same_run_evidence_catalog_v0_5(
+                run_input,
+                context,
+                discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+                semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+                audit_holder=HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                ),
+                max_json_bytes=100_000,
+                max_source_body_bytes=20_000,
+                max_catalog_entries=64,
+                max_catalog_bytes=32_768,
+                max_catalog_paragraphs=128,
+                host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+            )
+        self.assertEqual(wrong_id.exception.code, "SEMANTIC_VERDICT_REJECTED")
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+
+        _catalog, valid_producer, _envelope, _raw, valid_verdict = _wire_bundle(
+            *_fixture()
+        )
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as oversized:
+            run_host_grounder_same_run_evidence_catalog_v0_5(
+                *_fixture(),
+                discovery_client=_FakeClient(
+                    "discovery", _canonical(valid_producer), calls
+                ),
+                semantic_client=_FakeClient(
+                    "semantic", _canonical(valid_verdict), calls, max_input_bytes=128
+                ),
+                audit_holder=HostEvidenceCatalogAuditHolder(
+                    run_id=_fixture()[0].run_id,
+                    canonical_input_hash=_fixture()[0].canonical_input_hash,
+                ),
+                max_json_bytes=1_048_576,
+                max_source_body_bytes=20_000,
+                max_catalog_entries=64,
+                max_catalog_bytes=32_768,
+                max_catalog_paragraphs=128,
+                host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+            )
+        self.assertEqual(oversized.exception.code, "MODEL_REQUEST_TOO_LARGE")
+        self.assertEqual([call[0] for call in calls], ["discovery"])
+
+    def test_private_semantic_prompt_dispatch_rejects_unknown_version_before_calls(self):
+        run_input, context = _fixture()
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as invalid_version:
+            runtime_module._run_host_grounder_same_run_evidence_catalog(
+                run_input,
+                context,
+                discovery_client=_FakeClient("discovery", "{}", calls),
+                semantic_client=_FakeClient("semantic", "{}", calls),
+                audit_holder=HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                ),
+                max_json_bytes=100_000,
+                max_source_body_bytes=20_000,
+                max_catalog_entries=64,
+                max_catalog_bytes=32_768,
+                max_catalog_paragraphs=128,
+                semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.7",
+            )
+        self.assertEqual(invalid_version.exception.code, "SEMANTIC_PROMPT_VERSION_INVALID")
+        self.assertEqual(calls, [])
+
+    def test_v04_v05_require_preparer_and_keep_v03_fine_diagnostics(self):
         run_input, context = _fixture()
         routes = (
             (run_host_grounder_same_run_evidence_catalog_v0_3, DISCOVERY_SYSTEM_PROMPT_V0_5),
             (run_host_grounder_same_run_evidence_catalog_v0_4, DISCOVERY_SYSTEM_PROMPT_V0_6),
+            (run_host_grounder_same_run_evidence_catalog_v0_5, DISCOVERY_SYSTEM_PROMPT_V0_6),
         )
         calls = []
         with self.assertRaises(HostGrounderRuntimeError) as missing_preparer:
-            run_host_grounder_same_run_evidence_catalog_v0_4(
+            run_host_grounder_same_run_evidence_catalog_v0_5(
                 run_input,
                 context,
                 discovery_client=_FakeClient("discovery", "{}", calls),

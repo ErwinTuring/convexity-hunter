@@ -45,6 +45,13 @@ progressed to a real semantic call but stopped at `producer_binding_alignment`:
 one discovery/semantic reservation each, source 0, no raw retention or EI
 acceptance. This is a spent, partially progressed experiment, not a product
 Grounder completion claim. Exact offending values were not retained.
+The [Host binding-correspondence contract](host-grounder-binding-map-v0.1.md)
+is implemented after independent contract and final code review PASS. Host
+provides lexical binding correspondence, not semantic approval. Existing routes,
+strict acceptance and resource ceilings remain unchanged; no live retry.
+23 catalog / 28 context / 133 Grounder tests and compileall/diff checks passed.
+Runtime/catalog counts are 7/9. The preceding 1,650 full-suite PASS is not a
+new full-suite result for this narrow framing/audit unit.
 
 Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented in opt-in catalog runtime v0.2. Independent review

@@ -70,6 +70,12 @@ then ran once: discovery/semantic reservations 1/1, source 0, raw retention
 false. Producer parsing progressed to semantic invocation; the verdict failed
 `producer_binding_alignment`. No receipt/Builder/EI acceptance. Attempt spent;
 exact mismatch remains unknown without retained values. No blind retry.
+The [Host binding-correspondence contract](host-grounder-binding-map-v0.1.md)
+is implemented after independent contract and final code review PASS: new opt-in semantic framing
+supplies an ordered index-to-ID map, without changing parser/evidence rules.
+23 catalog / 28 context / 133 Grounder tests, compileall and diff checks passed.
+Runtime/catalog counts are 7/9; the signature remains 11 parameters.
+No new live request was part of this BUILD; the spent trial's cause stays unknown.
 
 ## Prior bounded work and approved target applicability
 
