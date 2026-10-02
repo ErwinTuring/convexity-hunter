@@ -65,6 +65,11 @@ Existing routes and all evidence rules remain unchanged. No fresh live call
 was part of BUILD or is authorized by this checkpoint. The next separately
 preregistered trial must use the explicit caller profile and must not retain
 raw model content under the already-spent single-capture authorization.
+The separate [corrected-profile trial](standalone-iren-corrected-profile-trial-2026-10-02.md)
+then ran once: discovery/semantic reservations 1/1, source 0, raw retention
+false. Producer parsing progressed to semantic invocation; the verdict failed
+`producer_binding_alignment`. No receipt/Builder/EI acceptance. Attempt spent;
+exact mismatch remains unknown without retained values. No blind retry.
 
 ## Prior bounded work and approved target applicability
 

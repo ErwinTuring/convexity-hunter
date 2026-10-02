@@ -40,6 +40,11 @@ runtime entrypoints are 6 and catalog exports remain 9. It leaves legacy
 routes, schemas and authority unchanged; resource ceilings are explicit caller
 engineering policy, not approved numerical Core risk inputs. No live product
 acceptance is claimed by synthetic BUILD validation.
+The separate [corrected-profile trial](standalone-iren-corrected-profile-trial-2026-10-02.md)
+progressed to a real semantic call but stopped at `producer_binding_alignment`:
+one discovery/semantic reservation each, source 0, no raw retention or EI
+acceptance. This is a spent, partially progressed experiment, not a product
+Grounder completion claim. Exact offending values were not retained.
 
 Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented in opt-in catalog runtime v0.2. Independent review
