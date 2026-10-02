@@ -6,7 +6,7 @@ import hashlib
 import threading
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping, Tuple
+from typing import Callable, Mapping, Optional, Tuple
 
 from .host_grounder_builder import HostSourceBody
 from .host_grounder_quote_localization import _canonical_bytes, _decode, _limit, _wire_string
@@ -362,12 +362,43 @@ def parse_grounder_output_v0_3(
     catalog: HostEvidenceCatalog,
 ) -> tuple:
     """Expand exact catalog IDs, then apply the unchanged internal v0.1 parser."""
+    return _parse_grounder_output_v0_3_with_progress(
+        raw_json,
+        max_input_bytes,
+        max_string_bytes=max_string_bytes,
+        max_array_items=max_array_items,
+        run_id=run_id,
+        canonical_input_hash=canonical_input_hash,
+        source_bodies=source_bodies,
+        catalog=catalog,
+    )
+
+
+def _parse_grounder_output_v0_3_with_progress(
+    raw_json: str,
+    max_input_bytes: int,
+    *,
+    max_string_bytes: int,
+    max_array_items: int,
+    run_id: str,
+    canonical_input_hash: str,
+    source_bodies: Mapping[str, HostSourceBody],
+    catalog: HostEvidenceCatalog,
+    progress: Optional[Callable[[str], None]] = None,
+) -> tuple:
+    """Private parser pipeline; progress receives only closed static labels."""
     max_input_bytes = _limit(max_input_bytes, "max_input_bytes")
     max_string_bytes = _limit(max_string_bytes, "max_string_bytes")
     max_array_items = _limit(max_array_items, "max_array_items")
+    if progress is not None:
+        progress("producer_v0_3_wire_decode")
     wire = _decode(raw_json, max_input_bytes)
+    if progress is not None:
+        progress("producer_v0_3_root_shape")
     if set(wire) != _OUTPUT_TOP or wire.get("schema_version") != "grounder-output-v0.3":
         raise ValueError("producer wire DTO has an invalid closed shape or version")
+    if progress is not None:
+        progress("producer_v0_3_catalog_source_validation")
     catalog.validate_sources(
         source_bodies,
         run_id=run_id,
@@ -377,6 +408,8 @@ def parse_grounder_output_v0_3(
 
     internal = dict(wire)
     internal["schema_version"] = "grounder-output-v0.1"
+    if progress is not None:
+        progress("producer_v0_3_claims_catalog_expansion")
     claims = wire.get("claims")
     if type(claims) is not list or len(claims) > max_array_items:
         raise ValueError("claims must be a bounded array")
@@ -396,6 +429,8 @@ def parse_grounder_output_v0_3(
         expanded_claims.append(claim)
     internal["claims"] = expanded_claims
 
+    if progress is not None:
+        progress("producer_v0_3_bindings_catalog_expansion")
     bindings = wire.get("field_bindings")
     if type(bindings) is not list or len(bindings) > max_array_items:
         raise ValueError("field_bindings must be a bounded array")
@@ -415,13 +450,19 @@ def parse_grounder_output_v0_3(
         expanded_bindings.append(binding)
     internal["field_bindings"] = expanded_bindings
 
+    if progress is not None:
+        progress("producer_v0_3_canonical_size")
     normalized = _normalized_bytes(internal, max_input_bytes, "normalized envelope")
+    if progress is not None:
+        progress("producer_v0_3_internal_v0_1_schema")
     parsed = parse_model_output_envelope(
         normalized.decode("utf-8", errors="strict"),
         max_input_bytes,
         max_string_bytes=max_string_bytes,
         max_array_items=max_array_items,
     )
+    if progress is not None:
+        progress("producer_v0_3_recanonicalization")
     normalized = _normalized_bytes(parsed, max_input_bytes, "normalized envelope")
     return parsed, normalized
 

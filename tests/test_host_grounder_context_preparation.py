@@ -1,6 +1,7 @@
 import datetime
 import copy
 import hashlib
+import inspect
 import json
 import unittest
 from dataclasses import replace
@@ -21,6 +22,7 @@ from convexity_hunter.host_grounder_runtime import (
     HostGrounderRuntimeError,
     run_host_grounder_same_run_evidence_catalog_v0_1,
     run_host_grounder_same_run_evidence_catalog_v0_2,
+    run_host_grounder_same_run_evidence_catalog_v0_3,
 )
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
 from tests.test_host_grounder_evidence_catalog import (
@@ -114,6 +116,125 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
         for index, hypothesis in enumerate(verdict["hypotheses"]):
             hypothesis["hypothesis_id"] = producer["hypotheses"][index]["hypothesis_id"]
         return verdict
+
+    def test_v03_adds_one_runtime_callable_without_changing_frozen_signatures(self):
+        runtime_functions = {
+            name for name, value in vars(runtime_module).items()
+            if name.startswith("run_host_grounder") and inspect.isfunction(value)
+        }
+        self.assertEqual(
+            runtime_functions,
+            {
+                "run_host_grounder_same_run",
+                "run_host_grounder_same_run_quote_localization_v0_1",
+                "run_host_grounder_same_run_evidence_catalog_v0_1",
+                "run_host_grounder_same_run_evidence_catalog_v0_2",
+                "run_host_grounder_same_run_evidence_catalog_v0_3",
+            },
+        )
+        self.assertFalse(hasattr(runtime_module, "__all__"))
+
+        v01_parameters = tuple(
+            inspect.signature(run_host_grounder_same_run_evidence_catalog_v0_1).parameters.values()
+        )
+        v02_signature = inspect.signature(run_host_grounder_same_run_evidence_catalog_v0_2)
+        v03_signature = inspect.signature(run_host_grounder_same_run_evidence_catalog_v0_3)
+        expected_v01_names = (
+            "run_input", "context", "discovery_client", "semantic_client", "audit_holder",
+            "max_json_bytes", "max_source_body_bytes", "max_catalog_entries",
+            "max_catalog_bytes", "max_catalog_paragraphs",
+        )
+        expected_v02_names = expected_v01_names + ("host_context_preparer",)
+        self.assertEqual(tuple(parameter.name for parameter in v01_parameters), expected_v01_names)
+        self.assertEqual(tuple(v02_signature.parameters), expected_v02_names)
+        self.assertEqual(v03_signature, v02_signature)
+        self.assertEqual(len(v03_signature.parameters), 11)
+        for parameter in v01_parameters[:2]:
+            self.assertIs(parameter.kind, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+        for parameter in v01_parameters[2:]:
+            self.assertIs(parameter.kind, inspect.Parameter.KEYWORD_ONLY)
+        self.assertIs(v02_signature.parameters["host_context_preparer"].default, None)
+
+    def test_producer_diagnostic_constructor_keeps_closed_versioned_pairs(self):
+        old_checks = (
+            "producer_wire_normalization",
+            "producer_run_stage_binding",
+            "producer_coverage_order",
+            "producer_binding_extraction",
+        )
+        fine_checks = (
+            "producer_v0_3_wire_decode",
+            "producer_v0_3_root_shape",
+            "producer_v0_3_catalog_source_validation",
+            "producer_v0_3_claims_catalog_expansion",
+            "producer_v0_3_bindings_catalog_expansion",
+            "producer_v0_3_canonical_size",
+            "producer_v0_3_internal_v0_1_schema",
+            "producer_v0_3_recanonicalization",
+        )
+        for check in old_checks + fine_checks:
+            error = HostGrounderRuntimeError(
+                "PRODUCER_ENVELOPE_INVALID",
+                failure_stage="producer_envelope_normalization",
+                failure_check=check,
+            )
+            self.assertEqual(error.failure_check, check)
+        for code, stage, check in (
+            ("OTHER", "producer_envelope_normalization", fine_checks[0]),
+            ("PRODUCER_ENVELOPE_INVALID", "semantic_wire_parse", fine_checks[0]),
+            ("PRODUCER_ENVELOPE_INVALID", "producer_envelope_normalization", "unknown"),
+            ("PRODUCER_ENVELOPE_INVALID", None, fine_checks[0]),
+        ):
+            with self.subTest(code=code, stage=stage, check=check), self.assertRaises(ValueError):
+                HostGrounderRuntimeError(code, failure_stage=stage, failure_check=check)
+
+        semantic_checks = (
+            "wire_decode", "topshape", "run_binding", "catalog_validation",
+            "producer_binding_alignment", "evidence_ref_expansion",
+            "internal_verdict_validation",
+        )
+        for check in semantic_checks:
+            HostGrounderRuntimeError(
+                "SEMANTIC_VERDICT_REJECTED",
+                failure_stage="semantic_wire_parse",
+                failure_check=check,
+            )
+
+    def test_v03_success_keeps_preparer_prompt_and_normalized_bytes(self):
+        catalog = _catalog_for(self.run_input, self.context)
+        _, expected_normalized_bytes = parse_grounder_output_v0_3(
+            _canonical(self.producer),
+            100_000,
+            max_string_bytes=self.run_input.bounds.max_string_bytes,
+            max_array_items=self.run_input.bounds.max_array_items,
+            run_id=self.run_input.run_id,
+            canonical_input_hash=self.run_input.canonical_input_hash,
+            source_bodies=self.context.source_bodies,
+            catalog=catalog,
+        )
+        calls = []
+        result = run_host_grounder_same_run_evidence_catalog_v0_3(
+            self.run_input,
+            self.context,
+            discovery_client=_FakeClient("discovery", _canonical(self.producer), calls),
+            semantic_client=_FakeClient("semantic", _canonical(self.verdict), calls),
+            audit_holder=HostEvidenceCatalogAuditHolder(
+                run_id=self.run_input.run_id,
+                canonical_input_hash=self.run_input.canonical_input_hash,
+            ),
+            max_json_bytes=100_000,
+            max_source_body_bytes=20_000,
+            max_catalog_entries=100,
+            max_catalog_bytes=100_000,
+            max_catalog_paragraphs=100,
+            host_context_preparer=lambda snapshot, receipt, original: original,
+        )
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        self.assertEqual(result.audit.normalized_envelope_utf8, expected_normalized_bytes)
+        self.assertEqual(
+            sidecar["producer_prompt_version"], "host-grounder-discovery-prompt-v0.5"
+        )
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
 
     def test_v02_dispatches_and_audits_v05_without_changing_other_versions(self):
         result, calls = self._invoke(lambda snapshot, receipt, original: original)
@@ -261,6 +382,66 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
             self.assertIsNone(error.__cause__)
             self.assertTrue(error.__suppress_context__)
             self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", str(error) + repr(error))
+            self.assertEqual([call[0] for call in calls], ["discovery"])
+            preparer.assert_not_called()
+            builder.assert_not_called()
+
+    def test_v03_parser_failures_surface_only_the_eight_closed_checks_and_stop_early(self):
+        fine_checks = (
+            "producer_v0_3_wire_decode",
+            "producer_v0_3_root_shape",
+            "producer_v0_3_catalog_source_validation",
+            "producer_v0_3_claims_catalog_expansion",
+            "producer_v0_3_bindings_catalog_expansion",
+            "producer_v0_3_canonical_size",
+            "producer_v0_3_internal_v0_1_schema",
+            "producer_v0_3_recanonicalization",
+        )
+        for check in fine_checks:
+            calls = []
+            discovery = _FakeClient("discovery", _canonical(self.producer), calls)
+            semantic = _FakeClient("semantic", _canonical(self.verdict), calls)
+            preparer = Mock()
+
+            def fail_at_closed_check(*args, progress, **kwargs):
+                progress(check)
+                raise ValueError("PRIVATE_DIAGNOSTIC_SENTINEL")
+
+            with self.subTest(check=check), patch.object(
+                runtime_module,
+                "_parse_grounder_output_v0_3_with_progress",
+                side_effect=fail_at_closed_check,
+            ), patch.object(runtime_module, "_build_host_grounder_v0_2") as builder:
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    run_host_grounder_same_run_evidence_catalog_v0_3(
+                        self.run_input,
+                        self.context,
+                        discovery_client=discovery,
+                        semantic_client=semantic,
+                        audit_holder=HostEvidenceCatalogAuditHolder(
+                            run_id=self.run_input.run_id,
+                            canonical_input_hash=self.run_input.canonical_input_hash,
+                        ),
+                        max_json_bytes=100_000,
+                        max_source_body_bytes=20_000,
+                        max_catalog_entries=100,
+                        max_catalog_bytes=100_000,
+                        max_catalog_paragraphs=100,
+                        host_context_preparer=preparer,
+                    )
+            error = raised.exception
+            self.assertEqual(error.code, "PRODUCER_ENVELOPE_INVALID")
+            self.assertEqual(error.failure_stage, "producer_envelope_normalization")
+            self.assertEqual(error.failure_check, check)
+            self.assertEqual(error.args, ("PRODUCER_ENVELOPE_INVALID",))
+            self.assertEqual(str(error), "PRODUCER_ENVELOPE_INVALID")
+            self.assertEqual(
+                repr(error),
+                "HostGrounderRuntimeError(code='PRODUCER_ENVELOPE_INVALID')",
+            )
+            self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", str(error) + repr(error))
+            self.assertIsNone(error.__cause__)
+            self.assertTrue(error.__suppress_context__)
             self.assertEqual([call[0] for call in calls], ["discovery"])
             preparer.assert_not_called()
             builder.assert_not_called()

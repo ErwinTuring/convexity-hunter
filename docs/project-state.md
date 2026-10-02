@@ -13,6 +13,12 @@ is now spent: producer rejection at normalization/wire-normalization check,
 discovery reservation 1, semantic/source 0. No receipt/Builder/EI followed.
 The exact subcondition remains unknown; offline parser/binding-capacity audit
 is next, with further live requests stopped.
+No trial-specific array-limit cause was found. The bounded
+[fine producer diagnostics v0.2](host-grounder-producer-diagnostics-v0.2.md)
+is implemented and independently reviewed. New opt-in runtime v0.3 emits
+eight static parser-operation labels; legacy/default behavior and evidence
+gates stay unchanged. Six new/124 related tests, compileall, API/docs/diff
+checks passed; no full-suite rerun or live call during BUILD.
 
 Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented in opt-in catalog runtime v0.2. Independent review

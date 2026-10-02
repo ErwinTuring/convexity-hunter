@@ -26,6 +26,12 @@ subsequently ran once: `PRODUCER_ENVELOPE_INVALID` at
 reservation 1, semantic/source 0. No receipt/Builder/EI; exact normalization
 subcondition remains unknown. Attempt spent, no retry. Next is a bounded
 offline parser/binding-capacity audit, not another blind live request.
+That audit found no trial-specific capacity contradiction. The opt-in
+[fine producer diagnostics v0.2](host-grounder-producer-diagnostics-v0.2.md)
+is now frozen, implemented and independently reviewed: new runtime v0.3
+reports eight parser-operation labels; old runtime/parser signatures and
+v0.1/v0.2 behavior remain unchanged. Six new/124 related tests, compileall,
+API/docs/diff checks passed; no full-suite rerun or new live call in BUILD.
 Core research still requires separately approved cost/risk policy inputs.
 
 ## Prior bounded work and approved target applicability
