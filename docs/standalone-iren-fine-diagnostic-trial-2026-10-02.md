@@ -43,3 +43,37 @@ requires independent exact-hash safety PASS and preregistration commit/push.
 
 No live product acceptance is claimed. Do not infer the old attempts' precise
 failure from any new outcome or change validation bounds to force success.
+
+## Actual outcome — attempt spent
+
+After preregistration `46cac74` was pushed and independent exact-hash safety
+review passed, Main authorized exactly one execution. It stopped with
+`PRODUCER_ENVELOPE_INVALID`, stage `producer_envelope_normalization`, check
+`producer_v0_3_internal_v0_1_schema`. Discovery reservation 1; semantic/source
+0. Root/catalog expansion/canonical-size stages completed before this check;
+this is not proof of individual field validity. No receipt, preparation,
+Builder, EI or Core followed. The false unsupported-window flag is not proof
+of temporal validity because no submission reached EI.
+
+Unvalidated census: 16,982 UTF-8 bytes; claims 14, hypotheses 1, field bindings
+1, coverage 4. Root/schema/request/stage match booleans are all true. These
+counts are not accepted facts, complete binding coverage or a cause diagnosis.
+No raw output was retained. The exact internal-schema subcondition remains
+unknown; review proceeds offline without retries or schema relaxation.
+
+External result (0600):
+`/private/tmp/iren-producer-diagnostic-fine-20261002-71e9cc71-6001-4a50-95ab-5422674fd9cc/iren-producer-diagnostic-fine-20261002-71e9cc71-6001-4a50-95ab-5422674fd9cc.result.json`.
+SHA-256: `a783a4d5b8bb70bcf89eaf9a5af6217d5a3221c9758ec0eb1afe82682984192f`.
+Marker remains and this attempt is spent. Its finer outcome does not identify
+the older attempts' causes.
+
+Bounded offline prompt/adapter/schema review found no demonstrated contradiction.
+Prompt-required complete bindings exceed the internal schema's present-binding
+validation, but missing bindings alone do not explain a failure at this schema
+stage. The census cannot identify invalid field values/types/enums or other
+internal checks. No payload survives for replay; exact cause is unrecoverable
+from this result. Do not claim that Futu/source semantics or identity metadata
+caused this failure. Further blind calls are stopped. A future correction must
+first establish a reproducible schema-level defect or predeclare a narrowly
+sanitized exact validation-reason mechanism; no contract relaxation or new
+diagnostic framework is justified by this result.

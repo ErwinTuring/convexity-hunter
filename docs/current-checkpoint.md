@@ -32,6 +32,16 @@ is now frozen, implemented and independently reviewed: new runtime v0.3
 reports eight parser-operation labels; old runtime/parser signatures and
 v0.1/v0.2 behavior remain unchanged. Six new/124 related tests, compileall,
 API/docs/diff checks passed; no full-suite rerun or new live call in BUILD.
+The separately registered [fine diagnostic trial](standalone-iren-fine-diagnostic-trial-2026-10-02.md)
+then ran once: producer normalization stopped at `producer_v0_3_internal_v0_1_schema`.
+Discovery reservation 1, semantic/source 0; no receipt/Builder/EI. Unvalidated
+census 14 claims/one hypothesis/one binding/four coverage entries does not prove
+field validity. Attempt spent; next is offline schema/prompt comparison, not
+another API retry or weaker acceptance.
+Bounded offline comparison found no demonstrated prompt/schema contradiction;
+missing bindings alone do not explain this schema-stage rejection. The raw
+output is unavailable for replay. Further live calls stop until a reproducible
+schema defect or narrowly preregistered exact validation-reason mechanism exists.
 Core research still requires separately approved cost/risk policy inputs.
 
 ## Prior bounded work and approved target applicability

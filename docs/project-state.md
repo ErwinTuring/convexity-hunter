@@ -19,6 +19,11 @@ is implemented and independently reviewed. New opt-in runtime v0.3 emits
 eight static parser-operation labels; legacy/default behavior and evidence
 gates stay unchanged. Six new/124 related tests, compileall, API/docs/diff
 checks passed; no full-suite rerun or live call during BUILD.
+The new [fine diagnostic trial](standalone-iren-fine-diagnostic-trial-2026-10-02.md)
+subsequently stopped at `producer_v0_3_internal_v0_1_schema`, before semantic/
+receipt/Builder/EI. Discovery reservation 1, semantic/source 0. Its census is
+unvalidated structural output only. Attempt spent; offline schema/prompt audit
+is next. No independent Event Grounder product acceptance is claimed.
 
 Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented in opt-in catalog runtime v0.2. Independent review
