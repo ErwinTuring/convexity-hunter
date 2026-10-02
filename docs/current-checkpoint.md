@@ -20,6 +20,12 @@ is frozen, implemented and independently reviewed. Sixty-one related tests,
 compileall, API/signature compatibility, docs and diff checks passed; no new
 full-suite run. Legacy behavior and acceptance gates remain unchanged.
 No new live request is authorized by that diagnostic BUILD.
+The separately preregistered [diagnostic trial](standalone-iren-producer-diagnostic-trial-2026-10-02.md)
+subsequently ran once: `PRODUCER_ENVELOPE_INVALID` at
+`producer_envelope_normalization / producer_wire_normalization`, discovery
+reservation 1, semantic/source 0. No receipt/Builder/EI; exact normalization
+subcondition remains unknown. Attempt spent, no retry. Next is a bounded
+offline parser/binding-capacity audit, not another blind live request.
 Core research still requires separately approved cost/risk policy inputs.
 
 ## Prior bounded work and approved target applicability

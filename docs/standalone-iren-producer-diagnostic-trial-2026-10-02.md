@@ -1,6 +1,6 @@
 # IREN producer diagnostic trial — 2026-10-02
 
-## Scope — preparation only, not yet executed
+## Registered scope
 
 This is a separately registered attempt on the reviewed producer-diagnostics
 implementation, not reopening the [spent v0.5 attempt](standalone-iren-v05-product-trial-2026-10-02.md).
@@ -47,3 +47,37 @@ Independent exact-hash safety review passed after the reporting-only delta was
 made explicit in this preregistration. Main independently ran the default
 offline wrapper and verified that neither the new attempt nor result exists.
 No live call has occurred at this registration point.
+
+## Actual outcome — attempt spent
+
+After preregistration commit/push
+`583e6752a8bac4dcb5b3da71d2bf10203fad0e34` and exact-hash Main authorization,
+the wrapper ran once and returned `STOPPED / PRODUCER_ENVELOPE_INVALID`.
+Actual `failure_stage=producer_envelope_normalization` and
+`failure_check=producer_wire_normalization`. This operation group covers
+producer parsing/normalization and normalized-byte decoding; it does not
+identify the specific failed subcondition. Discovery reservation 1,
+semantic 0, source calls 0; receipt partitions null. No preparer, Builder,
+EI, market data or Core followed. Usage and native producer counts remain
+unknown. No unsupported impact-window flag was raised; that is not proof
+of a temporally valid hypothesis because none reached EI.
+
+External result (0600, 463 bytes):
+`/private/tmp/iren-producer-diagnostic-20261002-36923af9-f50a-4f92-9ec0-4366d53ae541/iren-producer-diagnostic-20261002-36923af9-f50a-4f92-9ec0-4366d53ae541.result.json`.
+SHA-256: `a6c17700d5b04501caa1c28792b02236c2ca5cd327f700ecf701434bd5a1476d`.
+The attempt marker remains; no retry or raw-output inspection. Further live
+requests are stopped pending a narrow offline normalization/bounds audit.
+This newly observed stage does not retroactively locate the old attempt's
+failure, prove an array-limit cause, or disprove the reviewed identity evidence.
+
+Offline audit confirmed that the group includes bounded wire decoding, root
+shape/version checks, catalog/source validation, claim/binding expansion,
+canonical size and internal schema validation. Its observed label cannot
+select one of those subconditions. For a hypothetical 17-claim/one-hypothesis
+output, binding count depends on each non-null event date, entity-reference
+count and at most seven hypothesis paths. Independent per-array bounds can
+produce capacity pressure, but the failed output/counts are absent: no
+trial-specific contradiction or justification for raising the 64-item cap is
+established. Preserve the profile and acceptance gates. The next bounded work
+is finer opt-in static diagnostics, not further model requests or speculation
+about missing live values.

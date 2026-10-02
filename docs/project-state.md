@@ -8,6 +8,11 @@ is frozen, implemented and independently reviewed. Sixty-one related tests,
 compileall, API/signature compatibility, docs and diff checks passed; no full
 suite rerun for this diagnostic-only change. No fresh live call or Core
 risk-policy default is authorized by the BUILD. Earlier work-unit evidence follows.
+Its separate [diagnostic trial](standalone-iren-producer-diagnostic-trial-2026-10-02.md)
+is now spent: producer rejection at normalization/wire-normalization check,
+discovery reservation 1, semantic/source 0. No receipt/Builder/EI followed.
+The exact subcondition remains unknown; offline parser/binding-capacity audit
+is next, with further live requests stopped.
 
 Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented in opt-in catalog runtime v0.2. Independent review
