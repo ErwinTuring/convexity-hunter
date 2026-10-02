@@ -28,9 +28,13 @@ from convexity_hunter.host_grounder_run_input import (
 from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT_V0_4,
     DISCOVERY_SYSTEM_PROMPT_V0_5,
+    DISCOVERY_SYSTEM_PROMPT_V0_6,
     SEMANTIC_SYSTEM_PROMPT_V0_5,
     HostGrounderRuntimeError,
     run_host_grounder_same_run_evidence_catalog_v0_1,
+    run_host_grounder_same_run_evidence_catalog_v0_2,
+    run_host_grounder_same_run_evidence_catalog_v0_3,
+    run_host_grounder_same_run_evidence_catalog_v0_4,
 )
 from convexity_hunter.host_model import ModelRuntimeConfig, ModelTransportReceipt
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
@@ -229,7 +233,7 @@ def _wire_bundle(run_input, context):
     return catalog, producer, envelope, envelope_bytes, verdict
 
 
-def _config(role, *, max_input_bytes=500_000):
+def _config(role, *, max_input_bytes=500_000, max_output_bytes=200_000):
     return ModelRuntimeConfig(
         provider="fixture",
         model="fixture-{}".format(role),
@@ -240,7 +244,7 @@ def _config(role, *, max_input_bytes=500_000):
         request_budget=1,
         max_tokens=2_000,
         max_input_bytes=max_input_bytes,
-        max_output_bytes=200_000,
+        max_output_bytes=max_output_bytes,
         remote_enabled=False,
         fee_authorized=False,
         json_mode=True,
@@ -249,8 +253,12 @@ def _config(role, *, max_input_bytes=500_000):
 
 
 class _FakeClient:
-    def __init__(self, role, content, calls, *, max_input_bytes=500_000):
-        self.config = _config(role, max_input_bytes=max_input_bytes)
+    def __init__(
+        self, role, content, calls, *, max_input_bytes=500_000, max_output_bytes=200_000
+    ):
+        self.config = _config(
+            role, max_input_bytes=max_input_bytes, max_output_bytes=max_output_bytes
+        )
         self.content = content
         self.calls = calls
         self.remaining_request_budget = 1
@@ -423,6 +431,24 @@ class EvidenceCatalogGenerationTests(unittest.TestCase):
 
 
 class EvidenceCatalogWireTests(unittest.TestCase):
+    def test_catalog_wire_rejects_object_entity_ref_without_coercion(self):
+        run_input, context = _fixture()
+        catalog = _catalog_for(run_input, context)
+        producer = _wire_envelope(run_input, catalog)
+        producer["claims"][0]["entity_refs"] = [{"symbol": "ACME"}]
+
+        with self.assertRaisesRegex(ValueError, "must be a string"):
+            parse_grounder_output_v0_3(
+                _canonical(producer),
+                100_000,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                source_bodies=context.source_bodies,
+                catalog=catalog,
+            )
+
     def test_private_progress_parser_matches_literal_bytes_and_public_surface(self):
         run_input, context = _fixture()
         catalog = _catalog_for(run_input, context)
@@ -744,12 +770,35 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         self.assertIn("map: " + expected_map + ".", DISCOVERY_SYSTEM_PROMPT_V0_5)
         self.assertNotIn("binding-completeness clarification", DISCOVERY_SYSTEM_PROMPT_V0_4)
 
+    def test_v06_prompt_adds_only_literal_entity_ref_item_rule_and_format_example(self):
+        self.assertEqual(
+            hashlib.sha256(DISCOVERY_SYSTEM_PROMPT_V0_5.encode("utf-8")).hexdigest(),
+            "411b889b9e701d5db5ecca574413cd6854781e436d199d183839ba39fd6696ac",
+        )
+        v05_header = "Prompt version: host-grounder-discovery-prompt-v0.5."
+        v06_header = "Prompt version: host-grounder-discovery-prompt-v0.6."
+        self.assertIn(v06_header, DISCOVERY_SYSTEM_PROMPT_V0_6)
+        self.assertNotIn(v05_header, DISCOVERY_SYSTEM_PROMPT_V0_6)
+        v05_as_v06 = DISCOVERY_SYSTEM_PROMPT_V0_5.replace(v05_header, v06_header, 1)
+        self.assertTrue(DISCOVERY_SYSTEM_PROMPT_V0_6.startswith(v05_as_v06))
+        self.assertEqual(
+            DISCOVERY_SYSTEM_PROMPT_V0_6[len(v05_as_v06):],
+            "\n\nProducer entity_refs item-type rule (v0.6): claims[].entity_refs is an "
+            "array of nonempty strings, never objects. Emit only source-supported "
+            "reference strings; this formatting rule supplies no entity or source fact.\n\n"
+            "FORMAT-ONLY entity_refs shape example (not a fact; do not copy the "
+            "placeholder): {\"entity_refs\":[\"FORMAT_ONLY_ENTITY_REF_DO_NOT_COPY\"]}. "
+            "The placeholder supplies no entity or source fact and must never be emitted.",
+        )
+        self.assertNotIn("nonempty strings, never objects", DISCOVERY_SYSTEM_PROMPT_V0_5)
+
     def test_audit_holder_pins_only_closed_producer_prompt_versions(self):
         run_input, context = _fixture()
         catalog = _catalog_for(run_input, context)
         for version in (
             "host-grounder-discovery-prompt-v0.4",
             "host-grounder-discovery-prompt-v0.5",
+            "host-grounder-discovery-prompt-v0.6",
         ):
             with self.subTest(version=version):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -781,7 +830,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         )
 
         for invalid in (
-            "host-grounder-discovery-prompt-v0.6", "", True, 1, [], {}, object()
+            "host-grounder-discovery-prompt-v0.7", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -797,6 +846,194 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                         producer_prompt_version=invalid,
                     )
                 self.assertFalse(holder.finalized)
+
+        mismatch_holder = HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        )
+        mismatch_holder._begin(
+            run_input.run_id,
+            run_input.canonical_input_hash,
+            catalog.canonical_utf8,
+            catalog.catalog_sha256,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.6",
+        )
+        mismatch_holder._capture_producer_content(b"{}")
+        with self.assertRaises(ValueError):
+            mismatch_holder._finalize(
+                b"{}",
+                catalog=catalog,
+                expected_producer_prompt_version="host-grounder-discovery-prompt-v0.5",
+            )
+        self.assertFalse(mismatch_holder.finalized)
+
+    def test_catalog_routes_preserve_prompt_map_signature_and_entrypoint_count(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _raw, verdict = _wire_bundle(run_input, context)
+        cases = (
+            (
+                run_host_grounder_same_run_evidence_catalog_v0_2,
+                DISCOVERY_SYSTEM_PROMPT_V0_5,
+                "host-grounder-discovery-prompt-v0.5",
+            ),
+            (
+                run_host_grounder_same_run_evidence_catalog_v0_3,
+                DISCOVERY_SYSTEM_PROMPT_V0_5,
+                "host-grounder-discovery-prompt-v0.5",
+            ),
+            (
+                run_host_grounder_same_run_evidence_catalog_v0_4,
+                DISCOVERY_SYSTEM_PROMPT_V0_6,
+                "host-grounder-discovery-prompt-v0.6",
+            ),
+        )
+        result_type = None
+        for route, expected_prompt, expected_version in cases:
+            with self.subTest(route=route.__name__):
+                calls = []
+                holder = HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                )
+                result = route(
+                    run_input,
+                    context,
+                    discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+                    semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+                    audit_holder=holder,
+                    max_json_bytes=100_000,
+                    max_source_body_bytes=20_000,
+                    max_catalog_entries=64,
+                    max_catalog_bytes=32_768,
+                    max_catalog_paragraphs=128,
+                    host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+                )
+                self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+                self.assertEqual(calls[0][1], expected_prompt)
+                self.assertEqual(
+                    json.loads(result.audit.sidecar_utf8)["producer_prompt_version"],
+                    expected_version,
+                )
+                self.assertIs(holder.audit, result.audit)
+                self.assertTrue(holder.finalized)
+                if result_type is None:
+                    result_type = type(result)
+                self.assertIs(type(result), result_type)
+
+    def test_v04_requires_preparer_and_keeps_v03_fine_diagnostics(self):
+        run_input, context = _fixture()
+        routes = (
+            (run_host_grounder_same_run_evidence_catalog_v0_3, DISCOVERY_SYSTEM_PROMPT_V0_5),
+            (run_host_grounder_same_run_evidence_catalog_v0_4, DISCOVERY_SYSTEM_PROMPT_V0_6),
+        )
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as missing_preparer:
+            run_host_grounder_same_run_evidence_catalog_v0_4(
+                run_input,
+                context,
+                discovery_client=_FakeClient("discovery", "{}", calls),
+                semantic_client=_FakeClient("semantic", "{}", calls),
+                audit_holder=HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                ),
+                max_json_bytes=100_000,
+                max_source_body_bytes=20_000,
+                max_catalog_entries=64,
+                max_catalog_bytes=32_768,
+                max_catalog_paragraphs=128,
+            )
+        self.assertEqual(missing_preparer.exception.code, "HOST_CONTEXT_PREPARER_INVALID")
+        self.assertEqual(calls, [])
+
+        for route, expected_prompt in routes:
+            with self.subTest(route=route.__name__):
+                calls = []
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    route(
+                        run_input,
+                        context,
+                        discovery_client=_FakeClient("discovery", "not-json", calls),
+                        semantic_client=_FakeClient("semantic", "{}", calls),
+                        audit_holder=HostEvidenceCatalogAuditHolder(
+                            run_id=run_input.run_id,
+                            canonical_input_hash=run_input.canonical_input_hash,
+                        ),
+                        max_json_bytes=100_000,
+                        max_source_body_bytes=20_000,
+                        max_catalog_entries=64,
+                        max_catalog_bytes=32_768,
+                        max_catalog_paragraphs=128,
+                        host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+                    )
+                self.assertEqual(raised.exception.code, "PRODUCER_ENVELOPE_INVALID")
+                self.assertEqual(raised.exception.failure_stage, "producer_envelope_normalization")
+                self.assertEqual(raised.exception.failure_check, "producer_v0_3_wire_decode")
+                self.assertEqual([call[0] for call in calls], ["discovery"])
+                self.assertEqual(calls[0][1], expected_prompt)
+
+    def test_v04_keeps_output_and_request_limits_independent_of_internal_json_limit(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _raw, verdict = _wire_bundle(run_input, context)
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as oversized_output:
+            run_host_grounder_same_run_evidence_catalog_v0_4(
+                run_input,
+                context,
+                discovery_client=_FakeClient(
+                    "discovery", "x" * 40_001, calls,
+                    max_input_bytes=80_000, max_output_bytes=40_000,
+                ),
+                semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+                audit_holder=HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                ),
+                max_json_bytes=1_048_576,
+                max_source_body_bytes=20_000,
+                max_catalog_entries=64,
+                max_catalog_bytes=32_768,
+                max_catalog_paragraphs=128,
+                host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+            )
+        self.assertEqual(oversized_output.exception.code, "DISCOVERY_RESPONSE_TOO_LARGE")
+        self.assertEqual([call[0] for call in calls], ["discovery"])
+
+        large_questions = tuple(
+            HostGrounderSubquestion("q-{}".format(index), "x" * 5_000)
+            for index in range(20)
+        )
+        large_run_input = HostGrounderRunInput(
+            run_input.run_id,
+            run_input.user_input,
+            large_questions,
+            HostGrounderRunInputBounds(200_000, 8_000, 20),
+        )
+        large_context = replace(
+            context, canonical_input_hash=large_run_input.canonical_input_hash
+        )
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as oversized_request:
+            run_host_grounder_same_run_evidence_catalog_v0_4(
+                large_run_input,
+                large_context,
+                discovery_client=_FakeClient(
+                    "discovery", _canonical(producer), calls, max_input_bytes=80_000
+                ),
+                semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+                audit_holder=HostEvidenceCatalogAuditHolder(
+                    run_id=large_run_input.run_id,
+                    canonical_input_hash=large_run_input.canonical_input_hash,
+                ),
+                max_json_bytes=1_048_576,
+                max_source_body_bytes=20_000,
+                max_catalog_entries=64,
+                max_catalog_bytes=32_768,
+                max_catalog_paragraphs=128,
+                host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+            )
+        self.assertEqual(oversized_request.exception.code, "MODEL_REQUEST_TOO_LARGE")
+        self.assertEqual(calls, [])
 
     def test_explicit_route_sends_full_body_and_catalog_and_retains_closed_audit(self):
         run_input, context = _fixture()

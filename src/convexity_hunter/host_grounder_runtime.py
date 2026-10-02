@@ -32,6 +32,7 @@ from .host_grounder_evidence_catalog import (
     HostEvidenceCatalogAuditHolder,
     _PRODUCER_PROMPT_VERSION_V0_4,
     _PRODUCER_PROMPT_VERSION_V0_5,
+    _PRODUCER_PROMPT_VERSION_V0_6,
     build_host_evidence_catalog,
     parse_grounder_output_v0_3,
     _parse_grounder_output_v0_3_with_progress,
@@ -282,6 +283,19 @@ DISCOVERY_SYSTEM_PROMPT_V0_5 = _replace_prompt_fragment(
     "a hypothesis or supported coverage to complete the schema. Keep "
     "interpretations labeled as interpretations. Producer bindings and labels "
     "do not confer Host or EI authority."
+)
+
+DISCOVERY_SYSTEM_PROMPT_V0_6 = _replace_prompt_fragment(
+    DISCOVERY_SYSTEM_PROMPT_V0_5,
+    "Prompt version: host-grounder-discovery-prompt-v0.5.",
+    "Prompt version: host-grounder-discovery-prompt-v0.6.",
+) + (
+    "\n\nProducer entity_refs item-type rule (v0.6): claims[].entity_refs is an "
+    "array of nonempty strings, never objects. Emit only source-supported "
+    "reference strings; this formatting rule supplies no entity or source fact.\n\n"
+    "FORMAT-ONLY entity_refs shape example (not a fact; do not copy the "
+    "placeholder): {\"entity_refs\":[\"FORMAT_ONLY_ENTITY_REF_DO_NOT_COPY\"]}. "
+    "The placeholder supplies no entity or source fact and must never be emitted."
 )
 
 SEMANTIC_SYSTEM_PROMPT_V0_5 = _replace_prompt_fragment(
@@ -1229,6 +1243,8 @@ def _run_host_grounder_same_run_evidence_catalog(
         discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_4
     elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_5:
         discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_5
+    elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_6:
+        discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_6
     else:
         raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
     if discovery_client is semantic_client:
@@ -1653,6 +1669,45 @@ def run_host_grounder_same_run_evidence_catalog_v0_3(
         max_catalog_bytes=max_catalog_bytes,
         max_catalog_paragraphs=max_catalog_paragraphs,
         producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_5,
+        context_preparer=host_context_preparer,
+        producer_diagnostics_v0_3=True,
+    )
+
+
+def run_host_grounder_same_run_evidence_catalog_v0_4(
+    run_input: HostGrounderRunInput,
+    context: HostBuildContext,
+    *,
+    discovery_client: ChatCompletionsClient,
+    semantic_client: ChatCompletionsClient,
+    audit_holder: HostEvidenceCatalogAuditHolder,
+    max_json_bytes: int,
+    max_source_body_bytes: int,
+    max_catalog_entries: int,
+    max_catalog_bytes: int,
+    max_catalog_paragraphs: int,
+    host_context_preparer: Optional[
+        Callable[
+            [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
+            HostBuildContext,
+        ]
+    ] = None,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Run catalog v0.3 semantics with the typed-entity producer prompt."""
+    if not callable(host_context_preparer):
+        raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
+    return _run_host_grounder_same_run_evidence_catalog(
+        run_input,
+        context,
+        discovery_client=discovery_client,
+        semantic_client=semantic_client,
+        audit_holder=audit_holder,
+        max_json_bytes=max_json_bytes,
+        max_source_body_bytes=max_source_body_bytes,
+        max_catalog_entries=max_catalog_entries,
+        max_catalog_bytes=max_catalog_bytes,
+        max_catalog_paragraphs=max_catalog_paragraphs,
+        producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_6,
         context_preparer=host_context_preparer,
         producer_diagnostics_v0_3=True,
     )

@@ -33,8 +33,13 @@ _AUDIT_SCHEMA_VERSION = "host-grounder-quote-localization-audit-v0.3"
 _PRODUCER_WIRE_VERSION = "grounder-output-v0.3"
 _PRODUCER_PROMPT_VERSION_V0_4 = "host-grounder-discovery-prompt-v0.4"
 _PRODUCER_PROMPT_VERSION_V0_5 = "host-grounder-discovery-prompt-v0.5"
+_PRODUCER_PROMPT_VERSION_V0_6 = "host-grounder-discovery-prompt-v0.6"
 _PRODUCER_PROMPT_VERSIONS = frozenset(
-    (_PRODUCER_PROMPT_VERSION_V0_4, _PRODUCER_PROMPT_VERSION_V0_5)
+    (
+        _PRODUCER_PROMPT_VERSION_V0_4,
+        _PRODUCER_PROMPT_VERSION_V0_5,
+        _PRODUCER_PROMPT_VERSION_V0_6,
+    )
 )
 _PRODUCER_PROMPT_VERSION = _PRODUCER_PROMPT_VERSION_V0_4
 _VERIFIER_WIRE_VERSION = "semantic-verdict-v0.3"

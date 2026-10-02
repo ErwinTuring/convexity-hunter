@@ -49,8 +49,22 @@ semantic/source 0, schema observer not invoked, no receipt/Builder/EI. Attempt
 spent. Serialization failure versus expanded-size overflow is not distinguished.
 Offline audit ran no synthetic fixture and establishes no numeric limit change.
 Further blind calls stop. A bounded private model-JSON capture/local-replay
-replan requires user authorization because it changes this experiment's raw
-retention boundary; no capture or new live operation is yet authorized.
+replan required user authorization because it changed this experiment's raw
+retention boundary. That authorization was subsequently granted. The
+[private replay trial](standalone-iren-private-replay-trial-2026-10-02.md) ran
+once and captured only discovery content externally (0600). Offline replay
+and independent review prove its 24,090-byte wire expands to 55,171 bytes,
+over the unchanged 40,000-byte internal cap. A diagnostic-only schema check
+also identifies an object entity reference item where a string is required.
+No product acceptance/receipt/Builder/EI or market data followed.
+The [typed entity / resource profile](host-grounder-typed-entity-profile-v0.1.md)
+is implemented after independent contract and final code review PASS.
+Validation: 19 focused / 129 Host Grounder / 1,650 full-suite tests, compileall
+and diff checks passed. Runtime entrypoints are 6; catalog exports remain 9.
+Existing routes and all evidence rules remain unchanged. No fresh live call
+was part of BUILD or is authorized by this checkpoint. The next separately
+preregistered trial must use the explicit caller profile and must not retain
+raw model content under the already-spent single-capture authorization.
 
 ## Prior bounded work and approved target applicability
 

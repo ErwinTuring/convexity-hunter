@@ -28,8 +28,18 @@ The subsequent [exact schema-reason experiment](standalone-iren-schema-reason-tr
 ran once after independent runner safety review and preregistration. It stopped
 at canonicalization, before the schema observer; discovery reservation 1,
 semantic/source 0. Expanded size and exact cause remain unknown. No production
-change or live EI acceptance. Private model-output retention/local replay is a
-proposed debugging replan pending user authority, not a completed capability.
+change or live EI acceptance. Private model-output retention/local replay was
+then explicitly authorized. The [new private trial](standalone-iren-private-replay-trial-2026-10-02.md)
+ran once and enabled offline proof: wire 24,090 / normalized 55,171 bytes,
+plus a schema-invalid object `entity_refs` item. The precise findings were
+independently reviewed; no receipt/Builder/EI or product acceptance.
+The [bounded typed-entity successor](host-grounder-typed-entity-profile-v0.1.md)
+is implemented after independent contract and final code review PASS.
+19 focused / 129 Host Grounder / 1,650 full-suite tests and compileall passed;
+runtime entrypoints are 6 and catalog exports remain 9. It leaves legacy
+routes, schemas and authority unchanged; resource ceilings are explicit caller
+engineering policy, not approved numerical Core risk inputs. No live product
+acceptance is claimed by synthetic BUILD validation.
 
 Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented in opt-in catalog runtime v0.2. Independent review

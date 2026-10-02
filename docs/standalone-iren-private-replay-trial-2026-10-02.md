@@ -53,3 +53,62 @@ does not alter runtime validation or authorize retry.
 Independent exact-hash safety review passed. Reviewer inspected the nine
 capture controls without rerunning their temporary writes; Main's actual
 offline execution is the test evidence. No capture or secret was read.
+
+## Actual one-shot outcome — attempt spent
+
+After preregistration `ece201c` was pushed and Main authorized the exact hash,
+one discovery reservation was consumed, semantic/source calls zero. Result:
+`STOPPED / PRODUCER_ENVELOPE_INVALID` at `producer_v0_3_canonical_size`.
+The schema observer was not invoked. No receipt, preparation, Builder, EI,
+Core or market data. No retry. Native counts (13 claims, one hypothesis,
+28 bindings, four coverage entries) remain unvalidated assertions.
+
+Discovery content captured privately: 24,090 UTF-8 bytes, 0600 file at the
+registered `model-output.json` path. SHA-256:
+`cd2aa7b0506672f0f2fd4208afd129c67921fab5b88595a1342087c19a51e03e`.
+Sanitized result (0600) in the same run directory, named `<run-id>.result.json`:
+SHA-256 `e6d1909936e9a1f24bd37aab0916000836671090f856d5e8b6bf93cbcc8e2d5a`.
+Marker remains; this attempt is spent. Capture is untrusted diagnostic input,
+not evidence or a passed schema. Replay is offline and hash-bound; no raw
+content enters repository or agent/model context.
+
+## Hash-bound offline replay
+
+For this capture, serialization succeeded and the normalized producer object
+was **55,171 bytes**, 15,171 above the unchanged 40,000-byte limit. The exact
+parser reproduced the same canonical-size rejection. Original exception
+identity and observer restoration passed. This establishes overflow for this
+capture only; it does not resolve prior trials' unknown causes.
+
+The pinned 9,423-byte source yielded 48 catalog entries / 21,130 catalog bytes.
+A separately labeled schema-only counterfactual used exactly 55,171 input
+bytes, with the original 8,000-byte string and 64-item array limits unchanged.
+It rejected the same expanded object. This is diagnostic, not product acceptance,
+new runtime limits, receipt verification, Builder or EI. No model/source calls
+or credential reads occurred. Subsequent precise schema analysis remains offline.
+
+Replay directory:
+`/private/tmp/iren-offline-replay-20261002-62bfa566-95cc-4360-a3f4-728d5126182d/`
+(0700); `replay.py` and sanitized `replay-result.json` are 0600. Script/result
+hashes will be recorded after the final bounded schema audit; intermediate
+bytes are not claimed as a final reviewed artifact.
+
+Final bounded schema audit identifies the first counterfactual failure:
+`SCHEMA_STRING_TYPE_INVALID / CLAIMS_ENTITY_REFS_ITEM`. A claim's entity
+reference item is an object where the existing schema requires a string.
+The same expanded bytes were checked; no payload repair, value disclosure,
+receipt or product acceptance. Independent targeted review confirmed the
+validator frame/type and unchanged capture/result digests.
+
+Final replay script SHA-256:
+`d9e41855ce60afc7c4776afe5c6123961816d617e2911144abb519720cfba2d7`.
+Final sanitized `replay-schema-rule-result.json` SHA-256:
+`66f5b12079b1e9740aa0693e29a7e2afc35aa1638bca5f480eda7b93eded9543`.
+
+Further preflight found a separate request-cap dependency: the same capture's
+counterfactual semantic framing is 102,050 serialized request bytes versus
+the current 80,000-byte client cap. This was pure framing, not a valid schema
+or an actual semantic invocation. The producer prompt v0.5 names `entity_refs`
+as an array with an empty example but does not specify its string item type.
+The proposed fixes are a separately frozen finite caller resource profile
+and an opt-in explicit item-type prompt; old profiles remain unchanged.

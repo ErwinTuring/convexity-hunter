@@ -23,6 +23,7 @@ from convexity_hunter.host_grounder_runtime import (
     run_host_grounder_same_run_evidence_catalog_v0_1,
     run_host_grounder_same_run_evidence_catalog_v0_2,
     run_host_grounder_same_run_evidence_catalog_v0_3,
+    run_host_grounder_same_run_evidence_catalog_v0_4,
 )
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
 from tests.test_host_grounder_evidence_catalog import (
@@ -117,7 +118,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
             hypothesis["hypothesis_id"] = producer["hypotheses"][index]["hypothesis_id"]
         return verdict
 
-    def test_v03_adds_one_runtime_callable_without_changing_frozen_signatures(self):
+    def test_v04_adds_one_runtime_callable_without_changing_frozen_signatures(self):
         runtime_functions = {
             name for name, value in vars(runtime_module).items()
             if name.startswith("run_host_grounder") and inspect.isfunction(value)
@@ -130,6 +131,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
                 "run_host_grounder_same_run_evidence_catalog_v0_1",
                 "run_host_grounder_same_run_evidence_catalog_v0_2",
                 "run_host_grounder_same_run_evidence_catalog_v0_3",
+                "run_host_grounder_same_run_evidence_catalog_v0_4",
             },
         )
         self.assertFalse(hasattr(runtime_module, "__all__"))
@@ -139,6 +141,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
         )
         v02_signature = inspect.signature(run_host_grounder_same_run_evidence_catalog_v0_2)
         v03_signature = inspect.signature(run_host_grounder_same_run_evidence_catalog_v0_3)
+        v04_signature = inspect.signature(run_host_grounder_same_run_evidence_catalog_v0_4)
         expected_v01_names = (
             "run_input", "context", "discovery_client", "semantic_client", "audit_holder",
             "max_json_bytes", "max_source_body_bytes", "max_catalog_entries",
@@ -149,6 +152,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
         self.assertEqual(tuple(v02_signature.parameters), expected_v02_names)
         self.assertEqual(v03_signature, v02_signature)
         self.assertEqual(len(v03_signature.parameters), 11)
+        self.assertEqual(v04_signature, v03_signature)
         for parameter in v01_parameters[:2]:
             self.assertIs(parameter.kind, inspect.Parameter.POSITIONAL_OR_KEYWORD)
         for parameter in v01_parameters[2:]:
@@ -554,7 +558,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
                 max_catalog_entries=100,
                 max_catalog_bytes=100_000,
                 max_catalog_paragraphs=100,
-                producer_prompt_version="host-grounder-discovery-prompt-v0.6",
+                producer_prompt_version="host-grounder-discovery-prompt-v0.7",
             )
         self.assertEqual(raised.exception.code, "DISCOVERY_PROMPT_VERSION_INVALID")
         self.assertEqual(calls, [])
