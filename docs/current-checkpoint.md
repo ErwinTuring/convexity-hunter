@@ -76,6 +76,11 @@ supplies an ordered index-to-ID map, without changing parser/evidence rules.
 23 catalog / 28 context / 133 Grounder tests, compileall and diff checks passed.
 Runtime/catalog counts are 7/9; the signature remains 11 parameters.
 No new live request was part of this BUILD; the spent trial's cause stays unknown.
+The separate [binding-map trial](standalone-iren-binding-map-trial-2026-10-02.md)
+ran once and stopped at `SEMANTIC_CALL_FAILED`, before verdict validation.
+Reservations 1/1, source 0, no raw retention/receipt/Builder/EI. Attempt spent;
+the precise call failure is unknown, not presumed timeout or binding mismatch.
+Next: bounded closed-code call diagnosis, not a blind retry or budget increase.
 
 ## Prior bounded work and approved target applicability
 

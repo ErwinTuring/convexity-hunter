@@ -32,3 +32,41 @@ and source/helper hashes are required. No live outcome is claimed at registratio
 Independent exact-hash safety review: PASS. Reviewer checked the narrow delta,
 immutable pins, private modes, one-shot marker/gates and sanitized-only output
 without executing fixtures, calls or reading raw content.
+
+## Actual outcome — attempt spent
+
+After preregistration `6203064` was pushed, Main authorized the exact frozen
+runner once. Result: `STOPPED / SEMANTIC_CALL_FAILED`; failure stage/check null.
+Discovery and semantic reservations were each one; source calls zero, no market
+data, raw retention false, no receipt partition or EI result. No retry.
+
+The producer structurally progressed to semantic invocation. Unvalidated census:
+23,336 content bytes, 15 claims, one hypothesis, 36 bindings, four coverage
+entries. The input hash remains
+`0af5aa32b85ee1d196541abef94521d4a9f3231b6fac3df03c42239d911737d8`.
+No semantic verdict reached the alignment check, so this is neither evidence
+that the binding-map fix failed nor evidence that it passed live semantic
+validation. Reservation counts must not be reported as confirmed successful
+remote requests. The existing result does not establish timeout, transport,
+request-size, response-size or truncation as the particular cause.
+
+Independent factual review passed. Read-only transport inspection further
+establishes that reservation occurs after request-size validation but before
+credential resolution and HTTP invocation: the ordinary pre-invocation request
+cap is not the cause of this post-reservation result. Other transport, response,
+credential or unknown exceptions remain indistinguishable in the stored output.
+Result SHA-256: `2369f1461187e7de6e5a5dc087b61ada3bf03ff8127ea0aa7ca3cc420175dd1a`;
+marker SHA-256: `84777962888ac642e3d0e5371c9d37378320d95ceea5985326d59dcd248a8418`.
+Both are mode 0600.
+
+A bounded successor observer may record only exact-type, closed-allowlisted
+`ModelTransportError.code` or a fixed unknown category, never error text, response
+body, headers or credentials. It must forward arguments/completion/config/budget
+unchanged and rethrow the original exception. Synthetic transparency controls
+and a separate one-shot safety/preregistration gate precede any live invocation.
+This is diagnosis, not production acceptance or permission for budget relaxation.
+
+Marker/result remain in the registered private directory; the protocol is spent.
+Do not increase budgets, change models or repeat blindly. The next bounded work
+is closed-code semantic-call diagnosis, without raw payload/exception text,
+credentials, source refresh or market data. No general product success claim.

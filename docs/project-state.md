@@ -52,6 +52,11 @@ strict acceptance and resource ceilings remain unchanged; no live retry.
 23 catalog / 28 context / 133 Grounder tests and compileall/diff checks passed.
 Runtime/catalog counts are 7/9. The preceding 1,650 full-suite PASS is not a
 new full-suite result for this narrow framing/audit unit.
+The separate [binding-map trial](standalone-iren-binding-map-trial-2026-10-02.md)
+progressed to semantic invocation but failed there, before verdict validation.
+One reservation per role, source 0, no raw retention/receipt/Builder/EI.
+Exact call failure remains unknown; the attempt is spent. Neither semantic
+acceptance nor live failure of the map invariant is established.
 
 Current bounded M2 unit: [Host context preparation v0.1](host-grounder-context-preparation-v0.1.md)
 is frozen and implemented in opt-in catalog runtime v0.2. Independent review
