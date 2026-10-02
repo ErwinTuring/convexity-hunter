@@ -107,6 +107,22 @@ Separate offline review of the retained SEC body supports its IREN ordinary-shar
 cover row and registered exchange. Exact locations/hashes are in the source
 packet record. This is limited Codex-assisted review, not current listing/USD
 proof, a whole-body verification or an independent standalone Host capability.
+The separate official-host source acquisition subsequently returned five Search
+results and two Extract bodies. Its analyst-page title supports IREN ordinary
+shares/symbol, but neither body proves explicit USD trading currency. The
+`dividend-history` compound path escaped the history filter; scope deviation is
+recorded, its historical/dividend data unused. Two requests/credits reserved;
+one credit reported in aggregate. No retry, model, Builder, EI or Core followed.
+The source record retains hashes and exact identity excerpts. This is source
+retrieval plus limited Codex-assisted review, not standalone Grounder completion.
+Subsequent single Yahoo-page Extract found IREN's `NasdaqGS - Delayed Quote•USD`
+header. Initial literal-string checking missed that wording; targeted review
+and independent body/hash review passed `READY_FOR_BOUNDED_HOST_KEY` for
+`IREN / None / EQUITY / USD`, with provider-reported currency provenance joined
+to issuer/Nasdaq share-class proof. No binding/EI run yet. This removes the
+bounded identity-evidence gap, not the need for same-run semantic verification
+or an independent general-purpose listing resolver. Next: one bounded v0.5
+producer/Builder/EI trial using retained bodies, no source/quote calls.
 
 Current M2 boundary: [Host Grounder Builder v0.1](host-grounder-builder-v0.1.md)
 is frozen and builder BUILD_READY after independent review. The closed DTO

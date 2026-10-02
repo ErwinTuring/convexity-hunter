@@ -93,7 +93,143 @@ normalization. Whole-body metadata stays `PENDING_BODY_REVIEW`; this limited
 Codex-assisted inspection does not mark every statement verified or establish
 an independently running Host identity verifier. No context binding was made.
 
+Code-grounding clarification: the canonical `UnderlyingSecurityType` has only
+`EQUITY` and `ETF`. The ordinary-share cover row supports `EQUITY`; a separate
+Futu-specific stock-category normalization is not required by this Host key.
+This does not supply USD, MIC or current-listing evidence and creates no new
+automatic identity binding.
+
 Next lawful work is an independently supported current listing/security-type
 and trading-currency evidence path, with its provenance and Host validation
 explicit. Do not replay this spent Search or infer the missing fields to enable
 EI. No new user credential or payment action has been demonstrated necessary.
+
+## Separate current-listing source acquisition
+
+New operation `iren-current-listing-currency-2026-10-02-v1`; not a replay or
+reinterpretation of the spent exact-URL trial above. Main-reviewed wrapper:
+`/private/tmp/ch_iren_current_identity_acquisition_2026-10-02.py`, SHA-256
+`a7cfa3b80c89060ab32355e6c11a6f407144dd278cc500e3718b096e60136a92`.
+It reuses the unchanged `host_sources.py` hash recorded above.
+
+Exact query:
+
+```text
+(site:iren.com OR site:ir.iren.com OR site:nasdaq.com OR site:nasdaqtrader.com) IREN stock trading currency USD share class current listing
+```
+
+One Basic Search (at most five results), at most one Basic Extract (two URLs),
+two-request/two-credit budget, same byte/time caps and external credential
+resolver. No retry, fallback, model, Builder, EI, Core, Futu or trading calls.
+Extract URL hosts are exactly `iren.com`, `www.iren.com`, `ir.iren.com`,
+`nasdaq.com`, `www.nasdaq.com`, `nasdaqtrader.com`,
+`www.nasdaqtrader.com`, or `listingcenter.nasdaq.com`. Require HTTPS and
+canonical ASCII paths without query, fragment, userinfo, ports or dot segments;
+block option/history/chart/quote path segments. A trailing slash is lawful.
+Retain vetted URLs and rejection categories, not raw API JSON. Public bodies
+remain external 0700/0600 pending-review artifacts; incidental prices cannot
+enter research. Existing PAYGO-off confirmation is not a new billing check.
+
+AST and 13 offline URL checks passed. Main approval binds the exact wrapper
+hash; an exclusive marker is claimed before requests. Search/body retrieval
+alone establishes no identity, currency or product acceptance. No live result
+exists at this operation's authorization checkpoint.
+
+### Actual acquisition outcome
+
+Main authorized the exact reviewed hash once. Search returned five official-host
+results; the first two eligible URLs were extracted without ranking, retry or
+additional acquisition. Actual URLs were the Nasdaq IREN
+`/analyst-research` and `/dividend-history` pages. The compound
+`dividend-history` slug passed the exact-segment filter despite the intended
+history exclusion: record this source-selection deviation, not a clean scope
+pass. No historical, dividend, price or analyst metrics were consumed as
+research evidence. Three further eligible results exceeded the extraction cap.
+
+Transport outcome: `EXTRACTED_PENDING_BODY_REVIEW`; two reserved requests and
+two reserved credits. Search reported one credit, Extract zero; account/billing
+usage was not rechecked. Source selection/relevance and factual verification
+remain separate from successful transport.
+
+External bodies (0600 in `/private/tmp/iren-public-bodies-20qp0zpm`, 0700):
+
+| File | Source path | SHA-256 |
+| --- | --- | --- |
+| `source-01.md` | Nasdaq IREN `/analyst-research` | `fa9d2649e99c493fa502b756ea24c23dfc0f96f5110c2f40a8d10aa293fdf549` |
+| `source-02.md` | Nasdaq IREN `/dividend-history` | `c63cefd3d1af0cd7367b416d8ee0a11a47331f1417bbe7475d73e91be03038b6` |
+
+Limited Codex-assisted review of the first body identifies IREN Limited ordinary
+shares, symbol IREN, in its title. Context `[5677,5782)` has SHA-256
+`7d94239fd8aaf62b23457477c629510b2e24af496497a36a2ecda5f570604324`;
+the ordinary-share phrase `[5722,5737)` has SHA-256
+`1e46ee8dea3492d6f84220ca5dc641338f2e6cc48116087bbb3185824c09963a`.
+Offsets are exact decoded Unicode code points. Generic Nasdaq navigation is
+not instrument-specific proof of current listing. Neither body establishes
+explicit USD trading currency. This source packet therefore cannot authorize
+the missing currency binding or claim standalone Host/EI completion.
+
+Exact sanitized result: `/private/tmp/iren-current-listing-currency-2026-10-02-v1.result.json`
+(0600), SHA-256
+`09fa48d894d95116099392f5e03635c1d4132c409afa4d2992323b847f40617e`.
+No model, Builder, EI, Core or production code changes occurred. The attempt
+is spent; do not rerun after changing the URL filter to improve this outcome.
+
+### Required-key audit
+
+The existing Futu Sample 10 records an `IREN/XNAS/EQUITY/USD` key, but its
+linked exercise documents do not retain independent currency provenance.
+Do not cite that constructed key as its own proof. Ordinary-share identity
+supports the existing `EQUITY` category; explicit USD remains missing.
+Current listing standing is an unknown stronger claim, not a newly imposed
+universal gate: these contracts prescribe no separate identity freshness window.
+
+### Separate secondary-reference corroboration authorization
+
+Main authorized one additional Basic Extract of the known public URL
+`https://finance.yahoo.com/quote/IREN/`, with one-request/one-credit budget,
+existing external Tavily resolver and PAYGO-off confirmation. No Search,
+retry, fallback, model, market-data SDK or trading operation. Retain only
+external pending-review public body and sanitized receipt/hashes. This is
+secondary published instrument metadata, not exchange authority, new Engine
+provider integration, a replay of either spent operation, or automatic Host
+binding. Review explicit identity/currency wording and conflicts independently;
+do not use displayed prices or substitute reporting currency for trading
+currency. Its result remains unknown at authorization.
+
+#### Actual secondary-reference result
+
+One Extract returned a body; one request/credit reserved, zero failed,
+provider-reported credits zero. No Search, retry or further acquisition.
+Captured `2026-10-02T01:10:23.274967+00:00`, external body
+`/private/tmp/iren-yahoo-public-5npm4xmj/source.md` (0600, directory 0700),
+SHA-256 `88751686e6e61143161cfbfd6a37bf5c7211472927566c499354c369a8908211`.
+Sanitized result `/private/tmp/iren-yahoo-identity-corroboration-2026-10-02-v1.result.json`
+has SHA-256 `3e5450a6178b3227bc82aba37b77854a397969254f06c9d4aebaf3dadffca0b0`.
+
+An initial literal search for `Currency in USD` missed alternative wording.
+Targeted offline review found the instrument header at line 347:
+`NasdaqGS - Delayed Quote•USD`, immediately preceding
+`# IREN Limited (IREN)` at line 349. The full header SHA-256 is
+`bd53381adb5d09f320f11cab2159c3f07779e6a8f84289390b28ff3b3fe41dcb`;
+its USD token `[26663,26666)` has SHA-256
+`a26cdf3a6e709124385d4d7eb9bff6b897a58ed5597fbab779b89849dbe81b21`.
+The body is target-specific despite surrounding generic navigation. Its header
+supports Yahoo-reported quote denomination USD, not exchange-certified facts,
+realtime price, freshness, executable pricing or consolidated quote authority.
+Do not record the initial literal-string miss as absent currency evidence.
+
+Independent review passed `READY_FOR_BOUNDED_HOST_KEY` for
+`IREN / None / EQUITY / USD`, joining issuer/Nasdaq ordinary-share evidence
+with Yahoo's explicit quote denomination. All three body hashes matched.
+Keep the currency basis provider-reported; do not relabel it issuer-, SEC- or
+exchange-certified instrument currency, infer MIC, or claim realtime/NBBO.
+The existing Host contract permits readable listing/provider references and
+does not require exchange-only proof or an extra current-standing freshness gate.
+No binding or EI execution has occurred; standalone identity automation is
+not established by this Codex-assisted snapshot review. Next is a separately
+bounded existing v0.5 producer/Builder/EI trial with retained evidence, not
+another acquisition or a new provider adapter.
+
+Separate local SDK inspection found Futu `get_stock_basicinfo` supplies symbol,
+security type and venue but no explicit currency field. No SDK/API/config call
+was made. Do not infer USD from its US market code as an alternative proof.

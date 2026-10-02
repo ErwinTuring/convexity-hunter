@@ -101,6 +101,17 @@ noncoverage, not proof of absent public identity data. USD remains unproven.
 Offline SEC cover-row review now supports the historical filing's stated
 ordinary-share class/symbol/registered exchange, not current listing, currency
 or independently deployed Host verification. No production changes were made.
+Separate official-host Search/Extract succeeded (five results, two bodies),
+supporting IREN ordinary-share/symbol wording but not explicit USD currency.
+A compound dividend-history path escaped the intended exclusion; record the
+deviation and consume no historical data. No model/product run or retry was
+performed. Source access is demonstrated, identity authority remains incomplete.
+Subsequent Yahoo Extract supplied explicit IREN quote denomination USD.
+Independent snapshot/hash review now passes `READY_FOR_BOUNDED_HOST_KEY`
+(`IREN / None / EQUITY / USD`), with provider-reported currency, not exchange
+authority. No prices were consumed, MIC inferred or identity automation claimed.
+The next bounded step is the unchanged v0.5 producer/Builder/EI path; identity
+evidence is ready, live model/product acceptance is not yet proven.
 
 M2 deterministic [Host Grounder Builder v0.1 contract](host-grounder-builder-v0.1.md)
 is frozen after independent Tier-A review and targeted re-review. Its closed
