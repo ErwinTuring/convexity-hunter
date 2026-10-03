@@ -107,3 +107,19 @@ earlier spent attempt. Parser refusal remains correct; no partial JSON or model
 verdict was promoted. Next work is a narrow complete-but-compact semantic-output
 change, retaining every required verdict and evidence reference; no budget
 increase or acceptance relaxation. Live improvement is not yet proven.
+
+## Compact v0.7 validation preregistration — 2026-10-03
+
+Release `a6e78bce8bca3fc04538af4cba747c331be66e39`: one separately registered
+attempt after the production prompt correction, not a replay of the spent
+observer. New runner/run ID:
+`/private/tmp/iren-transport-observer-v07-20261003-8XBGkFH1/runner.py`.
+SHA-256: `87b63e986ad6e2cdb58597a983e65145fa75803b2dea872b13a9491e3977a469`.
+Main inspected the exact diff: new run ID, release/pins and additional offline
+v0.7 assertions only. Existing observer safety review and all controls remain
+applicable; offline passed, exclusive marker/result absent. Retained historical
+source packet; no freshness or current-event claim. Exactly one discovery and
+one semantic reservation maximum, zero source/market calls; unchanged 45-second
+timeout, 8,000/6,000 tokens and byte budgets. No raw model/exception/credential
+retention. Main exact-hash authorization still required. No retry or budget
+increase; a completed transport is not itself EI acceptance.
