@@ -26,11 +26,12 @@ or a claim that all three live entry modes are operational. See the
 [Core user flow](docs/core-convexity-mvp-user-flow-v0.1.md) and
 [current checkpoint](docs/current-checkpoint.md) for runtime evidence and gaps.
 
-The local workbench shell is implemented separately from research
-execution. Its three input views and local history must not be confused with
-operational World/Event/Direct executors. See the
-[local workbench flow](docs/local-workbench-user-flow.md) for the bounded shell
-and its explicit blocked-executor behavior.
+The local Chinese workbench supports an opt-in standalone Direct executor,
+private SQLite history, structured Core snapshots and automatic single-case
+report display. World/Event remain unconfigured, not operational discovery
+claims. See the [local workbench flow](docs/local-workbench-user-flow.md) and
+[Direct input format](docs/local-direct-input-v0.1.md). Provider failures and
+missing Core inputs remain visible; quotes do not become executable prices.
 
 ### Retained legacy capabilities
 

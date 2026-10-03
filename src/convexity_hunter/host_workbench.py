@@ -71,6 +71,7 @@ _DOCUMENT = r'''<!doctype html>
   <section class="banner" aria-label="使用边界">
     <strong>边界说明</strong>
     <p class="help">本页只提交原始输入和你填写的操作预算，并显示本机接口返回内容。不会在浏览器中调用模型、读取来源或计算研究结果；Direct 输入也不会因粘贴而自动验证。模型与凭证不在本页配置。</p>
+    <p class="help">入口是否可用以本机状态中的 executors 为准；入口标签本身不表示已配置。</p>
     <p class="help">所有预算项均须明确填写；本页不预填预算或经济数值。状态、批准 Profile 与历史记录仅按需读取，不代表运行结果或建议。</p>
   </section>
 
@@ -88,13 +89,14 @@ _DOCUMENT = r'''<!doctype html>
   <section class="panel" aria-labelledby="input-heading">
     <h2 id="input-heading">新建研究运行</h2>
     <div class="tabs" role="tablist" aria-label="研究入口">
-      <button type="button" role="tab" id="tab-world" data-mode="world" aria-selected="true">世界</button>
-      <button type="button" role="tab" id="tab-event" data-mode="event" aria-selected="false">事件</button>
-      <button type="button" role="tab" id="tab-direct" data-mode="direct" aria-selected="false">直接输入</button>
+      <button type="button" role="tab" id="tab-world" data-mode="world" aria-selected="false" disabled>世界</button>
+      <button type="button" role="tab" id="tab-event" data-mode="event" aria-selected="false" disabled>事件</button>
+      <button type="button" role="tab" id="tab-direct" data-mode="direct" aria-selected="false" disabled>直接输入</button>
     </div>
-    <p id="mode-help" class="help">世界：填写原始研究意图；提交时保留文本原样。</p>
+    <p id="mode-availability" class="help" role="status" aria-live="polite">正在读取入口配置；尚不能确认哪些入口可用。</p>
+    <p id="mode-help" class="help">请选择本机状态中已配置的入口。</p>
     <form id="run-form">
-      <label for="raw-input">原始输入</label>
+      <label id="raw-input-label" for="raw-input">原始输入</label>
       <textarea id="raw-input" name="input" autocomplete="off" required></textarea>
       <p id="input-help" class="help">文本按原样发送；仅检查是否为空，不在浏览器改写或解析。</p>
 
@@ -144,7 +146,8 @@ _DOCUMENT = r'''<!doctype html>
     runs: "/api/runs"
   });
   const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
-  const state = { mode: "world", runId: null };
+  const state = { mode: null, runId: null };
+  const modes = ["world", "event", "direct"];
   const integerBoundNames = ["max_submissions", "max_hypotheses", "max_browser_rows", "max_cases"];
   const privateKey = /token|secret|password|credential|authorization|cookie|api[_-]?key/i;
 
@@ -170,9 +173,40 @@ _DOCUMENT = r'''<!doctype html>
     return encoded === undefined ? "接口未提供可显示详情。" : encoded;
   }
 
-  function safeId(value) {
-    if (typeof value !== "string" || value.length < 1 || value.length > 128 || !/^[A-Za-z0-9._~-]+$/.test(value)) return null;
+  function safeRunId(value) {
+    if (typeof value !== "string" || value.length < 1 || value.length > 128 || !/^[A-Fa-f0-9-]+$/.test(value)) return null;
     return encodeURIComponent(value);
+  }
+
+  function safeCaseId(value) {
+    if (typeof value !== "string" || value.length < 1 || value.length > 512 || value === "." || value === ".." || !/^[A-Za-z0-9._~:-]+$/.test(value)) return null;
+    return encodeURIComponent(value);
+  }
+
+  function applyExecutorAvailability(data) {
+    const executors = isRecord(data) && isRecord(data.executors) ? data.executors : null;
+    const summaries = [];
+    for (const mode of modes) {
+      const tab = byId("tab-" + mode);
+      const status = executors && typeof executors[mode] === "string" ? executors[mode] : "UNKNOWN";
+      const configured = status === "CONFIGURED";
+      tab.disabled = !configured;
+      tab.title = configured ? "本机状态：CONFIGURED" : "本机状态：" + status;
+      if (state.mode === mode && !configured) state.mode = null;
+      summaries.push(mode + "：" + status);
+    }
+    for (const mode of modes) {
+      byId("tab-" + mode).setAttribute("aria-selected", state.mode === mode ? "true" : "false");
+    }
+    setText(
+      byId("mode-availability"),
+      executors
+        ? "入口状态（本机 executors）：" + summaries.join("；")
+        : "入口状态未提供或不可识别；为避免误报，入口保持禁用。"
+    );
+    if (state.mode === null) {
+      setText(byId("mode-help"), "请选择本机状态中已配置且可用的入口。");
+    }
   }
 
   function displayedStatus(value) {
@@ -203,9 +237,11 @@ _DOCUMENT = r'''<!doctype html>
   async function loadStatus() {
     try {
       const data = await getJson(API.status);
+      applyExecutorAvailability(data);
       setText(byId("connection-state"), "已读取本机状态响应");
       setText(byId("status-view"), jsonText(data, false));
     } catch (error) {
+      applyExecutorAvailability(null);
       setText(byId("connection-state"), "尚未连接：状态读取失败");
       setText(byId("status-view"), "本机状态暂不可用（" + error.message + "）。");
     }
@@ -228,7 +264,7 @@ _DOCUMENT = r'''<!doctype html>
       byId("history-list").appendChild(row);
       return;
     }
-    const id = safeId(metadata.run_id);
+    const id = safeRunId(metadata.run_id);
     if (id === null) {
       setText(row, "记录缺少可用 run_id；未发起详情读取。");
       byId("history-list").appendChild(row);
@@ -287,10 +323,10 @@ _DOCUMENT = r'''<!doctype html>
       return;
     }
     for (const entry of cases) {
-      const caseId = typeof entry === "string" ? entry : (isRecord(entry) ? entry.case_id : null);
+      const caseId = caseIdFromEntry(entry);
       const row = document.createElement("div");
       row.className = "record";
-      const encodedCaseId = safeId(caseId);
+      const encodedCaseId = safeCaseId(caseId);
       if (encodedCaseId === null) {
         setText(row, "用例条目缺少受支持的稳定 case_id；未发起详情读取。");
       } else {
@@ -305,14 +341,18 @@ _DOCUMENT = r'''<!doctype html>
     }
   }
 
+  function caseIdFromEntry(entry) {
+    return typeof entry === "string" ? entry : (isRecord(entry) ? entry.case_id : null);
+  }
+
   function renderRun(data, requestedRunId) {
     if (!isRecord(data)) {
       setText(byId("run-identity"), "运行响应格式不可识别。");
       setText(byId("run-status"), "状态缺失（接口未提供）");
       setText(byId("run-snapshot"), "接口未提供可显示运行快照。");
-      return;
+      return null;
     }
-    const suppliedId = safeId(data.run_id) === null ? null : data.run_id;
+    const suppliedId = safeRunId(data.run_id) === null ? null : data.run_id;
     state.runId = suppliedId || requestedRunId;
     setText(byId("run-identity"), "运行 ID：" + state.runId);
     setText(byId("run-status"), displayedStatus(data.status));
@@ -326,10 +366,15 @@ _DOCUMENT = r'''<!doctype html>
     setText(byId("run-snapshot"), Object.keys(extras).length ? jsonText(extras, true) : "运行响应未提供其他非用例快照字段。");
     renderCaseIndex(data.cases);
     setText(byId("case-detail"), "尚未选择用例；详情按需读取。");
+    if (data.mode === "direct" && Array.isArray(data.cases) && data.cases.length === 1) {
+      const caseId = caseIdFromEntry(data.cases[0]);
+      if (safeCaseId(caseId) !== null) return caseId;
+    }
+    return null;
   }
 
   async function loadRun(runId) {
-    const encodedId = safeId(runId);
+    const encodedId = safeRunId(runId);
     if (encodedId === null) return;
     state.runId = runId;
     setText(byId("run-identity"), "正在读取运行 ID：" + runId);
@@ -341,7 +386,8 @@ _DOCUMENT = r'''<!doctype html>
     setText(byId("case-detail"), "尚未选择用例。");
     try {
       const data = await getJson(API.runs + "/" + encodedId);
-      renderRun(data, runId);
+      const directCaseId = renderRun(data, runId);
+      if (directCaseId !== null) await loadCase(directCaseId);
     } catch (error) {
       setText(byId("run-identity"), "运行详情读取失败（" + error.message + "）。");
       setText(byId("run-status"), "状态缺失（详情读取失败）");
@@ -353,14 +399,29 @@ _DOCUMENT = r'''<!doctype html>
   }
 
   async function loadCase(caseId) {
-    const encodedRunId = safeId(state.runId);
-    const encodedCaseId = safeId(caseId);
+    const encodedRunId = safeRunId(state.runId);
+    const encodedCaseId = safeCaseId(caseId);
     if (encodedRunId === null || encodedCaseId === null) return;
     setText(byId("case-detail"), "正在按需读取用例详情……");
     try {
       const path = API.runs + "/" + encodedRunId + "/cases/" + encodedCaseId;
       const data = await getJson(path);
-      setText(byId("case-detail"), jsonText(data, false));
+      if (!isRecord(data) || data.case_id !== caseId) {
+        setText(byId("case-detail"), "用例详情响应的 case_id 缺失、无效或与请求不一致；未显示报告。");
+        return;
+      }
+      const classification = data.classification === undefined
+        ? "接口未提供" : (typeof data.classification === "string" ? data.classification : JSON.stringify(data.classification));
+      const reasons = data.reasons === undefined
+        ? "接口未提供" : JSON.stringify(data.reasons);
+      const disclosure = "case_id: " + data.case_id + "\nclassification: " + classification + "\nreasons: " + reasons;
+      if (data.report === null) {
+        setText(byId("case-detail"), disclosure + "\n\n报告字段为 null；当前没有可显示报告。");
+      } else if (typeof data.report === "string") {
+        setText(byId("case-detail"), disclosure + "\n\n" + data.report);
+      } else {
+        setText(byId("case-detail"), disclosure + "\n\n报告字段缺失或类型不受支持；未显示报告。");
+      }
     } catch (error) {
       setText(byId("case-detail"), "用例详情读取失败（" + error.message + "）。");
     }
@@ -386,6 +447,7 @@ _DOCUMENT = r'''<!doctype html>
 
   for (const tab of document.querySelectorAll('[role="tab"][data-mode]')) {
     tab.addEventListener("click", () => {
+      if (tab.disabled || !modes.includes(tab.dataset.mode)) return;
       state.mode = tab.dataset.mode;
       for (const other of document.querySelectorAll('[role="tab"][data-mode]')) {
         other.setAttribute("aria-selected", other === tab ? "true" : "false");
@@ -393,15 +455,24 @@ _DOCUMENT = r'''<!doctype html>
       const copy = {
         world: ["世界：填写原始研究意图；提交时保留文本原样。", "填写世界研究的原始意图；不在浏览器改写。"],
         event: ["事件：填写原始事件研究意图；提交时保留文本原样。", "填写事件研究的原始意图；不在浏览器解析。"],
-        direct: ["直接输入：可粘贴精确结构文本或 JSON；提交仍是原始字符串，不自动验证。", "精确结构输入按原样作为字符串发送；粘贴本身不代表已核验。"]
+        direct: [
+          "直接输入使用 host-direct-input-v0.1。当前没有专用表单；请明确手工输入符合该 schema 的 JSON，不会自动填充示例、替你选择结构或补日期/数量/乘数，也不要输入 ask prices 或任何 keys/secrets。",
+          "Direct JSON 按原样提交；不要放入 ask prices 或 keys/secrets。日期、数量、乘数和结构均须由你明确输入；本页不提供 JSON 示例或默认值。"
+        ]
       }[state.mode];
       setText(byId("mode-help"), copy[0]);
       setText(byId("input-help"), copy[1]);
+      setText(byId("raw-input-label"), state.mode === "direct"
+        ? "host-direct-input-v0.1 JSON（手工输入）" : "原始输入");
     });
   }
 
   byId("run-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (state.mode === null || !modes.includes(state.mode) || byId("tab-" + state.mode).disabled) {
+      setText(byId("submit-state"), "尚未选择本机状态中已配置的入口；未提交。");
+      return;
+    }
     const rawInput = byId("raw-input").value;
     if (rawInput.trim().length === 0) {
       setText(byId("submit-state"), "请输入原始内容；非空文本会按原样提交。");
@@ -433,7 +504,7 @@ _DOCUMENT = r'''<!doctype html>
       if (!response.ok) throw new Error("HTTP " + response.status);
       const result = await response.json();
       const resultStatus = displayedStatus(result && result.status);
-      const returnedId = result && safeId(result.run_id) !== null ? result.run_id : null;
+      const returnedId = result && safeRunId(result.run_id) !== null ? result.run_id : null;
       setText(byId("submit-state"), returnedId === null
         ? "接口已响应；" + resultStatus + "；未返回可读取的 run_id，结果详情未确认。"
         : "接口已响应；" + resultStatus + "；运行 ID：" + returnedId);

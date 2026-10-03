@@ -1,8 +1,7 @@
 """Private append-only SQLite journal for the minimal Host shell.
 
-This store persists only the frozen M6 run snapshot and stage/run events. It
-does not call providers, read configuration files, or serialize source/Core
-objects.
+This store persists run events and closed Direct artifacts through the typed
+Core snapshot codec. It does not call providers or read configuration files.
 """
 
 from __future__ import annotations
@@ -21,12 +20,13 @@ import threading
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
+from urllib.parse import parse_qsl, urlsplit
 
 from .core_application import CoreOperationalBounds
 from .host_profile import STANDARD_RESEARCH_PROFILE, StandardResearchProfile
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _APPLICATION_ID = 0x43484A31  # ASCII "CHJ1"
 _MODES = frozenset(("world", "event", "direct"))
 _RUN_STATUSES = frozenset(
@@ -66,8 +66,14 @@ _SENSITIVE_KEYS = frozenset(
         "token",
     )
 )
+_AUTH_URI_KEYS = _SENSITIVE_KEYS | {
+    "apikey", "auth", "auth_token", "authtoken", "accesstoken", "client_secret",
+    "clientsecret", "bearer", "credential", "credentials", "signature", "sig",
+    "x_amz_credential", "x_amz_signature", "x_amz_security_token",
+}
 _DIAGNOSTIC_RE = re.compile(r"[A-Z][A-Z0-9_]{0,127}\Z", re.ASCII)
 _ID_RE = re.compile(r"[A-Za-z0-9._~-]{1,128}\Z", re.ASCII)
+_CASE_ID_RE = re.compile(r"[A-Za-z0-9._:~-]{1,256}\Z", re.ASCII)
 _SAFE_VERSION_RE = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z", re.ASCII)
 _SCHEMA_OBJECTS = frozenset(
     (
@@ -90,6 +96,15 @@ _EVENT_COLUMNS = (
     "payload_json",
     "occurred_at",
 )
+_DIRECT_CASE_TABLE_SQL = (
+    "CREATE TABLE direct_cases (run_id TEXT NOT NULL REFERENCES runs(run_id),"
+    "case_id TEXT NOT NULL,archive_json TEXT NOT NULL,archive_sha256 TEXT NOT NULL,"
+    "PRIMARY KEY(run_id,case_id))"
+)
+_DIRECT_SCHEMA_OBJECTS = _SCHEMA_OBJECTS | {
+    "direct_cases", "direct_cases_no_update", "direct_cases_no_delete"
+}
+_DIRECT_REPORT_VERSION = "core-presentation-direct-v0.1"
 
 
 class HostStoreError(RuntimeError):
@@ -101,7 +116,7 @@ class UnsupportedSchemaVersionError(HostStoreError):
 
 
 class StoreCorruptionError(HostStoreError):
-    """The database is not a valid schema-v1 Host journal."""
+    """The database is not a valid versioned Host journal."""
 
 
 def _canonical_value(value: Any, label: str, depth: int = 0) -> Any:
@@ -144,6 +159,33 @@ def _canonical_json(value: Any, label: str) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
+
+
+def _validate_source_reference_uris(value: Any) -> None:
+    """Check only URI fields of known codec SourceReference nodes, without rewriting."""
+
+    if type(value) is dict:
+        if value.get("$type") == "market_data.SourceReference":
+            uri = value.get("source_uri")
+            if uri is not None:
+                try:
+                    if type(uri) is not str:
+                        raise ValueError()
+                    parts = urlsplit(uri)
+                    if parts.username is not None or parts.password is not None:
+                        raise ValueError()
+                    fragment = parts.fragment.partition("?")[2] if "?" in parts.fragment else parts.fragment
+                    for parameters in (parts.query, fragment.lstrip("?")):
+                        if any(key.casefold().replace("-", "_") in _AUTH_URI_KEYS
+                               for key, _ in parse_qsl(parameters, keep_blank_values=True)):
+                            raise ValueError()
+                except ValueError:
+                    raise ValueError("SourceReference URI contains invalid or prohibited authentication material") from None
+        for item in value.values():
+            _validate_source_reference_uris(item)
+    elif type(value) is list:
+        for item in value:
+            _validate_source_reference_uris(item)
 
 
 def _reject_constant(value: str) -> None:
@@ -216,8 +258,10 @@ def _validated_metadata(value: Any) -> Dict[str, Any]:
     ):
         raise ValueError("configuration_snapshot must be the empty in-slice shell snapshot")
     execution = value["execution_snapshot"]
-    if type(execution) is not dict or execution:
-        raise ValueError("execution_snapshot must be empty when no executor is configured")
+    if type(execution) is not dict or execution not in ({}, {
+        "direct_executor": {"status": "CONFIGURED", "version": "host-direct-input-v0.1"}
+    }):
+        raise ValueError("execution_snapshot must be empty or the closed Direct executor snapshot")
     versions = value["contract_versions"]
     if type(versions) is not dict or set(versions) != _CONTRACT_VERSION_FIELDS:
         raise ValueError("contract_versions must contain exactly the frozen shell version fields")
@@ -226,7 +270,7 @@ def _validated_metadata(value: Any) -> Dict[str, Any]:
             raise ValueError("contract version values must be short non-secret identifiers")
     snapshot = {
         "configuration_snapshot": {"models": [], "sources": [], "skills": []},
-        "execution_snapshot": {},
+        "execution_snapshot": dict(execution),
         "contract_versions": dict(versions),
     }
     _canonical_json(snapshot, "metadata")
@@ -247,6 +291,15 @@ def _validate_shell_outcome(value: Any) -> Any:
 
     if type(value) is str and value in _TERMINAL_STATUSES:
         return value
+    if type(value) is dict and set(value) == {"schema_version", "case_id", "classification"}:
+        from .core_research import CoreDisposition
+        if (value["schema_version"] != "host-direct-outcome-v0.1"
+                or type(value["case_id"]) is not str
+                or _CASE_ID_RE.fullmatch(value["case_id"]) is None
+                or type(value["classification"]) is not str
+                or value["classification"] not in {item.value for item in CoreDisposition}):
+            raise ValueError("invalid closed Direct outcome")
+        return dict(value)
     expected_fields = {"executor_status", "reason", "host_shell_version"}
     if type(value) is not dict or set(value) != expected_fields:
         raise ValueError("stage outcome is outside the closed shell result contract")
@@ -415,7 +468,7 @@ def _release_database_lock(descriptor: int) -> None:
 
 
 class HostStore:
-    """Append-only schema-v1 local journal with crash recovery."""
+    """Append-only schema-v2 local journal with crash recovery."""
 
     def __init__(self, db_path: Any) -> None:
         self.db_path = _absolute_path(db_path)
@@ -488,7 +541,7 @@ class HostStore:
             raise StoreCorruptionError("SQLite quick_check rejected the database")
         version = int(connection.execute("PRAGMA user_version").fetchone()[0])
         if version > SCHEMA_VERSION:
-            raise UnsupportedSchemaVersionError("database schema is newer than schema v1")
+            raise UnsupportedSchemaVersionError("database schema is newer than schema v2")
         if version < 0:
             raise StoreCorruptionError("database schema version is invalid")
         application_id = int(connection.execute("PRAGMA application_id").fetchone()[0])
@@ -540,13 +593,13 @@ class HostStore:
                 )
                 transaction.execute("PRAGMA application_id={}".format(_APPLICATION_ID))
                 transaction.execute("PRAGMA user_version=1")
-            version = SCHEMA_VERSION
+            version = 1
             objects = _SCHEMA_OBJECTS
             application_id = _APPLICATION_ID
-        if version != SCHEMA_VERSION or application_id != _APPLICATION_ID:
+        if version not in (1, 2) or application_id != _APPLICATION_ID:
             raise StoreCorruptionError("database identity or schema version is invalid")
-        if objects != _SCHEMA_OBJECTS:
-            raise StoreCorruptionError("database objects do not match the frozen schema-v1 journal")
+        if objects != (_SCHEMA_OBJECTS if version == 1 else _DIRECT_SCHEMA_OBJECTS):
+            raise StoreCorruptionError("database objects do not match the journal schema")
         if tuple(row["name"] for row in connection.execute("PRAGMA table_info(runs)")) != _RUN_COLUMNS:
             raise StoreCorruptionError("runs table does not match schema v1")
         if tuple(row["name"] for row in connection.execute("PRAGMA table_info(events)")) != _EVENT_COLUMNS:
@@ -566,6 +619,28 @@ class HostStore:
                 raise StoreCorruptionError("append-only trigger definition is invalid")
         if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
             raise StoreCorruptionError("journal foreign-key check failed")
+        if version == 1:
+            with self._transaction() as transaction:
+                transaction.execute(_DIRECT_CASE_TABLE_SQL)
+                for operation in ("update", "delete"):
+                    transaction.execute(
+                        "CREATE TRIGGER direct_cases_no_{} BEFORE {} ON direct_cases "
+                        "BEGIN SELECT RAISE(ABORT,'append-only journal'); END".format(operation, operation)
+                    )
+                transaction.execute("PRAGMA user_version=2")
+        expected = {"direct_cases": _DIRECT_CASE_TABLE_SQL}
+        for operation in ("update", "delete"):
+            expected["direct_cases_no_" + operation] = (
+                "CREATE TRIGGER direct_cases_no_{} BEFORE {} ON direct_cases "
+                "BEGIN SELECT RAISE(ABORT,'append-only journal'); END".format(operation, operation)
+            )
+        actual = dict(connection.execute(
+            "SELECT name,sql FROM sqlite_master WHERE name IN "
+            "('direct_cases','direct_cases_no_update','direct_cases_no_delete')"
+        ).fetchall())
+        if any(" ".join(actual.get(name, "").lower().split()) != " ".join(sql.lower().split())
+               for name, sql in expected.items()):
+            raise StoreCorruptionError("direct case table or immutable triggers do not match schema v2")
 
     def _append_event(
         self,
@@ -647,6 +722,11 @@ class HostStore:
                     _validated_diagnostics(payload["diagnostics"])
                 except (TypeError, ValueError) as error:
                     raise StoreCorruptionError("stage result payload violates the shell contract") from error
+                if type(payload["outcome"]) is dict and "case_id" in payload["outcome"]:
+                    archive = self.get_direct_case(run_id, payload["outcome"]["case_id"])
+                    if (archive is None or event["status"] != "COMPLETED"
+                            or archive["classification"] != payload["outcome"]["classification"]):
+                        raise StoreCorruptionError("Direct stage has no matching committed archive")
             elif event_type == "run_finished":
                 if type(payload) is not dict or set(payload) != {"diagnostics"}:
                     raise StoreCorruptionError("run result payload is malformed")
@@ -801,6 +881,11 @@ class HostStore:
                 raise ValueError("cannot finish a stage after the run is terminal")
             if stage_id not in started or stage_id in finished:
                 raise ValueError("stage must have exactly one prior unmatched start")
+            if type(normalized_outcome) is dict and "case_id" in normalized_outcome:
+                archive = self.get_direct_case(run_id, normalized_outcome["case_id"])
+                if (archive is None or status != "COMPLETED"
+                        or archive["classification"] != normalized_outcome["classification"]):
+                    raise ValueError("Direct outcome requires its committed case and COMPLETED stage")
             stage_event = started[stage_id]
             self._append_event(
                 connection,
@@ -827,9 +912,147 @@ class HostStore:
                 raise ValueError("run already has a terminal state")
             if set(started) != finished:
                 raise ValueError("all started stages must finish before the run")
+            if status == "BLOCKED" and connection.execute(
+                "SELECT 1 FROM direct_cases WHERE run_id=?", (run_id,)
+            ).fetchone() is not None:
+                raise ValueError("completed Core evaluation cannot be Host BLOCKED")
             self._append_event(
                 connection, run_id, "run_finished", None, None, status, payload, now
             )
+
+    def save_direct_result(self, run_id: str, result: Any) -> str:
+        from .core_application import CoreDirectResult
+        from .core_presentation import report
+        from .host_core_snapshot import encode_core_result
+
+        self._validate_run_id(run_id)
+        if type(result) is not CoreDirectResult or result.kernel_result is None:
+            raise TypeError("save requires an evaluated exact CoreDirectResult")
+        result.__post_init__()  # Existing request/result/structure identity validation.
+        case_id = result.kernel_request.case_id
+        self._validate_case_id(case_id)
+        with self._lock, self._transaction() as connection:
+            run = self.get_run(run_id)
+            if run is None:
+                raise KeyError(run_id)
+            if run["mode"] != "direct" or run["status"] != "RUNNING":
+                raise ValueError("Direct archive requires a RUNNING Direct run")
+            core_snapshot = encode_core_result(result.kernel_result)
+            _validate_source_reference_uris(core_snapshot)
+            core_digest = hashlib.sha256(_canonical_json(core_snapshot, "Core snapshot").encode("utf-8")).hexdigest()
+            if result.full_report and report(result) != result.full_report:
+                raise ValueError("Direct report cache differs from the current renderer")
+            archive = {
+                "schema_version": "host-direct-case-v0.1", "run_id": run_id, "case_id": case_id,
+                "classification": result.kernel_result.disposition.value,
+                "direct_reasons": list(result.reasons),
+                "reasons": list(dict.fromkeys(result.reasons + tuple(item.value for item in result.kernel_result.reasons))),
+                "profile_snapshot": run["profile_snapshot"], "core_snapshot": core_snapshot,
+                "core_sha256": core_digest,
+                "disclosures": {
+                    "maturity_authority": result.maturity_authority.value,
+                    "hypothesis_maturity_alignment": result.hypothesis_maturity_alignment.value,
+                    "quote_reference_temporal_alignment": result.quote_reference_temporal_alignment,
+                    "cross_structure_quote_synchronicity": result.cross_structure_quote_synchronicity,
+                },
+                "report_cache": None if not result.full_report else {
+                    "renderer_version": _DIRECT_REPORT_VERSION,
+                    "core_sha256": core_digest, "text": result.full_report,
+                },
+            }
+            self._validate_direct_archive(archive, run_id, case_id)
+            wire = _canonical_json(archive, "Direct archive")
+            try:
+                connection.execute("INSERT INTO direct_cases VALUES(?,?,?,?)", (
+                    run_id, case_id, wire, hashlib.sha256(wire.encode("utf-8")).hexdigest()
+                ))
+            except sqlite3.IntegrityError:
+                raise ValueError("Direct case already archived") from None
+        return case_id
+
+    def _validate_direct_archive(self, archive: Any, run_id: str, case_id: str) -> Any:
+        from .host_core_snapshot import decode_core_result
+
+        fields = {"schema_version", "run_id", "case_id", "classification", "direct_reasons",
+                  "reasons", "profile_snapshot", "core_snapshot", "core_sha256", "disclosures", "report_cache"}
+        if type(archive) is not dict or set(archive) != fields:
+            raise ValueError("unknown or missing Direct archive fields")
+        if (archive["schema_version"] != "host-direct-case-v0.1"
+                or archive["run_id"] != run_id or archive["case_id"] != case_id):
+            raise ValueError("Direct archive version or identity mismatch")
+        _validate_source_reference_uris(archive["core_snapshot"])
+        digest = hashlib.sha256(_canonical_json(archive["core_snapshot"], "Core snapshot").encode("utf-8")).hexdigest()
+        if archive["core_sha256"] != digest:
+            raise ValueError("Core snapshot digest mismatch")
+        core = decode_core_result(archive["core_snapshot"])
+        risk = core.request.risk_policy
+        approved = STANDARD_RESEARCH_PROFILE.to_core_risk_policy(core.request.structure)
+        risk_fields = ("portfolio_value", "maximum_single_loss_fraction",
+                       "maximum_repeated_loss_fraction", "repeat_count", "currency")
+        if risk is None or any(getattr(risk, name) != getattr(approved, name) for name in risk_fields):
+            raise ValueError("Core risk inputs differ from the approved run profile")
+        direct_reasons = archive["direct_reasons"]
+        if (type(direct_reasons) is not list
+                or any(type(item) is not str or item != "missing_direct_quote_evidence" for item in direct_reasons)
+                or core.request.case_id != case_id or archive["classification"] != core.disposition.value
+                or archive["reasons"] != list(dict.fromkeys(direct_reasons + [item.value for item in core.reasons]))):
+            raise ValueError("Direct classification or reasons mismatch")
+        start = _decode_canonical_json(self._events_for(run_id)[0]["payload_json"])
+        if start["mode"] != "direct" or archive["profile_snapshot"] != start["profile_snapshot"]:
+            raise ValueError("Direct archive differs from its immutable run mode or profile")
+        disclosure = archive["disclosures"]
+        if type(disclosure) is not dict or disclosure != {
+                "maturity_authority": "neutral_structural_research",
+                "hypothesis_maturity_alignment": "not_established",
+                "quote_reference_temporal_alignment": "not_established",
+                "cross_structure_quote_synchronicity": "not_established"}:
+            raise ValueError("invalid Direct authority or temporal disclosures")
+        cache = archive["report_cache"]
+        if cache is not None and (type(cache) is not dict
+                or set(cache) != {"renderer_version", "core_sha256", "text"}
+                or cache["renderer_version"] != _DIRECT_REPORT_VERSION
+                or cache["core_sha256"] != digest or type(cache["text"]) is not str or not cache["text"]):
+            raise ValueError("invalid digest-bound Direct report cache")
+        return core
+
+    def _read_direct_case(self, run_id: str, case_id: str) -> Tuple[Any, Any]:
+        self._validate_run_id(run_id)
+        self._validate_case_id(case_id)
+        row = self._conn().execute(
+            "SELECT archive_json,archive_sha256 FROM direct_cases WHERE run_id=? AND case_id=?",
+            (run_id, case_id),
+        ).fetchone()
+        if row is None:
+            return None, None
+        if type(row["archive_json"]) is not str or type(row["archive_sha256"]) is not str:
+            raise StoreCorruptionError("Direct archive encoding is malformed")
+        if hashlib.sha256(row["archive_json"].encode("utf-8")).hexdigest() != row["archive_sha256"]:
+            raise StoreCorruptionError("Direct archive digest mismatch")
+        archive = _decode_canonical_json(row["archive_json"])
+        try:
+            return archive, self._validate_direct_archive(archive, run_id, case_id)
+        except (TypeError, ValueError, KeyError, IndexError) as error:
+            raise StoreCorruptionError("Direct archive violates its closed snapshot contract") from error
+
+    def get_direct_case(self, run_id: str, case_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return self._read_direct_case(run_id, case_id)[0]
+
+    def load_core_result(self, run_id: str, case_id: str) -> Any:
+        with self._lock:
+            return self._read_direct_case(run_id, case_id)[1]
+
+    def list_direct_cases(self, run_id: str) -> List[Dict[str, Any]]:
+        self._validate_run_id(run_id)
+        with self._lock:
+            rows = self._conn().execute("SELECT case_id FROM direct_cases WHERE run_id=? ORDER BY case_id", (run_id,)).fetchall()
+            return [{key: archive[key] for key in ("case_id", "classification", "reasons")}
+                    for archive in (self.get_direct_case(run_id, row[0]) for row in rows)]
+
+    @staticmethod
+    def _validate_case_id(case_id: Any) -> None:
+        if type(case_id) is not str or _CASE_ID_RE.fullmatch(case_id) is None:
+            raise ValueError("invalid Direct case_id")
 
     def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
         self._validate_run_id(run_id)

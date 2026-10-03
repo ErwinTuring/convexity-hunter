@@ -1,26 +1,30 @@
 """Bounded loopback HTTP/CLI shell for the standalone Host.
 
-This module deliberately does not execute World, Event, Direct, provider, model,
-or market-data work. Submitted runs are durably represented as blocked until a
-trusted executor is explicitly installed.
+This module deliberately does not execute World or Event research. Direct can
+be enabled only through an explicitly injected executor; the CLI's opt-in
+Futu bridge is lazy and connects only when a Direct request is executed.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import re
 import secrets
 import socket
 import sys
+import threading
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
-from urllib.parse import urlsplit
+from urllib.parse import unquote_to_bytes, urlsplit
 
-from .core_application import CoreOperationalBounds
+from .core_application import CoreDirectResult, CoreOperationalBounds
+from .core_research import CoreDisposition, CoreReasonCode
+from .host_direct import HostDirectBoundsError, HostDirectInputError
 from .host_profile import PROFILE_ID, PROFILE_VERSION, STANDARD_RESEARCH_PROFILE
 
 
@@ -43,6 +47,8 @@ _BOUNDS_FIELDS = frozenset(
     )
 )
 _RUN_ID_RE = re.compile(r"[A-Za-z0-9._~-]{1,128}\Z", re.ASCII)
+_CASE_ID_RE = re.compile(r"[A-Za-z0-9._:~-]{1,256}\Z", re.ASCII)
+_BAD_PERCENT_ESCAPE_RE = re.compile(r"%(?![0-9A-Fa-f]{2})", re.ASCII)
 _CONTENT_LENGTH_RE = re.compile(r"[0-9]+\Z", re.ASCII)
 _INLINE_TAG_RE = re.compile(r"<(script|style)\b([^>]*)>", re.IGNORECASE)
 _DIAGNOSTIC_CODE_RE = re.compile(r"[A-Z][A-Z0-9_]{0,127}\Z", re.ASCII)
@@ -57,6 +63,49 @@ _STAGE_EVENTS = frozenset(
     ("stage_started", "stage_outcome", "stage_finished", "stage_succeeded", "stage_failed")
 )
 _STAGE_NAMES = frozenset(("executor",))
+_CORE_CLASSIFICATIONS = frozenset(item.value for item in CoreDisposition)
+_PUBLIC_DIRECT_REASONS = frozenset(item.value for item in CoreReasonCode) | frozenset(
+    ("missing_direct_quote_evidence",)
+)
+_DIRECT_EXECUTOR_VERSION = "host-direct-input-v0.1"
+
+
+class _DiscardingTextStream:
+    """Persistent sink safe for SDK handlers that retain their stream object."""
+
+    encoding = "utf-8"
+    errors = "replace"
+    closed = False
+
+    def write(self, value: str) -> int:
+        return len(value) if type(value) is str else 0
+
+    def flush(self) -> None:
+        return None
+
+    def isatty(self) -> bool:
+        return False
+
+    def writable(self) -> bool:
+        return True
+
+    def close(self) -> None:
+        # Never invalidate a StreamHandler that may retain this sink.
+        return None
+
+
+_SDK_OUTPUT_SINK = _DiscardingTextStream()
+_SDK_OUTPUT_LOCK = threading.RLock()
+
+
+@contextlib.contextmanager
+def _discard_sdk_output():
+    """Discard synchronous SDK stdout/stderr without closing captured streams."""
+
+    with _SDK_OUTPUT_LOCK:
+        with contextlib.redirect_stdout(_SDK_OUTPUT_SINK):
+            with contextlib.redirect_stderr(_SDK_OUTPUT_SINK):
+                yield
 
 
 class RequestPayloadError(ValueError):
@@ -177,10 +226,19 @@ def _version_snapshot() -> Dict[str, str]:
     }
 
 
-def _run_start_metadata() -> Dict[str, Any]:
+def _run_start_metadata(*, direct_configured: bool = False) -> Dict[str, Any]:
     return {
         "configuration_snapshot": _configuration_snapshot(),
-        "execution_snapshot": {},
+        "execution_snapshot": (
+            {
+                "direct_executor": {
+                    "status": "CONFIGURED",
+                    "version": _DIRECT_EXECUTOR_VERSION,
+                }
+            }
+            if direct_configured
+            else {}
+        ),
         "contract_versions": _version_snapshot(),
     }
 
@@ -201,6 +259,19 @@ def _public_outcome(value: Any) -> Optional[Dict[str, str]]:
         return {"status": value} if value in _RUN_STATUSES else None
     if type(value) is not dict:
         return None
+    if (
+        set(value) == {"schema_version", "case_id", "classification"}
+        and value.get("schema_version") == "host-direct-outcome-v0.1"
+        and type(value.get("case_id")) is str
+        and _CASE_ID_RE.fullmatch(value["case_id"]) is not None
+        and type(value.get("classification")) is str
+        and value["classification"] in _CORE_CLASSIFICATIONS
+    ):
+        return {
+            "schema_version": value["schema_version"],
+            "case_id": value["case_id"],
+            "classification": value["classification"],
+        }
     allowed_values = {
         "executor_status": frozenset(("NOT_CONFIGURED",)),
         "reason": frozenset((BLOCKED_REASON,)),
@@ -214,6 +285,51 @@ def _public_outcome(value: Any) -> Optional[Dict[str, str]]:
         and item in allowed_values[key]
     }
     return projected or None
+
+
+def _public_direct_case_summary(value: Any) -> Dict[str, Any]:
+    if type(value) is not dict:
+        raise ValueError("stored Direct case summary is malformed")
+    case_id = value.get("case_id")
+    classification = value.get("classification")
+    reasons = value.get("reasons")
+    if (
+        type(case_id) is not str
+        or _CASE_ID_RE.fullmatch(case_id) is None
+        or type(classification) is not str
+        or classification not in _CORE_CLASSIFICATIONS
+        or type(reasons) is not list
+        or any(type(reason) is not str or reason not in _PUBLIC_DIRECT_REASONS for reason in reasons)
+    ):
+        raise ValueError("stored Direct case summary is malformed")
+    return {
+        "case_id": case_id,
+        "classification": classification,
+        "reasons": list(reasons),
+    }
+
+
+def _public_direct_case_detail(value: Any, requested_case_id: str) -> Dict[str, Any]:
+    if type(value) is not dict or value.get("case_id") != requested_case_id:
+        raise ValueError("stored Direct case detail is malformed")
+    summary = _public_direct_case_summary(value)
+    report_cache = value.get("report_cache")
+    if report_cache is None:
+        report = None
+    elif (
+        type(report_cache) is dict
+        and set(report_cache) == {"renderer_version", "core_sha256", "text"}
+        and type(report_cache.get("text")) is str
+    ):
+        report = report_cache["text"]
+    else:
+        raise ValueError("stored Direct report cache is malformed")
+    return {
+        "case_id": summary["case_id"],
+        "classification": summary["classification"],
+        "reasons": summary["reasons"],
+        "report": report,
+    }
 
 
 def _public_event(value: Any) -> Optional[Dict[str, Any]]:
@@ -311,6 +427,20 @@ def _request_route(path: str) -> Tuple[str, ...]:
     if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
         return ()
     return tuple(parsed.path.split("/"))
+
+
+def _decode_case_id_segment(segment: str) -> Optional[str]:
+    """Strictly percent-decode an ASCII Store case identifier path segment."""
+
+    if _BAD_PERCENT_ESCAPE_RE.search(segment) is not None:
+        return None
+    try:
+        decoded = unquote_to_bytes(segment).decode("ascii", errors="strict")
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if _CASE_ID_RE.fullmatch(decoded) is None:
+        return None
+    return decoded
 
 
 def _read_json_body(handler: BaseHTTPRequestHandler) -> bytes:
@@ -435,7 +565,11 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                     "executors": {
                         "world": "NOT_CONFIGURED",
                         "event": "NOT_CONFIGURED",
-                        "direct": "NOT_CONFIGURED",
+                        "direct": (
+                            "CONFIGURED"
+                            if self.server.direct_executor is not None
+                            else "NOT_CONFIGURED"
+                        ),
                     },
                 },
             )
@@ -458,7 +592,14 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             and route[2] == "runs"
             and route[4] == "cases"
         ):
-            self._send_json(404, {"error": "case detail unavailable"})
+            if _RUN_ID_RE.fullmatch(route[3]) is None:
+                self._send_json(404, {"error": "case not found"})
+                return
+            case_id = _decode_case_id_segment(route[5])
+            if case_id is None:
+                self._send_json(404, {"error": "case not found"})
+                return
+            self._get_direct_case(route[3], case_id)
             return
         self._send_json(404, {"error": "not found"})
 
@@ -569,6 +710,13 @@ class HostRequestHandler(BaseHTTPRequestHandler):
         try:
             result = self.server.journal.get_run(run_id)
             public_run = None if result is None else _public_run(result)
+            if public_run is not None:
+                direct_cases = self.server.journal.list_direct_cases(run_id)
+                if type(direct_cases) is not list:
+                    raise ValueError("journal returned malformed Direct case list")
+                public_run["cases"] = [
+                    _public_direct_case_summary(item) for item in direct_cases
+                ]
         except Exception:
             self._send_json(500, {"error": "journal unavailable"})
             return
@@ -577,48 +725,241 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_json(200, public_run)
 
+    def _get_direct_case(self, run_id: str, case_id: str) -> None:
+        try:
+            result = self.server.journal.get_direct_case(run_id, case_id)
+            public_case = (
+                None
+                if result is None
+                else _public_direct_case_detail(result, case_id)
+            )
+        except Exception:
+            self._send_json(500, {"error": "journal unavailable"})
+            return
+        if public_case is None:
+            self._send_json(404, {"error": "case not found"})
+            return
+        self._send_json(200, public_case)
+
     def _post_run(self, request: ValidatedRunRequest) -> None:
         try:
-            # Persist each append-only boundary explicitly. No research callable
-            # is reachable from this slice.
+            direct_configured = (
+                request.mode == "direct" and self.server.direct_executor is not None
+            )
             run_id = self.server.journal.create_run(
                 mode=request.mode,
                 input=request.input,
                 bounds=request.bounds,
                 profile_snapshot=STANDARD_RESEARCH_PROFILE.snapshot(),
-                metadata=_run_start_metadata(),
+                metadata=_run_start_metadata(direct_configured=direct_configured),
             )
             if type(run_id) is not str or _RUN_ID_RE.fullmatch(run_id) is None:
                 raise ValueError("journal returned an invalid run identifier")
             stage_id = self.server.journal.start_stage(run_id, "executor")
-            self.server.journal.finish_stage(
-                run_id,
-                stage_id,
-                status="BLOCKED",
-                outcome={
-                    "executor_status": "NOT_CONFIGURED",
-                    "reason": BLOCKED_REASON,
-                    "host_shell_version": HOST_SHELL_VERSION,
-                },
-                diagnostics=(BLOCKED_REASON,),
-            )
-            self.server.journal.finish_run(
-                run_id,
-                status="BLOCKED",
-                diagnostics=(BLOCKED_REASON,),
-            )
         except Exception:
             self._send_json(500, {"error": "journal unavailable"})
             return
-        # Do not reflect raw input or persistence internals in the POST response.
+
+        if not direct_configured:
+            diagnostics = (BLOCKED_REASON,)
+            outcome: Any = {
+                "executor_status": "NOT_CONFIGURED",
+                "reason": BLOCKED_REASON,
+                "host_shell_version": HOST_SHELL_VERSION,
+            }
+            try:
+                self.server.journal.finish_stage(
+                    run_id,
+                    stage_id,
+                    status="BLOCKED",
+                    outcome=outcome,
+                    diagnostics=diagnostics,
+                )
+                self.server.journal.finish_run(
+                    run_id, status="BLOCKED", diagnostics=diagnostics
+                )
+            except Exception:
+                self._send_json(500, {"error": "journal unavailable"})
+                return
+            self._send_json(
+                201,
+                {"run_id": run_id, "status": "BLOCKED", "reason": BLOCKED_REASON},
+            )
+            return
+
+        direct_executor = self.server.direct_executor
+        try:
+            result = direct_executor(request.input, bounds=request.bounds)
+        except HostDirectInputError:
+            if not self._complete_terminal_run(
+                run_id,
+                stage_id,
+                status="BLOCKED",
+                outcome="BLOCKED",
+                diagnostics=("HOST_DIRECT_INPUT_REJECTED",),
+            ):
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "BLOCKED",
+                    "reason": "HOST_DIRECT_INPUT_REJECTED",
+                },
+            )
+            return
+        except HostDirectBoundsError:
+            if not self._complete_terminal_run(
+                run_id,
+                stage_id,
+                status="BLOCKED",
+                outcome="BLOCKED",
+                diagnostics=("HOST_DIRECT_BOUNDS_REJECTED",),
+            ):
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "BLOCKED",
+                    "reason": "HOST_DIRECT_BOUNDS_REJECTED",
+                },
+            )
+            return
+        except Exception:
+            if not self._complete_terminal_run(
+                run_id,
+                stage_id,
+                status="FAILED",
+                outcome="FAILED",
+                diagnostics=("HOST_DIRECT_EXECUTOR_FAILED",),
+            ):
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "FAILED",
+                    "reason": "HOST_DIRECT_EXECUTOR_FAILED",
+                },
+            )
+            return
+
+        if type(result) is not CoreDirectResult:
+            if not self._complete_terminal_run(
+                run_id,
+                stage_id,
+                status="FAILED",
+                outcome="FAILED",
+                diagnostics=("HOST_DIRECT_EXECUTOR_FAILED",),
+            ):
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "FAILED",
+                    "reason": "HOST_DIRECT_EXECUTOR_FAILED",
+                },
+            )
+            return
+
+        if result.kernel_result is None:
+            if not self._complete_terminal_run(
+                run_id,
+                stage_id,
+                status="BLOCKED",
+                outcome="BLOCKED",
+                diagnostics=("HOST_DIRECT_CORE_BLOCKED",),
+            ):
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "BLOCKED",
+                    "reason": "HOST_DIRECT_CORE_BLOCKED",
+                },
+            )
+            return
+
+        try:
+            case_id = self.server.journal.save_direct_result(run_id, result)
+            classification = result.kernel_result.disposition.value
+            if (
+                type(case_id) is not str
+                or _CASE_ID_RE.fullmatch(case_id) is None
+                or case_id != result.kernel_request.case_id
+                or type(classification) is not str
+                or classification not in _CORE_CLASSIFICATIONS
+            ):
+                raise ValueError("Direct archive identity is malformed")
+        except Exception:
+            if not self._complete_terminal_run(
+                run_id,
+                stage_id,
+                status="FAILED",
+                outcome="FAILED",
+                diagnostics=("HOST_DIRECT_ARCHIVE_FAILED",),
+            ):
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "FAILED",
+                    "reason": "HOST_DIRECT_ARCHIVE_FAILED",
+                },
+            )
+            return
+
+        pointer = {
+            "schema_version": "host-direct-outcome-v0.1",
+            "case_id": case_id,
+            "classification": classification,
+        }
+        if not self._complete_terminal_run(
+            run_id,
+            stage_id,
+            status="COMPLETED",
+            outcome=pointer,
+            diagnostics=(),
+        ):
+            return
         self._send_json(
             201,
             {
                 "run_id": run_id,
-                "status": "BLOCKED",
-                "reason": BLOCKED_REASON,
+                "status": "COMPLETED",
+                "case_id": case_id,
+                "classification": classification,
             },
         )
+
+    def _complete_terminal_run(
+        self,
+        run_id: str,
+        stage_id: str,
+        *,
+        status: str,
+        outcome: Any,
+        diagnostics: Tuple[str, ...],
+    ) -> bool:
+        try:
+            self.server.journal.finish_stage(
+                run_id,
+                stage_id,
+                status=status,
+                outcome=outcome,
+                diagnostics=diagnostics,
+            )
+            self.server.journal.finish_run(
+                run_id, status=status, diagnostics=diagnostics
+            )
+        except Exception:
+            self._send_json(500, {"error": "journal unavailable"})
+            return False
+        return True
 
     def _send_json(self, status: int, payload: Mapping[str, Any]) -> None:
         try:
@@ -662,6 +1003,7 @@ def create_server(
     journal: Any,
     *,
     render_workbench: Callable[[str], str],
+    direct_executor: Optional[Callable[..., CoreDirectResult]] = None,
     port: int = DEFAULT_PORT,
     request_timeout_seconds: float = REQUEST_TIMEOUT_SECONDS,
 ) -> HTTPServer:
@@ -669,6 +1011,8 @@ def create_server(
 
     if type(port) is not int or isinstance(port, bool) or not 0 <= port <= 65535:
         raise ValueError("port must be an integer in the TCP port range")
+    if direct_executor is not None and not callable(direct_executor):
+        raise TypeError("direct_executor must be callable or None")
     if (
         type(request_timeout_seconds) not in (int, float)
         or not math.isfinite(request_timeout_seconds)
@@ -695,6 +1039,7 @@ def create_server(
     )
     server.journal = journal
     server.render_workbench = render_workbench
+    server.direct_executor = direct_executor
     server.csrf_token = secrets.token_urlsafe(32)
     return server
 
@@ -723,6 +1068,65 @@ def _positive_cli_port(value: str) -> int:
     return port
 
 
+def _open_suppressed_futu_quote_context(port: int) -> object:
+    """Open only the quote context after disabling the installed SDK logger."""
+
+    from .providers import futu as futu_provider
+
+    try:
+        sdk = futu_provider._load_futu_sdk()
+    except SystemExit:
+        # The SDK package can sys.exit during its dependency check; never let
+        # that escape a request thread or reveal SDK diagnostics.
+        raise RuntimeError("Futu SDK is unavailable.") from None
+
+    try:
+        import importlib
+
+        sdk_logger = importlib.import_module("futu.common.ft_logger").logger
+        # Futu's CRITICAL threshold still emits CRITICAL records. The supported
+        # level setters with a higher level disable file writes entirely.
+        sdk_logger.file_level = sys.maxsize
+        sdk_logger.console_level = sys.maxsize
+        sdk_logger.enable_console_log(False)
+    except SystemExit:
+        raise RuntimeError("Futu SDK logging suppression is unavailable.") from None
+    except Exception:
+        raise RuntimeError("Futu SDK logging suppression is unavailable.") from None
+
+    try:
+        return sdk.OpenQuoteContext(host=LOOPBACK_HOST, port=port)
+    except Exception:
+        raise RuntimeError("Futu OpenD quote-context initialization failed.") from None
+
+
+def _make_futu_direct_executor(port: int) -> Callable[..., CoreDirectResult]:
+    """Return an executor whose SDK import and localhost connection are lazy."""
+
+    if type(port) is not int or not 1 <= port <= 65535:
+        raise ValueError("Futu quote port must be between 1 and 65535")
+
+    def execute(raw_input: str, *, bounds: CoreOperationalBounds) -> CoreDirectResult:
+        # This one serialized Host request is synchronous. Keep the discard
+        # stream active through SDK imports, operations, and bridge-owned close.
+        with _discard_sdk_output():
+            from .core_futu import FutuMarketBridge
+            from .host_direct import run_direct_input
+
+            bridge = FutuMarketBridge(
+                quote_context_factory=lambda: _open_suppressed_futu_quote_context(
+                    port
+                )
+            )
+            return run_direct_input(
+                raw_input,
+                bounds=bounds,
+                exact_provider_bridge=bridge,
+            )
+
+    return execute
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Run the Convexity Hunter local Host.")
     parser.add_argument("--db", required=True, type=Path, help="external SQLite journal path")
@@ -732,15 +1136,35 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=DEFAULT_PORT,
         help="loopback TCP port (default: 8080)",
     )
+    parser.add_argument(
+        "--enable-direct",
+        action="store_true",
+        help="enable explicit Direct research through a local Futu quote service",
+    )
+    parser.add_argument(
+        "--futu-port",
+        type=_positive_cli_port,
+        help="explicit localhost Futu OpenD quote port (required with --enable-direct)",
+    )
     args = parser.parse_args(argv)
+    if args.enable_direct and args.futu_port is None:
+        parser.error("--futu-port is required when --enable-direct is set")
+    if not args.enable_direct and args.futu_port is not None:
+        parser.error("--futu-port requires --enable-direct")
 
     journal = None
     server = None
     try:
         journal = _open_store(args.db)
+        direct_executor = (
+            _make_futu_direct_executor(args.futu_port)
+            if args.enable_direct
+            else None
+        )
         server = create_server(
             journal,
             render_workbench=_load_workbench_renderer(),
+            direct_executor=direct_executor,
             port=args.port,
         )
         print("Convexity Hunter local Host: http://127.0.0.1:{}".format(server.server_port))

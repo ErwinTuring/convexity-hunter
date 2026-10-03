@@ -11,6 +11,45 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Current executable boundary — 2026-10-03
 
+Latest completed slice: standalone Direct is connected to the existing Futu
+exact-verification/Core path through explicit `--enable-direct --futu-port`.
+The strict [Direct input](local-direct-input-v0.1.md), private schema-v2 Core
+archives, non-destructive v1 migration, Chinese single-case report and restart
+history are implemented. Numerical Core records remain the source of truth;
+report/history reads make no new provider call. World/Event remain unconfigured
+and disabled, not completed research lanes. No Kernel/economic model change.
+
+One real standalone CLI/API Direct exercise on 2026-10-03 used the retained
+NDAQ 2026-12-18 K85 Long Straddle, exact Call/Put identifiers
+`US.NDAQ261218C85000` / `US.NDAQ261218P85000`, quantity 1 each and expected
+multiplier 100. Exactly one POST, no retry or substituted structure. Host
+`COMPLETED`; Core `DATA_INSUFFICIENT_CORE`, reasons `cost_ledger_missing` and
+`sensitivity_missing`. It used the approved Standard Research Profile
+(USD100,000), not the historical exercise's portfolio/holding assumptions.
+Quote authority remained `INDICATIVE_ONLY`; no RTH, freshness or executable-price
+claim. History, structured case and derived Chinese report survived CLI restart;
+restart validation used GETs only. The CLI is stopped. Private evidence is at
+`/private/tmp/ch-direct-20261003-jbwvd8fg/host.sqlite3` (directory 0700/file 0600),
+not in Git; temporary evidence is not a permanent retention guarantee.
+No model, search, trading call or private Futu config-file read occurred.
+
+Final validation: 61 focused tests passed, compileall and diff checks passed;
+independent final review PASS after exact-type codec, source-URI authentication
+rejection and SDK lifecycle-output fixes. Documentation links/fences checked at
+finalization. No new full-suite run for this Host-only slice; the earlier broad
+suite/import-path caveat below remains exact. Core gaps were not filled with
+invented fees or sensitivity values. Next product work is World/Event executor
+integration at the existing acceptance boundary, not another quote refresh.
+
+Work-share disclosure: phase 2 delivered production Direct execution, persistence
+and presentation, but coding/preparation/test-writing intervals were not fully
+separated. A whole-phase 70% implementation ratio cannot honestly be certified.
+Do not infer time share from line counts or classify waiting as coding. Final
+quota-safe closure starts at 6% five-hour allowance remaining; weekly remaining
+85%. Preserve this completed boundary before any new work unit.
+
+### Earlier shell foundation (superseded by Direct connection above)
+
 2026-10-03 active delivery slice: the already-approved M6 SQLite
 append-only run journal, loopback HTTP/CLI shell and M7 Chinese three-entry
 view are implemented. This slice is independent of M2 success. Until a trusted research executor

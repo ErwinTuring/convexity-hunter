@@ -1,5 +1,20 @@
 # Project State
 
+2026-10-03 latest delivery: standalone Direct CLI/API execution, strict explicit
+input, schema-v2 typed Core archives and automatic Chinese single-case detail
+are implemented; v1 journal history migrates non-destructively. One real NDAQ
+2026-12-18 K85 Long Straddle ran through logged-in OpenD with one POST and no
+retry: Host `COMPLETED`, Core `DATA_INSUFFICIENT_CORE` because
+`cost_ledger_missing` / `sensitivity_missing`. History/report survived restart
+without new market acquisition. This proves standalone Direct operation, not
+complete Core evidence or three real lanes. World/Event remain disabled and
+unconfigured. Final 61 focused tests, compileall/diff and independent review
+passed; no new full-suite claim. See [current checkpoint](current-checkpoint.md)
+and [local workbench flow](local-workbench-user-flow.md). No Kernel, valuation,
+provider-authority or risk-policy relaxation.
+
+Earlier shell-only foundation (superseded for Direct):
+
 2026-10-03 delivery: the local Chinese three-entry workbench, loopback HTTP/CLI
 and schema-v1 private append-only SQLite journal are implemented. Twenty-six
 combined focused tests and a real local CLI submit/history/restart smoke check

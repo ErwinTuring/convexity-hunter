@@ -1,7 +1,10 @@
 """Focused contract tests for the inline Host workbench renderer."""
 
 import pathlib
+import json
 import re
+import shutil
+import subprocess
 import sys
 import unittest
 
@@ -43,8 +46,9 @@ class HostWorkbenchTests(unittest.TestCase):
         self.assertIn('name="input"', page)
         self.assertIn('const payload = { mode: state.mode, input: rawInput, bounds: bounds };', page)
         self.assertIn("input: rawInput", page)
-        self.assertIn("直接输入：可粘贴精确结构文本或 JSON", page)
-        self.assertIn("不自动验证", page)
+        self.assertIn("host-direct-input-v0.1", page)
+        self.assertIn("不会因粘贴而自动验证", page)
+        self.assertIn("不提供 JSON 示例或默认值", page)
 
     def test_exact_explicit_operational_bounds_have_no_defaults(self):
         page = render_workbench("csrf-value")
@@ -73,15 +77,179 @@ class HostWorkbenchTests(unittest.TestCase):
 
     def test_case_details_are_lazy_id_validated_and_never_rendered_as_html(self):
         page = render_workbench("csrf-value")
-        self.assertIn("function safeId(value)", page)
+        self.assertIn("function safeRunId(value)", page)
+        self.assertIn("function safeCaseId(value)", page)
+        self.assertIn("value.length > 512", page)
         self.assertIn("encodeURIComponent(value)", page)
         self.assertIn('"/" + encodedId', page)
         self.assertIn('"/cases/" + encodedCaseId', page)
         self.assertIn("button.addEventListener(\"click\", () => loadCase(caseId))", page)
-        self.assertIn("case-detail\"), jsonText(data, false)", page)
+        self.assertIn('typeof data.report === "string"', page)
+        self.assertIn('setText(byId("case-detail"), disclosure + "\\n\\n" + data.report)', page)
         self.assertNotIn("innerHTML", page)
         self.assertNotRegex(page, r"(?i)\beval\s*\(|\bimport\s*\(|javascript\s*:")
         self.assertNotIn(".sort(", page)
+
+    def test_not_configured_modes_are_disabled_until_explicitly_configured(self):
+        page = render_workbench("csrf-value")
+        self.assertIn('data-mode="world" aria-selected="false" disabled', page)
+        self.assertIn('data-mode="event" aria-selected="false" disabled', page)
+        self.assertIn("status === \"CONFIGURED\"", page)
+        self.assertIn("入口标签本身不表示已配置", page)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for DOM behavior tests")
+    def test_node_fake_dom_workflows(self):
+        page = render_workbench("csrf-value")
+        harness = r'''
+const vm = require("node:vm");
+const fs = require("node:fs");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const script = input.page.split("<script>")[1].split("</script>")[0];
+const runId = "11111111-1111-4111-8111-111111111111";
+let innerHtmlWrites = 0;
+
+class Element {
+  constructor(id) {
+    this.id = id;
+    this.className = "";
+    this.dataset = {};
+    this.disabled = false;
+    this.value = "";
+    this.attributes = Object.create(null);
+    this.children = [];
+    this.handlers = Object.create(null);
+    this._text = "";
+  }
+  set textContent(value) { this._text = String(value); this.children = []; }
+  get textContent() { return this._text + this.children.map((child) => child.textContent).join(""); }
+  set innerHTML(value) { innerHtmlWrites += 1; this._text = String(value); this.children = []; }
+  addEventListener(name, callback) {
+    (this.handlers[name] || (this.handlers[name] = [])).push(callback);
+  }
+  setAttribute(name, value) { this.attributes[name] = value; }
+  appendChild(child) { this.children.push(child); return child; }
+  async click() {
+    if (this.disabled) return;
+    await Promise.all((this.handlers.click || []).map((handler) => handler({ preventDefault() {} })));
+  }
+}
+
+async function scenario({ mode, cases, responses = [], listedRunId = runId, executors }) {
+  const ids = [...input.page.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+  const elements = new Map(ids.map((id) => [id, new Element(id)]));
+  const tabs = ["world", "event", "direct"].map((name) => {
+    const tab = elements.get("tab-" + name);
+    tab.dataset.mode = name;
+    return tab;
+  });
+  const calls = [];
+  let caseResponseIndex = 0;
+  const document = {
+    getElementById(id) { return elements.get(id); },
+    querySelector(selector) {
+      if (selector === 'meta[name="csrf-token"]') return { content: "synthetic-token" };
+      throw new Error("unexpected selector " + selector);
+    },
+    querySelectorAll(selector) {
+      if (selector === '[role="tab"][data-mode]') return tabs;
+      throw new Error("unexpected selector " + selector);
+    },
+    createElement() { return new Element("created"); }
+  };
+  const run = { run_id: runId, mode, status: "COMPLETED", cases };
+  const fetch = async (path, options = {}) => {
+    calls.push({ path, method: options.method || "GET" });
+    if (path === "/api/status") return response({ executors });
+    if (path === "/api/profile") return response({ profile: "synthetic" });
+    if (path === "/api/runs") return response({ runs: [{ run_id: listedRunId, mode, status: "COMPLETED" }] });
+    if (path === "/api/runs/" + encodeURIComponent(runId)) return response(run);
+    if (path.startsWith("/api/runs/" + encodeURIComponent(runId) + "/cases/")) {
+      const next = responses[Math.min(caseResponseIndex, responses.length - 1)];
+      caseResponseIndex += 1;
+      return response(next || { case_id: cases[0].case_id, classification: "SYNTHETIC", reasons: [], report: null });
+    }
+    throw new Error("unexpected fetch path " + path);
+  };
+  function response(body) {
+    return { ok: true, status: 200, async json() { return body; } };
+  }
+  vm.runInNewContext(script, { document, fetch });
+  for (let index = 0; index < 12; index += 1) await new Promise((resolve) => setImmediate(resolve));
+  return { elements, tabs, calls, clickRun: () => elements.get("history-list").children[0].children[0].click() };
+}
+
+(async () => {
+  const report = "<img src=x onerror=alert(1)>\nplain report";
+  const direct = await scenario({
+    mode: "direct",
+    cases: [{ case_id: "case:XYZ:2026-01-02" }],
+    responses: [
+      { case_id: "case:XYZ:2026-01-02", classification: "RESEARCHABLE", reasons: ["synthetic reason"], report },
+      { case_id: "case:XYZ:2026-01-02", classification: "DATA_INSUFFICIENT", reasons: ["missing"], report: null }
+    ],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  if (!direct.tabs[0].disabled || !direct.tabs[1].disabled || direct.tabs[2].disabled) throw new Error("executor availability was not reflected in tabs");
+  await direct.clickRun();
+  const casePath = "/api/runs/" + runId + "/cases/case%3AXYZ%3A2026-01-02";
+  const directCaseGets = () => direct.calls.filter((call) => call.path === casePath && call.method === "GET").length;
+  if (directCaseGets() !== 1) throw new Error("direct singleton case was not fetched exactly once automatically");
+  const detail = direct.elements.get("case-detail");
+  if (!detail.textContent.includes("classification: RESEARCHABLE") || !detail.textContent.includes("reasons: [\"synthetic reason\"]")) throw new Error("classification/reasons disclosure missing");
+  if (!detail.textContent.endsWith(report)) throw new Error("report was not shown as literal text");
+  if (innerHtmlWrites !== 0) throw new Error("untrusted report reached innerHTML");
+  detail.textContent = "STALE REPORT";
+  await direct.elements.get("case-list").children[0].children[0].click();
+  if (directCaseGets() !== 2 || detail.textContent.includes("STALE REPORT")) throw new Error("null report did not clear stale content");
+  if (!detail.textContent.includes("报告字段为 null")) throw new Error("null report disclosure was not shown honestly");
+
+  for (const [mode, cases] of [["world", [{ case_id: "world:one" }, { case_id: "world:two" }]], ["event", [{ case_id: "event:one" }]]]) {
+    const lane = await scenario({
+      mode, cases,
+      executors: { world: "CONFIGURED", event: "CONFIGURED", direct: "NOT_CONFIGURED" },
+      responses: [{ case_id: cases[0].case_id, classification: "SYNTHETIC", reasons: [], report: "on demand" }]
+    });
+    await lane.clickRun();
+    if (lane.calls.some((call) => call.path.includes("/cases/"))) throw new Error(mode + " cases were auto-selected");
+    if (!lane.elements.get("case-detail").textContent.includes("尚未选择用例")) throw new Error(mode + " detail was not left on demand");
+    await lane.elements.get("case-list").children[0].children[0].click();
+    if (!lane.calls.some((call) => call.path.endsWith(encodeURIComponent(cases[0].case_id)))) throw new Error(mode + " human selection did not load its case");
+  }
+
+  for (const unsafeId of ["../outside", ".", "..", "bad\u0000id", "x".repeat(513)]) {
+    const unsafeCase = await scenario({
+      mode: "direct", cases: [{ case_id: unsafeId }],
+      executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+    });
+    await unsafeCase.clickRun();
+    if (unsafeCase.calls.some((call) => call.path.includes("/cases/"))) throw new Error("unsafe case ID was not rejected");
+  }
+
+  const unsafeRun = await scenario({
+    mode: "direct", cases: [{ case_id: "case:one" }], listedRunId: "bad/run",
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  if (unsafeRun.elements.get("history-list").children[0].children.length !== 0) throw new Error("unsafe run ID received an action");
+  if (unsafeRun.calls.some((call) => call.path.includes("bad"))) throw new Error("unsafe run ID reached fetch");
+
+  const unknown = await scenario({
+    mode: "direct", cases: [],
+    executors: { world: "UNKNOWN", event: "NOT_CONFIGURED", direct: "NOT_CONFIGURED" }
+  });
+  if (unknown.tabs.some((tab) => !tab.disabled)) throw new Error("unknown executor status was treated as configured");
+  if (unknown.calls.some((call) => !["/api/status", "/api/profile", "/api/runs"].includes(call.path))) throw new Error("unexpected external/market call");
+  console.log("fake DOM behavior checks passed");
+})().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });
+'''
+        result = subprocess.run(
+            ["node", "-e", harness],
+            input=json.dumps({"page": page}),
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_untrusted_views_are_text_only_and_statuses_do_not_invent_results(self):
         page = render_workbench("csrf-value")

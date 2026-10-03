@@ -1,8 +1,9 @@
-# 本机工作台：运行记录与页面外壳
+# 本机工作台与 Direct 接入
 
-本阶段提供独立于 Codex 的本机 HTTP/CLI 外壳，不等于三入口真实研究已经接通。
-研究执行器尚未安装时，提交 World、Event 或 Direct 都必须留下
+本机 HTTP/CLI 和 Direct 执行器可独立于 Codex 运行，不等于三入口真实研究已经接通。
+默认没有研究执行器；未配置的入口必须留下
 `BLOCKED / HOST_EXECUTOR_NOT_CONFIGURED`，不能展示为研究成功或没有机会。
+World/Event 尚未接入，页面保持禁用；Direct 需显式启用。
 
 ## 启动与输入
 
@@ -19,6 +20,16 @@ PYTHONPATH=src python3 -m convexity_hunter.host_server --db /private/tmp/convexi
 启动后打开 `http://127.0.0.1:8080`。服务只绑定本机回环地址，不支持远程共享。
 本页不能配置密钥、私有配置路径或执行任意命令。
 
+已有登录的 Futu OpenD 时，可显式启用 Direct（端口须与本机实际配置一致）：
+
+```bash
+PYTHONPATH=src python3 -m convexity_hunter.host_server --db /private/tmp/convexity-hunter-session/runs.sqlite --port 8080 --enable-direct --futu-port 11111
+```
+
+启动只安装执行器，不初始化 SDK 或探测行情。提交 Direct 才调用已有 Futu
+exact verification 和 `run_direct_core`。SDK 输出受控；不读取 Futu 私有配置文件，
+不建立交易上下文。具体输入见 [Direct 输入格式](local-direct-input-v0.1.md)。
+
 选择 World、Event 或 Direct，输入原始研究意图，并明确填写五项操作预算：
 `max_submissions`、`max_hypotheses`、`max_browser_rows`、`max_cases`、
 `quote_timeout_seconds`。这些是工作量上限，不是经济评分或结构推荐。
@@ -26,9 +37,16 @@ PYTHONPATH=src python3 -m convexity_hunter.host_server --db /private/tmp/convexi
 
 ## 结果与历史
 
-每次提交创建独立运行记录。历史页读取已有记录，不自动重新调用模型、搜索或行情。
-诊断与中断状态应如实显示。未来接入结构化 Core cases 后，单个 case 才能按需展开详情；
-当前缺少该结果时，详情接口明确返回不可用，而不是生成模拟研究报告。
+每次提交创建独立运行记录，先保存原始输入和政策快照，再开始 provider 工作。
+schema v2 非破坏式迁移 v1 历史；保存结构化 Core 数值结果作为事实源。
+Direct 单案例自动打开中文报告，其缓存是绑定数值快照 digest 的派生视图。
+历史/详情读取不会重新调用模型、搜索或行情。没有结果时明确返回不可用，不生成模拟报告。
 
-本阶段不调用模型、来源或市场服务，也不解除 World/Event 的 Grounder 阻断。
-下一阶段才将已实现的 Core 执行路径接入这个外壳，保留相同证据与分类边界。
+Host `COMPLETED` 只表示这次研究计算已结束；Core 可以是
+`DATA_INSUFFICIENT_CORE`，并不代表证据完整、发现机会或建议交易。
+原始输入、内部配置与完整 Core 存档不从历史接口默认透传；来源 URI 的鉴权信息会被拒绝存档。
+
+Direct 不调用模型、新闻或历史数据；只使用已授权的 Futu 市场数据路径。
+这个接入不解除 World/Event 的 Grounder 阻断，不填补费用或敏感性缺口。
+Core 结果存档 v0.1 显式拒绝尚未支持的完整 VolEnv/Tail 增强对象，而不是默默丢弃；
+现有 Domain 增强能力未删除，也不成为没有增强时的 Core 必需依赖。

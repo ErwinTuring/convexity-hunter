@@ -1,6 +1,8 @@
 """Synthetic, stdlib-only loopback tests for the bounded Host HTTP shell."""
 
+import contextlib
 import http.client
+import io
 import json
 import pathlib
 import socket
@@ -8,11 +10,18 @@ import sys
 import tempfile
 import threading
 import unittest
+from urllib.parse import quote
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from convexity_hunter.core_application import CoreOperationalBounds
+from tests.test_host_direct import _bounds as direct_bounds
+from tests.test_host_direct import _bridge_for as direct_bridge_for
+from tests.test_host_direct import _payload as direct_input_payload
+from convexity_hunter.core_application import CoreDirectResult, CoreOperationalBounds
+from convexity_hunter.core_research import CoreDisposition
+from convexity_hunter.host_direct import parse_direct_input, run_direct_input
 from convexity_hunter.host_profile import STANDARD_RESEARCH_PROFILE
 from convexity_hunter.host_server import (
     BLOCKED_REASON,
@@ -21,6 +30,7 @@ from convexity_hunter.host_server import (
     create_server,
     validate_run_request,
 )
+from convexity_hunter import host_server as host_server_module
 
 
 def valid_payload():
@@ -101,6 +111,41 @@ class MemoryJournal:
         self.events.append("terminal")
         self.runs[run_id]["status"] = status
         self.runs[run_id]["diagnostics"] = list(diagnostics)
+
+    def save_direct_result(self, run_id, result):
+        self.assert_run(run_id)
+        case_id = result.kernel_request.case_id
+        summary = {
+            "case_id": case_id,
+            "classification": result.kernel_result.disposition.value,
+            "reasons": [],
+        }
+        self.runs[run_id]["cases"].append(summary)
+        self.runs[run_id].setdefault("direct_case_details", {})[case_id] = {
+            "schema_version": "host-direct-case-v0.1",
+            **summary,
+            "report_cache": (
+                None
+                if not result.full_report
+                else {
+                    "renderer_version": "test-renderer",
+                    "core_sha256": "test-digest",
+                    "text": result.full_report,
+                }
+            ),
+            "core_snapshot": {"private": "snapshot-sentinel"},
+            "raw_input": "private-input-sentinel",
+        }
+        return case_id
+
+    def list_direct_cases(self, run_id):
+        self.assert_run(run_id)
+        return list(self.runs[run_id]["cases"])
+
+    def get_direct_case(self, run_id, case_id):
+        if run_id not in self.runs:
+            return None
+        return self.runs[run_id].get("direct_case_details", {}).get(case_id)
 
     def assert_run(self, run_id):
         if run_id not in self.runs:
@@ -207,6 +252,28 @@ class HostServerTests(unittest.TestCase):
         profile = self.request("GET", "/api/profile")
         self.assertEqual(profile[0], 200)
         self.assertEqual(self.decoded(profile), STANDARD_RESEARCH_PROFILE.snapshot())
+
+    def test_status_reports_direct_executor_configuration_only(self):
+        server = create_server(
+            self.journal,
+            render_workbench=lambda _token: "",
+            direct_executor=lambda _raw_input, *, bounds: None,
+            port=0,
+        )
+        thread = threading.Thread(
+            target=lambda: server.serve_forever(poll_interval=0.01), daemon=True
+        )
+        thread.start()
+        try:
+            host = self.request(
+                "GET", "/api/status", port=server.server_port
+            )
+            self.assertEqual(host[0], 200)
+            self.assertEqual(self.decoded(host)["executors"]["direct"], "CONFIGURED")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
 
     def test_workbench_get_receives_csrf_and_uses_nonce_csp(self):
         response = self.request("GET", "/")
@@ -443,7 +510,7 @@ class HostServerTests(unittest.TestCase):
         self.assertEqual(self.request("GET", "/api/secret-config")[0], 404)
         case = self.request("GET", "/api/runs/run-1/cases/case-1")
         self.assertEqual(case[0], 404)
-        self.assertEqual(self.decoded(case), {"error": "case detail unavailable"})
+        self.assertEqual(self.decoded(case), {"error": "case not found"})
         method = self.request("OPTIONS", "/api/runs")
         self.assertEqual(method[0], 405)
         self.assertNotIn(
@@ -575,8 +642,10 @@ class HostServerTests(unittest.TestCase):
                         "updated_at",
                         "diagnostics",
                         "events",
+                        "cases",
                     },
                 )
+                self.assertEqual(public_detail["cases"], [])
                 self.assertEqual(
                     set(public_detail["events"][0]),
                     {"event", "stage", "stage_id", "status", "started_at"},
@@ -618,6 +687,491 @@ class HostServerTests(unittest.TestCase):
                 second_server.server_close()
                 second_thread.join(timeout=2)
                 reopened_store.close()
+
+
+class HostServerDirectStoreIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        from convexity_hunter.host_store import HostStore
+
+        self.temporary_directory = tempfile.TemporaryDirectory(
+            dir=pathlib.Path(tempfile.gettempdir()).resolve()
+        )
+        self.db_path = pathlib.Path(self.temporary_directory.name) / "direct.sqlite3"
+        self.store = HostStore(self.db_path)
+        self.direct_payload = direct_input_payload()
+        self.bridge, _verifications, _quotes = direct_bridge_for(self.direct_payload)
+        self.invocation_states = []
+        self.server = self._start_server(self._executor)
+
+    def tearDown(self):
+        self._stop_server()
+        self.store.close()
+        self.temporary_directory.cleanup()
+
+    def _executor(self, raw_input, *, bounds):
+        runs = self.store.list_runs()
+        latest = self.store.get_run(runs[-1]["run_id"])
+        self.invocation_states.append(
+            (latest["status"], latest["events"][-1]["event"])
+        )
+        if raw_input == "SYNTHETIC_PRECORE_BLOCK":
+            structure = parse_direct_input(json.dumps(self.direct_payload)).structure
+            return CoreDirectResult(
+                raw_input=raw_input,
+                core_structure=structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=None,
+                kernel_result=None,
+                reasons=("private-core-reason-sentinel",),
+                full_report="",
+                blocked=True,
+            )
+        if raw_input == "SYNTHETIC_EXECUTOR_FAILURE":
+            raise RuntimeError("PRIVATE_EXCEPTION_TEXT_SENTINEL")
+        return run_direct_input(
+            raw_input,
+            bounds=bounds,
+            exact_provider_bridge=self.bridge,
+        )
+
+    def _start_server(self, direct_executor):
+        server = create_server(
+            self.store,
+            render_workbench=lambda _token: "<!doctype html>",
+            direct_executor=direct_executor,
+            port=0,
+            request_timeout_seconds=0.5,
+        )
+        thread = threading.Thread(
+            target=lambda: server.serve_forever(poll_interval=0.01), daemon=True
+        )
+        thread.start()
+        server._test_thread = thread
+        return server
+
+    def _stop_server(self):
+        server = getattr(self, "server", None)
+        if server is None:
+            return
+        server.shutdown()
+        server.server_close()
+        server._test_thread.join(timeout=2)
+        self.server = None
+
+    @staticmethod
+    def _bounds(*, max_cases=8):
+        return {
+            "max_submissions": 2,
+            "max_hypotheses": 3,
+            "max_browser_rows": 20,
+            "max_cases": max_cases,
+            "quote_timeout_seconds": 2.5,
+        }
+
+    @staticmethod
+    def _decoded(response):
+        return json.loads(response[2].decode("utf-8"))
+
+    def _request(self, method, path, *, body=None, csrf=False):
+        port = self.server.server_port
+        headers = {}
+        if body is not None:
+            headers["Content-Type"] = "application/json; charset=utf-8"
+        if csrf:
+            headers[CSRF_HEADER] = self.server.csrf_token
+            headers["Origin"] = "http://127.0.0.1:{}".format(port)
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        result = response.status, response.getheaders(), response.read()
+        connection.close()
+        return result
+
+    def _post(self, raw_input, *, max_cases=8):
+        request_data = {
+            "mode": "direct",
+            "input": raw_input,
+            "bounds": self._bounds(max_cases=max_cases),
+        }
+        return self._request(
+            "POST",
+            "/api/runs",
+            body=json.dumps(request_data).encode("utf-8"),
+            csrf=True,
+        )
+
+    def _assert_stage_paired(self, run_id, *, status, diagnostics):
+        snapshot = self.store.get_run(run_id)
+        self.assertEqual(snapshot["status"], status)
+        self.assertEqual(snapshot["diagnostics"], diagnostics)
+        self.assertEqual(len(snapshot["events"]), 2)
+        self.assertEqual(snapshot["events"][0]["event"], "stage_started")
+        self.assertEqual(snapshot["events"][1]["event"], "stage_finished")
+        self.assertEqual(snapshot["events"][1]["status"], status)
+        self.assertEqual(snapshot["events"][1]["diagnostics"], diagnostics)
+
+    def test_real_store_direct_success_reopens_with_only_public_case_projection(self):
+        status = self._request("GET", "/api/status")
+        self.assertEqual(self._decoded(status)["executors"]["direct"], "CONFIGURED")
+
+        raw_input = json.dumps(self.direct_payload)
+        created = self._post(raw_input)
+        self.assertEqual(created[0], 201)
+        response = self._decoded(created)
+        self.assertEqual(response["status"], "COMPLETED")
+        self.assertEqual(response["classification"], CoreDisposition.DATA_INSUFFICIENT_CORE.value)
+        run_id = response["run_id"]
+        case_id = response["case_id"]
+        self.assertIn(":", case_id)
+        self.assertEqual(self.invocation_states, [("RUNNING", "stage_started")])
+
+        private_run = self.store.get_run(run_id)
+        self.assertEqual(private_run["status"], "COMPLETED")
+        self.assertEqual(
+            private_run["metadata"]["execution_snapshot"],
+            {
+                "direct_executor": {
+                    "status": "CONFIGURED",
+                    "version": "host-direct-input-v0.1",
+                }
+            },
+        )
+        self.assertEqual(
+            private_run["events"][1]["outcome"],
+            {
+                "schema_version": "host-direct-outcome-v0.1",
+                "case_id": case_id,
+                "classification": CoreDisposition.DATA_INSUFFICIENT_CORE.value,
+            },
+        )
+        self.assertEqual(self.store.list_direct_cases(run_id)[0]["case_id"], case_id)
+        self.assertTrue(self.store.get_direct_case(run_id, case_id)["report_cache"]["text"])
+
+        public_run = self._decoded(
+            self._request("GET", "/api/runs/{}".format(run_id))
+        )
+        self.assertEqual(
+            public_run["events"][1]["outcome"],
+            {
+                "schema_version": "host-direct-outcome-v0.1",
+                "case_id": case_id,
+                "classification": CoreDisposition.DATA_INSUFFICIENT_CORE.value,
+            },
+        )
+        self.assertEqual(set(public_run["cases"][0]), {"case_id", "classification", "reasons"})
+        self.assertEqual(public_run["cases"][0]["case_id"], case_id)
+        detail_path = "/api/runs/{}/cases/{}".format(run_id, quote(case_id, safe=""))
+        public_case_response = self._request("GET", detail_path)
+        self.assertEqual(public_case_response[0], 200)
+        public_case = self._decoded(public_case_response)
+        self.assertEqual(set(public_case), {"case_id", "classification", "reasons", "report"})
+        self.assertEqual(public_case["case_id"], case_id)
+        self.assertEqual(
+            public_case["report"],
+            self.store.get_direct_case(run_id, case_id)["report_cache"]["text"],
+        )
+        for response_body in (created[2], json.dumps(public_run).encode(), public_case_response[2]):
+            for private_field in (
+                b"core_snapshot",
+                b"core_sha256",
+                b"profile_snapshot",
+                b"raw_input",
+                b"PRIVATE_EXCEPTION_TEXT_SENTINEL",
+            ):
+                self.assertNotIn(private_field, response_body)
+        self.assertEqual(
+            self._request("GET", "/api/runs/{}/cases/%2F".format(run_id))[0], 404
+        )
+
+        self._stop_server()
+        self.store.close()
+        from convexity_hunter.host_store import HostStore
+
+        self.store = HostStore(self.db_path)
+        self.server = self._start_server(None)
+        reopened_detail = self._request("GET", detail_path)
+        self.assertEqual(reopened_detail[0], 200)
+        self.assertEqual(self._decoded(reopened_detail), public_case)
+        reopened_run = self._decoded(
+            self._request("GET", "/api/runs/{}".format(run_id))
+        )
+        self.assertEqual(reopened_run["cases"], public_run["cases"])
+        self.assertEqual(
+            self._decoded(self._request("GET", "/api/status"))["executors"]["direct"],
+            "NOT_CONFIGURED",
+        )
+
+        blocked = self._decoded(self._post(raw_input))
+        self.assertEqual(blocked["status"], "BLOCKED")
+        self.assertEqual(blocked["reason"], BLOCKED_REASON)
+        self._assert_stage_paired(
+            blocked["run_id"], status="BLOCKED", diagnostics=[BLOCKED_REASON]
+        )
+        self.assertEqual(
+            self.store.get_run(blocked["run_id"])["metadata"]["execution_snapshot"],
+            {},
+        )
+
+    def test_invalid_bounds_precore_and_executor_failure_are_paired_and_sanitized(self):
+        bridge_calls_before = len(self.bridge.calls)
+
+        invalid = self._decoded(self._post("INVALID_DIRECT_INPUT_PRIVATE_SENTINEL"))
+        self.assertEqual(invalid["status"], "BLOCKED")
+        self.assertEqual(invalid["reason"], "HOST_DIRECT_INPUT_REJECTED")
+        self._assert_stage_paired(
+            invalid["run_id"],
+            status="BLOCKED",
+            diagnostics=["HOST_DIRECT_INPUT_REJECTED"],
+        )
+        self.assertEqual(len(self.bridge.calls), bridge_calls_before)
+
+        zero_cases = self._decoded(self._post(json.dumps(self.direct_payload), max_cases=0))
+        self.assertEqual(zero_cases["status"], "BLOCKED")
+        self.assertEqual(zero_cases["reason"], "HOST_DIRECT_BOUNDS_REJECTED")
+        self._assert_stage_paired(
+            zero_cases["run_id"],
+            status="BLOCKED",
+            diagnostics=["HOST_DIRECT_BOUNDS_REJECTED"],
+        )
+        self.assertEqual(len(self.bridge.calls), bridge_calls_before)
+
+        precore = self._decoded(self._post("SYNTHETIC_PRECORE_BLOCK"))
+        self.assertEqual(precore["status"], "BLOCKED")
+        self.assertEqual(precore["reason"], "HOST_DIRECT_CORE_BLOCKED")
+        self._assert_stage_paired(
+            precore["run_id"],
+            status="BLOCKED",
+            diagnostics=["HOST_DIRECT_CORE_BLOCKED"],
+        )
+        self.assertEqual(self.store.list_direct_cases(precore["run_id"]), [])
+
+        failed_response = self._post("SYNTHETIC_EXECUTOR_FAILURE")
+        failed = self._decoded(failed_response)
+        self.assertEqual(failed["status"], "FAILED")
+        self.assertEqual(failed["reason"], "HOST_DIRECT_EXECUTOR_FAILED")
+        self._assert_stage_paired(
+            failed["run_id"],
+            status="FAILED",
+            diagnostics=["HOST_DIRECT_EXECUTOR_FAILED"],
+        )
+        history = self._request("GET", "/api/runs/{}".format(failed["run_id"]))
+        self.assertNotIn(b"PRIVATE_EXCEPTION_TEXT_SENTINEL", failed_response[2])
+        self.assertNotIn(b"PRIVATE_EXCEPTION_TEXT_SENTINEL", history[2])
+        self.assertNotIn(b"private-core-reason-sentinel", history[2])
+        self.assertEqual(
+            self.store.list_direct_cases(failed["run_id"]), []
+        )
+
+
+class HostServerCliTests(unittest.TestCase):
+    def test_direct_cli_requires_explicit_futu_port_and_opt_in(self):
+        invalid_arguments = (
+            ("--db", "/tmp/unused.sqlite3", "--enable-direct"),
+            ("--db", "/tmp/unused.sqlite3", "--futu-port", "12345"),
+            (
+                "--db",
+                "/tmp/unused.sqlite3",
+                "--enable-direct",
+                "--futu-port",
+                "0",
+            ),
+        )
+        for arguments in invalid_arguments:
+            with self.subTest(arguments=arguments):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        host_server_module.main(list(arguments))
+
+    def test_enabled_cli_installs_lazy_direct_executor_without_sdk_startup(self):
+        class Journal:
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        class Server:
+            server_port = 8080
+            closed = False
+
+            def serve_forever(self):
+                raise KeyboardInterrupt
+
+            def server_close(self):
+                self.closed = True
+
+        journal = Journal()
+        server = Server()
+        executor = lambda _raw_input, *, bounds: None
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                patch.object(host_server_module, "_open_store", return_value=journal)
+            )
+            stack.enter_context(
+                patch.object(
+                    host_server_module,
+                    "_load_workbench_renderer",
+                    return_value=lambda _token: "",
+                )
+            )
+            make_executor = stack.enter_context(
+                patch.object(
+                    host_server_module,
+                    "_make_futu_direct_executor",
+                    return_value=executor,
+                )
+            )
+            create = stack.enter_context(
+                patch.object(host_server_module, "create_server", return_value=server)
+            )
+            open_context = stack.enter_context(
+                patch(
+                    "convexity_hunter.host_server._open_suppressed_futu_quote_context"
+                )
+            )
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            result = host_server_module.main(
+                [
+                    "--db",
+                    "/tmp/unused.sqlite3",
+                    "--enable-direct",
+                    "--futu-port",
+                    "12345",
+                ]
+            )
+        self.assertEqual(result, 0)
+        make_executor.assert_called_once_with(12345)
+        self.assertIs(create.call_args.kwargs["direct_executor"], executor)
+        open_context.assert_not_called()
+        self.assertTrue(journal.closed)
+        self.assertTrue(server.closed)
+
+    def test_constructed_futu_direct_executor_does_not_initialize_sdk(self):
+        with patch(
+            "convexity_hunter.host_server._open_suppressed_futu_quote_context"
+        ) as open_context:
+            executor = host_server_module._make_futu_direct_executor(12345)
+        self.assertTrue(callable(executor))
+        open_context.assert_not_called()
+
+    def test_sdk_output_is_suppressed_across_initialization_operation_and_close(self):
+        import types
+
+        import convexity_hunter.providers.futu as futu_provider
+
+        bound_output = io.StringIO()
+
+        class FakeLogger:
+            def __init__(self):
+                self.file_level = 50
+                self.console_level = 50
+                self.console_enabled = True
+                self.bound_stream_closed = False
+
+            def enable_console_log(self, enabled):
+                self.console_enabled = enabled
+
+            def emit(self):
+                if self.console_enabled and self.console_level <= 50:
+                    bound_output.write("PRIVATE_BOUND_LOG_SENTINEL\n")
+                if self.file_level <= 50:
+                    bound_output.write("PRIVATE_FILE_LOG_SENTINEL\n")
+
+        logger = FakeLogger()
+        observed_levels = []
+
+        class Context:
+            closed = False
+
+            def close(self):
+                print("PRIVATE_SDK_CLOSE_STDOUT_SENTINEL")
+                print("PRIVATE_SDK_CLOSE_STDERR_SENTINEL", file=sys.stderr)
+                logger.emit()
+                self.closed = True
+
+        context = Context()
+
+        class SDK:
+            @staticmethod
+            def OpenQuoteContext(*, host, port):
+                observed_levels.append(
+                    (logger.file_level, logger.console_level, logger.console_enabled)
+                )
+                print("PRIVATE_SDK_INIT_STDOUT_SENTINEL")
+                print("PRIVATE_SDK_INIT_STDERR_SENTINEL", file=sys.stderr)
+                logger.emit()
+                return context
+
+        expected_result = object()
+
+        def synthetic_run(_raw_input, *, bounds, exact_provider_bridge):
+            del bounds
+            print("PRIVATE_DIRECT_STDOUT_SENTINEL")
+            print("PRIVATE_DIRECT_STDERR_SENTINEL", file=sys.stderr)
+            exact_provider_bridge.quote_context_factory().close()
+            return expected_result
+
+        stdout_capture = io.StringIO()
+        stderr_capture = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                patch.object(futu_provider, "_load_futu_sdk", return_value=SDK)
+            )
+            stack.enter_context(
+                patch(
+                    "importlib.import_module",
+                    return_value=types.SimpleNamespace(logger=logger),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "convexity_hunter.host_direct.run_direct_input",
+                    side_effect=synthetic_run,
+                )
+            )
+            stack.enter_context(contextlib.redirect_stdout(stdout_capture))
+            stack.enter_context(contextlib.redirect_stderr(stderr_capture))
+            executor = host_server_module._make_futu_direct_executor(12345)
+            result = executor("synthetic", bounds=object())
+
+        self.assertIs(result, expected_result)
+        self.assertEqual(stdout_capture.getvalue(), "")
+        self.assertEqual(stderr_capture.getvalue(), "")
+        self.assertEqual(bound_output.getvalue(), "")
+        self.assertEqual(observed_levels, [(sys.maxsize, sys.maxsize, False)])
+        self.assertTrue(context.closed)
+        self.assertFalse(logger.bound_stream_closed)
+        self.assertFalse(host_server_module._SDK_OUTPUT_SINK.closed)
+
+    def test_missing_official_logger_controls_fails_closed_before_quote_context(self):
+        import types
+
+        import convexity_hunter.providers.futu as futu_provider
+
+        class SDK:
+            called = False
+
+            def OpenQuoteContext(self, *, host, port):
+                self.called = True
+                return (host, port)
+
+        sdk = SDK()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                patch.object(futu_provider, "_load_futu_sdk", return_value=sdk)
+            )
+            stack.enter_context(
+                patch(
+                    "importlib.import_module",
+                    return_value=types.SimpleNamespace(logger=object()),
+                )
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "logging suppression is unavailable"
+            ):
+                host_server_module._open_suppressed_futu_quote_context(12345)
+        self.assertFalse(sdk.called)
 
 
 if __name__ == "__main__":
