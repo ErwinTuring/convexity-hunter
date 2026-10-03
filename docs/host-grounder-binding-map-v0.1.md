@@ -64,3 +64,34 @@ belongs to the preceding typed-entity unit. Final independent code review is
 PASS. It verified the corrected prompt, literal legacy compatibility, map and
 version tests, strict wrong-ID rejection and independent request limits.
 No model/source/live calls were made during this BUILD.
+
+## Compact verifier correction — 2026-10-03
+
+The separately preregistered [observer attempt](standalone-iren-binding-map-trial-2026-10-02.md#observer-outcome)
+identified `TRUNCATED_RESPONSE` for that attempt. It does not prove that response
+verbosity was the unique cause or identify the earlier attempt's cause.
+
+The existing opt-in runtime v0.5 route now targets semantic prompt v0.7; the
+literal v0.6 prompt remains retained, and other public routes keep their existing
+prompts. This is an explicit prompt-version correction, not a claim that the old
+implementation violated its frozen contract. Runtime/catalog counts remain 7/9,
+the public signature remains 11 parameters, and the wire DTO/parser are unchanged.
+Audit/receipt validator_version must identify the actually selected v0.7 prompt;
+unknown or mismatched versions still fail closed.
+
+The new instruction requests compact JSON and one short, specific semantic
+rationale per verdict, without reprinting source wording. It preserves every
+required field/record, ordered binding correspondence, required evidence refs,
+qualifications and contrary evidence. It does not cap reasoning by truncating
+fields, omit checks, repair incomplete JSON or relax validation. Token/byte/
+timeout/call budgets and sources/models remain unchanged. Truncated transport
+responses remain failures. Prompt compactness is not a deterministic guarantee
+against truncation, nor real semantic/ EI acceptance. No live retry during BUILD.
+
+Focused validation passed: 25 catalog, 25 runtime and 18 transport tests;
+compile and diff checks passed. Existing legacy adverse-verdict coverage remains
+alongside new v0.7 coverage. Independent review identified one outdated illegal-
+version test fixture; it was corrected from now-valid v0.7 to invalid v0.8.
+Independent targeted re-review passed. No full-suite or live retry during this small
+prompt/dispatch correction. The retained historical packet is not current-event
+evidence.

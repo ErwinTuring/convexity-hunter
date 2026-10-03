@@ -35,6 +35,7 @@ from .host_grounder_evidence_catalog import (
     _PRODUCER_PROMPT_VERSION_V0_6,
     _VERIFIER_PROMPT_VERSION as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
     _VERIFIER_PROMPT_VERSION_V0_6 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
+    _VERIFIER_PROMPT_VERSION_V0_7 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
     build_host_evidence_catalog,
     parse_grounder_output_v0_3,
     _parse_grounder_output_v0_3_with_progress,
@@ -357,6 +358,21 @@ SEMANTIC_SYSTEM_PROMPT_V0_6 = _replace_prompt_fragment(
     "establishes no truth, support, entailment, source authority, or required "
     "supported verdict. Contradicted and unresolved outcomes remain independently "
     "permitted. FORMAT_ONLY_ID is a shape placeholder, not a source fact."
+)
+SEMANTIC_SYSTEM_PROMPT_V0_7 = _replace_prompt_fragment(
+    SEMANTIC_SYSTEM_PROMPT_V0_6,
+    "host-grounder-semantic-verifier-prompt-v0.6.",
+    "host-grounder-semantic-verifier-prompt-v0.7.",
+) + (
+    "\n\nCompact-output rule (v0.7): Return one compact JSON object with no "
+    "insignificant whitespace and no surrounding prose. Emit every required "
+    "verdict record and field exactly once, in the required identity and order; "
+    "never omit, merge, or reorder records, and preserve the complete required "
+    "evidence_refs for each verdict. Keep each rationale to one short, specific "
+    "sentence explaining the semantic reason for that verdict. Do not quote or "
+    "restate source wording in rationale; evidence_refs identify the cited text. "
+    "Preserve relevant qualifications and contrary evidence, and do not overstate "
+    "what the evidence establishes."
 )
 
 
@@ -1275,6 +1291,8 @@ def _run_host_grounder_same_run_evidence_catalog(
         semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_5
     elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6:
         semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_6
+    elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7:
+        semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_7
     else:
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     if discovery_client is semantic_client:
@@ -1418,7 +1436,10 @@ def _run_host_grounder_same_run_evidence_catalog(
         "registered_source_registry_json": registry_json,
         "evidence_catalog_json": catalog_json,
     }
-    if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6:
+    if semantic_prompt_version in (
+        _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
+        _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
+    ):
         verifier_input["producer_binding_evidence_map"] = producer_binding_evidence_map
     verifier_prompt = _canonical_json(verifier_input, "SEMANTIC_PROMPT_INVALID")
     semantic_call = _call_once(
@@ -1769,7 +1790,7 @@ def run_host_grounder_same_run_evidence_catalog_v0_5(
         ]
     ] = None,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
-    """Run catalog semantics v0.5 with validated producer-binding correspondence."""
+    """Run catalog semantics v0.7 with validated producer-binding correspondence."""
     if not callable(host_context_preparer):
         raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
     return _run_host_grounder_same_run_evidence_catalog(
@@ -1784,7 +1805,7 @@ def run_host_grounder_same_run_evidence_catalog_v0_5(
         max_catalog_bytes=max_catalog_bytes,
         max_catalog_paragraphs=max_catalog_paragraphs,
         producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_6,
-        semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
+        semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
         context_preparer=host_context_preparer,
         producer_diagnostics_v0_3=True,
     )

@@ -45,8 +45,13 @@ _PRODUCER_PROMPT_VERSION = _PRODUCER_PROMPT_VERSION_V0_4
 _VERIFIER_WIRE_VERSION = "semantic-verdict-v0.3"
 _VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.5"
 _VERIFIER_PROMPT_VERSION_V0_6 = "host-grounder-semantic-verifier-prompt-v0.6"
+_VERIFIER_PROMPT_VERSION_V0_7 = "host-grounder-semantic-verifier-prompt-v0.7"
 _VERIFIER_PROMPT_VERSIONS = frozenset(
-    (_VERIFIER_PROMPT_VERSION, _VERIFIER_PROMPT_VERSION_V0_6)
+    (
+        _VERIFIER_PROMPT_VERSION,
+        _VERIFIER_PROMPT_VERSION_V0_6,
+        _VERIFIER_PROMPT_VERSION_V0_7,
+    )
 )
 _RESOLVER_VERSION = "host-evidence-catalog-resolver-v0.1"
 _SHA256 = frozenset("0123456789abcdef")

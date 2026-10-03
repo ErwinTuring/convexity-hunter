@@ -90,3 +90,20 @@ exception; offline transparency controls passed with zero calls/credential reads
 Non-null impact-window claims still stop before EI. Independent exact-hash safety
 review and Main authorization are required before the single live invocation.
 No retry, automatic budget increase or inferred retrospective cause is permitted.
+
+### Observer outcome
+
+After preregistration `5c3d4e1` was pushed, independent static safety review
+passed and Main authorized that exact runner hash once. Main's separate offline
+execution passed all transitive guards with zero credential reads/calls.
+The live attempt stopped at `SEMANTIC_CALL_FAILED`; closed transport code was
+`TRUNCATED_RESPONSE`. Discovery/semantic reservations were each one, source calls
+zero; no market data, raw persistence, receipt partition or EI result. No retry.
+Unvalidated producer census: 21,329 content bytes, 15 claims, one hypothesis,
+38 bindings, four coverage entries. Counts are not semantic acceptance.
+
+This proves truncation for this successor attempt only, not the cause of the
+earlier spent attempt. Parser refusal remains correct; no partial JSON or model
+verdict was promoted. Next work is a narrow complete-but-compact semantic-output
+change, retaining every required verdict and evidence reference; no budget
+increase or acceptance relaxation. Live improvement is not yet proven.

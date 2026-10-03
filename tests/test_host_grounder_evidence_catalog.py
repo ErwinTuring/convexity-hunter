@@ -32,6 +32,7 @@ from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT_V0_6,
     SEMANTIC_SYSTEM_PROMPT_V0_5,
     SEMANTIC_SYSTEM_PROMPT_V0_6,
+    SEMANTIC_SYSTEM_PROMPT_V0_7,
     HostGrounderRuntimeError,
     run_host_grounder_same_run_evidence_catalog_v0_1,
     run_host_grounder_same_run_evidence_catalog_v0_2,
@@ -822,6 +823,10 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
 
     def test_semantic_v06_has_literal_version_header_and_format_only_map_rule(self):
         self.assertEqual(
+            hashlib.sha256(SEMANTIC_SYSTEM_PROMPT_V0_6.encode("utf-8")).hexdigest(),
+            "facfd2df3e74883d0f6f2d8f818dfc4476080dc4de2e9173f4c82da496186dbb",
+        )
+        self.assertEqual(
             hashlib.sha256(SEMANTIC_SYSTEM_PROMPT_V0_5.encode("utf-8")).hexdigest(),
             "76d67f44806fbcea5f125961b4be1800eb3b14b63de9ad32b467bae6aba203c3",
         )
@@ -852,6 +857,26 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             "establishes no truth, support, entailment, source authority, or required "
             "supported verdict. Contradicted and unresolved outcomes remain independently "
             "permitted. FORMAT_ONLY_ID is a shape placeholder, not a source fact.",
+        )
+
+    def test_semantic_v07_preserves_v06_and_requires_compact_complete_verdicts(self):
+        v06_header = "host-grounder-semantic-verifier-prompt-v0.6."
+        v07_header = "host-grounder-semantic-verifier-prompt-v0.7."
+        self.assertIn(v07_header, SEMANTIC_SYSTEM_PROMPT_V0_7)
+        self.assertNotIn(v06_header, SEMANTIC_SYSTEM_PROMPT_V0_7)
+        v06_as_v07 = SEMANTIC_SYSTEM_PROMPT_V0_6.replace(v06_header, v07_header, 1)
+        self.assertTrue(SEMANTIC_SYSTEM_PROMPT_V0_7.startswith(v06_as_v07))
+        self.assertEqual(
+            SEMANTIC_SYSTEM_PROMPT_V0_7[len(v06_as_v07):],
+            "\n\nCompact-output rule (v0.7): Return one compact JSON object with no "
+            "insignificant whitespace and no surrounding prose. Emit every required "
+            "verdict record and field exactly once, in the required identity and order; "
+            "never omit, merge, or reorder records, and preserve the complete required "
+            "evidence_refs for each verdict. Keep each rationale to one short, specific "
+            "sentence explaining the semantic reason for that verdict. Do not quote or "
+            "restate source wording in rationale; evidence_refs identify the cited text. "
+            "Preserve relevant qualifications and contrary evidence, and do not overstate "
+            "what the evidence establishes.",
         )
 
     def test_audit_holder_pins_only_closed_producer_prompt_versions(self):
@@ -898,6 +923,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         semantic_versions = (
             "host-grounder-semantic-verifier-prompt-v0.5",
             "host-grounder-semantic-verifier-prompt-v0.6",
+            "host-grounder-semantic-verifier-prompt-v0.7",
         )
         for version in semantic_versions:
             with self.subTest(semantic_version=version):
@@ -933,7 +959,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertFalse(holder.finalized)
 
         for invalid in (
-            "host-grounder-semantic-verifier-prompt-v0.7", "", True, 1, [], {}, object()
+            "host-grounder-semantic-verifier-prompt-v0.8", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_semantic_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -980,7 +1006,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             catalog.canonical_utf8,
             catalog.catalog_sha256,
             producer_prompt_version="host-grounder-discovery-prompt-v0.6",
-            semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.6",
+            semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.7",
         )
         semantic_mismatch_holder._capture_producer_content(b"{}")
         with self.assertRaises(ValueError):
@@ -988,7 +1014,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 b"{}",
                 catalog=catalog,
                 expected_producer_prompt_version="host-grounder-discovery-prompt-v0.6",
-                expected_semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.5",
+                expected_semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.6",
             )
         self.assertFalse(semantic_mismatch_holder.finalized)
 
@@ -1041,7 +1067,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
                 self.assertEqual(calls[0][1], expected_prompt)
                 expected_semantic_prompt = (
-                    SEMANTIC_SYSTEM_PROMPT_V0_6
+                    SEMANTIC_SYSTEM_PROMPT_V0_7
                     if route is run_host_grounder_same_run_evidence_catalog_v0_5
                     else SEMANTIC_SYSTEM_PROMPT_V0_5
                 )
@@ -1058,7 +1084,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         result.build_result.semantic_validation.receipt["validator_version"],
-                        "host-grounder-semantic-verifier-prompt-v0.6",
+                        "host-grounder-semantic-verifier-prompt-v0.7",
                     )
                 else:
                     self.assertNotIn("producer_binding_evidence_map", verifier_payload)
@@ -1072,7 +1098,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     json.loads(result.audit.sidecar_utf8)["validator_version"],
-                    "host-grounder-semantic-verifier-prompt-v0.6"
+                    "host-grounder-semantic-verifier-prompt-v0.7"
                     if route is run_host_grounder_same_run_evidence_catalog_v0_5
                     else "host-grounder-semantic-verifier-prompt-v0.5",
                 )
@@ -1117,7 +1143,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(
             json.loads(result.audit.sidecar_utf8)["validator_version"],
-            "host-grounder-semantic-verifier-prompt-v0.6",
+            "host-grounder-semantic-verifier-prompt-v0.7",
         )
 
         empty_producer = _wire_envelope(run_input, catalog)
@@ -1268,7 +1294,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 max_catalog_entries=64,
                 max_catalog_bytes=32_768,
                 max_catalog_paragraphs=128,
-                semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.7",
+                semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.8",
             )
         self.assertEqual(invalid_version.exception.code, "SEMANTIC_PROMPT_VERSION_INVALID")
         self.assertEqual(calls, [])
@@ -1496,6 +1522,87 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertEqual(receipt["verified_claim_ids"], ())
                 self.assertIsNone(result.build_result.submission)
                 self.assertEqual(result.build_result.coverage[0].validator_status, "unresolved")
+
+    def test_v07_contradicted_or_unresolved_verdicts_keep_identity_and_refs(self):
+        run_input, context = _fixture(
+            "ACME filed a report.\n\nACME did not file a report."
+        )
+        catalog, producer, envelope, _, base_verdict = _wire_bundle(run_input, context)
+        producer_binding_evidence_ids = tuple(
+            binding["evidence_id"] for binding in producer["field_bindings"]
+        )
+        for outcome in ("contradicted", "unresolved"):
+            changed = copy.deepcopy(base_verdict)
+            changed["claims"][0]["outcome"] = outcome
+            if outcome == "unresolved":
+                changed["claims"][0]["evidence_refs"] = []
+            else:
+                changed["claims"][0]["evidence_refs"] = [
+                    {"evidence_id": entry.evidence_id} for entry in catalog.entries
+                ]
+            normalized = json.loads(
+                parse_semantic_verdict_v0_3(
+                    _canonical(changed),
+                    1_048_576,
+                    max_string_bytes=run_input.bounds.max_string_bytes,
+                    max_array_items=run_input.bounds.max_array_items,
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                    source_bodies=context.source_bodies,
+                    catalog=catalog,
+                    producer_binding_evidence_ids=producer_binding_evidence_ids,
+                )
+            )
+            result, calls = self._run_v05(run_input, context, producer, changed)
+            receipt = result.build_result.semantic_validation.receipt
+            with self.subTest(outcome=outcome):
+                self.assertEqual(receipt["verified_claim_ids"], ())
+                self.assertIsNone(result.build_result.submission)
+                self.assertEqual(result.build_result.coverage[0].validator_status, "unresolved")
+                self.assertEqual(
+                    receipt["validator_version"],
+                    "host-grounder-semantic-verifier-prompt-v0.7",
+                )
+                self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+                self.assertEqual(
+                    [item["claim_id"] for item in normalized["claims"]],
+                    [item["claim_id"] for item in envelope["claims"]],
+                )
+                self.assertEqual(
+                    [item["hypothesis_id"] for item in normalized["hypotheses"]],
+                    [item["hypothesis_id"] for item in envelope["hypotheses"]],
+                )
+                self.assertEqual(
+                    [item["index"] for item in normalized["field_bindings"]],
+                    list(range(len(envelope["field_bindings"]))),
+                )
+                self.assertEqual(
+                    [(item["index"], item["subquestion_id"]) for item in normalized["coverage"]],
+                    list(enumerate(item["subquestion_id"] for item in envelope["coverage"])),
+                )
+                entries_by_id = {
+                    entry.evidence_id: entry for entry in catalog.entries
+                }
+                for section in ("claims", "hypotheses", "field_bindings", "coverage"):
+                    for wire_record, parsed_record in zip(changed[section], normalized[section]):
+                        expected_refs = []
+                        for wire_ref in wire_record["evidence_refs"]:
+                            entry = entries_by_id[wire_ref["evidence_id"]]
+                            expected_refs.append(
+                                {
+                                    "source_id": entry.source_id,
+                                    "body_sha256": entry.body_sha256,
+                                    "start": entry.start,
+                                    "end": entry.end,
+                                    "quote": entry.quote,
+                                }
+                            )
+                        self.assertEqual(parsed_record["evidence_refs"], expected_refs)
+                if outcome == "contradicted":
+                    self.assertEqual(
+                        [item["quote"] for item in normalized["claims"][0]["evidence_refs"]],
+                        [entry.quote for entry in catalog.entries],
+                    )
 
     def test_semantic_failure_keeps_catalog_raw_producer_and_final_sidecar(self):
         run_input, context = _fixture()

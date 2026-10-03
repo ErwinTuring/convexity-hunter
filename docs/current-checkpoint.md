@@ -11,6 +11,26 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Current executable boundary — 2026-10-03
 
+Grounder successor observer: preregistration `5c3d4e1`, independent static safety
+review and Main offline gates passed. Exactly one bounded attempt stopped with
+`SEMANTIC_CALL_FAILED / TRUNCATED_RESPONSE`; discovery and semantic reservations
+each one, zero source/market calls, no raw persistence or EI result. This locates
+the successor's failure only; the prior attempt's cause remains unknown. No retry
+or budget increase. Next work: narrow complete-but-compact semantic response,
+without dropping verdicts, evidence references or weakening acceptance. See
+[observer result](standalone-iren-binding-map-trial-2026-10-02.md#observer-outcome).
+
+That correction is now implemented: existing opt-in v0.5 runtime selects a
+versioned v0.7 compact verifier, with actual audit/receipt version; v0.6 literal
+and all other routes remain intact. Same DTO/parser, budgets and 7/9/11 API
+counts. All required verdicts, qualifications and contrary evidence remain.
+68 focused tests passed (25 catalog/25 runtime/18 transport), compile/diff and
+three-document link/fence checks passed; independent code/targeted review passed
+after correcting an obsolete invalid-version test. No full-suite or live retry
+belongs to this patch. Real standalone World/Event acceptance remains unproven.
+Next execution is a separately registered one-shot validation of the changed
+prompt, not replaying the spent observer or increasing budgets.
+
 Latest delivery: the Host now accepts explicitly configured trusted Python
 World/Event executors returning the existing `CoreRunResult`. Private schema-v3
 archives retain the full ordered case set, unavailable reasons, normalized EI
