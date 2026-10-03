@@ -1,5 +1,17 @@
 # Project State
 
+2026-10-04: Event pre-Core negative Grounder stage storage and safe Chinese
+presentation are implemented and independent targeted re-review passed. They
+reuse private schema-v3 events, bind exact Host input, atomically record missing
+submission as BLOCKED without a Core archive, and preserve truthful failed/
+interrupted recovery. Eighty-eight Host-focused tests passed. No new live call
+in this slice; default Event/World are still disabled. The preceding v0.7 real
+trial completed semantic validation (15 claims/24 bindings), but produced zero
+hypotheses, no submission and no EI assessment. This is not standalone Event
+acceptance or three-lane completion. See [current checkpoint](current-checkpoint.md).
+
+Earlier batch delivery:
+
 2026-10-03 latest delivery: trusted injected World/Event execution, private
 schema-v3 full ordered batch archives, compact comparison and lazy Chinese
 details are implemented. Default CLI World/Event remain disabled; real

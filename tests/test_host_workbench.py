@@ -151,7 +151,7 @@ class Element {
   }
 }
 
-async function scenario({ mode, cases, batchSummary = null, responses = [], listedRunId = runId, executors }) {
+async function scenario({ mode, cases, batchSummary = null, events, runStatus = "COMPLETED", responses = [], listedRunId = runId, executors }) {
   const ids = [...input.page.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
   const elements = new Map(ids.map((id) => [id, new Element(id)]));
   const tabs = ["world", "event", "direct"].map((name) => {
@@ -173,12 +173,12 @@ async function scenario({ mode, cases, batchSummary = null, responses = [], list
     },
     createElement() { return new Element("created"); }
   };
-  const run = { run_id: runId, mode, status: "COMPLETED", cases, batch_summary: batchSummary };
+  const run = { run_id: runId, mode, status: runStatus, cases, batch_summary: batchSummary, events };
   const fetch = async (path, options = {}) => {
     calls.push({ path, method: options.method || "GET" });
     if (path === "/api/status") return response({ executors });
     if (path === "/api/profile") return response({ profile: "synthetic" });
-    if (path === "/api/runs") return response({ runs: [{ run_id: listedRunId, mode, status: "COMPLETED" }] });
+    if (path === "/api/runs") return response({ runs: [{ run_id: listedRunId, mode, status: runStatus }] });
     if (path === "/api/runs/" + encodeURIComponent(runId)) return response(run);
     if (path.startsWith("/api/runs/" + encodeURIComponent(runId) + "/cases/")) {
       const next = responses[Math.min(caseResponseIndex, responses.length - 1)];
@@ -219,6 +219,79 @@ async function scenario({ mode, cases, batchSummary = null, responses = [], list
   await direct.elements.get("case-list").children[0].children[0].click();
   if (directCaseGets() !== 2 || detail.textContent.includes("STALE REPORT")) throw new Error("null report did not clear stale content");
   if (!detail.textContent.includes("报告字段为 null")) throw new Error("null report disclosure was not shown honestly");
+
+  const digest = (letter) => letter.repeat(64);
+  const grounderOutcome = {
+    schema_version: "host-grounder-stage-outcome-v0.1",
+    grounder_status: "COMPLETED", source_status: "UNKNOWN", semantic_status: "RECEIPT_VALIDATED",
+    builder_status: "COMPLETED", submission_status: "MISSING", ei_status: "NOT_RUN",
+    counts: { source_body_count: 1, claim_count: 1, hypothesis_count: 0, field_binding_count: 1, coverage_count: 2 },
+    diagnostic_counts: [
+      { code: "CLAIM_NOT_PROJECTABLE", count: 1 },
+      { code: "NO_PROJECTABLE_HYPOTHESIS", count: 1 }
+    ],
+    coverage: [
+      { index: 0, subquestion_id: "question-1", model_status: "unresolved", validator_status: "unresolved", claim_count: 0, gap_present: true },
+      { index: 1, subquestion_id: "question-2", model_status: "contradicted", validator_status: "contradicted", claim_count: 1, gap_present: false }
+    ],
+    provenance: {
+      receipt_schema_version: "semantic-validation-v0.2",
+      audit_schema_version: "host-grounder-quote-localization-audit-v0.3",
+      producer_wire_version: "grounder-output-v0.3",
+      producer_prompt_version: "host-grounder-discovery-prompt-v0.6",
+      verifier_wire_version: "semantic-verdict-v0.3",
+      validator_version: "host-grounder-semantic-verifier-prompt-v0.7",
+      localizer_version: "host-evidence-catalog-resolver-v0.1",
+      catalog_schema_version: "host-grounder-evidence-catalog-v0.1",
+      catalog_generator_version: "host-evidence-paragraph-generator-v0.1",
+      canonical_input_sha256: digest("a"), host_raw_input_sha256: digest("b"),
+      audit_sha256: digest("c"), catalog_sha256: digest("d"),
+      producer_content_sha256: digest("e"), normalized_envelope_sha256: digest("f"),
+      source_body_hashes: [{ source_id: "https://private.example/path?token=DO_NOT_DISPLAY", sha256: digest("1") }],
+      model_calls: [
+        { role: "discovery", provider: "PRIVATE_PROVIDER", requested_model: "PRIVATE_MODEL_NAME", returned_model: "PRIVATE_MODEL_NAME", finish_reason: "stop", bytes_sent: 10, bytes_received: 20 },
+        { role: "semantic", provider: "PRIVATE_PROVIDER", requested_model: "PRIVATE_MODEL_NAME", returned_model: "PRIVATE_MODEL_NAME", finish_reason: "stop", bytes_sent: 30, bytes_received: 40 }
+      ],
+      raw_model_body: "RAW_MODEL_BODY_SENTINEL",
+      config_path: "CONFIG_PATH_SENTINEL",
+      credential: "CREDENTIAL_SENTINEL"
+    },
+    raw_body: "RAW_BODY_SENTINEL"
+  };
+  const grounder = await scenario({
+    mode: "event", cases: [], runStatus: "BLOCKED",
+    events: [{
+      event: "stage_finished", stage: "grounder", stage_id: "stage-grounder-1", status: "COMPLETED",
+      started_at: "2026-10-04T00:00:00.000Z", completed_at: "2026-10-04T00:00:01.000Z",
+      diagnostics: ["GROUNDING_NO_SUBMISSION"], outcome: grounderOutcome,
+      private_future_field: "UNKNOWN_EVENT_FIELD_SENTINEL"
+    }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await grounder.clickRun();
+  if (!grounder.tabs[1].disabled) throw new Error("historical Grounder detail enabled the Event entry");
+  const grounderText = grounder.elements.get("run-events").textContent;
+  for (const expected of [
+    "阶段状态：已完成（COMPLETED）", "Grounder：COMPLETED", "source_status：UNKNOWN（不是搜索成功）",
+    "semantic_status：RECEIPT_VALIDATED（不是事实真理）", "builder_status：COMPLETED",
+    "EI submission：MISSING", "EI：NOT_RUN", "没有 Core 结果或报告",
+    "诊断计数（保留负面结果；不是评分）", "CLAIM_NOT_PROJECTABLE：1",
+    "model=unresolved", "validator=contradicted", "Hypothesis 数：0", "Coverage 数：2",
+    "Producer wire：grounder-output-v0.3", digest("a"), "发送字节=10", "接收字节=40"
+  ]) {
+    if (!grounderText.includes(expected)) throw new Error("Grounder safe stage field was omitted: " + expected);
+  }
+  if (!grounder.elements.get("run-status").textContent.includes("阻断（BLOCKED）")) throw new Error("blocked run status was not kept distinct from completed Grounder stage");
+  for (const forbidden of [
+    "PRIVATE_PROVIDER", "PRIVATE_MODEL_NAME", "RAW_MODEL_BODY_SENTINEL", "RAW_BODY_SENTINEL",
+    "CONFIG_PATH_SENTINEL", "CREDENTIAL_SENTINEL", "DO_NOT_DISPLAY", "UNKNOWN_EVENT_FIELD_SENTINEL"
+  ]) {
+    if (grounderText.includes(forbidden)) throw new Error("private or unknown Grounder data was displayed: " + forbidden);
+  }
+  if (!grounderText.includes("Coverage #0") || !grounderText.includes("Coverage #1")) throw new Error("coverage rows/order were omitted");
+  if (grounderText.includes("question-1") || grounderText.includes("question-2")) throw new Error("unbounded subquestion identifiers were exposed");
+  if (innerHtmlWrites !== 0) throw new Error("Grounder outcome reached innerHTML");
+  if (grounder.calls.some((call) => call.path.includes("/cases/"))) throw new Error("Grounder stage rendering triggered an extra detail request");
 
   for (const [mode, cases] of [["world", [{ case_id: "world:one" }, { case_id: "world:two" }]], ["event", [{ case_id: "event:one" }]]]) {
     const keyedCases = cases.map((item) => ({ case_id: item.case_id, case_key: caseKeyFor(item.case_id) }));

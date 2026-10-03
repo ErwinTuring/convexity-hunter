@@ -589,6 +589,175 @@ _DOCUMENT = r'''<!doctype html>
     renderUnavailableCases(summary.unavailable_cases);
   }
 
+  function knownVersion(value) {
+    return typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(value)
+      ? value : "接口未提供可识别版本";
+  }
+
+  function knownDigest(value) {
+    return typeof value === "string" && /^[0-9a-f]{64}$/.test(value)
+      ? value : "接口未提供可识别摘要";
+  }
+
+  function renderGrounderStageOutcome(outcome) {
+    const lines = [
+      "Grounder 阶段结果（host-grounder-stage-outcome-v0.1）：",
+      "Grounder：" + (outcome.grounder_status === "COMPLETED" ? "COMPLETED" : "字段缺失或不可识别"),
+      "source_status：" + (outcome.source_status === "UNKNOWN" ? "UNKNOWN（不是搜索成功）" : "字段缺失或不可识别"),
+      "semantic_status：" + (outcome.semantic_status === "RECEIPT_VALIDATED" ? "RECEIPT_VALIDATED（不是事实真理）" : "字段缺失或不可识别"),
+      "builder_status：" + (outcome.builder_status === "COMPLETED" ? "COMPLETED" : "字段缺失或不可识别"),
+      "EI submission：" + (outcome.submission_status === "MISSING" ? "MISSING" : "字段缺失或不可识别"),
+      "EI：" + (outcome.ei_status === "NOT_RUN" ? "NOT_RUN" : "字段缺失或不可识别"),
+      "边界：尚无 EI submission，未进入 Core，未创建 Core 分支；没有 Core 结果或报告。"
+    ];
+    const countFields = [
+      ["source_body_count", "来源正文数"], ["claim_count", "Claim 数"],
+      ["hypothesis_count", "Hypothesis 数"], ["field_binding_count", "Field binding 数"],
+      ["coverage_count", "Coverage 数"]
+    ];
+    lines.push("计数（仅统计，不是评分）：");
+    for (const [field, label] of countFields) {
+      lines.push("  " + label + "：" + compactCount(isRecord(outcome.counts) ? outcome.counts[field] : undefined));
+    }
+
+    lines.push("诊断计数（保留负面结果；不是评分）：");
+    if (!Array.isArray(outcome.diagnostic_counts)) {
+      lines.push("  接口未提供可识别诊断计数。");
+    } else if (outcome.diagnostic_counts.length === 0) {
+      lines.push("  无");
+    } else {
+      for (const item of outcome.diagnostic_counts) {
+        lines.push(isRecord(item)
+          ? "  " + compactScalar(item.code) + "：" + compactCount(item.count)
+          : "  诊断计数项格式不可识别");
+      }
+    }
+
+    lines.push("Coverage（逐项原顺序；状态不是评分或排名）：");
+    if (!Array.isArray(outcome.coverage)) {
+      lines.push("  接口未提供可识别 Coverage。");
+    } else if (outcome.coverage.length === 0) {
+      lines.push("  无");
+    } else {
+      for (const item of outcome.coverage) {
+        if (!isRecord(item)) {
+          lines.push("  Coverage 项格式不可识别");
+          continue;
+        }
+        const modelStatus = ["supported", "unresolved", "contradicted"].includes(item.model_status)
+          ? item.model_status : "不可识别";
+        const validatorStatus = ["supported", "unresolved", "contradicted"].includes(item.validator_status)
+          ? item.validator_status : "不可识别";
+        const gap = typeof item.gap_present === "boolean" ? (item.gap_present ? "有缺口" : "无缺口") : "缺口字段不可识别";
+        lines.push("  Coverage #" + compactCount(item.index) + "；model=" + modelStatus + "；validator=" + validatorStatus
+          + "；claim_count=" + compactCount(item.claim_count) + "；" + gap);
+      }
+    }
+
+    const provenance = isRecord(outcome.provenance) ? outcome.provenance : Object.create(null);
+    lines.push("版本与溯源（仅版本、SHA-256 摘要与字节计数；隐藏来源定位和模型标识）：");
+    const versionFields = [
+      ["receipt_schema_version", "Receipt schema"], ["audit_schema_version", "Audit schema"],
+      ["producer_wire_version", "Producer wire"], ["producer_prompt_version", "Producer prompt version"],
+      ["verifier_wire_version", "Verifier wire"], ["validator_version", "Validator version"],
+      ["localizer_version", "Localizer version"], ["catalog_schema_version", "Catalog schema"],
+      ["catalog_generator_version", "Catalog generator"]
+    ];
+    for (const [field, label] of versionFields) lines.push("  " + label + "：" + knownVersion(provenance[field]));
+    const digestFields = [
+      ["canonical_input_sha256", "Canonical input SHA-256"], ["host_raw_input_sha256", "Host raw input SHA-256"],
+      ["audit_sha256", "Audit SHA-256"], ["catalog_sha256", "Catalog SHA-256"],
+      ["producer_content_sha256", "Producer content SHA-256"], ["normalized_envelope_sha256", "Normalized envelope SHA-256"]
+    ];
+    for (const [field, label] of digestFields) lines.push("  " + label + "：" + knownDigest(provenance[field]));
+    const sourceHashes = provenance.source_body_hashes;
+    if (Array.isArray(sourceHashes)) {
+      lines.push("  Source body SHA-256：" + (sourceHashes.length
+        ? sourceHashes.map((item) => isRecord(item) ? knownDigest(item.sha256) : "摘要项不可识别").join("；")
+        : "无"));
+    } else {
+      lines.push("  Source body SHA-256：接口未提供可识别摘要列表");
+    }
+    if (Array.isArray(provenance.model_calls)) {
+      lines.push("  调用字节计数：");
+      for (const call of provenance.model_calls) {
+        if (!isRecord(call)) {
+          lines.push("    调用计数项格式不可识别");
+          continue;
+        }
+        const role = ["discovery", "semantic"].includes(call.role) ? call.role : "调用角色不可识别";
+        lines.push("    " + role + "；发送字节=" + compactCount(call.bytes_sent)
+          + "；接收字节=" + compactCount(call.bytes_received));
+      }
+    } else {
+      lines.push("  调用字节计数：接口未提供可识别列表");
+    }
+    return lines;
+  }
+
+  function renderKnownStageOutcome(outcome, stageName) {
+    if (!isRecord(outcome)) return [];
+    if (outcome.schema_version === "host-grounder-stage-outcome-v0.1") {
+      return stageName === "grounder"
+        ? renderGrounderStageOutcome(outcome)
+        : ["阶段结果与阶段类型不匹配；其他字段未显示。"];
+    }
+    if (outcome.schema_version === "host-batch-outcome-v0.1") {
+      return ["批量阶段结果：case_count=" + compactCount(outcome.case_count)
+        + "；unavailable_count=" + compactCount(outcome.unavailable_count)
+        + "；status=" + displayedStatus(outcome.status)];
+    }
+    if (outcome.schema_version === "host-direct-outcome-v0.1") {
+      return ["Direct 阶段结果：case_id=" + compactScalar(outcome.case_id)
+        + "；classification=" + compactScalar(outcome.classification)];
+    }
+    if (typeof outcome.status === "string") return ["阶段结果状态：" + displayedStatus(outcome.status)];
+    if (outcome.executor_status === "NOT_CONFIGURED") {
+      return ["执行器状态：NOT_CONFIGURED；原因：" + compactScalar(outcome.reason)
+        + "；Host shell：" + knownVersion(outcome.host_shell_version)];
+    }
+    return ["阶段结果格式不可识别；其他字段未显示。"];
+  }
+
+  function renderRunEvents(events) {
+    const target = byId("run-events");
+    if (!Array.isArray(events)) {
+      setText(target, "阶段事件字段格式不可识别。");
+      return;
+    }
+    if (events.length === 0) {
+      setText(target, "无阶段事件。");
+      return;
+    }
+    const lines = [];
+    for (let index = 0; index < events.length; index += 1) {
+      const event = events[index];
+      if (!isRecord(event)) {
+        lines.push("事件 #" + (index + 1) + " 格式不可识别；其他字段未显示。");
+        continue;
+      }
+      const eventName = ["stage_started", "stage_outcome", "stage_finished", "stage_succeeded", "stage_failed"].includes(event.event)
+        ? event.event : "未识别阶段事件";
+      lines.push("事件 #" + (index + 1) + "：" + eventName);
+      if (["executor", "grounder"].includes(event.stage)) lines.push("  阶段：" + event.stage);
+      if (typeof event.stage_id === "string" && /^[A-Za-z0-9._~-]{1,128}$/.test(event.stage_id)) {
+        lines.push("  阶段 ID：" + event.stage_id);
+      }
+      if (["QUEUED", "RUNNING", "COMPLETED", "PARTIAL", "BLOCKED", "FAILED", "INTERRUPTED"].includes(event.status)) {
+        lines.push("  阶段状态：" + displayedStatus(event.status));
+      }
+      if (typeof event.started_at === "string" && /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+(?:Z|[+-][0-9]{2}:[0-9]{2})$/.test(event.started_at)) {
+        lines.push("  开始时间：" + event.started_at);
+      }
+      if (typeof event.completed_at === "string" && /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+(?:Z|[+-][0-9]{2}:[0-9]{2})$/.test(event.completed_at)) {
+        lines.push("  完成时间：" + event.completed_at);
+      }
+      if (Array.isArray(event.diagnostics)) lines.push("  阶段诊断码：" + compactStringList(event.diagnostics));
+      lines.push(...renderKnownStageOutcome(event.outcome, event.stage));
+    }
+    setText(target, lines.join("\n"));
+  }
+
   function renderRun(data, requestedRunId) {
     if (!isRecord(data)) {
       state.runMode = null;
@@ -606,7 +775,8 @@ _DOCUMENT = r'''<!doctype html>
     setText(byId("run-identity"), "运行 ID：" + state.runId);
     setText(byId("run-status"), displayedStatus(data.status));
     setText(byId("run-diagnostics"), data.diagnostics === undefined ? "运行响应未提供 diagnostics 字段。" : jsonText(data.diagnostics, true));
-    setText(byId("run-events"), data.events === undefined ? "运行响应未提供 events 字段。" : jsonText(data.events, true));
+    if (data.events === undefined) setText(byId("run-events"), "运行响应未提供 events 字段。");
+    else renderRunEvents(data.events);
     renderBatchSummary(data.batch_summary);
     const extras = Object.create(null);
     for (const key of Object.keys(data)) {

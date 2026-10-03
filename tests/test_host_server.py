@@ -944,6 +944,45 @@ class HostServerTests(unittest.TestCase):
                 reopened_store.close()
 
 
+class HostServerGrounderProjectionTests(unittest.TestCase):
+    def test_grounder_stage_outcome_is_public_only_through_closed_projection(self):
+        from tests.test_host_store import make_grounder_no_submission_result
+        from convexity_hunter.host_store import _grounder_stage_outcome
+
+        outcome = _grounder_stage_outcome(
+            make_grounder_no_submission_result("grounder-public-run"),
+            "grounder-public-run",
+            "synthetic fixture event",
+        )
+        event = host_server_module._public_event({
+            "event": "stage_finished",
+            "stage": "grounder",
+            "stage_id": "stage-1",
+            "status": "COMPLETED",
+            "outcome": outcome,
+            "diagnostics": ["GROUNDING_NO_SUBMISSION"],
+            "started_at": "2026-10-04T00:00:00.000Z",
+            "completed_at": "2026-10-04T00:00:01.000Z",
+        })
+        self.assertEqual(event["stage"], "grounder")
+        self.assertEqual(event["outcome"]["source_status"], "UNKNOWN")
+        self.assertEqual(event["outcome"]["submission_status"], "MISSING")
+        self.assertEqual(event["outcome"]["ei_status"], "NOT_RUN")
+
+        leaked = dict(outcome)
+        leaked["raw_model_body"] = "must-not-be-projected"
+        invalid_event = host_server_module._public_event({
+            "event": "stage_finished",
+            "stage": "grounder",
+            "stage_id": "stage-1",
+            "status": "COMPLETED",
+            "outcome": leaked,
+            "diagnostics": ["GROUNDING_NO_SUBMISSION"],
+        })
+        self.assertNotIn("outcome", invalid_event)
+        self.assertNotIn("raw_model_body", json.dumps(invalid_event))
+
+
 class HostServerBatchTests(unittest.TestCase):
     def setUp(self):
         self.journal = MemoryJournal()

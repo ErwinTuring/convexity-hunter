@@ -99,6 +99,134 @@ def make_direct_result(*, cached_report=True, source_uri="https://example.test/q
     return replace(result, full_report=report(result)) if cached_report else result
 
 
+def make_grounder_no_submission_result(run_id="grounder-run"):
+    """Synthetic typed fixture for the future stage journal API; never a live run."""
+
+    from types import MappingProxyType
+
+    from convexity_hunter.event_entry import UserEventInput
+    from convexity_hunter.host_grounder_builder import (
+        CoverageSidecar,
+        FieldBindingSidecar,
+        HostBuildContext,
+        HostBuildDiagnostic,
+        HostBuildResult,
+        HostSourceBody,
+        SemanticValidationRecord,
+    )
+    from convexity_hunter.host_grounder_evidence_catalog import HostEvidenceCatalogAudit
+    from convexity_hunter.host_grounder_receipt import ValidatedEnvelopeSnapshot
+    from convexity_hunter.host_grounder_runtime import (
+        HostGrounderCallSummary,
+        HostGrounderEvidenceCatalogRuntimeResult,
+    )
+
+    def canonical(value):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    now = datetime.datetime(2026, 1, 2, tzinfo=datetime.timezone.utc)
+    raw_input = UserEventInput("synthetic fixture event")
+    body = "synthetic source body; never persisted by the stage projection"
+    body_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    context = HostBuildContext(
+        raw_input=raw_input,
+        submission_id="submission-1",
+        event_id="event-1",
+        producer_id="host-grounder",
+        producer_version="0.3",
+        observed_at=now,
+        source_bodies={
+            "source-1": HostSourceBody(body, body_hash, "https://source.example/item", now)
+        },
+        run_id=run_id,
+        canonical_input_hash="a" * 64,
+    )
+    envelope = {
+        "schema_version": "grounder-output-v0.1",
+        "stage": "semantic",
+        "request_id": run_id,
+        "claims": [{"claim_id": "claim-private", "text": "PRIVATE_CLAIM_TEXT"}],
+        "hypotheses": [],
+        "coverage": [{
+            "subquestion_id": "question-1", "status": "unresolved",
+            "claim_ids": [], "gap": "PRIVATE_GAP_TEXT",
+        }],
+        "field_bindings": [{}],
+    }
+    envelope_bytes = canonical(envelope).encode("utf-8")
+    envelope_hash = hashlib.sha256(envelope_bytes).hexdigest()
+    receipt = MappingProxyType({
+        "schema_version": "semantic-validation-v0.2",
+        "run_id": run_id,
+        "canonical_input_hash": context.canonical_input_hash,
+        "envelope_hash": envelope_hash,
+        "source_body_hashes": (("source-1", body_hash),),
+        "validator_id": "fixture-validator",
+        "validator_version": "host-grounder-semantic-verifier-prompt-v0.7",
+        "verified_claim_ids": ("claim-private",),
+        "rejected_claims": (),
+        "verified_hypothesis_ids": (),
+        "rejected_hypotheses": (),
+        "verified_binding_indices": (0,),
+        "rejected_bindings": (),
+        "coverage_outcomes": ((0, "question-1", "unresolved", "PRIVATE_VALIDATOR_RATIONALE"),),
+    })
+    semantic = SemanticValidationRecord(
+        run_id, context.canonical_input_hash, envelope_hash, receipt,
+        ValidatedEnvelopeSnapshot(envelope_bytes, envelope_hash),
+    )
+    source_hashes = [{"source_id": "source-1", "sha256": body_hash}]
+    catalog_bytes = b"PRIVATE_CATALOG_BYTES"
+    producer_bytes = b"PRIVATE_MODEL_BODY_AND_MODEL_RATIONALE"
+    sidecar = {
+        "schema_version": "host-grounder-quote-localization-audit-v0.3",
+        "run_id": run_id,
+        "canonical_input_hash": context.canonical_input_hash,
+        "producer_wire_version": "grounder-output-v0.3",
+        "producer_prompt_version": "host-grounder-discovery-prompt-v0.6",
+        "producer_content_sha256": hashlib.sha256(producer_bytes).hexdigest(),
+        "normalized_envelope_sha256": envelope_hash,
+        "source_body_hashes": source_hashes,
+        "verifier_wire_version": "semantic-verdict-v0.3",
+        "validator_version": "host-grounder-semantic-verifier-prompt-v0.7",
+        "localizer_version": "host-evidence-catalog-resolver-v0.1",
+        "catalog_schema_version": "host-grounder-evidence-catalog-v0.1",
+        "catalog_generator_version": "host-evidence-paragraph-generator-v0.1",
+        "catalog_sha256": hashlib.sha256(catalog_bytes).hexdigest(),
+    }
+    sidecar_bytes = canonical(sidecar).encode("utf-8")
+    audit = HostEvidenceCatalogAudit(
+        catalog_bytes, producer_bytes, envelope_bytes, sidecar_bytes,
+        sidecar["catalog_sha256"], sidecar["producer_content_sha256"],
+        envelope_hash, hashlib.sha256(sidecar_bytes).hexdigest(),
+    )
+    build = HostBuildResult(
+        context,
+        raw_input,
+        None,
+        None,
+        (CoverageSidecar(
+            0, "question-1", "unresolved", "unresolved", (),
+            "PRIVATE_GAP_TEXT", "PRIVATE_VALIDATOR_RATIONALE",
+        ),),
+        (FieldBindingSidecar(
+            0, "event.description", "source-1", "PRIVATE_QUOTE", 0, 1,
+            "description", "supported", "verified", None,
+        ),),
+        semantic,
+        (
+            HostBuildDiagnostic("CLAIM_NOT_PROJECTABLE", "claim", "claim-private", "PRIVATE_REASON"),
+            HostBuildDiagnostic("NO_PROJECTABLE_HYPOTHESIS", None, None, "PRIVATE_REASON"),
+        ),
+    )
+    return HostGrounderEvidenceCatalogRuntimeResult(
+        build,
+        HostGrounderCallSummary("discovery", "fixture-provider", "fixture-model", "fixture-model", "unused-id", "stop", 10, 20),
+        HostGrounderCallSummary("semantic", "fixture-provider", "fixture-model", "fixture-model", "unused-id", "stop", 10, 20),
+        audit,
+    )
+
+
 def make_v1_database(path):
     connection = sqlite3.connect(str(path))
     connection.execute("CREATE TABLE runs(run_seq INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL)")
@@ -210,6 +338,278 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(run["events"][1]["outcome"], blocked_outcome())
         self.assertEqual(self.store.list_runs()[0]["run_id"], run_id)
         self.assertIsNone(self.store.get_run("missing-run"))
+
+    def test_grounder_missing_submission_commits_sanitized_stage_without_core_archive(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(run_id)
+
+        self.assertIsNone(self.store.save_grounder_stage_result(run_id, stage_id, result))
+        run = self.store.get_run(run_id)
+        self.assertEqual(run["status"], "BLOCKED")
+        self.assertEqual(run["diagnostics"], ["GROUNDING_NO_SUBMISSION"])
+        outcome = run["events"][-1]["outcome"]
+        self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.1")
+        self.assertEqual(
+            [outcome[name] for name in (
+                "grounder_status", "source_status", "semantic_status", "builder_status",
+                "submission_status", "ei_status",
+            )],
+            ["COMPLETED", "UNKNOWN", "RECEIPT_VALIDATED", "COMPLETED", "MISSING", "NOT_RUN"],
+        )
+        self.assertEqual(outcome["counts"], {
+            "source_body_count": 1,
+            "claim_count": 1,
+            "hypothesis_count": 0,
+            "field_binding_count": 1,
+            "coverage_count": 1,
+        })
+        self.assertEqual(outcome["diagnostic_counts"], [
+            {"code": "CLAIM_NOT_PROJECTABLE", "count": 1},
+            {"code": "NO_PROJECTABLE_HYPOTHESIS", "count": 1},
+        ])
+        self.assertEqual(outcome["coverage"], [{
+            "index": 0,
+            "subquestion_id": "question-1",
+            "model_status": "unresolved",
+            "validator_status": "unresolved",
+            "claim_count": 0,
+            "gap_present": True,
+        }])
+        self.assertEqual(run["events"][1]["stage"], "grounder")
+        self.assertEqual(run["events"][1]["status"], "COMPLETED")
+        archive_wire = "".join(
+            row[0] for row in self.store._conn().execute(
+                "SELECT payload_json FROM events WHERE run_id=?", (run_id,)
+            ).fetchall()
+        )
+        for private_value in (
+            "PRIVATE_MODEL_BODY_AND_MODEL_RATIONALE", "PRIVATE_CLAIM_TEXT",
+            "PRIVATE_GAP_TEXT", "PRIVATE_VALIDATOR_RATIONALE", "PRIVATE_REASON",
+            "PRIVATE_CATALOG_BYTES", "PRIVATE_QUOTE", "unused-id",
+            "synthetic source body; never persisted",
+        ):
+            self.assertNotIn(private_value, archive_wire)
+        self.assertIsNone(self.store._conn().execute(
+            "SELECT 1 FROM direct_cases WHERE run_id=?", (run_id,)
+        ).fetchone())
+        self.assertIsNone(self.store._conn().execute(
+            "SELECT 1 FROM batch_archives WHERE run_id=?", (run_id,)
+        ).fetchone())
+
+    def test_grounder_rejects_submission_and_wrong_mode_without_partial_events(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(run_id)
+        submitted = replace(result, build_result=replace(result.build_result, submission=object()))
+        with self.assertRaisesRegex(ValueError, "missing EI submission"):
+            self.store.save_grounder_stage_result(run_id, stage_id, submitted)
+        self.assertEqual(self.store.get_run(run_id)["status"], "RUNNING")
+        self.assertEqual(len(self.store.get_run(run_id)["events"]), 1)
+
+        world_run = self.create_run("world", "synthetic fixture event")
+        world_stage = self.store.start_stage(world_run, "grounder")
+        with self.assertRaisesRegex(ValueError, "restricted to Event runs"):
+            self.store.save_grounder_stage_result(
+                world_run, world_stage, make_grounder_no_submission_result(world_run)
+            )
+        self.assertEqual(self.store.get_run(world_run)["status"], "RUNNING")
+        self.assertEqual(len(self.store.get_run(world_run)["events"]), 1)
+
+    def test_grounder_receipt_validator_version_must_match_audit_before_write(self):
+        from types import MappingProxyType
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(run_id)
+        receipt = dict(result.build_result.semantic_validation.receipt)
+        receipt["validator_version"] = "fixture-validator-v0.1"
+        semantic = replace(
+            result.build_result.semantic_validation,
+            receipt=MappingProxyType(receipt),
+        )
+        build = replace(result.build_result, semantic_validation=semantic)
+        result = replace(result, build_result=build)
+
+        with self.assertRaisesRegex(ValueError, "receipt version or identity disagrees"):
+            self.store.save_grounder_stage_result(run_id, stage_id, result)
+        run = self.store.get_run(run_id)
+        self.assertEqual(run["status"], "RUNNING")
+        self.assertEqual([event["event"] for event in run["events"]], ["stage_started"])
+
+    def test_grounder_call_summary_rejects_truncated_completion_on_write_and_read(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(run_id)
+        truncated = replace(
+            result,
+            discovery_call=replace(result.discovery_call, finish_reason="length"),
+        )
+        with self.assertRaisesRegex(ValueError, "model-call metadata is malformed"):
+            self.store.save_grounder_stage_result(run_id, stage_id, truncated)
+        self.assertEqual([event["event"] for event in self.store.get_run(run_id)["events"]], ["stage_started"])
+
+        self.store.save_grounder_stage_result(run_id, stage_id, result)
+        finish = self.store._conn().execute(
+            "SELECT event_seq,payload_json FROM events WHERE run_id=? AND event_type='stage_finished'",
+            (run_id,),
+        ).fetchone()
+        payload = json.loads(finish["payload_json"])
+        payload["outcome"]["provenance"]["model_calls"][0]["finish_reason"] = "length"
+        payload_json = json.dumps(
+            payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
+        )
+        with self.store._transaction() as connection:
+            connection.execute("DROP TRIGGER events_no_update")
+            connection.execute(
+                "UPDATE events SET payload_json=? WHERE event_seq=?",
+                (payload_json, finish["event_seq"]),
+            )
+        with self.assertRaisesRegex(StoreCorruptionError, "stage result payload violates"):
+            self.store.get_run(run_id)
+
+    def test_grounder_generic_finish_stage_only_allows_restart_interruption(self):
+        from convexity_hunter.host_store import _grounder_stage_outcome
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(run_id)
+        outcome = _grounder_stage_outcome(result, run_id, "synthetic fixture event")
+        with self.assertRaisesRegex(ValueError, "requires save_grounder_stage_result"):
+            self.store.finish_stage(
+                run_id, stage_id, "COMPLETED", outcome, ("GROUNDING_NO_SUBMISSION",)
+            )
+        with self.assertRaisesRegex(ValueError, "requires save_grounder_stage_result"):
+            self.store.finish_stage(run_id, stage_id, "COMPLETED", "COMPLETED", ())
+        self.assertEqual([event["event"] for event in self.store.get_run(run_id)["events"]], ["stage_started"])
+
+        self.store.finish_stage(
+            run_id, stage_id, "INTERRUPTED", "INTERRUPTED", ("PROCESS_RESTART",)
+        )
+        with self.assertRaisesRegex(ValueError, "requires the matching restart terminal"):
+            self.store.finish_run(run_id, "COMPLETED", ())
+        self.assertEqual(self.store.get_run(run_id)["status"], "RUNNING")
+        self.store.finish_run(run_id, "INTERRUPTED", ("PROCESS_RESTART",))
+        run = self.store.get_run(run_id)
+        self.assertEqual(run["status"], "INTERRUPTED")
+        self.assertEqual(run["events"][-1]["event"], "stage_finished")
+        self.assertEqual(run["events"][-1]["status"], "INTERRUPTED")
+        self.assertEqual(run["events"][-1]["outcome"], "INTERRUPTED")
+
+    def test_generic_finish_stage_rejects_grounder_dto_for_executor_without_event(self):
+        from convexity_hunter.host_store import _grounder_stage_outcome
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "executor")
+        outcome = _grounder_stage_outcome(
+            make_grounder_no_submission_result(run_id), run_id, "synthetic fixture event"
+        )
+        with self.assertRaisesRegex(ValueError, "Grounder typed outcome requires"):
+            self.store.finish_stage(
+                run_id, stage_id, "COMPLETED", outcome, ("GROUNDING_NO_SUBMISSION",)
+            )
+        run = self.store.get_run(run_id)
+        self.assertEqual(run["status"], "RUNNING")
+        self.assertEqual([event["event"] for event in run["events"]], ["stage_started"])
+
+    def test_grounder_failed_and_blocked_generic_terminals_are_closed_and_noncomplete(self):
+        for status, diagnostic in (
+            ("FAILED", "SEMANTIC_CALL_FAILED"),
+            ("BLOCKED", "MODEL_REQUEST_TOO_LARGE"),
+        ):
+            with self.subTest(status=status):
+                run_id = self.create_run("event", "grounder terminal case")
+                stage_id = self.store.start_stage(run_id, "grounder")
+                with self.assertRaisesRegex(ValueError, "Grounder generic finish permits"):
+                    self.store.finish_stage(
+                        run_id, stage_id, status, "FAILED" if status == "BLOCKED" else "BLOCKED",
+                        (diagnostic,),
+                    )
+                with self.assertRaisesRegex(ValueError, "Grounder generic finish permits"):
+                    self.store.finish_stage(
+                        run_id, stage_id, status, status, ("UNKNOWN_GROUNDER_ERROR",)
+                    )
+                self.assertEqual(
+                    [event["event"] for event in self.store.get_run(run_id)["events"]],
+                    ["stage_started"],
+                )
+
+                self.store.finish_stage(run_id, stage_id, status, status, (diagnostic,))
+                run = self.store.get_run(run_id)
+                self.assertEqual(run["status"], "RUNNING")
+                self.assertEqual(run["events"][-1]["status"], status)
+                self.assertEqual(run["events"][-1]["outcome"], status)
+                self.assertEqual(run["events"][-1]["diagnostics"], [diagnostic])
+                with self.assertRaisesRegex(ValueError, "cannot terminate as a complete run"):
+                    self.store.finish_run(run_id, "COMPLETED", ())
+                self.assertEqual(self.store.get_run(run_id)["status"], "RUNNING")
+                self.store.finish_run(run_id, status, (diagnostic,))
+                terminal = self.store.get_run(run_id)
+                self.assertEqual(terminal["status"], status)
+                self.assertEqual(terminal["events"][-1]["outcome"], status)
+
+    def test_recovered_grounder_stage_is_interrupted_without_semantic_result(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        self.store.close()
+
+        recovered = HostStore(self.db_path)
+        self.addCleanup(recovered.close)
+        run = recovered.get_run(run_id)
+        self.assertEqual(run["status"], "INTERRUPTED")
+        self.assertEqual(len(run["events"]), 2)
+        stage_event = run["events"][-1]
+        self.assertEqual(stage_event["event"], "stage_finished")
+        self.assertEqual(stage_event["stage_id"], stage_id)
+        self.assertEqual(stage_event["status"], "INTERRUPTED")
+        self.assertEqual(stage_event["outcome"], "INTERRUPTED")
+        self.assertEqual(stage_event["diagnostics"], ["PROCESS_RESTART"])
+        self.assertEqual(run["diagnostics"], ["PROCESS_RESTART"])
+
+    def test_grounder_rejects_same_run_id_with_different_host_query(self):
+        run_id = self.create_run("event", "a different Host query")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(run_id)
+        with self.assertRaisesRegex(ValueError, "does not match the immutable Host run input"):
+            self.store.save_grounder_stage_result(run_id, stage_id, result)
+        run = self.store.get_run(run_id)
+        self.assertEqual(run["status"], "RUNNING")
+        self.assertEqual([event["event"] for event in run["events"]], ["stage_started"])
+
+    def test_grounder_accepts_exact_string_raw_input_shape(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(run_id)
+        context = replace(result.build_result.context, raw_input="synthetic fixture event")
+        build = replace(result.build_result, context=context, raw_input=context.raw_input)
+        result = replace(result, build_result=build)
+
+        self.store.save_grounder_stage_result(run_id, stage_id, result)
+        self.assertEqual(self.store.get_run(run_id)["status"], "BLOCKED")
+
+    def test_grounder_read_rejects_tampered_host_raw_input_digest(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        self.store.save_grounder_stage_result(
+            run_id, stage_id, make_grounder_no_submission_result(run_id)
+        )
+        finish = self.store._conn().execute(
+            "SELECT event_seq,payload_json FROM events WHERE run_id=? AND event_type='stage_finished'",
+            (run_id,),
+        ).fetchone()
+        payload = json.loads(finish["payload_json"])
+        payload["outcome"]["provenance"]["host_raw_input_sha256"] = "f" * 64
+        payload_json = json.dumps(
+            payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
+        )
+        with self.store._transaction() as connection:
+            connection.execute("DROP TRIGGER events_no_update")
+            connection.execute(
+                "UPDATE events SET payload_json=? WHERE event_seq=?",
+                (payload_json, finish["event_seq"]),
+            )
+        with self.assertRaisesRegex(StoreCorruptionError, "not bound to the immutable Host raw input"):
+            self.store.get_run(run_id)
 
     def test_unfinished_stages_must_pair_and_terminal_runs_are_immutable(self):
         run_id = self.create_run()

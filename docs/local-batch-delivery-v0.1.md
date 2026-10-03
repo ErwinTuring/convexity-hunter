@@ -60,3 +60,29 @@ World 结果必须绑定原始字符串；Event 结果必须保留对应
 运行详情只返回摘要和案例索引，不透传 EI 私有审计或 Core 内部快照。
 批量案例详情路径使用 `case_key`，原有 Direct 路径使用 exact case ID。
 限额失败保留 Core 的 `cases:5>2` 等诊断，而不是截取一个可展示的前缀。
+
+## Event pre-Core 负面结果阶段（2026-10-04）
+
+现有可信批量回调仍只返回 `CoreRunResult`，不隐式扩展其签名。另有
+`HostStore.save_grounder_stage_result(run_id, stage_id, result)`，供可信宿主
+保存已完成 v0.7 Grounder、但没有 EI submission 的准确阶段结果。
+它复用 schema-v3 append-only events，不新增数据库或通用流程框架。
+Grounder 阶段结束和运行 `BLOCKED / GROUNDING_NO_SUBMISSION` 在同一事务
+提交；不产生 Core case、batch archive、EI assessment 或研究报告。
+
+闭合 DTO `host-grounder-stage-outcome-v0.1` 只投射诊断计数、coverage、版本、
+身份与来源 hash，以及已完成调用的非敏感元数据。它不保存模型原始输出、
+完整来源正文、密钥或配置路径。来源读取能力为 `UNKNOWN`：注册了来源正文
+不等于证明了实时搜索成功。`RECEIPT_VALIDATED` 是模型核验回执通过结构与
+证据约束，不是现实事实已获得不可错的证明。EI 明确 `NOT_RUN`，不能由
+Grounder `COMPLETED` 自动升级成 EI `ACCEPTED` 或 Core 完成。
+
+本阶段仅支持 Event 缺 submission 的负面存档；不替代完整 Grounder 证据
+归档，不接通默认 CLI World/Event 来源，不证明真实三入口闭环。
+真实运行的完整 typed result 必须在运行时保存，不能用旧实验聚合计数
+重构或冒充。原始 Host 输入精确匹配并保存独立 hash；读取时再次检查。
+审计与 receipt 的实际 validator 版本一致，已完成调用只允许 `stop`。
+普通 stage 写入入口不能注入该 DTO；失败或阻断沿用已有闭合错误码和
+固定状态记录，恢复中断不代表语义完成。88 项 Host 聚焦回归通过；
+独立审阅发现的问题已修正，最终针对性复核通过。编译、文档链接/代码围栏
+及 diff 检查通过；本阶段不重复全产品测试，也不补跑真实模型或市场采集。

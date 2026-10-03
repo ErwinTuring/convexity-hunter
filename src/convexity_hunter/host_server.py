@@ -65,7 +65,7 @@ _RUN_STATUSES = frozenset(
 _STAGE_EVENTS = frozenset(
     ("stage_started", "stage_outcome", "stage_finished", "stage_succeeded", "stage_failed")
 )
-_STAGE_NAMES = frozenset(("executor",))
+_STAGE_NAMES = frozenset(("executor", "grounder"))
 _CORE_CLASSIFICATIONS = frozenset(item.value for item in CoreDisposition)
 _PUBLIC_DIRECT_REASONS = frozenset(item.value for item in CoreReasonCode) | frozenset(
     ("missing_direct_quote_evidence",)
@@ -281,6 +281,13 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
         return {"status": value} if value in _RUN_STATUSES else None
     if type(value) is not dict:
         return None
+    if value.get("schema_version") == "host-grounder-stage-outcome-v0.1":
+        try:
+            from .host_store import _validate_grounder_stage_outcome
+
+            return _validate_grounder_stage_outcome(value)
+        except (TypeError, ValueError):
+            return None
     if (
         set(value) == {"schema_version", "case_id", "classification"}
         and value.get("schema_version") == "host-direct-outcome-v0.1"

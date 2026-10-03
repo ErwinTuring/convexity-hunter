@@ -9,7 +9,39 @@ Repository: `ErwinTuring/convexity-hunter`
   `git fetch origin main`, `git rev-parse HEAD`, and
   `git status --short --branch`; Git is the sole code-state authority.
 
-## Current executable boundary — 2026-10-03
+## Current executable boundary — 2026-10-04
+
+Event pre-Core negative-stage delivery is implemented in the working tree.
+`save_grounder_stage_result` preserves an exact completed v0.7 result with no EI
+submission as a closed private stage DTO plus `BLOCKED / GROUNDING_NO_SUBMISSION`
+terminal in one transaction, creating no Core archive. It binds the original
+Host input exactly and records its distinct raw-input digest; audit/receipt
+versions and completed-call `stop` metadata must agree. Standard interruption
+and closed-code FAILED/BLOCKED stages remain readable; generic stage writers
+cannot inject the typed DTO. Schema-v3 events are reused, no new DB/framework.
+The Chinese view uses a fixed projection, showing diagnostics/coverage while
+separating source `UNKNOWN`, semantic receipt validation and EI `NOT_RUN`.
+
+Final five-module Host regression passed 88 tests. Independent review prompted
+input-binding, interrupted-history, version and generic-writer admission fixes;
+final targeted re-review passed. No live/source/model/market call belongs
+to this delivery. Existing trusted Core callbacks are unchanged. This is a
+negative-stage storage/presentation foundation, not a new default Event executor
+or real World/Event completion. See [delivery boundary](local-batch-delivery-v0.1.md).
+
+Time accounting remains incomplete: Store recorded an 18m06s mixed coding,
+preparation/review interval without reliable separation; UI recorded 273s prep,
+335s implementation/TDD window and 114s self-review (implementation window about
+46%, not pure coding). No whole-phase 70% implementation claim is justified.
+Waiting and line counts are not coding time. Final compileall, three-document
+links/fences and diff checks passed. Closure quota check found 1% five-hour and
+70% weekly remaining: the requested 2% pause threshold was missed between
+checks. Only release/断点 preservation follows, no new implementation or live
+run. Next unit is actual trusted Event executor/source wiring at these existing
+gates, not another model retry or infrastructure expansion. Prior completed
+boundaries below are historical evidence.
+
+### Earlier Grounder and batch boundaries — 2026-10-03
 
 Grounder successor observer: preregistration `5c3d4e1`, independent static safety
 review and Main offline gates passed. Exactly one bounded attempt stopped with
