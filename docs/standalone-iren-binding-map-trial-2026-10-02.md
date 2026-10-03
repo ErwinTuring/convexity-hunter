@@ -70,3 +70,23 @@ Marker/result remain in the registered private directory; the protocol is spent.
 Do not increase budgets, change models or repeat blindly. The next bounded work
 is closed-code semantic-call diagnosis, without raw payload/exception text,
 credentials, source refresh or market data. No general product success claim.
+
+## Successor observer preregistration — 2026-10-03
+
+After batch delivery release `a8a75c3`, reserve exactly one unchanged discovery
+and one unchanged semantic call, zero source/market calls, with the retained
+historical SEC packet. This is not a current-event discovery replay or freshness
+claim. The prior spent result remains unchanged and its cause remains unknown.
+
+Runner: `/private/tmp/iren-transport-observer-20261002-42427e65-16e8-4e17-8d83-ec6ea12e84da/runner.py`.
+SHA-256: `d814705101df525533646478c44aa6afd0cadcd26631e669cc2cad431db2560d`.
+The reserved run ID is the directory name; private exclusive marker/result must
+be absent before execution. Release-baseline update only; production/helper/
+source pins, model/query, 45-second timeout, token and byte budgets unchanged.
+No credential contents, raw model output or exception text are retained.
+Only an allowlisted exact transport code (or fixed UNKNOWN) is added to sanitized
+aggregates. The delegate forwards the same arguments, config, receipt and
+exception; offline transparency controls passed with zero calls/credential reads.
+Non-null impact-window claims still stop before EI. Independent exact-hash safety
+review and Main authorization are required before the single live invocation.
+No retry, automatic budget increase or inferred retrospective cause is permitted.
