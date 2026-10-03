@@ -123,3 +123,23 @@ one semantic reservation maximum, zero source/market calls; unchanged 45-second
 timeout, 8,000/6,000 tokens and byte budgets. No raw model/exception/credential
 retention. Main exact-hash authorization still required. No retry or budget
 increase; a completed transport is not itself EI acceptance.
+
+### Compact validation outcome
+
+After preregistration `c1f46db` was pushed, Main authorized the exact runner
+once. `COMPLETED`, transport error null; discovery/semantic reservations each
+one, source calls zero, no market/raw persistence. Unvalidated census: 15,162
+bytes, 15 claims, zero hypotheses, 24 bindings, four coverage entries.
+Receipt partition: 15 verified claims, 24 verified bindings, zero hypotheses;
+all rejection counts zero. Builder: `CLAIM_NOT_PROJECTABLE` 11 and
+`NO_PROJECTABLE_HYPOTHESIS` 1. No submission was built; EI was not run. Audit
+SHA-256: `ce460a0ad4bf11e45019e5a5e205f80b459fbf512319908aef20467a15e719a5`.
+
+This proves completed transport and semantic validation for this retained packet
+attempt, not EI ACCEPTED, current-event research or standalone three-entry
+completion. Producer output differed (especially zero hypotheses and fewer
+bindings), so it does not isolate compact prompting as the cause of avoiding
+truncation or prove that the previous larger output would fit. Zero hypotheses
+must remain a lawful negative result; do not manufacture one to make EI run.
+The marker is spent; no retry. Product integration must propagate this outcome
+as an inspectable pre-Core block, not a fabricated successful research case.

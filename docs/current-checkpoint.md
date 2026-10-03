@@ -28,8 +28,15 @@ counts. All required verdicts, qualifications and contrary evidence remain.
 three-document link/fence checks passed; independent code/targeted review passed
 after correcting an obsolete invalid-version test. No full-suite or live retry
 belongs to this patch. Real standalone World/Event acceptance remains unproven.
-Next execution is a separately registered one-shot validation of the changed
-prompt, not replaying the spent observer or increasing budgets.
+The separately registered one-shot validation completed after preregistration
+`c1f46db`: semantic transport completed; 15 claims and 24 bindings verified,
+no rejection counts. Producer proposed zero hypotheses, so Builder emitted
+`CLAIM_NOT_PROJECTABLE` 11 / `NO_PROJECTABLE_HYPOTHESIS` 1, built no submission
+and did not run EI. The smaller/different producer output does not isolate the
+compact prompt as the cause of avoiding truncation. No retry, raw persistence,
+source or market calls. This is a completed bounded semantic negative result,
+not EI ACCEPTED or standalone World/Event completion. Product integration must
+preserve the inspectable pre-Core gap and never manufacture a hypothesis.
 
 Latest delivery: the Host now accepts explicitly configured trusted Python
 World/Event executors returning the existing `CoreRunResult`. Private schema-v3
