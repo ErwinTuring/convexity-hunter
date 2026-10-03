@@ -26,6 +26,12 @@ or a claim that all three live entry modes are operational. See the
 [Core user flow](docs/core-convexity-mvp-user-flow-v0.1.md) and
 [current checkpoint](docs/current-checkpoint.md) for runtime evidence and gaps.
 
+The local workbench shell is implemented separately from research
+execution. Its three input views and local history must not be confused with
+operational World/Event/Direct executors. See the
+[local workbench flow](docs/local-workbench-user-flow.md) for the bounded shell
+and its explicit blocked-executor behavior.
+
 ### Retained legacy capabilities
 
 Milestones 1–5 are complete. The repository contains domain records,
@@ -44,8 +50,8 @@ are complete. Deterministic report rendering may optionally receive a verified
 plan result and display it in the active Chinese report. The existing English
 renderer remains compatibility-only.
 
-ATM/Delta-based automatic Candidate Generation, non-expiration pricing
-production, and a UI remain outside this Core MVP. Deterministic eligibility
+ATM/Delta-based automatic Candidate Generation and non-expiration pricing
+production remain outside this Core MVP. Deterministic eligibility
 enumeration is not a recommendation engine. The retained bounded offline
 `ResearchCase` composition now joins the three entry modes, preserves their
 existing evidence lineage, and converges on the existing reviewed-research

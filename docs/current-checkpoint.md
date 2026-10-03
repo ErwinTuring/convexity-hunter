@@ -9,7 +9,29 @@ Repository: `ErwinTuring/convexity-hunter`
   `git fetch origin main`, `git rev-parse HEAD`, and
   `git status --short --branch`; Git is the sole code-state authority.
 
-## Current executable boundary — 2026-10-02
+## Current executable boundary — 2026-10-03
+
+2026-10-03 active delivery slice: the already-approved M6 SQLite
+append-only run journal, loopback HTTP/CLI shell and M7 Chinese three-entry
+view are implemented. This slice is independent of M2 success. Until a trusted research executor
+is wired, submitted requests must retain `BLOCKED / HOST_EXECUTOR_NOT_CONFIGURED`,
+not empty COMPLETE or fabricated Core results. No new model/source/market call
+belongs to this slice. Twenty-six combined focused tests and real standalone
+CLI submit/history/restart passed. The database uses a persistent private
+sidecar lock so a second owner cannot interrupt an active run. Broad discovery
+ran 1,631 test entries with one import-path loader error; its missing module
+then passed 50 tests under `PYTHONPATH=src:tests`. No other failures were reported.
+Compileall and diff checks passed. Independent shell privacy review and final
+sidecar-lock review passed (including a cross-process probe). This remains M6 foundation/M7 shell,
+not full three-entry execution. See [local workbench flow](local-workbench-user-flow.md).
+Timing is incomplete and does not establish the requested 70% implementation
+share. The completely measured UI subtask was 249 seconds implementation,
+72 seconds testing and 223 seconds preparation (46% / 54% including preparation).
+Store preparation took 13m29s, then 9m35s combined implementation/testing;
+the latter was not split. The abandoned first Store worker and coordination
+waits produced no implementation and must not be counted as coding. Do not
+present these fragments as a measured whole-sprint ratio. The earlier quota pause
+below is historical, not today's execution gate.
 
 Reviewed [IREN identity references](standalone-iren-identity-packet-2026-10-02.md)
 are ready for the bounded Host key. The new [v0.5 product trial](standalone-iren-v05-product-trial-2026-10-02.md)

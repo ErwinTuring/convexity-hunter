@@ -143,6 +143,19 @@ only if the replan becomes a product, architecture, contract, or scope decision.
 
 ## Token and context cost control
 
+The user's 2026-10-03 execution correction targets at least 70% of phase work
+on production implementation and concrete MVP delivery, with at most 30% on
+testing, diagnosis, review and process overhead. Record observed phase times
+from now on; do not invent historical timing, substitute commit counts for
+time, count agent waiting twice, or relabel diagnostic scripts/documentation as
+product implementation. Report the phase result and actual measured split at
+each completed stage, including deviations and their concrete reasons.
+Necessary security/evidence checks remain mandatory. Merge small compatible
+fixes and proportional validation into one deliverable instead of repeatedly
+creating diagnostic milestones; advance independent approved work when one
+branch is blocked. This target never authorizes weakened acceptance or false
+claims of live capability.
+
 1. Child contexts reference repository contracts instead of duplicating entire specifications unless a small exact excerpt is necessary.
 2. Grounding reads project state, the relevant contract section, and necessary code only.
 3. Re-review targets previous findings instead of repeating a full review.

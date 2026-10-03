@@ -1,5 +1,17 @@
 # Project State
 
+2026-10-03 delivery: the local Chinese three-entry workbench, loopback HTTP/CLI
+and schema-v1 private append-only SQLite journal are implemented. Twenty-six
+combined focused tests and a real local CLI submit/history/restart smoke check
+passed. No model/source/market call was made. Research executors and typed Core
+case snapshots are not connected: requests truthfully terminate as
+`BLOCKED / HOST_EXECUTOR_NOT_CONFIGURED`. This is M6 foundation/M7 shell,
+not M4/M5/M8 or three real research-lane completion. The single-owner sidecar
+guard and final 26 focused tests passed. Broad regression had one import-path
+loader error, resolved by separately running its 50-test module; no other
+failures were reported. Compileall/diff checks and independent shell privacy /
+sidecar-lock review passed. See [local workbench flow](local-workbench-user-flow.md).
+
 Latest executable boundary (2026-10-02): bounded IREN identity references are
 reviewed; the retained-source v0.5 trial stopped before semantic/Builder/EI at
 `PRODUCER_ENVELOPE_INVALID`. No product acceptance is claimed and the attempt
