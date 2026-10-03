@@ -1,5 +1,18 @@
 # Project State
 
+2026-10-03 latest delivery: trusted injected World/Event execution, private
+schema-v3 full ordered batch archives, compact comparison and lazy Chinese
+details are implemented. Default CLI World/Event remain disabled; real
+Grounder acceptance is still the operational blocker, not proven by synthetic
+callbacks. Earlier Direct real execution remains valid. Pre-review full
+regression passed 1,733 tests; three independent review findings were fixed,
+then 83 combined focused tests and compileall passed. Independent targeted
+re-review PASS; no fresh source/model/market call or Core economics change.
+See [batch delivery boundary](local-batch-delivery-v0.1.md) and
+[current checkpoint](current-checkpoint.md) for exact validation and timing.
+
+Earlier Direct slice:
+
 2026-10-03 latest delivery: standalone Direct CLI/API execution, strict explicit
 input, schema-v2 typed Core archives and automatic Chinese single-case detail
 are implemented; v1 journal history migrates non-destructively. One real NDAQ

@@ -225,7 +225,17 @@ def report(record: object, locale: str = "zh-CN") -> str:
         raise TypeError("report requires CoreCaseRecord or CoreDirectResult")
 
     reasons = _merged_reasons(reasons, result)
+    return _render_core_report(case_id, result, reasons, disclosure)
 
+
+def _render_core_report(
+    case_id: str, result: object, reasons: _Tuple[str, ...], disclosure: str
+) -> str:
+    """Render an already selected Core result with caller-owned disclosures.
+
+    This private pure helper lets Host archives render lazily from the typed
+    numerical result without reconstructing a CoreCaseContext.
+    """
     lines = ["核心研究报告", f"案例: {case_id}", disclosure]
     if type(result) is not type(None):
         result = _kernel_result(result)

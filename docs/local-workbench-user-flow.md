@@ -3,7 +3,12 @@
 本机 HTTP/CLI 和 Direct 执行器可独立于 Codex 运行，不等于三入口真实研究已经接通。
 默认没有研究执行器；未配置的入口必须留下
 `BLOCKED / HOST_EXECUTOR_NOT_CONFIGURED`，不能展示为研究成功或没有机会。
-World/Event 尚未接入，页面保持禁用；Direct 需显式启用。
+默认 CLI 的 World/Event 尚未接入真实来源，页面保持禁用；Direct 需显式启用。
+
+批量交付层现已支持本机程序显式注入可信 World/Event 回调，保存所有案例并
+默认显示完整 compact comparison；这不等于默认 CLI 已配置真实来源。
+Grounder 未通过真实验收前，不添加一键启用或合成生产默认值。接口与存档
+边界见 [批量交付说明](local-batch-delivery-v0.1.md)。
 
 ## 启动与输入
 
@@ -38,9 +43,14 @@ exact verification 和 `run_direct_core`。SDK 输出受控；不读取 Futu 私
 ## 结果与历史
 
 每次提交创建独立运行记录，先保存原始输入和政策快照，再开始 provider 工作。
-schema v2 非破坏式迁移 v1 历史；保存结构化 Core 数值结果作为事实源。
+当前 schema v3 非破坏式迁移 v1/v2 历史；保存结构化 Core 数值结果作为事实源。
 Direct 单案例自动打开中文报告，其缓存是绑定数值快照 digest 的派生视图。
 历史/详情读取不会重新调用模型、搜索或行情。没有结果时明确返回不可用，不生成模拟报告。
+
+已配置的 World/Event 结果保存所有
+已计算案例和不可用分支，按原顺序展示；不自动打开任意案例，不排名或隐藏
+证据不足的行。用户点击详情后才从已有数值记录生成报告，不存 N 份预写全文。
+批量详情使用稳定导航键，原始 Core ID 原样显示，包括 Unicode 或长 ID。
 
 Host `COMPLETED` 只表示这次研究计算已结束；Core 可以是
 `DATA_INSUFFICIENT_CORE`，并不代表证据完整、发现机会或建议交易。

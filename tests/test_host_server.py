@@ -1,6 +1,8 @@
 """Synthetic, stdlib-only loopback tests for the bounded Host HTTP shell."""
 
 import contextlib
+import datetime
+import hashlib
 import http.client
 import io
 import json
@@ -10,6 +12,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from dataclasses import replace
 from urllib.parse import quote
 from unittest.mock import patch
 
@@ -19,10 +22,23 @@ sys.path.insert(0, str(ROOT / "src"))
 from tests.test_host_direct import _bounds as direct_bounds
 from tests.test_host_direct import _bridge_for as direct_bridge_for
 from tests.test_host_direct import _payload as direct_input_payload
-from convexity_hunter.core_application import CoreDirectResult, CoreOperationalBounds
+from convexity_hunter.core_application import (
+    CoreCaseSet,
+    CoreDirectResult,
+    CoreOperationalBounds,
+    CoreRunResult,
+    CoreUnavailableCase,
+    SourceSubmissionBatch,
+    run_event_core,
+    run_world_core,
+)
+from convexity_hunter.core_presentation import compact_summary
 from convexity_hunter.core_research import CoreDisposition
 from convexity_hunter.host_direct import parse_direct_input, run_direct_input
-from convexity_hunter.host_profile import STANDARD_RESEARCH_PROFILE
+from convexity_hunter.host_profile import (
+    STANDARD_RESEARCH_PROFILE,
+    create_core_research_policy,
+)
 from convexity_hunter.host_server import (
     BLOCKED_REASON,
     CSRF_HEADER,
@@ -31,6 +47,15 @@ from convexity_hunter.host_server import (
     validate_run_request,
 )
 from convexity_hunter import host_server as host_server_module
+from tests.test_core_application import (
+    FakeMarketBridge as BatchFakeMarketBridge,
+    make_policy as make_batch_policy,
+    make_row as make_batch_row,
+    make_submission as make_batch_submission,
+)
+from convexity_hunter.event_entry import UserEventInput
+from convexity_hunter.event_intelligence import DistributionChangeMode
+from convexity_hunter.option_chain_discovery import OptionMaturityAuthority
 
 
 def valid_payload():
@@ -47,12 +72,89 @@ def valid_payload():
     }
 
 
+def make_world_batch_result(
+    raw_input, *, case_id_transform=None, approved_profile=False
+):
+    rows = (
+        make_batch_row(datetime.date(2030, 1, 31), "CALL", "100"),
+    )
+    batch = SourceSubmissionBatch(
+        raw_input,
+        (
+            make_batch_submission(
+                "host-batch",
+                ("hyp-b", "hyp-a"),
+                mode=DistributionChangeMode.EXTREME_TAIL_UP,
+            ),
+        ),
+    )
+    policy = (
+        create_core_research_policy(
+            evaluation_date=datetime.date(2030, 1, 1),
+            maturity_authority=OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
+            bounds=CoreOperationalBounds(
+                max_submissions=2,
+                max_hypotheses=3,
+                max_browser_rows=20,
+                max_cases=8,
+                quote_timeout_seconds=2.5,
+            ),
+        )
+        if approved_profile
+        else make_batch_policy([])
+    )
+    result = run_world_core(
+        raw_input,
+        source_producer=lambda _raw: batch,
+        market_bridge=BatchFakeMarketBridge(rows),
+        policy=policy,
+    )
+    if case_id_transform is None:
+        return result
+    case_set = result.case_set
+    transformed = CoreCaseSet(
+        case_set.entry_origin,
+        case_set.raw_input,
+        case_set.submissions,
+        tuple(
+            replace(case, case_id=case_id_transform(case.case_id))
+            for case in case_set.cases
+        ),
+        tuple(
+            replace(case, case_id=case_id_transform(case.case_id))
+            for case in case_set.unavailable
+        ),
+        case_set.reasons,
+    )
+    return CoreRunResult(transformed, compact_summary(transformed))
+
+
+def make_event_batch_result(raw_input):
+    event_input = UserEventInput(raw_input, provisional_symbols=("ABC",))
+    batch = SourceSubmissionBatch(
+        event_input,
+        (make_batch_submission("host-event", ("event-hyp",)),),
+    )
+    rows = (
+        make_batch_row(datetime.date(2030, 1, 31), "CALL", "100"),
+        make_batch_row(datetime.date(2030, 1, 31), "PUT", "100"),
+    )
+    return run_event_core(
+        event_input,
+        grounder=lambda _raw: batch,
+        market_bridge=BatchFakeMarketBridge(rows),
+        policy=make_batch_policy([]),
+    )
+
+
 class MemoryJournal:
     """Narrow test double for the future worker-owned persistence API."""
 
     def __init__(self):
         self.runs = {}
         self.events = []
+        self.batch_results = {}
+        self.batch_case_requests = []
 
     def create_run(self, *, mode, input, bounds, profile_snapshot, metadata):
         run_id = "run-{}".format(len(self.runs) + 1)
@@ -146,6 +248,157 @@ class MemoryJournal:
         if run_id not in self.runs:
             return None
         return self.runs[run_id].get("direct_case_details", {}).get(case_id)
+
+    @staticmethod
+    def _batch_status(result):
+        case_set = result.case_set
+        if "LIMIT_EXCEEDED" in case_set.reasons:
+            return "BLOCKED"
+        if case_set.submissions is None or not case_set.submissions.submissions:
+            return "BLOCKED"
+        if case_set.unavailable:
+            return "PARTIAL"
+        if case_set.cases:
+            return "COMPLETED"
+        return "BLOCKED"
+
+    @staticmethod
+    def _reason_values(values):
+        return [getattr(item, "value", item) for item in values]
+
+    @staticmethod
+    def _compact_case(case):
+        return {
+            "case_id": case.case_id,
+            "case_key": hashlib.sha256(case.case_id.encode("utf-8")).hexdigest(),
+            "disposition": case.disposition,
+            "geometry_status": case.geometry_status,
+            "ask_basis_per_underlying_unit": (
+                None
+                if case.ask_basis_per_underlying_unit is None
+                else str(case.ask_basis_per_underlying_unit)
+            ),
+            "reasons": list(case.reasons),
+            "structure_kind": case.structure_kind,
+            "legs": [
+                {
+                    "leg_id": leg.leg_id,
+                    "underlying": leg.underlying,
+                    "option_type": leg.option_type,
+                    "expiration": leg.expiration.isoformat(),
+                    "strike": str(leg.strike),
+                    "quantity": leg.quantity,
+                    "contract_multiplier": leg.contract_multiplier,
+                }
+                for leg in case.legs
+            ],
+            "budget_status": case.budget_status,
+            "single_cost_upper_bound": (
+                None if case.single_cost_upper_bound is None else str(case.single_cost_upper_bound)
+            ),
+            "repeated_cost_upper_bound": (
+                None if case.repeated_cost_upper_bound is None else str(case.repeated_cost_upper_bound)
+            ),
+            "single_loss_fraction": (
+                None if case.single_loss_fraction is None else str(case.single_loss_fraction)
+            ),
+            "repeated_loss_fraction": (
+                None if case.repeated_loss_fraction is None else str(case.repeated_loss_fraction)
+            ),
+        }
+
+    def save_batch_result(self, run_id, result):
+        self.assert_run(run_id)
+        self.events.append("batch_archive")
+        self.batch_results[run_id] = result
+        self.runs[run_id]["batch_status"] = self._batch_status(result)
+        return None
+
+    def get_batch_summary(self, run_id):
+        result = self.batch_results.get(run_id)
+        if result is None:
+            return None
+        compact = compact_summary(result.case_set)
+        return {
+            "entry_origin": compact.entry_origin,
+            "case_count": compact.case_count,
+            "unavailable_count": compact.unavailable_count,
+            "disposition_counts": dict(compact.disposition_counts),
+            "case_ids": list(compact.case_ids),
+            "reasons": list(compact.reasons),
+            "case_summaries": [
+                self._compact_case(item) for item in compact.case_summaries
+            ],
+            "unavailable_case_ids": list(compact.unavailable_case_ids),
+            "unavailable_cases": [
+                {
+                    "case_id": item.case_id,
+                    "case_key": hashlib.sha256(item.case_id.encode("utf-8")).hexdigest(),
+                    "reasons": list(item.reasons),
+                }
+                for item in result.case_set.unavailable
+            ],
+            "host_status": self.runs[run_id]["batch_status"],
+            "internal_core_json": {"private": "batch-core-private-sentinel"},
+            "raw_input": "batch-private-input-sentinel",
+        }
+
+    def list_batch_cases(self, run_id):
+        result = self.batch_results.get(run_id)
+        if result is None:
+            return []
+        rows = []
+        for case in result.case_set.cases:
+            reasons = self._reason_values(case.kernel_result.reasons) + list(case.reasons)
+            rows.append(
+                {
+                    "case_id": case.case_id,
+                    "case_key": hashlib.sha256(case.case_id.encode("utf-8")).hexdigest(),
+                    "classification": case.kernel_result.disposition.value,
+                    "reasons": list(dict.fromkeys(reasons)),
+                }
+            )
+        for case in result.case_set.unavailable:
+            rows.append(
+                {
+                    "case_id": case.case_id,
+                    "case_key": hashlib.sha256(case.case_id.encode("utf-8")).hexdigest(),
+                    "classification": "UNAVAILABLE",
+                    "reasons": list(case.reasons),
+                }
+            )
+        return rows
+
+    def get_batch_case(self, run_id, case_key):
+        self.batch_case_requests.append((run_id, case_key))
+        result = self.batch_results.get(run_id)
+        if result is None:
+            return None
+        for case in result.case_set.cases:
+            actual_key = hashlib.sha256(case.case_id.encode("utf-8")).hexdigest()
+            if actual_key == case_key:
+                from convexity_hunter.core_presentation import report
+
+                reasons = self._reason_values(case.kernel_result.reasons) + list(case.reasons)
+                return {
+                    "case_id": case.case_id,
+                    "case_key": actual_key,
+                    "classification": case.kernel_result.disposition.value,
+                    "reasons": list(dict.fromkeys(reasons)),
+                    "report": report(case),
+                    "internal_core_json": {"private": "case-core-private-sentinel"},
+                }
+        for case in result.case_set.unavailable:
+            actual_key = hashlib.sha256(case.case_id.encode("utf-8")).hexdigest()
+            if actual_key == case_key:
+                return {
+                    "case_id": case.case_id,
+                    "case_key": actual_key,
+                    "classification": "UNAVAILABLE",
+                    "reasons": list(case.reasons),
+                    "report": None,
+                }
+        return None
 
     def assert_run(self, run_id):
         if run_id not in self.runs:
@@ -642,9 +895,11 @@ class HostServerTests(unittest.TestCase):
                         "updated_at",
                         "diagnostics",
                         "events",
+                        "batch_summary",
                         "cases",
                     },
                 )
+                self.assertIsNone(public_detail["batch_summary"])
                 self.assertEqual(public_detail["cases"], [])
                 self.assertEqual(
                     set(public_detail["events"][0]),
@@ -687,6 +942,594 @@ class HostServerTests(unittest.TestCase):
                 second_server.server_close()
                 second_thread.join(timeout=2)
                 reopened_store.close()
+
+
+class HostServerBatchTests(unittest.TestCase):
+    def setUp(self):
+        self.journal = MemoryJournal()
+        self.server = None
+
+    def tearDown(self):
+        self._stop_server()
+
+    def _start_server(self, *, world_executor=None, event_executor=None):
+        server = create_server(
+            self.journal,
+            render_workbench=lambda _token: "<!doctype html>",
+            world_executor=world_executor,
+            event_executor=event_executor,
+            port=0,
+            request_timeout_seconds=0.5,
+        )
+        thread = threading.Thread(
+            target=lambda: server.serve_forever(poll_interval=0.01), daemon=True
+        )
+        thread.start()
+        server._test_thread = thread
+        self.server = server
+        return server
+
+    def _stop_server(self):
+        server = self.server
+        if server is None:
+            return
+        server.shutdown()
+        server.server_close()
+        server._test_thread.join(timeout=2)
+        self.server = None
+
+    def _request(self, method, path, *, body=None, csrf=False):
+        port = self.server.server_port
+        headers = {"Host": "127.0.0.1:{}".format(port)}
+        if body is not None:
+            headers["Content-Type"] = "application/json; charset=utf-8"
+        if csrf:
+            headers[CSRF_HEADER] = self.server.csrf_token
+            headers["Origin"] = "http://127.0.0.1:{}".format(port)
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        result = response.status, response.getheaders(), response.read()
+        connection.close()
+        return result
+
+    @staticmethod
+    def _decoded(response):
+        return json.loads(response[2].decode("utf-8"))
+
+    def _post(self, raw_input, *, mode="world"):
+        body = json.dumps(
+            {
+                "mode": mode,
+                "input": raw_input,
+                "bounds": {
+                    "max_submissions": 2,
+                    "max_hypotheses": 3,
+                    "max_browser_rows": 20,
+                    "max_cases": 8,
+                    "quote_timeout_seconds": 2.5,
+                },
+            }
+        ).encode("utf-8")
+        return self._request("POST", "/api/runs", body=body, csrf=True)
+
+    def test_batch_reason_projection_accepts_only_core_limit_reason_grammar(self):
+        for label in ("submissions", "hypotheses", "browser_rows", "cases"):
+            reason = "{}:5>2".format(label)
+            self.assertEqual(
+                host_server_module._public_batch_reasons([reason]), [reason]
+            )
+        for reason in (
+            "case_id:5>2",
+            "cases:-1>2",
+            "cases:5>2 exception text",
+            "private exception text",
+        ):
+            with self.subTest(reason=reason):
+                with self.assertRaises(ValueError):
+                    host_server_module._public_batch_reasons([reason])
+
+    def test_world_callback_snapshot_full_ordered_archive_and_lazy_keyed_restart(self):
+        raw_input = "PRIVATE_BATCH_INPUT_SENTINEL"
+        long_id_prefix = "/世界/" + ("x" * 270) + "/"
+        result = make_world_batch_result(
+            raw_input,
+            case_id_transform=lambda case_id: long_id_prefix + case_id,
+        )
+        calls = []
+
+        def executor(actual_input, *, bounds):
+            calls.append((actual_input, bounds))
+            self.assertEqual(actual_input, raw_input)
+            self.assertEqual(
+                self.journal.events,
+                ["run_start", "stage_started"],
+            )
+            return result
+
+        self._start_server(world_executor=executor)
+        status = self._decoded(self._request("GET", "/api/status"))
+        self.assertEqual(status["executors"]["world"], "CONFIGURED")
+        self.assertEqual(status["executors"]["event"], "NOT_CONFIGURED")
+
+        created = self._request("POST", "/api/runs", body=json.dumps({
+            "mode": "world",
+            "input": raw_input,
+            "bounds": {
+                "max_submissions": 2,
+                "max_hypotheses": 3,
+                "max_browser_rows": 20,
+                "max_cases": 8,
+                "quote_timeout_seconds": 2.5,
+            },
+        }).encode("utf-8"), csrf=True)
+        self.assertEqual(created[0], 201)
+        created_body = self._decoded(created)
+        self.assertEqual(created_body["status"], "COMPLETED")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], raw_input)
+        self.assertIsInstance(calls[0][1], CoreOperationalBounds)
+        self.assertEqual(
+            self.journal.events,
+            ["run_start", "stage_started", "batch_archive", "stage_outcome", "terminal"],
+        )
+        run_id = created_body["run_id"]
+        stored_run = self.journal.get_run(run_id)
+        self.assertEqual(
+            stored_run["metadata"]["execution_snapshot"],
+            {
+                "world_executor": {
+                    "status": "CONFIGURED",
+                    "version": "host-batch-executor-v0.1",
+                }
+            },
+        )
+        outcome = stored_run["events"][-1]["outcome"]
+        self.assertEqual(
+            outcome,
+            {
+                "schema_version": "host-batch-outcome-v0.1",
+                "case_count": 2,
+                "unavailable_count": 0,
+                "status": "COMPLETED",
+            },
+        )
+
+        detail_path = "/api/runs/{}".format(run_id)
+        public_run_response = self._request("GET", detail_path)
+        self.assertEqual(public_run_response[0], 200)
+        public_run = self._decoded(public_run_response)
+        expected_ids = [case.case_id for case in result.case_set.cases]
+        summary = public_run["batch_summary"]
+        self.assertEqual(
+            set(summary),
+            {
+                "entry_origin",
+                "case_count",
+                "unavailable_count",
+                "disposition_counts",
+                "case_ids",
+                "reasons",
+                "case_summaries",
+                "unavailable_case_ids",
+                "unavailable_cases",
+                "host_status",
+            },
+        )
+        self.assertNotIn("compact", summary)
+        self.assertEqual(summary["case_ids"], expected_ids)
+        self.assertEqual(summary["unavailable_case_ids"], [])
+        self.assertEqual(summary["unavailable_cases"], [])
+        self.assertEqual(summary["host_status"], "COMPLETED")
+        self.assertEqual([case["case_id"] for case in public_run["cases"]], expected_ids)
+        self.assertEqual(
+            [case["case_key"] for case in public_run["cases"]],
+            [hashlib.sha256(case_id.encode("utf-8")).hexdigest() for case_id in expected_ids],
+        )
+        self.assertGreater(len(expected_ids[0]), 256)
+        self.assertIn("/世界/", expected_ids[0])
+        self.assertEqual(len(public_run["batch_summary"]["case_summaries"]), 2)
+
+        first_key = public_run["cases"][0]["case_key"]
+        detail_path = "/api/runs/{}/cases/{}".format(run_id, first_key)
+        case_response = self._request("GET", detail_path)
+        self.assertEqual(case_response[0], 200)
+        public_case = self._decoded(case_response)
+        self.assertEqual(public_case["case_id"], expected_ids[0])
+        self.assertEqual(public_case["case_key"], first_key)
+        self.assertTrue(public_case["report"])
+        self.assertEqual(
+            self._request("GET", "/api/runs/{}/cases/{}".format(run_id, quote(expected_ids[0], safe="")))[0],
+            404,
+        )
+        for response_body in (created[2], public_run_response[2], case_response[2]):
+            for private_value in (
+                raw_input.encode("utf-8"),
+                b"internal_core_json",
+                b"batch-core-private-sentinel",
+                b"case-core-private-sentinel",
+                b"profile_snapshot",
+                b"execution_snapshot",
+            ):
+                self.assertNotIn(private_value, response_body)
+        self.assertEqual(len(calls), 1)
+
+        self._stop_server()
+        self._start_server()
+        reopened = self._request("GET", detail_path)
+        self.assertEqual(reopened[0], 200)
+        self.assertEqual(self._decoded(reopened)["case_id"], expected_ids[0])
+        self.assertEqual(self._decoded(self._request("GET", detail_path.rsplit("/cases/", 1)[0]))["cases"], public_run["cases"])
+        self.assertEqual(self._decoded(self._request("GET", "/api/status"))["executors"]["world"], "NOT_CONFIGURED")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.journal.batch_case_requests[-1], (run_id, first_key))
+
+    def test_event_callback_binds_description_without_http_constructing_event_input(self):
+        raw_input = "event-description-bound-to-the-post"
+        result = make_event_batch_result(raw_input)
+        calls = []
+
+        def executor(actual_input, *, bounds):
+            calls.append(actual_input)
+            self.assertEqual(actual_input, raw_input)
+            self.assertEqual(result.case_set.raw_input.description, raw_input)
+            return result
+
+        self._start_server(event_executor=executor)
+        created = self._post(raw_input, mode="event")
+        self.assertEqual(created[0], 201)
+        self.assertEqual(self._decoded(created)["status"], "COMPLETED")
+        self.assertEqual(calls, [raw_input])
+        run_id = self._decoded(created)["run_id"]
+        self.assertEqual(
+            self.journal.get_run(run_id)["metadata"]["execution_snapshot"],
+            {
+                "event_executor": {
+                    "status": "CONFIGURED",
+                    "version": "host-batch-executor-v0.1",
+                }
+            },
+        )
+
+    def test_real_store_batch_archive_reopens_without_callback_reacquisition(self):
+        from convexity_hunter.host_store import HostStore
+
+        temporary_directory = tempfile.TemporaryDirectory(
+            dir=pathlib.Path(tempfile.gettempdir()).resolve()
+        )
+        db_path = pathlib.Path(temporary_directory.name) / "batch.sqlite3"
+        store = HostStore(db_path)
+        self.journal = store
+        raw_input = "durable synthetic World input"
+        result = make_world_batch_result(raw_input, approved_profile=True)
+        callback_calls = []
+
+        def executor(actual_input, *, bounds):
+            callback_calls.append(actual_input)
+            self.assertEqual(actual_input, raw_input)
+            return result
+
+        try:
+            self._start_server(world_executor=executor)
+            created = self._post(raw_input)
+            self.assertEqual(created[0], 201)
+            created_body = self._decoded(created)
+            self.assertEqual(created_body["status"], "COMPLETED")
+            run_id = created_body["run_id"]
+            archived_summary = store.get_batch_summary(run_id)
+            self.assertEqual(archived_summary["host_status"], "COMPLETED")
+            self.assertEqual(
+                archived_summary["case_ids"],
+                [case.case_id for case in result.case_set.cases],
+            )
+            self.assertEqual(
+                store.get_run(run_id)["events"][-1]["outcome"],
+                {
+                    "schema_version": "host-batch-outcome-v0.1",
+                    "case_count": 2,
+                    "unavailable_count": 0,
+                    "status": "COMPLETED",
+                },
+            )
+
+            run_path = "/api/runs/{}".format(run_id)
+            public_run_response = self._request("GET", run_path)
+            self.assertEqual(public_run_response[0], 200)
+            public_run = self._decoded(public_run_response)
+            self.assertEqual(
+                [case["case_id"] for case in public_run["cases"]],
+                archived_summary["case_ids"],
+            )
+            case_key = public_run["cases"][0]["case_key"]
+            case_path = "{}/cases/{}".format(run_path, case_key)
+            case_response = self._request("GET", case_path)
+            self.assertEqual(case_response[0], 200)
+            self.assertEqual(
+                self._decoded(case_response)["case_id"],
+                archived_summary["case_ids"][0],
+            )
+            self.assertEqual(callback_calls, [raw_input])
+
+            self._stop_server()
+            store.close()
+            store = HostStore(db_path)
+            self.journal = store
+            self._start_server()
+            reopened_run_response = self._request("GET", run_path)
+            reopened_case_response = self._request("GET", case_path)
+            self.assertEqual(reopened_run_response[0], 200)
+            self.assertEqual(reopened_case_response[0], 200)
+            self.assertEqual(
+                self._decoded(reopened_run_response)["batch_summary"],
+                public_run["batch_summary"],
+            )
+            self.assertEqual(
+                self._decoded(reopened_case_response), self._decoded(case_response)
+            )
+            self.assertEqual(callback_calls, [raw_input])
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
+    def test_real_store_batch_archive_survives_recovery_before_finalization(self):
+        from convexity_hunter.host_store import HostStore
+
+        temporary_directory = tempfile.TemporaryDirectory(
+            dir=pathlib.Path(tempfile.gettempdir()).resolve()
+        )
+        db_path = pathlib.Path(temporary_directory.name) / "interrupted-batch.sqlite3"
+        store = HostStore(db_path)
+        self.journal = store
+        raw_input = "durable synthetic World input before finalization"
+        bounds = CoreOperationalBounds(
+            max_submissions=2,
+            max_hypotheses=3,
+            max_browser_rows=20,
+            max_cases=8,
+            quote_timeout_seconds=2.5,
+        )
+        result = make_world_batch_result(raw_input, approved_profile=True)
+        callback_calls = []
+
+        def executor(actual_input, *, bounds):
+            callback_calls.append((actual_input, bounds))
+            return result
+
+        try:
+            run_id = store.create_run(
+                mode="world",
+                input=raw_input,
+                bounds=bounds,
+                profile_snapshot=STANDARD_RESEARCH_PROFILE.snapshot(),
+                metadata=host_server_module._run_start_metadata(
+                    world_configured=True
+                ),
+            )
+            store.start_stage(run_id, "executor")
+            store.save_batch_result(run_id, result)
+            archive_before_restart = tuple(
+                store._conn().execute(
+                    "SELECT archive_json,archive_sha256 FROM batch_archives WHERE run_id=?",
+                    (run_id,),
+                ).fetchone()
+            )
+            self.assertEqual(store.get_run(run_id)["status"], "RUNNING")
+
+            store.close()
+            store = HostStore(db_path)
+            self.journal = store
+            self.assertEqual(store.get_run(run_id)["status"], "INTERRUPTED")
+            archive_after_recovery = tuple(
+                store._conn().execute(
+                    "SELECT archive_json,archive_sha256 FROM batch_archives WHERE run_id=?",
+                    (run_id,),
+                ).fetchone()
+            )
+            self.assertEqual(archive_after_recovery, archive_before_restart)
+
+            self._start_server(world_executor=executor)
+            history_response = self._request("GET", "/api/runs")
+            self.assertEqual(history_response[0], 200)
+            history = self._decoded(history_response)
+            history_run = next(
+                item for item in history["runs"] if item["run_id"] == run_id
+            )
+            self.assertEqual(history_run["status"], "INTERRUPTED")
+
+            run_path = "/api/runs/{}".format(run_id)
+            detail_response = self._request("GET", run_path)
+            self.assertEqual(detail_response[0], 200)
+            detail = self._decoded(detail_response)
+            self.assertEqual(detail["status"], "INTERRUPTED")
+            self.assertEqual(detail["batch_summary"]["host_status"], "COMPLETED")
+            expected_ids = [case.case_id for case in result.case_set.cases]
+            self.assertEqual(
+                [case["case_id"] for case in detail["cases"]], expected_ids
+            )
+            self.assertEqual(len(detail["cases"]), 2)
+
+            case_key = detail["cases"][0]["case_key"]
+            case_path = "{}/cases/{}".format(run_path, case_key)
+            case_response = self._request("GET", case_path)
+            self.assertEqual(case_response[0], 200)
+            case = self._decoded(case_response)
+            self.assertEqual(case["case_id"], expected_ids[0])
+            self.assertEqual(case["case_key"], case_key)
+            self.assertTrue(case["report"])
+            self.assertEqual(callback_calls, [])
+
+            archive_after_reads = tuple(
+                store._conn().execute(
+                    "SELECT archive_json,archive_sha256 FROM batch_archives WHERE run_id=?",
+                    (run_id,),
+                ).fetchone()
+            )
+            self.assertEqual(archive_after_reads, archive_before_restart)
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
+    def test_partial_all_unavailable_empty_and_limit_statuses_come_from_store(self):
+        raw_values = ("partial", "all-unavailable", "empty", "limit")
+        base = make_world_batch_result("partial")
+        original = base.case_set
+        unavailable_case_id = "/世界/" + ("u" * 270) + "/unavailable"
+        partial_set = CoreCaseSet(
+            "WORLD",
+            original.raw_input,
+            original.submissions,
+            original.cases[:1],
+            (
+                CoreUnavailableCase(
+                    unavailable_case_id, ("MARKET_DATA_UNAVAILABLE",)
+                ),
+            ),
+            (),
+        )
+        partial = CoreRunResult(partial_set, compact_summary(partial_set))
+
+        empty_raw = "empty"
+        empty_set = CoreCaseSet("WORLD", empty_raw, None, (), (), ("EMPTY_SUBMISSION",))
+        empty = CoreRunResult(empty_set, compact_summary(empty_set))
+
+        limit_raw = "limit"
+        limit_batch = SourceSubmissionBatch(
+            limit_raw, original.submissions.submissions
+        )
+        limit_reason = "cases:9>8"
+        limit_set = CoreCaseSet(
+            "WORLD",
+            limit_raw,
+            limit_batch,
+            (),
+            (),
+            ("LIMIT_EXCEEDED", limit_reason),
+        )
+        limited = CoreRunResult(limit_set, compact_summary(limit_set))
+
+        unavailable_raw = "all-unavailable"
+        unavailable_batch = SourceSubmissionBatch(
+            unavailable_raw, original.submissions.submissions
+        )
+        unavailable_set = CoreCaseSet(
+            "WORLD",
+            unavailable_raw,
+            unavailable_batch,
+            (),
+            (CoreUnavailableCase("unavailable-only", ("MARKET_DATA_UNAVAILABLE",)),),
+            (),
+        )
+        all_unavailable = CoreRunResult(
+            unavailable_set, compact_summary(unavailable_set)
+        )
+        results = {
+            "partial": partial,
+            "all-unavailable": all_unavailable,
+            "empty": empty,
+            "limit": limited,
+        }
+        callback_calls = []
+
+        def executor(raw_input, *, bounds):
+            callback_calls.append(raw_input)
+            return results[raw_input]
+
+        self._start_server(world_executor=executor)
+        expected = {
+            "partial": ("PARTIAL", 1, 1),
+            "all-unavailable": ("PARTIAL", 0, 1),
+            "empty": ("BLOCKED", 0, 0),
+            "limit": ("BLOCKED", 0, 0),
+        }
+        for raw_input in raw_values:
+            with self.subTest(raw_input=raw_input):
+                response = self._post(raw_input)
+                self.assertEqual(response[0], 201)
+                body = self._decoded(response)
+                status, case_count, unavailable_count = expected[raw_input]
+                self.assertEqual(body["status"], status)
+                run = self.journal.get_run(body["run_id"])
+                self.assertEqual(run["status"], status)
+                self.assertEqual(
+                    run["events"][-1]["outcome"],
+                    {
+                        "schema_version": "host-batch-outcome-v0.1",
+                        "case_count": case_count,
+                        "unavailable_count": unavailable_count,
+                        "status": status,
+                    },
+                )
+                summary_response = self._request(
+                    "GET", "/api/runs/{}".format(body["run_id"])
+                )
+                self.assertEqual(summary_response[0], 200)
+                summary = self._decoded(summary_response)["batch_summary"]
+                self.assertEqual(summary["host_status"], status)
+                if raw_input == "partial":
+                    self.assertEqual(
+                        summary["unavailable_case_ids"], [unavailable_case_id]
+                    )
+                    self.assertEqual(
+                        summary["unavailable_cases"],
+                        [
+                            {
+                                "case_id": unavailable_case_id,
+                                "case_key": hashlib.sha256(
+                                    unavailable_case_id.encode("utf-8")
+                                ).hexdigest(),
+                                "reasons": ["MARKET_DATA_UNAVAILABLE"],
+                            }
+                        ],
+                    )
+                    self.assertEqual(
+                        set(summary["unavailable_cases"][0]),
+                        {"case_id", "case_key", "reasons"},
+                    )
+                elif raw_input == "limit":
+                    self.assertEqual(summary["reasons"], ["LIMIT_EXCEEDED", limit_reason])
+                    self.assertIn(limit_reason.encode("ascii"), summary_response[2])
+        self.assertEqual(callback_calls, list(raw_values))
+
+    def test_executor_errors_invalid_result_and_request_binding_are_sanitized(self):
+        valid_other_input = make_world_batch_result("different-private-input")
+        wrong_mode_input = UserEventInput("wrong-mode-request")
+        wrong_mode_set = CoreCaseSet(
+            "EVENT", wrong_mode_input, None, (), (), ("EMPTY_SUBMISSION",)
+        )
+        wrong_mode = CoreRunResult(wrong_mode_set, compact_summary(wrong_mode_set))
+        results = {
+            "wrong-input": valid_other_input,
+            "wrong-mode": wrong_mode,
+            "wrong-type": object(),
+        }
+        calls = []
+
+        def executor(raw_input, *, bounds):
+            calls.append(raw_input)
+            if raw_input == "raises":
+                raise RuntimeError("PRIVATE_EXCEPTION_TEXT_SENTINEL")
+            return results[raw_input]
+
+        self._start_server(world_executor=executor)
+        for raw_input, expected_reason in (
+            ("raises", "HOST_BATCH_EXECUTOR_FAILED"),
+            ("wrong-input", "HOST_BATCH_RESULT_INVALID"),
+            ("wrong-mode", "HOST_BATCH_RESULT_INVALID"),
+            ("wrong-type", "HOST_BATCH_RESULT_INVALID"),
+        ):
+            with self.subTest(raw_input=raw_input):
+                response = self._post(raw_input)
+                self.assertEqual(response[0], 201)
+                body = self._decoded(response)
+                self.assertEqual(body["status"], "FAILED")
+                self.assertEqual(body["reason"], expected_reason)
+                self.assertNotIn(b"PRIVATE_EXCEPTION_TEXT_SENTINEL", response[2])
+                history = self._request("GET", "/api/runs/{}".format(body["run_id"]))
+                self.assertNotIn(b"PRIVATE_EXCEPTION_TEXT_SENTINEL", history[2])
+                self.assertEqual(self.journal.batch_results.get(body["run_id"]), None)
+        self.assertEqual(calls, ["raises", "wrong-input", "wrong-mode", "wrong-type"])
 
 
 class HostServerDirectStoreIntegrationTests(unittest.TestCase):

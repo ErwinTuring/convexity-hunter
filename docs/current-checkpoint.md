@@ -11,6 +11,46 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Current executable boundary — 2026-10-03
 
+Latest delivery: the Host now accepts explicitly configured trusted Python
+World/Event executors returning the existing `CoreRunResult`. Private schema-v3
+archives retain the full ordered case set, unavailable reasons, normalized EI
+audit and exact Core numerical snapshots. Compact results are shown by default;
+batch details render lazily with no research reacquisition or N prose caches.
+Unicode/long Core IDs remain intact; SHA-256 keys are navigation only.
+See [batch delivery boundary](local-batch-delivery-v0.1.md).
+
+This is batch delivery integration, not real Grounder or World completion.
+The default CLI still disables World/Event; no live source/model/market call
+was made in this work unit. Overall request coverage cannot be inferred from a
+Core batch. Direct remains opt-in and uses its previously proven real path.
+Core Kernel, optional valuation layers and missing cost/sensitivity evidence
+are unchanged; no ranking, hidden assumptions or automatic recommendation.
+
+Validation: the integrated pre-review build passed 79 focused and 1,733 full
+tests (306.096 seconds). Independent review then found and prompted three
+targeted corrections: full read-side validation before atomic batch insertion;
+readable saved artifacts after INTERRUPTED recovery; complete approved risk
+mapping including methodology/provenance. Final combined focused validation
+passed 83 tests; compileall and diff checks passed. The full suite was not
+repeated after those narrow fixes; independent targeted re-review of all three
+findings passed. Documentation links/fences and final diff checks passed.
+Legacy Direct snapshot validation semantics
+were not retroactively tightened.
+
+Work-share measurement is incomplete and does not certify a whole-phase 70%
+implementation share. Store worker measured 706s preparation, 1,340s production
+implementation and 751s test/review; its fixes added about 98s implementation
+and 17s verification (about 49% implementation across those recorded spans).
+Server initially recorded 593s coding/163s preparation with earlier and later
+intervals unclassified; recovery fix recorded about 44s coding/103s inspection/
+8s validation. UI recorded 302s preparation and 1,087s mixed implementation/
+self-review, not a pure coding interval. Main coordination and the independent
+review were not fully instrumented. Do not invent an aggregate ratio, use line
+counts as time, or count waiting as coding. The requested target is not proven
+met; the deliverable is actual batch production integration, not diagnostics.
+
+### Earlier completed Direct slice
+
 Latest completed slice: standalone Direct is connected to the existing Futu
 exact-verification/Core path through explicit `--enable-direct --futu-port`.
 The strict [Direct input](local-direct-input-v0.1.md), private schema-v2 Core

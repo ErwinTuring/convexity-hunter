@@ -296,7 +296,7 @@ class HostStoreTests(unittest.TestCase):
         migrated = HostStore(path)
         self.addCleanup(migrated.close)
         self.assertEqual([tuple(row) for row in migrated._conn().execute("SELECT * FROM events ORDER BY event_seq")], before)
-        self.assertEqual(migrated._conn().execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(migrated._conn().execute("PRAGMA user_version").fetchone()[0], 3)
         run = migrated.get_run("legacy-run")
         self.assertEqual(run["input"], "legacy exact input")
         self.assertEqual(run["status"], "BLOCKED")
@@ -504,6 +504,57 @@ class HostStoreTests(unittest.TestCase):
         with self.assertRaises(StoreCorruptionError):
             HostStore(self.db_path)
 
+    def test_world_event_executor_metadata_is_optional_and_composable(self):
+        metadata = _run_start_metadata()
+        metadata["execution_snapshot"] = {
+            "direct_executor": {
+                "status": "CONFIGURED",
+                "version": "host-direct-input-v0.1",
+            },
+            "world_executor": {
+                "status": "CONFIGURED",
+                "version": "host-batch-executor-v0.1",
+            },
+            "event_executor": {
+                "status": "CONFIGURED",
+                "version": "host-batch-executor-v0.1",
+            },
+        }
+        run_id = self.store.create_run(
+            "world", "input", BOUNDS, STANDARD_RESEARCH_PROFILE.snapshot(), metadata
+        )
+        self.assertEqual(
+            self.store.get_run(run_id)["metadata"]["execution_snapshot"],
+            metadata["execution_snapshot"],
+        )
+        invalid = _run_start_metadata()
+        invalid["execution_snapshot"] = {
+            "world_executor": {"status": "CONFIGURED", "version": "host-batch-executor-v0.2"}
+        }
+        with self.assertRaises(ValueError):
+            self.store.create_run(
+                "world", "input", BOUNDS, STANDARD_RESEARCH_PROFILE.snapshot(), invalid
+            )
+
+    def test_v2_to_v3_migration_preserves_direct_archive(self):
+        run_id = self.create_run("direct")
+        result = make_direct_result()
+        case_id = self.store.save_direct_result(run_id, result)
+        expected = self.store.get_direct_case(run_id, case_id)
+        self.store.close()
+
+        connection = sqlite3.connect(str(self.db_path))
+        connection.execute("DROP TABLE batch_archives")
+        connection.execute("PRAGMA user_version=2")
+        connection.commit()
+        connection.close()
+
+        migrated = HostStore(self.db_path)
+        self.addCleanup(migrated.close)
+        self.assertEqual(migrated._conn().execute("PRAGMA user_version").fetchone()[0], 3)
+        self.assertEqual(migrated.get_direct_case(run_id, case_id), expected)
+        self.assertEqual(migrated.load_core_result(run_id, case_id), result.kernel_result)
+
     def test_symlink_git_and_unsupported_or_corrupt_databases_are_rejected(self):
         link = self.root / "linked-parent"
         link.symlink_to(self.root, target_is_directory=True)
@@ -523,7 +574,7 @@ class HostStoreTests(unittest.TestCase):
 
         future_path = self.root / "future.sqlite3"
         connection = sqlite3.connect(str(future_path))
-        connection.execute("PRAGMA user_version=3")
+        connection.execute("PRAGMA user_version=4")
         connection.commit()
         connection.close()
         with self.assertRaises(UnsupportedSchemaVersionError):

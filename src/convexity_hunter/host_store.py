@@ -26,7 +26,7 @@ from .core_application import CoreOperationalBounds
 from .host_profile import STANDARD_RESEARCH_PROFILE, StandardResearchProfile
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 _APPLICATION_ID = 0x43484A31  # ASCII "CHJ1"
 _MODES = frozenset(("world", "event", "direct"))
 _RUN_STATUSES = frozenset(
@@ -104,6 +104,13 @@ _DIRECT_CASE_TABLE_SQL = (
 _DIRECT_SCHEMA_OBJECTS = _SCHEMA_OBJECTS | {
     "direct_cases", "direct_cases_no_update", "direct_cases_no_delete"
 }
+_BATCH_ARCHIVE_TABLE_SQL = (
+    "CREATE TABLE batch_archives (run_id TEXT PRIMARY KEY NOT NULL REFERENCES runs(run_id),"
+    "archive_json TEXT NOT NULL,archive_sha256 TEXT NOT NULL)"
+)
+_BATCH_SCHEMA_OBJECTS = _DIRECT_SCHEMA_OBJECTS | {
+    "batch_archives", "batch_archives_no_update", "batch_archives_no_delete"
+}
 _DIRECT_REPORT_VERSION = "core-presentation-direct-v0.1"
 
 
@@ -161,6 +168,41 @@ def _canonical_json(value: Any, label: str) -> str:
     )
 
 
+def _validate_uri_credentials(uri: Any, label: str) -> None:
+    """Reject URI authentication material without rewriting retained locators."""
+
+    if type(uri) is not str:
+        raise ValueError("{} must be text".format(label))
+    try:
+        parts = urlsplit(uri)
+        if parts.username is not None or parts.password is not None:
+            raise ValueError()
+        fragment = parts.fragment.partition("?")[2] if "?" in parts.fragment else parts.fragment
+        for parameters in (parts.query, fragment.lstrip("?")):
+            if any(
+                key.casefold().replace("-", "_") in _AUTH_URI_KEYS
+                for key, _ in parse_qsl(parameters, keep_blank_values=True)
+            ):
+                raise ValueError()
+    except ValueError:
+        raise ValueError("{} contains invalid or prohibited authentication material".format(label)) from None
+
+
+def _validate_event_source_locator(value: Any) -> None:
+    """Guard URL-like EI/Event locators while allowing provider-neutral labels."""
+
+    if value is None:
+        return
+    if type(value) is not str:
+        raise ValueError("source locator must be text or None")
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        raise ValueError("source locator contains invalid or prohibited authentication material") from None
+    if parts.scheme or parts.netloc or "://" in value or value.startswith("//"):
+        _validate_uri_credentials(value, "source locator")
+
+
 def _validate_source_reference_uris(value: Any) -> None:
     """Check only URI fields of known codec SourceReference nodes, without rewriting."""
 
@@ -168,19 +210,7 @@ def _validate_source_reference_uris(value: Any) -> None:
         if value.get("$type") == "market_data.SourceReference":
             uri = value.get("source_uri")
             if uri is not None:
-                try:
-                    if type(uri) is not str:
-                        raise ValueError()
-                    parts = urlsplit(uri)
-                    if parts.username is not None or parts.password is not None:
-                        raise ValueError()
-                    fragment = parts.fragment.partition("?")[2] if "?" in parts.fragment else parts.fragment
-                    for parameters in (parts.query, fragment.lstrip("?")):
-                        if any(key.casefold().replace("-", "_") in _AUTH_URI_KEYS
-                               for key, _ in parse_qsl(parameters, keep_blank_values=True)):
-                            raise ValueError()
-                except ValueError:
-                    raise ValueError("SourceReference URI contains invalid or prohibited authentication material") from None
+                _validate_uri_credentials(uri, "SourceReference URI")
         for item in value.values():
             _validate_source_reference_uris(item)
     elif type(value) is list:
@@ -258,10 +288,18 @@ def _validated_metadata(value: Any) -> Dict[str, Any]:
     ):
         raise ValueError("configuration_snapshot must be the empty in-slice shell snapshot")
     execution = value["execution_snapshot"]
-    if type(execution) is not dict or execution not in ({}, {
-        "direct_executor": {"status": "CONFIGURED", "version": "host-direct-input-v0.1"}
-    }):
-        raise ValueError("execution_snapshot must be empty or the closed Direct executor snapshot")
+    if type(execution) is not dict:
+        raise ValueError("execution_snapshot must contain only closed configured executor records")
+    allowed_executors = {
+        "direct_executor": "host-direct-input-v0.1",
+        "world_executor": "host-batch-executor-v0.1",
+        "event_executor": "host-batch-executor-v0.1",
+    }
+    if set(execution) - set(allowed_executors):
+        raise ValueError("execution_snapshot contains an unknown executor")
+    for name, version in allowed_executors.items():
+        if name in execution and execution[name] != {"status": "CONFIGURED", "version": version}:
+            raise ValueError("execution_snapshot contains an invalid executor record")
     versions = value["contract_versions"]
     if type(versions) is not dict or set(versions) != _CONTRACT_VERSION_FIELDS:
         raise ValueError("contract_versions must contain exactly the frozen shell version fields")
@@ -291,6 +329,21 @@ def _validate_shell_outcome(value: Any) -> Any:
 
     if type(value) is str and value in _TERMINAL_STATUSES:
         return value
+    batch_fields = {"schema_version", "case_count", "unavailable_count", "status"}
+    if type(value) is dict and set(value) == batch_fields:
+        if (
+            type(value["schema_version"]) is not str
+            or value["schema_version"] != "host-batch-outcome-v0.1"
+        ):
+            raise ValueError("invalid closed batch outcome version")
+        for name in ("case_count", "unavailable_count"):
+            if type(value[name]) is not int or value[name] < 0:
+                raise ValueError("invalid closed batch outcome count")
+        if type(value["status"]) is not str or value["status"] not in (
+            "COMPLETED", "PARTIAL", "BLOCKED"
+        ):
+            raise ValueError("invalid closed batch outcome status")
+        return dict(value)
     if type(value) is dict and set(value) == {"schema_version", "case_id", "classification"}:
         from .core_research import CoreDisposition
         if (value["schema_version"] != "host-direct-outcome-v0.1"
@@ -468,7 +521,7 @@ def _release_database_lock(descriptor: int) -> None:
 
 
 class HostStore:
-    """Append-only schema-v2 local journal with crash recovery."""
+    """Append-only schema-v3 local journal with crash recovery."""
 
     def __init__(self, db_path: Any) -> None:
         self.db_path = _absolute_path(db_path)
@@ -541,7 +594,7 @@ class HostStore:
             raise StoreCorruptionError("SQLite quick_check rejected the database")
         version = int(connection.execute("PRAGMA user_version").fetchone()[0])
         if version > SCHEMA_VERSION:
-            raise UnsupportedSchemaVersionError("database schema is newer than schema v2")
+            raise UnsupportedSchemaVersionError("database schema is newer than schema v3")
         if version < 0:
             raise StoreCorruptionError("database schema version is invalid")
         application_id = int(connection.execute("PRAGMA application_id").fetchone()[0])
@@ -596,9 +649,14 @@ class HostStore:
             version = 1
             objects = _SCHEMA_OBJECTS
             application_id = _APPLICATION_ID
-        if version not in (1, 2) or application_id != _APPLICATION_ID:
+        if version not in (1, 2, 3) or application_id != _APPLICATION_ID:
             raise StoreCorruptionError("database identity or schema version is invalid")
-        if objects != (_SCHEMA_OBJECTS if version == 1 else _DIRECT_SCHEMA_OBJECTS):
+        expected_objects = (
+            _SCHEMA_OBJECTS if version == 1
+            else _DIRECT_SCHEMA_OBJECTS if version == 2
+            else _BATCH_SCHEMA_OBJECTS
+        )
+        if objects != expected_objects:
             raise StoreCorruptionError("database objects do not match the journal schema")
         if tuple(row["name"] for row in connection.execute("PRAGMA table_info(runs)")) != _RUN_COLUMNS:
             raise StoreCorruptionError("runs table does not match schema v1")
@@ -628,19 +686,68 @@ class HostStore:
                         "BEGIN SELECT RAISE(ABORT,'append-only journal'); END".format(operation, operation)
                     )
                 transaction.execute("PRAGMA user_version=2")
-        expected = {"direct_cases": _DIRECT_CASE_TABLE_SQL}
-        for operation in ("update", "delete"):
-            expected["direct_cases_no_" + operation] = (
-                "CREATE TRIGGER direct_cases_no_{} BEFORE {} ON direct_cases "
-                "BEGIN SELECT RAISE(ABORT,'append-only journal'); END".format(operation, operation)
-            )
+            version = 2
+        if version == 2:
+            expected_direct = {"direct_cases": _DIRECT_CASE_TABLE_SQL}
+            for operation in ("update", "delete"):
+                expected_direct["direct_cases_no_" + operation] = (
+                    "CREATE TRIGGER direct_cases_no_{} BEFORE {} ON direct_cases "
+                    "BEGIN SELECT RAISE(ABORT,'append-only journal'); END".format(
+                        operation, operation
+                    )
+                )
+            actual_direct = dict(connection.execute(
+                "SELECT name,sql FROM sqlite_master WHERE name IN "
+                "('direct_cases','direct_cases_no_update','direct_cases_no_delete')"
+            ).fetchall())
+            if (
+                any(
+                    " ".join(actual_direct.get(name, "").lower().split())
+                    != " ".join(sql.lower().split())
+                    for name, sql in expected_direct.items()
+                )
+                or tuple(
+                    row["name"] for row in connection.execute("PRAGMA table_info(direct_cases)")
+                ) != ("run_id", "case_id", "archive_json", "archive_sha256")
+            ):
+                raise StoreCorruptionError("Direct schema v2 is invalid; batch migration was not applied")
+            with self._transaction() as transaction:
+                transaction.execute(_BATCH_ARCHIVE_TABLE_SQL)
+                for operation in ("update", "delete"):
+                    transaction.execute(
+                        "CREATE TRIGGER batch_archives_no_{} BEFORE {} ON batch_archives "
+                        "BEGIN SELECT RAISE(ABORT,'append-only journal'); END".format(operation, operation)
+                    )
+                transaction.execute("PRAGMA user_version=3")
+
+        expected = {
+            "direct_cases": _DIRECT_CASE_TABLE_SQL,
+            "batch_archives": _BATCH_ARCHIVE_TABLE_SQL,
+        }
+        for table in ("direct_cases", "batch_archives"):
+            for operation in ("update", "delete"):
+                expected[table + "_no_" + operation] = (
+                    "CREATE TRIGGER {}_no_{} BEFORE {} ON {} "
+                    "BEGIN SELECT RAISE(ABORT,'append-only journal'); END".format(
+                        table, operation, operation, table
+                    )
+                )
         actual = dict(connection.execute(
             "SELECT name,sql FROM sqlite_master WHERE name IN "
-            "('direct_cases','direct_cases_no_update','direct_cases_no_delete')"
+            "('direct_cases','direct_cases_no_update','direct_cases_no_delete',"
+            "'batch_archives','batch_archives_no_update','batch_archives_no_delete')"
         ).fetchall())
         if any(" ".join(actual.get(name, "").lower().split()) != " ".join(sql.lower().split())
                for name, sql in expected.items()):
-            raise StoreCorruptionError("direct case table or immutable triggers do not match schema v2")
+            raise StoreCorruptionError("immutable case archive tables or triggers do not match schema v3")
+        if tuple(row["name"] for row in connection.execute("PRAGMA table_info(direct_cases)")) != (
+            "run_id", "case_id", "archive_json", "archive_sha256"
+        ):
+            raise StoreCorruptionError("Direct table does not match schema v2")
+        if tuple(row["name"] for row in connection.execute("PRAGMA table_info(batch_archives)")) != (
+            "run_id", "archive_json", "archive_sha256"
+        ):
+            raise StoreCorruptionError("batch archive table does not match schema v3")
 
     def _append_event(
         self,
@@ -727,6 +834,17 @@ class HostStore:
                     if (archive is None or event["status"] != "COMPLETED"
                             or archive["classification"] != payload["outcome"]["classification"]):
                         raise StoreCorruptionError("Direct stage has no matching committed archive")
+                elif (
+                    type(payload["outcome"]) is dict
+                    and payload["outcome"].get("schema_version") == "host-batch-outcome-v0.1"
+                ):
+                    archive, _decoded = self._read_batch_archive(run_id)
+                    if (
+                        archive is None
+                        or archive["outcome"] != payload["outcome"]
+                        or event["status"] != payload["outcome"]["status"]
+                    ):
+                        raise StoreCorruptionError("batch stage has no matching committed archive")
             elif event_type == "run_finished":
                 if type(payload) is not dict or set(payload) != {"diagnostics"}:
                     raise StoreCorruptionError("run result payload is malformed")
@@ -769,6 +887,13 @@ class HostStore:
             except (TypeError, ValueError) as error:
                 raise StoreCorruptionError("run snapshot violates its frozen field contract") from error
             self._status_and_stages(run_id)
+            batch_rows = connection.execute(
+                "SELECT run_id FROM batch_archives WHERE run_id=?", (run_id,)
+            ).fetchall()
+            for _batch_row in batch_rows:
+                archive, _decoded = self._read_batch_archive(run_id)
+                if archive is None:
+                    raise StoreCorruptionError("batch archive disappeared during validation")
 
     def _recover_running_runs(self) -> None:
         connection = self._conn()
@@ -886,6 +1011,17 @@ class HostStore:
                 if (archive is None or status != "COMPLETED"
                         or archive["classification"] != normalized_outcome["classification"]):
                     raise ValueError("Direct outcome requires its committed case and COMPLETED stage")
+            elif (
+                type(normalized_outcome) is dict
+                and normalized_outcome.get("schema_version") == "host-batch-outcome-v0.1"
+            ):
+                archive, _decoded = self._read_batch_archive(run_id)
+                if (
+                    archive is None
+                    or archive["outcome"] != normalized_outcome
+                    or status != normalized_outcome["status"]
+                ):
+                    raise ValueError("batch outcome requires its matching committed archive and status")
             stage_event = started[stage_id]
             self._append_event(
                 connection,
@@ -916,6 +1052,10 @@ class HostStore:
                 "SELECT 1 FROM direct_cases WHERE run_id=?", (run_id,)
             ).fetchone() is not None:
                 raise ValueError("completed Core evaluation cannot be Host BLOCKED")
+            batch_archive, _decoded = self._read_batch_archive(run_id)
+            if batch_archive is not None and status in ("COMPLETED", "PARTIAL", "BLOCKED"):
+                if status != batch_archive["outcome"]["status"]:
+                    raise ValueError("run status must match the validated batch Host outcome")
             self._append_event(
                 connection, run_id, "run_finished", None, None, status, payload, now
             )
@@ -1014,6 +1154,128 @@ class HostStore:
                 or cache["core_sha256"] != digest or type(cache["text"]) is not str or not cache["text"]):
             raise ValueError("invalid digest-bound Direct report cache")
         return core
+
+    def save_batch_result(self, run_id: str, result: Any) -> None:
+        """Atomically archive one complete, bounded World/Event Core batch."""
+
+        from .core_application import CoreRunResult
+        from .host_batch_snapshot import build_batch_archive, validate_batch_archive
+
+        self._validate_run_id(run_id)
+        if type(result) is not CoreRunResult:
+            raise TypeError("save_batch_result requires exact CoreRunResult")
+        result.__post_init__()
+        with self._lock, self._transaction() as connection:
+            run = self.get_run(run_id)
+            if run is None:
+                raise KeyError(run_id)
+            if run["mode"] not in ("world", "event") or run["status"] != "RUNNING":
+                raise ValueError("batch archive requires a RUNNING World or Event run")
+            archive = build_batch_archive(
+                run_id=run_id,
+                mode=run["mode"],
+                run_input=run["input"],
+                input_sha256=run["input_sha256"],
+                bounds=run["bounds"],
+                profile_snapshot=run["profile_snapshot"],
+                metadata=run["metadata"],
+                result=result,
+                canonical_json=_canonical_json,
+                validate_locator=_validate_event_source_locator,
+                validate_source_uris=_validate_source_reference_uris,
+            )
+            validated_summary, _decoded_cases = validate_batch_archive(
+                archive,
+                run_id=run_id,
+                mode=run["mode"],
+                run_input=run["input"],
+                input_sha256=run["input_sha256"],
+                bounds=run["bounds"],
+                profile_snapshot=run["profile_snapshot"],
+                metadata=run["metadata"],
+                canonical_json=_canonical_json,
+                validate_locator=_validate_event_source_locator,
+                validate_source_uris=_validate_source_reference_uris,
+            )
+            if validated_summary != archive["summary"]:
+                raise ValueError("batch summary validation mismatch")
+            wire = _canonical_json(archive, "Host batch archive")
+            digest = hashlib.sha256(wire.encode("utf-8")).hexdigest()
+            try:
+                connection.execute(
+                    "INSERT INTO batch_archives(run_id,archive_json,archive_sha256) VALUES(?,?,?)",
+                    (run_id, wire, digest),
+                )
+            except sqlite3.IntegrityError:
+                raise ValueError("World/Event batch already archived") from None
+        return None
+
+    def _read_batch_archive(
+        self, run_id: str
+    ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+        from .host_batch_snapshot import validate_batch_archive
+
+        self._validate_run_id(run_id)
+        row = self._conn().execute(
+            "SELECT archive_json,archive_sha256 FROM batch_archives WHERE run_id=?",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            return None, {}
+        wire, stored_digest = row["archive_json"], row["archive_sha256"]
+        if type(wire) is not str or type(stored_digest) is not str:
+            raise StoreCorruptionError("batch archive encoding is malformed")
+        if hashlib.sha256(wire.encode("utf-8")).hexdigest() != stored_digest:
+            raise StoreCorruptionError("batch archive digest mismatch")
+        archive = _decode_canonical_json(wire)
+        events = self._events_for(run_id)
+        if not events or events[0]["event_type"] != "run_started":
+            raise StoreCorruptionError("batch archive has no immutable run-start snapshot")
+        snapshot = _decode_canonical_json(events[0]["payload_json"])
+        try:
+            summary, decoded_cases = validate_batch_archive(
+                archive,
+                run_id=run_id,
+                mode=snapshot["mode"],
+                run_input=snapshot["input"],
+                input_sha256=snapshot["input_sha256"],
+                bounds=snapshot["bounds"],
+                profile_snapshot=snapshot["profile_snapshot"],
+                metadata=snapshot["metadata"],
+                canonical_json=_canonical_json,
+                validate_locator=_validate_event_source_locator,
+                validate_source_uris=_validate_source_reference_uris,
+            )
+            if summary != archive["summary"]:
+                raise ValueError("batch summary validation mismatch")
+            return archive, decoded_cases
+        except (TypeError, ValueError, KeyError, IndexError, AttributeError) as error:
+            raise StoreCorruptionError(
+                "batch archive violates its closed snapshot contract"
+            ) from error
+
+    def get_batch_summary(self, run_id: str) -> Optional[Dict[str, Any]]:
+        from .host_batch_snapshot import public_summary
+
+        with self._lock:
+            archive, _decoded = self._read_batch_archive(run_id)
+            return None if archive is None else public_summary(archive)
+
+    def list_batch_cases(self, run_id: str) -> List[Dict[str, Any]]:
+        from .host_batch_snapshot import public_cases
+
+        with self._lock:
+            archive, _decoded = self._read_batch_archive(run_id)
+            return [] if archive is None else public_cases(archive)
+
+    def get_batch_case(self, run_id: str, case_key: str) -> Optional[Dict[str, Any]]:
+        from .host_batch_snapshot import public_case, validate_case_key
+
+        self._validate_run_id(run_id)
+        validate_case_key(case_key)
+        with self._lock:
+            archive, decoded_cases = self._read_batch_archive(run_id)
+            return None if archive is None else public_case(archive, case_key, decoded_cases)
 
     def _read_direct_case(self, run_id: str, case_id: str) -> Tuple[Any, Any]:
         self._validate_run_id(run_id)

@@ -1,14 +1,16 @@
 """Bounded loopback HTTP/CLI shell for the standalone Host.
 
-This module deliberately does not execute World or Event research. Direct can
-be enabled only through an explicitly injected executor; the CLI's opt-in
-Futu bridge is lazy and connects only when a Direct request is executed.
+World and Event research can be enabled only through explicitly injected,
+trusted Python executors. Direct can be enabled only through an explicitly
+injected executor; the CLI's opt-in Futu bridge is lazy and connects only when
+a Direct request is executed.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import math
 import re
@@ -22,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 from urllib.parse import unquote_to_bytes, urlsplit
 
-from .core_application import CoreDirectResult, CoreOperationalBounds
+from .core_application import CoreDirectResult, CoreOperationalBounds, CoreRunResult
 from .core_research import CoreDisposition, CoreReasonCode
 from .host_direct import HostDirectBoundsError, HostDirectInputError
 from .host_profile import PROFILE_ID, PROFILE_VERSION, STANDARD_RESEARCH_PROFILE
@@ -48,6 +50,7 @@ _BOUNDS_FIELDS = frozenset(
 )
 _RUN_ID_RE = re.compile(r"[A-Za-z0-9._~-]{1,128}\Z", re.ASCII)
 _CASE_ID_RE = re.compile(r"[A-Za-z0-9._:~-]{1,256}\Z", re.ASCII)
+_CASE_KEY_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _BAD_PERCENT_ESCAPE_RE = re.compile(r"%(?![0-9A-Fa-f]{2})", re.ASCII)
 _CONTENT_LENGTH_RE = re.compile(r"[0-9]+\Z", re.ASCII)
 _INLINE_TAG_RE = re.compile(r"<(script|style)\b([^>]*)>", re.IGNORECASE)
@@ -68,6 +71,13 @@ _PUBLIC_DIRECT_REASONS = frozenset(item.value for item in CoreReasonCode) | froz
     ("missing_direct_quote_evidence",)
 )
 _DIRECT_EXECUTOR_VERSION = "host-direct-input-v0.1"
+_BATCH_EXECUTOR_VERSION = "host-batch-executor-v0.1"
+_BATCH_OUTCOME_VERSION = "host-batch-outcome-v0.1"
+_BATCH_REASON_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.:-]{0,127}\Z", re.ASCII)
+_BATCH_LIMIT_REASON_RE = re.compile(
+    r"(?:submissions|hypotheses|browser_rows|cases):[0-9]+>[0-9]+\Z",
+    re.ASCII,
+)
 
 
 class _DiscardingTextStream:
@@ -226,19 +236,31 @@ def _version_snapshot() -> Dict[str, str]:
     }
 
 
-def _run_start_metadata(*, direct_configured: bool = False) -> Dict[str, Any]:
+def _run_start_metadata(
+    *,
+    world_configured: bool = False,
+    event_configured: bool = False,
+    direct_configured: bool = False,
+) -> Dict[str, Any]:
+    execution_snapshot: Dict[str, Any] = {}
+    if world_configured:
+        execution_snapshot["world_executor"] = {
+            "status": "CONFIGURED",
+            "version": _BATCH_EXECUTOR_VERSION,
+        }
+    if event_configured:
+        execution_snapshot["event_executor"] = {
+            "status": "CONFIGURED",
+            "version": _BATCH_EXECUTOR_VERSION,
+        }
+    if direct_configured:
+        execution_snapshot["direct_executor"] = {
+            "status": "CONFIGURED",
+            "version": _DIRECT_EXECUTOR_VERSION,
+        }
     return {
         "configuration_snapshot": _configuration_snapshot(),
-        "execution_snapshot": (
-            {
-                "direct_executor": {
-                    "status": "CONFIGURED",
-                    "version": _DIRECT_EXECUTOR_VERSION,
-                }
-            }
-            if direct_configured
-            else {}
-        ),
+        "execution_snapshot": execution_snapshot,
         "contract_versions": _version_snapshot(),
     }
 
@@ -254,7 +276,7 @@ def _public_diagnostics(value: Any) -> list[str]:
     return list(value)
 
 
-def _public_outcome(value: Any) -> Optional[Dict[str, str]]:
+def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
     if type(value) is str:
         return {"status": value} if value in _RUN_STATUSES else None
     if type(value) is not dict:
@@ -271,6 +293,23 @@ def _public_outcome(value: Any) -> Optional[Dict[str, str]]:
             "schema_version": value["schema_version"],
             "case_id": value["case_id"],
             "classification": value["classification"],
+        }
+    if (
+        set(value)
+        == {"schema_version", "case_count", "unavailable_count", "status"}
+        and value.get("schema_version") == _BATCH_OUTCOME_VERSION
+        and type(value.get("case_count")) is int
+        and value["case_count"] >= 0
+        and type(value.get("unavailable_count")) is int
+        and value["unavailable_count"] >= 0
+        and type(value.get("status")) is str
+        and value["status"] in ("COMPLETED", "PARTIAL", "BLOCKED")
+    ):
+        return {
+            "schema_version": _BATCH_OUTCOME_VERSION,
+            "case_count": value["case_count"],
+            "unavailable_count": value["unavailable_count"],
+            "status": value["status"],
         }
     allowed_values = {
         "executor_status": frozenset(("NOT_CONFIGURED",)),
@@ -330,6 +369,318 @@ def _public_direct_case_detail(value: Any, requested_case_id: str) -> Dict[str, 
         "reasons": summary["reasons"],
         "report": report,
     }
+
+
+def _public_batch_reasons(value: Any) -> list[str]:
+    if type(value) is not list or any(
+        type(reason) is not str
+        or (
+            _BATCH_REASON_RE.fullmatch(reason) is None
+            and _BATCH_LIMIT_REASON_RE.fullmatch(reason) is None
+        )
+        for reason in value
+    ):
+        raise ValueError("stored batch reasons are malformed")
+    return list(value)
+
+
+def _batch_case_key(case_id: str) -> str:
+    return hashlib.sha256(case_id.encode("utf-8", errors="strict")).hexdigest()
+
+
+def _public_batch_case_summary(value: Any) -> Dict[str, Any]:
+    if type(value) is not dict or set(value) != {
+        "case_id", "case_key", "classification", "reasons"
+    }:
+        raise ValueError("stored batch case summary is malformed")
+    case_id = value.get("case_id")
+    case_key = value.get("case_key")
+    classification = value.get("classification")
+    if (
+        type(case_id) is not str
+        or not case_id
+        or type(case_key) is not str
+        or _CASE_KEY_RE.fullmatch(case_key) is None
+        or case_key != _batch_case_key(case_id)
+        or type(classification) is not str
+        or classification not in _CORE_CLASSIFICATIONS | {"UNAVAILABLE"}
+    ):
+        raise ValueError("stored batch case summary is malformed")
+    return {
+        "case_id": case_id,
+        "case_key": case_key,
+        "classification": classification,
+        "reasons": _public_batch_reasons(value["reasons"]),
+    }
+
+
+def _public_compact_leg(value: Any) -> Dict[str, Any]:
+    fields = {
+        "leg_id", "underlying", "option_type", "expiration", "strike",
+        "quantity", "contract_multiplier",
+    }
+    if type(value) is not dict or set(value) != fields:
+        raise ValueError("stored compact leg is malformed")
+    if (
+        type(value["leg_id"]) is not str
+        or not value["leg_id"]
+        or type(value["underlying"]) is not str
+        or not value["underlying"]
+        or value["option_type"] not in ("CALL", "PUT")
+        or type(value["expiration"]) is not str
+        or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value["expiration"]) is None
+        or type(value["strike"]) is not str
+        or re.fullmatch(r"-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[Ee][+-]?[0-9]+)?", value["strike"]) is None
+        or type(value["quantity"]) is not int
+        or type(value["contract_multiplier"]) is not int
+    ):
+        raise ValueError("stored compact leg is malformed")
+    return dict(value)
+
+
+def _public_compact_case(value: Any) -> Dict[str, Any]:
+    fields = {
+        "case_id", "case_key", "disposition", "geometry_status", "ask_basis_per_underlying_unit",
+        "reasons", "structure_kind", "legs", "budget_status",
+        "single_cost_upper_bound", "repeated_cost_upper_bound",
+        "single_loss_fraction", "repeated_loss_fraction",
+    }
+    if type(value) is not dict or set(value) != fields:
+        raise ValueError("stored compact case is malformed")
+    if (
+        type(value["case_id"]) is not str
+        or not value["case_id"]
+        or type(value["case_key"]) is not str
+        or _CASE_KEY_RE.fullmatch(value["case_key"]) is None
+        or value["case_key"] != _batch_case_key(value["case_id"])
+        or type(value["disposition"]) is not str
+        or value["disposition"] not in _CORE_CLASSIFICATIONS
+        or any(
+            type(value[name]) is not str
+            for name in ("geometry_status", "structure_kind", "budget_status")
+        )
+        or any(
+            value[name] is not None and type(value[name]) is not str
+            for name in (
+                "ask_basis_per_underlying_unit", "single_cost_upper_bound",
+                "repeated_cost_upper_bound", "single_loss_fraction",
+                "repeated_loss_fraction",
+            )
+        )
+        or type(value["legs"]) is not list
+    ):
+        raise ValueError("stored compact case is malformed")
+    return {
+        "case_id": value["case_id"],
+        "case_key": value["case_key"],
+        "disposition": value["disposition"],
+        "geometry_status": value["geometry_status"],
+        "ask_basis_per_underlying_unit": value["ask_basis_per_underlying_unit"],
+        "reasons": _public_batch_reasons(value["reasons"]),
+        "structure_kind": value["structure_kind"],
+        "legs": [_public_compact_leg(item) for item in value["legs"]],
+        "budget_status": value["budget_status"],
+        "single_cost_upper_bound": value["single_cost_upper_bound"],
+        "repeated_cost_upper_bound": value["repeated_cost_upper_bound"],
+        "single_loss_fraction": value["single_loss_fraction"],
+        "repeated_loss_fraction": value["repeated_loss_fraction"],
+    }
+
+
+def _public_unavailable_batch_case(value: Any) -> Dict[str, Any]:
+    if type(value) is not dict or not {"case_id", "case_key", "reasons"}.issubset(value):
+        raise ValueError("stored unavailable batch case is malformed")
+    case_id = value["case_id"]
+    case_key = value["case_key"]
+    if (
+        type(case_id) is not str
+        or not case_id
+        or type(case_key) is not str
+        or _CASE_KEY_RE.fullmatch(case_key) is None
+        or case_key != _batch_case_key(case_id)
+    ):
+        raise ValueError("stored unavailable batch case identity is malformed")
+    return {
+        "case_id": case_id,
+        "case_key": case_key,
+        "reasons": _public_batch_reasons(value["reasons"]),
+    }
+
+
+def _public_batch_summary(value: Any) -> Optional[Dict[str, Any]]:
+    if value is None:
+        return None
+    if type(value) is not dict:
+        raise ValueError("stored batch summary is malformed")
+    required = {
+        "entry_origin", "case_count", "unavailable_count", "disposition_counts",
+        "case_ids", "reasons", "case_summaries", "unavailable_case_ids",
+        "unavailable_cases", "host_status",
+    }
+    if not required.issubset(value):
+        raise ValueError("stored batch summary is incomplete")
+    entry_origin = value["entry_origin"]
+    counts = value["disposition_counts"]
+    if type(counts) is not dict:
+        raise ValueError("stored disposition counts are malformed")
+    count_items = list(counts.items())
+    public_counts: Dict[str, int] = {}
+    for item in count_items:
+        if type(item) not in (tuple, list) or len(item) != 2:
+            raise ValueError("stored disposition counts are malformed")
+        classification, count = item
+        if (
+            type(classification) is not str
+            or classification not in _CORE_CLASSIFICATIONS
+            or type(count) is not int
+            or count <= 0
+            or classification in public_counts
+        ):
+            raise ValueError("stored disposition counts are malformed")
+        public_counts[classification] = count
+
+    def case_ids(field: str) -> list[str]:
+        ids = value[field]
+        if type(ids) is not list or any(
+            type(case_id) is not str or not case_id
+            for case_id in ids
+        ):
+            raise ValueError("stored compact case identifiers are malformed")
+        return list(ids)
+
+    case_count = value["case_count"]
+    unavailable_count = value["unavailable_count"]
+    cases = value["case_summaries"]
+    unavailable_cases = value["unavailable_cases"]
+    public_case_summaries = (
+        [_public_compact_case(item) for item in cases]
+        if type(cases) is list
+        else None
+    )
+    public_unavailable_cases = (
+        [_public_unavailable_batch_case(item) for item in unavailable_cases]
+        if type(unavailable_cases) is list
+        else None
+    )
+    public_case_ids = case_ids("case_ids")
+    public_unavailable_ids = case_ids("unavailable_case_ids")
+    host_status = value["host_status"]
+    if (
+        type(entry_origin) is not str
+        or entry_origin not in ("WORLD", "EVENT")
+        or type(case_count) is not int
+        or case_count < 0
+        or type(unavailable_count) is not int
+        or unavailable_count < 0
+        or type(host_status) is not str
+        or host_status not in ("COMPLETED", "PARTIAL", "BLOCKED")
+        or public_case_summaries is None
+        or public_unavailable_cases is None
+        or len(public_case_summaries) != case_count
+        or len(public_unavailable_cases) != unavailable_count
+        or [item["case_id"] for item in public_case_summaries] != public_case_ids
+        or [item["case_id"] for item in public_unavailable_cases] != public_unavailable_ids
+        or sum(public_counts.values()) != case_count
+        or len(set(public_case_ids + public_unavailable_ids)) != case_count + unavailable_count
+    ):
+        raise ValueError("stored compact summary is malformed")
+    public = {
+        "entry_origin": entry_origin,
+        "case_count": case_count,
+        "unavailable_count": unavailable_count,
+        "disposition_counts": public_counts,
+        "case_ids": public_case_ids,
+        "reasons": _public_batch_reasons(value["reasons"]),
+        "case_summaries": public_case_summaries,
+        "unavailable_case_ids": public_unavailable_ids,
+        "unavailable_cases": public_unavailable_cases,
+        "host_status": host_status,
+    }
+    return public
+
+
+def _public_batch_case_detail(value: Any, requested_case_id: str) -> Dict[str, Any]:
+    if type(value) is not dict or not {
+        "case_id", "case_key", "classification", "reasons", "report"
+    }.issubset(value):
+        raise ValueError("stored batch case detail is malformed")
+    summary = _public_batch_case_summary(
+        {key: value[key] for key in ("case_id", "case_key", "classification", "reasons")}
+    )
+    if summary["case_key"] != requested_case_id:
+        raise ValueError("stored batch case identity is malformed")
+    report = value["report"]
+    if report is not None and type(report) is not str:
+        raise ValueError("stored batch report is malformed")
+    return {**summary, "report": report}
+
+
+def _decode_batch_case_key_segment(segment: str) -> Optional[str]:
+    if _BAD_PERCENT_ESCAPE_RE.search(segment) is not None:
+        return None
+    try:
+        decoded = unquote_to_bytes(segment).decode("ascii", errors="strict")
+    except (UnicodeDecodeError, ValueError):
+        return None
+    return decoded if _CASE_KEY_RE.fullmatch(decoded) is not None else None
+
+
+def _validate_batch_result(result: Any, request: ValidatedRunRequest) -> CoreRunResult:
+    """Bind one exact, current application result to its immutable POST input."""
+
+    if type(result) is not CoreRunResult:
+        raise ValueError("executor did not return CoreRunResult")
+    result.__post_init__()
+    case_set = result.case_set
+    case_set.__post_init__()
+    expected_origin = request.mode.upper()
+    if case_set.entry_origin != expected_origin:
+        raise ValueError("Core entry origin differs from the run mode")
+
+    if request.mode == "world":
+        if type(case_set.raw_input) is not str or case_set.raw_input != request.input:
+            raise ValueError("World Core input differs from the original request")
+    else:
+        from .event_entry import UserEventInput
+
+        event_input = case_set.raw_input
+        if (
+            type(event_input) is not UserEventInput
+            or event_input.description != request.input
+        ):
+            raise ValueError("Event Core input differs from the original request")
+
+    for case in case_set.cases:
+        case.context.__post_init__()
+        case.__post_init__()
+    for unavailable in case_set.unavailable:
+        if unavailable.context is not None:
+            unavailable.context.__post_init__()
+        unavailable.__post_init__()
+
+    from .core_presentation import compact_summary
+
+    if compact_summary(case_set) != result.compact:
+        raise ValueError("Core compact summary is stale or malformed")
+    return result
+
+
+def _batch_status_from_store(journal: Any, result: CoreRunResult, summary: Any) -> str:
+    if type(summary) is dict and "host_status" in summary:
+        status = summary["host_status"]
+    else:
+        helper = getattr(journal, "batch_host_status", None)
+        if not callable(helper):
+            try:
+                from .host_store import batch_host_status as helper
+            except ImportError:
+                helper = None
+        if not callable(helper):
+            raise ValueError("Store did not return batch status")
+        status = helper(result)
+    if type(status) is not str or status not in ("COMPLETED", "PARTIAL", "BLOCKED"):
+        raise ValueError("Store returned an invalid batch status")
+    return status
 
 
 def _public_event(value: Any) -> Optional[Dict[str, Any]]:
@@ -563,8 +914,16 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                     "ui": "READY",
                     "configuration": "NOT_INSPECTED",
                     "executors": {
-                        "world": "NOT_CONFIGURED",
-                        "event": "NOT_CONFIGURED",
+                        "world": (
+                            "CONFIGURED"
+                            if self.server.world_executor is not None
+                            else "NOT_CONFIGURED"
+                        ),
+                        "event": (
+                            "CONFIGURED"
+                            if self.server.event_executor is not None
+                            else "NOT_CONFIGURED"
+                        ),
                         "direct": (
                             "CONFIGURED"
                             if self.server.direct_executor is not None
@@ -595,11 +954,7 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             if _RUN_ID_RE.fullmatch(route[3]) is None:
                 self._send_json(404, {"error": "case not found"})
                 return
-            case_id = _decode_case_id_segment(route[5])
-            if case_id is None:
-                self._send_json(404, {"error": "case not found"})
-                return
-            self._get_direct_case(route[3], case_id)
+            self._get_case(route[3], route[5])
             return
         self._send_json(404, {"error": "not found"})
 
@@ -711,12 +1066,79 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             result = self.server.journal.get_run(run_id)
             public_run = None if result is None else _public_run(result)
             if public_run is not None:
-                direct_cases = self.server.journal.list_direct_cases(run_id)
-                if type(direct_cases) is not list:
-                    raise ValueError("journal returned malformed Direct case list")
-                public_run["cases"] = [
-                    _public_direct_case_summary(item) for item in direct_cases
-                ]
+                mode = result["mode"]
+                if mode == "direct":
+                    direct_cases = self.server.journal.list_direct_cases(run_id)
+                    if type(direct_cases) is not list:
+                        raise ValueError("journal returned malformed Direct case list")
+                    public_run["cases"] = [
+                        _public_direct_case_summary(item) for item in direct_cases
+                    ]
+                else:
+                    summary_getter = getattr(
+                        self.server.journal, "get_batch_summary", None
+                    )
+                    cases_getter = getattr(
+                        self.server.journal, "list_batch_cases", None
+                    )
+                    if callable(summary_getter) and callable(cases_getter):
+                        summary = summary_getter(run_id)
+                        public_summary = _public_batch_summary(summary)
+                        if public_summary is not None:
+                            if public_summary["entry_origin"] != mode.upper():
+                                raise ValueError("batch summary mode does not match the run")
+                            lifecycle_status = public_run["status"]
+                            if lifecycle_status == "QUEUED":
+                                raise ValueError("queued run cannot have a batch archive")
+                            if (
+                                lifecycle_status in ("COMPLETED", "PARTIAL", "BLOCKED")
+                                and public_summary["host_status"] != lifecycle_status
+                            ):
+                                raise ValueError("batch summary status does not match the run")
+                        batch_cases = cases_getter(run_id)
+                        if type(batch_cases) is not list:
+                            raise ValueError("journal returned malformed batch case list")
+                        public_cases = [
+                            _public_batch_case_summary(item) for item in batch_cases
+                        ]
+                        if public_summary is None:
+                            if public_cases:
+                                raise ValueError("batch cases exist without a saved summary")
+                        else:
+                            if len(public_cases) != (
+                                public_summary["case_count"]
+                                + public_summary["unavailable_count"]
+                            ):
+                                raise ValueError("batch case archive is incomplete")
+                            evaluated_ids = [
+                                item["case_id"] for item in public_cases
+                                if item["classification"] != "UNAVAILABLE"
+                            ]
+                            unavailable_ids = [
+                                item["case_id"] for item in public_cases
+                                if item["classification"] == "UNAVAILABLE"
+                            ]
+                            if (
+                                evaluated_ids != public_summary["case_ids"]
+                                or unavailable_ids != public_summary["unavailable_case_ids"]
+                            ):
+                                raise ValueError(
+                                    "batch case archive order differs from its summary"
+                                )
+                    else:
+                        has_batch_outcome = any(
+                            type(event) is dict
+                            and type(event.get("outcome")) is dict
+                            and event["outcome"].get("schema_version")
+                            == _BATCH_OUTCOME_VERSION
+                            for event in result.get("events", ())
+                        )
+                        if has_batch_outcome:
+                            raise ValueError("batch archive APIs are unavailable")
+                        public_summary = None
+                        public_cases = []
+                    public_run["batch_summary"] = public_summary
+                    public_run["cases"] = public_cases
         except Exception:
             self._send_json(500, {"error": "journal unavailable"})
             return
@@ -725,14 +1147,42 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_json(200, public_run)
 
-    def _get_direct_case(self, run_id: str, case_id: str) -> None:
+    def _get_case(self, run_id: str, segment: str) -> None:
         try:
-            result = self.server.journal.get_direct_case(run_id, case_id)
-            public_case = (
-                None
-                if result is None
-                else _public_direct_case_detail(result, case_id)
-            )
+            run = self.server.journal.get_run(run_id)
+            if run is None:
+                self._send_json(404, {"error": "case not found"})
+                return
+            mode = run.get("mode") if type(run) is dict else None
+            if mode == "direct":
+                case_id = _decode_case_id_segment(segment)
+                if case_id is None:
+                    self._send_json(404, {"error": "case not found"})
+                    return
+                result = self.server.journal.get_direct_case(run_id, case_id)
+                public_case = (
+                    None
+                    if result is None
+                    else _public_direct_case_detail(result, case_id)
+                )
+            elif mode in ("world", "event"):
+                case_key = _decode_batch_case_key_segment(segment)
+                if case_key is None:
+                    self._send_json(404, {"error": "case not found"})
+                    return
+                get_batch_case = getattr(self.server.journal, "get_batch_case", None)
+                if not callable(get_batch_case):
+                    self._send_json(404, {"error": "case not found"})
+                    return
+                result = get_batch_case(run_id, case_key)
+                public_case = (
+                    None
+                    if result is None
+                    else _public_batch_case_detail(result, case_key)
+                )
+            else:
+                self._send_json(404, {"error": "case not found"})
+                return
         except Exception:
             self._send_json(500, {"error": "journal unavailable"})
             return
@@ -743,21 +1193,40 @@ class HostRequestHandler(BaseHTTPRequestHandler):
 
     def _post_run(self, request: ValidatedRunRequest) -> None:
         try:
+            # Capture the injected callbacks once. The same captured callable
+            # whose version is recorded below is the only one this run may use.
+            world_executor = self.server.world_executor
+            event_executor = self.server.event_executor
+            direct_executor = self.server.direct_executor
             direct_configured = (
-                request.mode == "direct" and self.server.direct_executor is not None
+                request.mode == "direct" and direct_executor is not None
             )
             run_id = self.server.journal.create_run(
                 mode=request.mode,
                 input=request.input,
                 bounds=request.bounds,
                 profile_snapshot=STANDARD_RESEARCH_PROFILE.snapshot(),
-                metadata=_run_start_metadata(direct_configured=direct_configured),
+                metadata=_run_start_metadata(
+                    world_configured=world_executor is not None,
+                    event_configured=event_executor is not None,
+                    direct_configured=direct_executor is not None,
+                ),
             )
             if type(run_id) is not str or _RUN_ID_RE.fullmatch(run_id) is None:
                 raise ValueError("journal returned an invalid run identifier")
             stage_id = self.server.journal.start_stage(run_id, "executor")
         except Exception:
             self._send_json(500, {"error": "journal unavailable"})
+            return
+
+        if request.mode in ("world", "event"):
+            batch_executor = (
+                world_executor if request.mode == "world" else event_executor
+            )
+            if batch_executor is None:
+                self._finish_unconfigured_run(run_id, stage_id)
+                return
+            self._post_batch_run(request, run_id, stage_id, batch_executor)
             return
 
         if not direct_configured:
@@ -787,7 +1256,6 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
-        direct_executor = self.server.direct_executor
         try:
             result = direct_executor(request.input, bounds=request.bounds)
         except HostDirectInputError:
@@ -936,6 +1404,141 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             },
         )
 
+    def _finish_unconfigured_run(self, run_id: str, stage_id: str) -> None:
+        diagnostics = (BLOCKED_REASON,)
+        outcome = {
+            "executor_status": "NOT_CONFIGURED",
+            "reason": BLOCKED_REASON,
+            "host_shell_version": HOST_SHELL_VERSION,
+        }
+        try:
+            self.server.journal.finish_stage(
+                run_id,
+                stage_id,
+                status="BLOCKED",
+                outcome=outcome,
+                diagnostics=diagnostics,
+            )
+            self.server.journal.finish_run(
+                run_id, status="BLOCKED", diagnostics=diagnostics
+            )
+        except Exception:
+            self._send_json(500, {"error": "journal unavailable"})
+            return
+        self._send_json(
+            201,
+            {"run_id": run_id, "status": "BLOCKED", "reason": BLOCKED_REASON},
+        )
+
+    def _post_batch_run(
+        self,
+        request: ValidatedRunRequest,
+        run_id: str,
+        stage_id: str,
+        executor: Callable[..., CoreRunResult],
+    ) -> None:
+        try:
+            # One trusted callback only. It runs after run_start and stage_started.
+            result = executor(request.input, bounds=request.bounds)
+        except Exception:
+            if not self._complete_terminal_run(
+                run_id,
+                stage_id,
+                status="FAILED",
+                outcome="FAILED",
+                diagnostics=("HOST_BATCH_EXECUTOR_FAILED",),
+            ):
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "FAILED",
+                    "reason": "HOST_BATCH_EXECUTOR_FAILED",
+                },
+            )
+            return
+
+        try:
+            result = _validate_batch_result(result, request)
+        except Exception:
+            if not self._complete_terminal_run(
+                run_id,
+                stage_id,
+                status="FAILED",
+                outcome="FAILED",
+                diagnostics=("HOST_BATCH_RESULT_INVALID",),
+            ):
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "FAILED",
+                    "reason": "HOST_BATCH_RESULT_INVALID",
+                },
+            )
+            return
+
+        case_count = len(result.case_set.cases)
+        unavailable_count = len(result.case_set.unavailable)
+        try:
+            save = getattr(self.server.journal, "save_batch_result", None)
+            get_summary = getattr(self.server.journal, "get_batch_summary", None)
+            if not callable(save) or not callable(get_summary):
+                raise ValueError("batch archive APIs are unavailable")
+            saved = save(run_id, result)
+            if saved is not None:
+                raise ValueError("batch archive API returned an unexpected value")
+            summary = get_summary(run_id)
+            public_summary = _public_batch_summary(summary)
+            if public_summary is None:
+                raise ValueError("batch archive summary is unavailable after save")
+            if (
+                public_summary["entry_origin"] != request.mode.upper()
+                or public_summary["case_count"] != case_count
+                or public_summary["unavailable_count"] != unavailable_count
+            ):
+                raise ValueError("batch archive summary differs from the Core result")
+            status = _batch_status_from_store(self.server.journal, result, summary)
+            if public_summary["host_status"] != status:
+                raise ValueError("batch archive status is inconsistent")
+        except Exception:
+            if not self._complete_terminal_run(
+                run_id,
+                stage_id,
+                status="FAILED",
+                outcome="FAILED",
+                diagnostics=("HOST_BATCH_ARCHIVE_FAILED",),
+            ):
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "FAILED",
+                    "reason": "HOST_BATCH_ARCHIVE_FAILED",
+                },
+            )
+            return
+
+        outcome = {
+            "schema_version": _BATCH_OUTCOME_VERSION,
+            "case_count": case_count,
+            "unavailable_count": unavailable_count,
+            "status": status,
+        }
+        diagnostics = () if status == "COMPLETED" else ("HOST_BATCH_{}".format(status),)
+        if not self._complete_terminal_run(
+            run_id,
+            stage_id,
+            status=status,
+            outcome=outcome,
+            diagnostics=diagnostics,
+        ):
+            return
+        self._send_json(201, {"run_id": run_id, "status": status})
+
     def _complete_terminal_run(
         self,
         run_id: str,
@@ -1003,6 +1606,8 @@ def create_server(
     journal: Any,
     *,
     render_workbench: Callable[[str], str],
+    world_executor: Optional[Callable[..., CoreRunResult]] = None,
+    event_executor: Optional[Callable[..., CoreRunResult]] = None,
     direct_executor: Optional[Callable[..., CoreDirectResult]] = None,
     port: int = DEFAULT_PORT,
     request_timeout_seconds: float = REQUEST_TIMEOUT_SECONDS,
@@ -1013,6 +1618,10 @@ def create_server(
         raise ValueError("port must be an integer in the TCP port range")
     if direct_executor is not None and not callable(direct_executor):
         raise TypeError("direct_executor must be callable or None")
+    if world_executor is not None and not callable(world_executor):
+        raise TypeError("world_executor must be callable or None")
+    if event_executor is not None and not callable(event_executor):
+        raise TypeError("event_executor must be callable or None")
     if (
         type(request_timeout_seconds) not in (int, float)
         or not math.isfinite(request_timeout_seconds)
@@ -1039,6 +1648,8 @@ def create_server(
     )
     server.journal = journal
     server.render_workbench = render_workbench
+    server.world_executor = world_executor
+    server.event_executor = event_executor
     server.direct_executor = direct_executor
     server.csrf_token = secrets.token_urlsafe(32)
     return server

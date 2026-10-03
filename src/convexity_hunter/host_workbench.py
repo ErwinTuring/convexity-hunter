@@ -53,6 +53,10 @@ _DOCUMENT = r'''<!doctype html>
     .record-list { display: grid; gap: 8px; }
     .record { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border-top: 1px solid #e1e8eb; padding: 10px 0; }
     .record:first-child { border-top: 0; }
+    .compact-case { border-top: 1px solid #e1e8eb; padding: 12px 0; overflow-wrap: anywhere; }
+    .compact-case:first-child { border-top: 0; }
+    .compact-case p, .compact-case div { margin: 5px 0; }
+    .compact-leg { margin-left: 14px !important; }
     .record-id { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
     pre { max-height: 480px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 8px; padding: 12px; background: #f2f5f6; color: #18232b; }
     .message { min-height: 1.5em; color: #344d59; }
@@ -130,6 +134,12 @@ _DOCUMENT = r'''<!doctype html>
       <h3>诊断</h3><pre id="run-diagnostics">运行响应尚未提供。</pre>
       <h3>阶段事件</h3><pre id="run-events">运行响应尚未提供。</pre>
       <h3>其他运行快照</h3><pre id="run-snapshot">尚未读取运行快照。</pre>
+      <h3>批量研究摘要</h3>
+      <p class="help">Core 分类不是买入建议或估值判断；Ask 基准仅为 INDICATIVE_ONLY。未知成本显示为未提供，不按 0 处理。批量状态只描述已保留研究分支；不证明原始请求已全面核实。</p>
+      <pre id="batch-summary-view">运行响应尚未提供批量摘要。</pre>
+      <div id="batch-case-list" class="record-list">尚未读取紧凑用例行。</div>
+      <h4>不可用分支详情（按需读取）</h4>
+      <div id="unavailable-case-list" class="record-list">尚未读取不可用分支详情。</div>
       <h3>用例详情（按需读取）</h3>
       <p class="help">选择稳定 case_id 后才读取对应详情；打开详情不会重新运行。</p>
       <div id="case-list" class="record-list">尚未读取用例索引。</div>
@@ -146,7 +156,7 @@ _DOCUMENT = r'''<!doctype html>
     runs: "/api/runs"
   });
   const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
-  const state = { mode: null, runId: null };
+  const state = { mode: null, runId: null, runMode: null, batchCaseKeys: new Map(), unavailableBatchCaseIds: new Set() };
   const modes = ["world", "event", "direct"];
   const integerBoundNames = ["max_submissions", "max_hypotheses", "max_browser_rows", "max_cases"];
   const privateKey = /token|secret|password|credential|authorization|cookie|api[_-]?key/i;
@@ -180,6 +190,11 @@ _DOCUMENT = r'''<!doctype html>
 
   function safeCaseId(value) {
     if (typeof value !== "string" || value.length < 1 || value.length > 512 || value === "." || value === ".." || !/^[A-Za-z0-9._~:-]+$/.test(value)) return null;
+    return encodeURIComponent(value);
+  }
+
+  function safeBatchCaseKey(value) {
+    if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) return null;
     return encodeURIComponent(value);
   }
 
@@ -313,6 +328,7 @@ _DOCUMENT = r'''<!doctype html>
 
   function renderCaseIndex(cases) {
     const list = byId("case-list");
+    const batchMode = state.runMode === "world" || state.runMode === "event";
     list.textContent = "";
     if (!Array.isArray(cases)) {
       setText(list, "运行响应未提供可识别的用例索引。");
@@ -326,16 +342,36 @@ _DOCUMENT = r'''<!doctype html>
       const caseId = caseIdFromEntry(entry);
       const row = document.createElement("div");
       row.className = "record";
-      const encodedCaseId = safeCaseId(caseId);
-      if (encodedCaseId === null) {
-        setText(row, "用例条目缺少受支持的稳定 case_id；未发起详情读取。");
+      if (batchMode) {
+        const caseKey = isRecord(entry) && entry.case_key !== undefined
+          ? entry.case_key : state.batchCaseKeys.get(caseId);
+        const encodedCaseKey = safeBatchCaseKey(caseKey);
+        if (typeof caseId !== "string") {
+          setText(row, "用例 ID：" + compactScalar(caseId) + "；未发起详情读取。");
+        } else if (state.unavailableBatchCaseIds.has(caseId) || (isRecord(entry) && entry.classification === "UNAVAILABLE")) {
+          setText(row, "用例 ID：" + caseId + "；该分支不可用，未发起详情读取。");
+        } else if (encodedCaseKey === null) {
+          setText(row, "用例 ID：" + caseId + "；缺少有效 case_key，未发起详情读取。");
+        } else {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "record-id";
+          setText(button, caseId);
+          button.addEventListener("click", () => loadCase(caseId, caseKey));
+          row.appendChild(button);
+        }
       } else {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "record-id";
-        setText(button, caseId);
-        button.addEventListener("click", () => loadCase(caseId));
-        row.appendChild(button);
+        const encodedCaseId = safeCaseId(caseId);
+        if (encodedCaseId === null) {
+          setText(row, "用例条目缺少受支持的稳定 case_id；未发起详情读取。");
+        } else {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "record-id";
+          setText(button, caseId);
+          button.addEventListener("click", () => loadCase(caseId));
+          row.appendChild(button);
+        }
       }
       list.appendChild(row);
     }
@@ -345,8 +381,220 @@ _DOCUMENT = r'''<!doctype html>
     return typeof entry === "string" ? entry : (isRecord(entry) ? entry.case_id : null);
   }
 
+  function compactScalar(value) {
+    if (value === null) return "未提供";
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+    return "字段格式不可识别";
+  }
+
+  function compactStringList(value) {
+    if (!Array.isArray(value)) return value === undefined ? "接口未提供" : "字段格式不可识别";
+    if (value.length === 0) return "无";
+    return value.map((item) => typeof item === "string" ? item : "字段格式不可识别").join("；");
+  }
+
+  function compactCount(value) {
+    return Number.isSafeInteger(value) && value >= 0 ? String(value) : "接口未提供可识别计数";
+  }
+
+  function dispositionCountText(value) {
+    const entries = [];
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string") {
+          entries.push(entry[0] + "：" + compactCount(entry[1]));
+        } else {
+          entries.push("计数项格式不可识别");
+        }
+      }
+    } else if (isRecord(value)) {
+      for (const name of Object.keys(value)) entries.push(name + "：" + compactCount(value[name]));
+    } else {
+      return "接口未提供可识别的 disposition_counts。";
+    }
+    return entries.length ? entries.join("\n") : "无";
+  }
+
+  function appendCompactField(parent, label, value) {
+    const line = document.createElement("div");
+    setText(line, label + "：" + compactScalar(value));
+    parent.appendChild(line);
+  }
+
+  function renderCompactLegs(parent, legs) {
+    const heading = document.createElement("div");
+    setText(heading, "期权腿：");
+    parent.appendChild(heading);
+    if (!Array.isArray(legs)) {
+      const unavailable = document.createElement("div");
+      setText(unavailable, legs === undefined ? "接口未提供腿列表。" : "腿列表格式不可识别。");
+      parent.appendChild(unavailable);
+      return;
+    }
+    if (legs.length === 0) {
+      const empty = document.createElement("div");
+      setText(empty, "无");
+      parent.appendChild(empty);
+      return;
+    }
+    const fields = [
+      ["leg_id", "腿 ID"], ["underlying", "标的"], ["option_type", "期权类型"],
+      ["expiration", "到期日"], ["strike", "行权价"], ["quantity", "数量"],
+      ["contract_multiplier", "合约乘数"]
+    ];
+    for (const leg of legs) {
+      const row = document.createElement("div");
+      row.className = "compact-leg";
+      if (!isRecord(leg)) {
+        setText(row, "腿记录格式不可识别。");
+      } else {
+        const values = fields.map(([key, label]) => label + "：" + compactScalar(leg[key]));
+        setText(row, values.join("；"));
+      }
+      parent.appendChild(row);
+    }
+  }
+
+  function renderCompactCases(caseSummaries) {
+    const list = byId("batch-case-list");
+    list.textContent = "";
+    if (!Array.isArray(caseSummaries)) {
+      setText(list, "批量摘要未提供可识别的 case_summaries。");
+      return;
+    }
+    if (caseSummaries.length === 0) {
+      setText(list, "批量摘要中的紧凑用例行为空。");
+      return;
+    }
+    const fields = [
+      ["disposition", "研究处置"], ["geometry_status", "几何状态"],
+      ["ask_basis_per_underlying_unit", "每标的单位 Ask 基准（INDICATIVE_ONLY）"],
+      ["structure_kind", "结构类型"], ["budget_status", "预算状态"],
+      ["single_cost_upper_bound", "单次成本上界"],
+      ["repeated_cost_upper_bound", "重复成本上界"],
+      ["single_loss_fraction", "单次损失比例"],
+      ["repeated_loss_fraction", "重复损失比例"]
+    ];
+    for (const item of caseSummaries) {
+      const row = document.createElement("div");
+      row.className = "compact-case";
+      if (!isRecord(item)) {
+        setText(row, "紧凑用例行格式不可识别。");
+        list.appendChild(row);
+        continue;
+      }
+      const title = document.createElement("p");
+      setText(title, "用例 ID：" + compactScalar(item.case_id));
+      row.appendChild(title);
+      appendCompactField(row, "case_key", item.case_key);
+      for (const [key, label] of fields) appendCompactField(row, label, item[key]);
+      const reasons = document.createElement("div");
+      setText(reasons, "原因：" + compactStringList(item.reasons));
+      row.appendChild(reasons);
+      renderCompactLegs(row, item.legs);
+      list.appendChild(row);
+    }
+  }
+
+  function renderUnavailableCases(unavailableCases) {
+    const list = byId("unavailable-case-list");
+    list.textContent = "";
+    if (!Array.isArray(unavailableCases)) {
+      setText(list, "批量摘要未提供可识别的 unavailable_cases。");
+      return;
+    }
+    if (unavailableCases.length === 0) {
+      setText(list, "无");
+      return;
+    }
+    for (const item of unavailableCases) {
+      const row = document.createElement("div");
+      row.className = "compact-case";
+      if (!isRecord(item)) {
+        setText(row, "不可用分支记录格式不可识别。");
+        list.appendChild(row);
+        continue;
+      }
+      const caseId = item.case_id;
+      const encodedCaseKey = safeBatchCaseKey(item.case_key);
+      if (typeof caseId === "string" && encodedCaseKey !== null) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "record-id";
+        setText(button, caseId);
+        button.addEventListener("click", () => loadCase(caseId, item.case_key));
+        row.appendChild(button);
+      } else {
+        const id = document.createElement("div");
+        setText(id, "用例 ID：" + compactScalar(caseId) + "；缺少有效 case_key，未发起详情读取。");
+        row.appendChild(id);
+      }
+      appendCompactField(row, "case_key", item.case_key);
+      const reasons = document.createElement("div");
+      setText(reasons, "原因：" + compactStringList(item.reasons));
+      row.appendChild(reasons);
+      list.appendChild(row);
+    }
+  }
+
+  function renderBatchSummary(summary) {
+    const view = byId("batch-summary-view");
+    state.batchCaseKeys.clear();
+    state.unavailableBatchCaseIds.clear();
+    if (!isRecord(summary)) {
+      setText(view, "运行响应未提供可识别的批量摘要。");
+      renderCompactCases(null);
+      renderUnavailableCases(null);
+      return;
+    }
+    if (Array.isArray(summary.case_summaries)) {
+      for (const item of summary.case_summaries) {
+        if (isRecord(item) && typeof item.case_id === "string") {
+          state.batchCaseKeys.set(item.case_id, item.case_key);
+        }
+      }
+    }
+    if (Array.isArray(summary.unavailable_case_ids)) {
+      for (const item of summary.unavailable_case_ids) {
+        if (typeof item === "string") state.unavailableBatchCaseIds.add(item);
+      }
+    }
+    if (Array.isArray(summary.unavailable_cases)) {
+      for (const item of summary.unavailable_cases) {
+        if (isRecord(item) && typeof item.case_id === "string") {
+          state.unavailableBatchCaseIds.add(item.case_id);
+          state.batchCaseKeys.set(item.case_id, item.case_key);
+        }
+      }
+    }
+    const originLabels = {
+      WORLD: "世界", EVENT: "事件", DIRECT: "直接输入",
+      AUTONOMOUS_DISCOVERY: "世界发现", EVENT_ENTRY: "事件入口"
+    };
+    const origin = typeof summary.entry_origin === "string"
+      ? summary.entry_origin + (originLabels[summary.entry_origin] ? "（" + originLabels[summary.entry_origin] + "）" : "")
+      : "接口未提供可识别入口来源";
+    const lines = [
+      "入口来源：" + origin,
+      "已计算案例数：" + compactCount(summary.case_count),
+      "不可用分支数：" + compactCount(summary.unavailable_count),
+      "Host 状态：" + displayedStatus(summary.host_status),
+      "处置计数：\n" + dispositionCountText(summary.disposition_counts),
+      "case_ids：" + compactStringList(summary.case_ids),
+      "汇总原因：" + compactStringList(summary.reasons),
+      "不可用分支 case_id：" + compactStringList(summary.unavailable_case_ids)
+    ];
+    setText(view, lines.join("\n"));
+    renderCompactCases(summary.case_summaries);
+    renderUnavailableCases(summary.unavailable_cases);
+  }
+
   function renderRun(data, requestedRunId) {
     if (!isRecord(data)) {
+      state.runMode = null;
+      state.batchCaseKeys.clear();
+      state.unavailableBatchCaseIds.clear();
+      setText(byId("unavailable-case-list"), "运行响应格式不可识别。");
       setText(byId("run-identity"), "运行响应格式不可识别。");
       setText(byId("run-status"), "状态缺失（接口未提供）");
       setText(byId("run-snapshot"), "接口未提供可显示运行快照。");
@@ -354,13 +602,15 @@ _DOCUMENT = r'''<!doctype html>
     }
     const suppliedId = safeRunId(data.run_id) === null ? null : data.run_id;
     state.runId = suppliedId || requestedRunId;
+    state.runMode = typeof data.mode === "string" ? data.mode : null;
     setText(byId("run-identity"), "运行 ID：" + state.runId);
     setText(byId("run-status"), displayedStatus(data.status));
     setText(byId("run-diagnostics"), data.diagnostics === undefined ? "运行响应未提供 diagnostics 字段。" : jsonText(data.diagnostics, true));
     setText(byId("run-events"), data.events === undefined ? "运行响应未提供 events 字段。" : jsonText(data.events, true));
+    renderBatchSummary(data.batch_summary);
     const extras = Object.create(null);
     for (const key of Object.keys(data)) {
-      if (["run_id", "status", "diagnostics", "events", "cases", "case_details", "caseDetails"].includes(key)) continue;
+      if (["run_id", "status", "diagnostics", "events", "cases", "batch_summary", "case_details", "caseDetails"].includes(key)) continue;
       extras[key] = data[key];
     }
     setText(byId("run-snapshot"), Object.keys(extras).length ? jsonText(extras, true) : "运行响应未提供其他非用例快照字段。");
@@ -377,11 +627,17 @@ _DOCUMENT = r'''<!doctype html>
     const encodedId = safeRunId(runId);
     if (encodedId === null) return;
     state.runId = runId;
+    state.runMode = null;
+    state.batchCaseKeys.clear();
+    state.unavailableBatchCaseIds.clear();
     setText(byId("run-identity"), "正在读取运行 ID：" + runId);
     setText(byId("run-status"), "状态缺失（详情读取中）");
     setText(byId("run-diagnostics"), "正在读取运行详情……");
     setText(byId("run-events"), "正在读取运行详情……");
     setText(byId("run-snapshot"), "正在读取运行快照……");
+    setText(byId("batch-summary-view"), "正在读取批量研究摘要……");
+    setText(byId("batch-case-list"), "正在读取紧凑用例行……");
+    setText(byId("unavailable-case-list"), "正在读取不可用分支详情……");
     setText(byId("case-list"), "正在读取用例索引……");
     setText(byId("case-detail"), "尚未选择用例。");
     try {
@@ -394,19 +650,23 @@ _DOCUMENT = r'''<!doctype html>
       setText(byId("run-diagnostics"), "接口未提供可读取的诊断内容。");
       setText(byId("run-events"), "接口未提供可读取的阶段事件。");
       setText(byId("run-snapshot"), "接口未提供可读取的运行快照。");
+      setText(byId("batch-summary-view"), "批量研究摘要暂不可用。");
+      setText(byId("batch-case-list"), "紧凑用例行暂不可用。");
+      setText(byId("unavailable-case-list"), "不可用分支详情暂不可用。");
       setText(byId("case-list"), "用例索引暂不可用。");
     }
   }
 
-  async function loadCase(caseId) {
+  async function loadCase(caseId, caseKey) {
     const encodedRunId = safeRunId(state.runId);
-    const encodedCaseId = safeCaseId(caseId);
+    const batchMode = state.runMode === "world" || state.runMode === "event";
+    const encodedCaseId = batchMode ? safeBatchCaseKey(caseKey) : safeCaseId(caseId);
     if (encodedRunId === null || encodedCaseId === null) return;
     setText(byId("case-detail"), "正在按需读取用例详情……");
     try {
       const path = API.runs + "/" + encodedRunId + "/cases/" + encodedCaseId;
       const data = await getJson(path);
-      if (!isRecord(data) || data.case_id !== caseId) {
+      if (!isRecord(data) || data.case_id !== caseId || (batchMode && data.case_key !== caseKey)) {
         setText(byId("case-detail"), "用例详情响应的 case_id 缺失、无效或与请求不一致；未显示报告。");
         return;
       }

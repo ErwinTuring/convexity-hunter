@@ -28,8 +28,11 @@ or a claim that all three live entry modes are operational. See the
 
 The local Chinese workbench supports an opt-in standalone Direct executor,
 private SQLite history, structured Core snapshots and automatic single-case
-report display. World/Event remain unconfigured, not operational discovery
-claims. See the [local workbench flow](docs/local-workbench-user-flow.md) and
+report display. Trusted Python World/Event callbacks can now retain ordered
+batch results with compact comparison and lazy detail, but the default CLI
+still has no verified live World/Event source wiring. This is not an operational
+discovery claim. See the [batch delivery boundary](docs/local-batch-delivery-v0.1.md),
+[local workbench flow](docs/local-workbench-user-flow.md) and
 [Direct input format](docs/local-direct-input-v0.1.md). Provider failures and
 missing Core inputs remain visible; quotes do not become executable prices.
 

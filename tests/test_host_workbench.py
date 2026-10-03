@@ -38,6 +38,10 @@ class HostWorkbenchTests(unittest.TestCase):
         self.assertIn('method: "GET"', page)
         self.assertIn('method: "POST"', page)
         self.assertIn('credentials: "same-origin"', page)
+        self.assertIn("Core 分类不是买入建议或估值判断", page)
+        self.assertIn("Ask 基准仅为 INDICATIVE_ONLY", page)
+        self.assertIn("未知成本显示为未提供，不按 0 处理", page)
+        self.assertIn("批量状态只描述已保留研究分支；不证明原始请求已全面核实。", page)
 
     def test_three_modes_use_one_unmodified_raw_string_and_closed_post_body(self):
         page = render_workbench("csrf-value")
@@ -97,15 +101,28 @@ class HostWorkbenchTests(unittest.TestCase):
         self.assertIn("status === \"CONFIGURED\"", page)
         self.assertIn("入口标签本身不表示已配置", page)
 
+    def test_batch_host_status_uses_completed_partial_blocked_vocabulary(self):
+        page = render_workbench("csrf-value")
+        for status, label in (
+            ("COMPLETED", "已完成"),
+            ("PARTIAL", "部分完成"),
+            ("BLOCKED", "阻断"),
+        ):
+            self.assertIn('{}: "{}（{}）"'.format(status, label, status), page)
+        self.assertIn('"Host 状态：" + displayedStatus(summary.host_status)', page)
+        self.assertNotIn("COMPELETED", page)
+
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for DOM behavior tests")
     def test_node_fake_dom_workflows(self):
         page = render_workbench("csrf-value")
         harness = r'''
 const vm = require("node:vm");
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const script = input.page.split("<script>")[1].split("</script>")[0];
 const runId = "11111111-1111-4111-8111-111111111111";
+const caseKeyFor = (caseId) => crypto.createHash("sha256").update(caseId, "utf8").digest("hex");
 let innerHtmlWrites = 0;
 
 class Element {
@@ -134,7 +151,7 @@ class Element {
   }
 }
 
-async function scenario({ mode, cases, responses = [], listedRunId = runId, executors }) {
+async function scenario({ mode, cases, batchSummary = null, responses = [], listedRunId = runId, executors }) {
   const ids = [...input.page.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
   const elements = new Map(ids.map((id) => [id, new Element(id)]));
   const tabs = ["world", "event", "direct"].map((name) => {
@@ -156,7 +173,7 @@ async function scenario({ mode, cases, responses = [], listedRunId = runId, exec
     },
     createElement() { return new Element("created"); }
   };
-  const run = { run_id: runId, mode, status: "COMPLETED", cases };
+  const run = { run_id: runId, mode, status: "COMPLETED", cases, batch_summary: batchSummary };
   const fetch = async (path, options = {}) => {
     calls.push({ path, method: options.method || "GET" });
     if (path === "/api/status") return response({ executors });
@@ -204,17 +221,99 @@ async function scenario({ mode, cases, responses = [], listedRunId = runId, exec
   if (!detail.textContent.includes("报告字段为 null")) throw new Error("null report disclosure was not shown honestly");
 
   for (const [mode, cases] of [["world", [{ case_id: "world:one" }, { case_id: "world:two" }]], ["event", [{ case_id: "event:one" }]]]) {
+    const keyedCases = cases.map((item) => ({ case_id: item.case_id, case_key: caseKeyFor(item.case_id) }));
     const lane = await scenario({
-      mode, cases,
+      mode, cases: keyedCases,
+      batchSummary: {
+        entry_origin: mode.toUpperCase(), case_count: cases.length, unavailable_count: 0,
+        disposition_counts: [], case_ids: keyedCases.map((item) => item.case_id), reasons: [],
+        case_summaries: keyedCases.map((item) => ({ case_id: item.case_id, case_key: item.case_key, reasons: [], legs: [] })),
+        unavailable_case_ids: []
+      },
       executors: { world: "CONFIGURED", event: "CONFIGURED", direct: "NOT_CONFIGURED" },
-      responses: [{ case_id: cases[0].case_id, classification: "SYNTHETIC", reasons: [], report: "on demand" }]
+      responses: [{ case_id: cases[0].case_id, case_key: keyedCases[0].case_key, classification: "SYNTHETIC", reasons: [], report: "on demand" }]
     });
     await lane.clickRun();
     if (lane.calls.some((call) => call.path.includes("/cases/"))) throw new Error(mode + " cases were auto-selected");
     if (!lane.elements.get("case-detail").textContent.includes("尚未选择用例")) throw new Error(mode + " detail was not left on demand");
     await lane.elements.get("case-list").children[0].children[0].click();
-    if (!lane.calls.some((call) => call.path.endsWith(encodeURIComponent(cases[0].case_id)))) throw new Error(mode + " human selection did not load its case");
+    if (!lane.calls.some((call) => call.path.endsWith(encodeURIComponent(keyedCases[0].case_key)))) throw new Error(mode + " human selection did not load its case by case_key");
   }
+
+  const longBatchId = "研究/✨:" + "x".repeat(600);
+  const batchCaseKey = caseKeyFor(longBatchId);
+  const zetaCaseKey = caseKeyFor("world:zeta");
+  const muCaseKey = caseKeyFor("world:mu");
+  const batchCases = [
+    {
+      case_id: "world:zeta", case_key: zetaCaseKey, disposition: "DATA_INSUFFICIENT_CORE", geometry_status: "AVAILABLE",
+      ask_basis_per_underlying_unit: "0.25", reasons: ["cost_ledger_missing"], structure_kind: "STRADDLE",
+      legs: [
+        { leg_id: "call-leg", underlying: "XYZ", option_type: "CALL", expiration: "2026-12-18", strike: "95.00", quantity: 1, contract_multiplier: 100 },
+        { leg_id: "put-leg", underlying: "XYZ", option_type: "PUT", expiration: "2026-12-18", strike: "95.00", quantity: 1, contract_multiplier: 100 }
+      ],
+      budget_status: "DATA_INSUFFICIENT", single_cost_upper_bound: null,
+      repeated_cost_upper_bound: null, single_loss_fraction: "0.01", repeated_loss_fraction: "0.03"
+    },
+    {
+      case_id: longBatchId, case_key: batchCaseKey, disposition: "RESEARCHABLE_CONVEXITY", geometry_status: "AVAILABLE",
+      ask_basis_per_underlying_unit: "1.20", reasons: [], structure_kind: "CALL", legs: [],
+      budget_status: "AVAILABLE", single_cost_upper_bound: "120.00", repeated_cost_upper_bound: "360.00",
+      single_loss_fraction: "0.02", repeated_loss_fraction: "0.06"
+    },
+    {
+      case_id: "world:mu", case_key: muCaseKey, disposition: "REJECT", geometry_status: "REJECTED",
+      ask_basis_per_underlying_unit: null, reasons: ["unsupported_geometry"], structure_kind: "PUT", legs: [],
+      budget_status: "NOT_ASSESSED", single_cost_upper_bound: null, repeated_cost_upper_bound: null,
+      single_loss_fraction: null, repeated_loss_fraction: null
+    }
+  ];
+  const unavailableBatchId = "世界/不可用" + "z".repeat(300);
+  const unavailableBatchKey = caseKeyFor(unavailableBatchId);
+  const batch = await scenario({
+    mode: "world",
+    cases: batchCases.map((item) => ({ case_id: item.case_id, case_key: item.case_key })),
+    batchSummary: {
+      entry_origin: "WORLD", case_count: 3, unavailable_count: 1,
+      host_status: "PARTIAL",
+      disposition_counts: { DATA_INSUFFICIENT_CORE: 1, RESEARCHABLE_CONVEXITY: 1, REJECT: 1 },
+      case_ids: batchCases.map((item) => item.case_id), reasons: ["partial_summary_reason"],
+      case_summaries: batchCases,
+      unavailable_case_ids: [unavailableBatchId],
+      unavailable_cases: [{ case_id: unavailableBatchId, case_key: unavailableBatchKey, reasons: ["branch_unavailable"] }]
+    },
+    executors: { world: "CONFIGURED", event: "CONFIGURED", direct: "NOT_CONFIGURED" },
+    responses: [
+      { case_id: longBatchId, case_key: batchCaseKey, classification: "SYNTHETIC", reasons: [], report: "on demand" },
+      { case_id: unavailableBatchId, case_key: unavailableBatchKey, classification: "UNAVAILABLE", reasons: ["branch_unavailable"], report: null }
+    ]
+  });
+  await batch.clickRun();
+  if (batch.calls.some((call) => call.path.includes("/cases/"))) throw new Error("batch compact rows triggered case detail GETs");
+  const summaryView = batch.elements.get("batch-summary-view").textContent;
+  if (!summaryView.includes("已计算案例数：3") || !summaryView.includes("不可用分支数：1")) throw new Error("batch case counts were not displayed with frozen labels");
+  if (summaryView.includes("可用用例数") || summaryView.includes("不可用用例数")) throw new Error("batch counts imply availability instead of computed/unavailable branches");
+  if (!summaryView.includes("Host 状态：部分完成（PARTIAL）")) throw new Error("batch host_status was not displayed");
+  if (!summaryView.includes("partial_summary_reason") || !summaryView.includes(unavailableBatchId) || !summaryView.includes("不可用分支 case_id：" + unavailableBatchId)) throw new Error("summary reasons or string-only unavailable case IDs were omitted");
+  if (!summaryView.includes("DATA_INSUFFICIENT_CORE：1") || !summaryView.includes("RESEARCHABLE_CONVEXITY：1")) throw new Error("batch disposition counts were not displayed");
+  const unavailableRows = batch.elements.get("unavailable-case-list").children;
+  if (unavailableRows.length !== 1 || unavailableRows[0].children[0].textContent !== unavailableBatchId) throw new Error("unavailable sidecar did not preserve exact case_id text");
+  if (!unavailableRows[0].textContent.includes(unavailableBatchKey) || !unavailableRows[0].textContent.includes("branch_unavailable")) throw new Error("unavailable sidecar key or reasons were omitted");
+  const compactRows = batch.elements.get("batch-case-list").children;
+  if (compactRows.length !== 3) throw new Error("not every compact case row was displayed");
+  const compactText = batch.elements.get("batch-case-list").textContent;
+  if (!(compactText.indexOf("world:zeta") < compactText.indexOf(longBatchId) && compactText.indexOf(longBatchId) < compactText.indexOf("world:mu"))) throw new Error("compact rows were reordered");
+  if (!compactRows[0].textContent.includes("2026-12-18") || !compactRows[0].textContent.includes("95.00") || !compactRows[0].textContent.includes("cost_ledger_missing")) throw new Error("compact leg/date/Decimal-string fields were not displayed");
+  if (!compactRows[0].textContent.includes("INDICATIVE_ONLY") || !compactRows[0].textContent.includes("单次成本上界：未提供")) throw new Error("Ask authority or unknown-cost presentation was changed");
+  if (!compactRows[0].textContent.includes("case_key：" + zetaCaseKey)) throw new Error("compact case_key was omitted");
+  if (!compactText.includes(longBatchId) || batch.elements.get("case-list").children[1].children[0].textContent !== longBatchId) throw new Error("batch case ID was filtered or altered for display");
+  await batch.elements.get("case-list").children[1].children[0].click();
+  if (!batch.calls.some((call) => call.path === "/api/runs/" + runId + "/cases/" + batchCaseKey && call.method === "GET")) throw new Error("explicit batch case click did not use case_key");
+  if (batch.calls.some((call) => call.path.includes(encodeURIComponent(longBatchId)))) throw new Error("raw batch case ID was used in the detail path");
+  await unavailableRows[0].children[0].click();
+  if (!batch.calls.some((call) => call.path === "/api/runs/" + runId + "/cases/" + unavailableBatchKey && call.method === "GET")) throw new Error("explicit unavailable-case click did not use sidecar case_key");
+  if (batch.calls.some((call) => call.path.includes(encodeURIComponent(unavailableBatchId)))) throw new Error("raw unavailable case ID was used in the detail path");
+  if (!batch.elements.get("case-detail").textContent.includes("报告字段为 null")) throw new Error("unavailable sidecar detail did not preserve null-report disclosure");
 
   for (const unsafeId of ["../outside", ".", "..", "bad\u0000id", "x".repeat(513)]) {
     const unsafeCase = await scenario({
