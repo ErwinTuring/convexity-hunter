@@ -1,5 +1,14 @@
 # Project State
 
+Current local work: the frozen [Event connection](local-event-delivery-v0.1.md)
+has an explicit experimental standalone entry point, bounded source/model
+driver, assessed positive-stage archive and same-Core callback. Full regression
+passed 1,795 tests before narrow review fixes; final focused regression passed
+114 and targeted re-review passed. No new real API experiment or
+automatic listing/date-resolution success is claimed. Default CLI World/Event
+remain disabled; see the current checkpoint rather than interpreting historical
+validation counts below as validation of this local work.
+
 2026-10-04: Event pre-Core negative Grounder stage storage and safe Chinese
 presentation are implemented and independent targeted re-review passed. They
 reuse private schema-v3 events, bind exact Host input, atomically record missing

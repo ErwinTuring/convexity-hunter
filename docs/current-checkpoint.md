@@ -11,7 +11,28 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Current executable boundary — 2026-10-04
 
-Event pre-Core negative-stage delivery is implemented in the working tree.
+### Event connection implemented
+
+The frozen [Event delivery boundary](local-event-delivery-v0.1.md) now has local
+implementation: bounded Tavily/DeepSeek driver, external explicit configuration,
+same-Core callback, positive assessed submission persistence, safe workbench
+projection and an experimental standalone bootstrap. The combined seven-module
+focused regression passed 111 tests after allowing local loopback sockets.
+Full regression passed 1,795 tests (303.751 seconds). Independent review's two
+findings were corrected: exact approved DeepSeek endpoint/provider and a closed
+source-credential failure reason, including HTTP 401. Final combined focused
+regression passed 114 tests; targeted independent re-review passed. The full
+suite preceded those narrow fixes and was not rerun afterward. No real Event
+run is claimed. The default CLI World/Event remain disabled. The default
+context preparer preserves missing listing/date facts rather than inventing them.
+No new source/model/market acquisition has been performed in this work unit.
+Work accounting is incomplete across parallel workers; no whole-stage 70%
+implementation-share claim is supported. Waiting, preparation and test execution
+are not counted as coding. Structured results, not prose reports, remain truth.
+
+Earlier completed negative-stage release:
+
+Event pre-Core negative-stage delivery is committed on `main`.
 `save_grounder_stage_result` preserves an exact completed v0.7 result with no EI
 submission as a closed private stage DTO plus `BLOCKED / GROUNDING_NO_SUBMISSION`
 terminal in one transaction, creating no Core archive. It binds the original

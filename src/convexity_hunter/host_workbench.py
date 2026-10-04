@@ -599,17 +599,8 @@ _DOCUMENT = r'''<!doctype html>
       ? value : "接口未提供可识别摘要";
   }
 
-  function renderGrounderStageOutcome(outcome) {
-    const lines = [
-      "Grounder 阶段结果（host-grounder-stage-outcome-v0.1）：",
-      "Grounder：" + (outcome.grounder_status === "COMPLETED" ? "COMPLETED" : "字段缺失或不可识别"),
-      "source_status：" + (outcome.source_status === "UNKNOWN" ? "UNKNOWN（不是搜索成功）" : "字段缺失或不可识别"),
-      "semantic_status：" + (outcome.semantic_status === "RECEIPT_VALIDATED" ? "RECEIPT_VALIDATED（不是事实真理）" : "字段缺失或不可识别"),
-      "builder_status：" + (outcome.builder_status === "COMPLETED" ? "COMPLETED" : "字段缺失或不可识别"),
-      "EI submission：" + (outcome.submission_status === "MISSING" ? "MISSING" : "字段缺失或不可识别"),
-      "EI：" + (outcome.ei_status === "NOT_RUN" ? "NOT_RUN" : "字段缺失或不可识别"),
-      "边界：尚无 EI submission，未进入 Core，未创建 Core 分支；没有 Core 结果或报告。"
-    ];
+  function renderGrounderStageDetails(outcome) {
+    const lines = [];
     const countFields = [
       ["source_body_count", "来源正文数"], ["claim_count", "Claim 数"],
       ["hypothesis_count", "Hypothesis 数"], ["field_binding_count", "Field binding 数"],
@@ -695,8 +686,49 @@ _DOCUMENT = r'''<!doctype html>
     return lines;
   }
 
+  function renderGrounderStageOutcome(outcome) {
+    const lines = [
+      "Grounder 阶段结果（host-grounder-stage-outcome-v0.1）：",
+      "Grounder：" + (outcome.grounder_status === "COMPLETED" ? "COMPLETED" : "字段缺失或不可识别"),
+      "source_status：" + (outcome.source_status === "UNKNOWN" ? "UNKNOWN（不是搜索成功）" : "字段缺失或不可识别"),
+      "semantic_status：" + (outcome.semantic_status === "RECEIPT_VALIDATED" ? "RECEIPT_VALIDATED（不是事实真理）" : "字段缺失或不可识别"),
+      "builder_status：" + (outcome.builder_status === "COMPLETED" ? "COMPLETED" : "字段缺失或不可识别"),
+      "EI submission：" + (outcome.submission_status === "MISSING" ? "MISSING" : "字段缺失或不可识别"),
+      "EI：" + (outcome.ei_status === "NOT_RUN" ? "NOT_RUN" : "字段缺失或不可识别"),
+      "边界：尚无 EI submission，未进入 Core，未创建 Core 分支；没有 Core 结果或报告。"
+    ];
+    lines.push(...renderGrounderStageDetails(outcome));
+    return lines;
+  }
+
+  function renderGrounderSubmissionStageOutcome(outcome) {
+    const assessmentStatus = outcome.ei_assessment_status === "accepted"
+      ? "ACCEPTED"
+      : outcome.ei_assessment_status === "incomplete" ? "INCOMPLETE" : "字段缺失或不可识别";
+    const lines = [
+      "Grounder 阶段结果（host-grounder-submission-stage-outcome-v0.1）：",
+      "Grounder：" + (outcome.grounder_status === "COMPLETED" ? "COMPLETED" : "字段缺失或不可识别"),
+      "source_status：" + (outcome.source_status === "UNKNOWN" ? "UNKNOWN（不是搜索成功）" : "字段缺失或不可识别"),
+      "semantic_status：" + (outcome.semantic_status === "RECEIPT_VALIDATED" ? "RECEIPT_VALIDATED（不是事实真理）" : "字段缺失或不可识别"),
+      "builder_status：" + (outcome.builder_status === "COMPLETED" ? "COMPLETED" : "字段缺失或不可识别"),
+      "EI submission：" + (outcome.submission_status === "PRESENT" ? "PRESENT" : "字段缺失或不可识别"),
+      "EI：" + (outcome.ei_status === "ASSESSED" ? "ASSESSED" : "字段缺失或不可识别"),
+      "EI 确定性评估：" + assessmentStatus,
+      "Source batch 数：" + (outcome.source_batch_count === 1 ? "1" : "字段缺失或不可识别"),
+      "Submission SHA-256：" + knownDigest(outcome.submission_sha256),
+      "边界：仅显示实际 EI submission 评估状态；不自动表示研究成功、Core 结果或市场完成。"
+    ];
+    lines.push(...renderGrounderStageDetails(outcome));
+    return lines;
+  }
+
   function renderKnownStageOutcome(outcome, stageName) {
     if (!isRecord(outcome)) return [];
+    if (outcome.schema_version === "host-grounder-submission-stage-outcome-v0.1") {
+      return stageName === "grounder"
+        ? renderGrounderSubmissionStageOutcome(outcome)
+        : ["阶段结果与阶段类型不匹配；其他字段未显示。"];
+    }
     if (outcome.schema_version === "host-grounder-stage-outcome-v0.1") {
       return stageName === "grounder"
         ? renderGrounderStageOutcome(outcome)

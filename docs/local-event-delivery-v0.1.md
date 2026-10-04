@@ -1,7 +1,9 @@
 # Local Event delivery v0.1
 
-Contract status: FROZEN after bounded preflight. Implementation work is in
-progress; no released integration or real Event acceptance result is claimed.
+Contract status: FROZEN after bounded preflight. Implementation and independent
+review are complete. Full regression passed
+1,795 tests before narrow review fixes, final focused regression 114 afterward.
+No real Event acceptance result is claimed.
 
 ## Existing authority
 
@@ -72,6 +74,11 @@ Before model execution, source stops use the architecture's closed codes:
 `NO_SEARCH_RESULTS`, `EXTRACTION_FAILURE`, `SOURCE_TRANSPORT_FAILURE` and
 `OPERATIONAL_LIMIT`. Classified pre-Core stops are Host `BLOCKED`; unexpected
 invariant/storage failures remain `FAILED`. Neither is Core `REJECT`.
+
+Implementation-fit clarification: a missing/rejected external Tavily credential
+also stops before Core as `BLOCKED / SOURCE_CREDENTIAL_UNAVAILABLE`. Only the
+fixed Host code is retained, never the credential resolver's message or path.
+This is a configuration gate, not evidence of a network failure or bad sources.
 
 ## Explicit configuration, not hidden product defaults
 

@@ -113,7 +113,12 @@ _BATCH_SCHEMA_OBJECTS = _DIRECT_SCHEMA_OBJECTS | {
 }
 _DIRECT_REPORT_VERSION = "core-presentation-direct-v0.1"
 _GROUNDER_STAGE_OUTCOME_VERSION = "host-grounder-stage-outcome-v0.1"
+_GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION = "host-grounder-submission-stage-outcome-v0.1"
 _GROUNDER_STAGE_DIAGNOSTIC = "GROUNDING_NO_SUBMISSION"
+_GROUNDER_STAGE_OUTCOME_VERSIONS = frozenset((
+    _GROUNDER_STAGE_OUTCOME_VERSION,
+    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
+))
 _GROUNDER_BUILD_DIAGNOSTIC_CODES = frozenset((
     "CALLER_POLICY_PROVENANCE_MISMATCH",
     "CLAIM_NOT_PROJECTABLE",
@@ -143,6 +148,11 @@ _GROUNDER_FAILURE_DIAGNOSTIC_CODES = frozenset((
     "MODEL_CLIENTS_MUST_BE_SEPARATE",
     "MODEL_CLIENT_CONFIGURATION_INVALID",
     "MODEL_REQUEST_TOO_LARGE",
+    "NO_SEARCH_RESULTS",
+    "EXTRACTION_FAILURE",
+    "SOURCE_CREDENTIAL_UNAVAILABLE",
+    "SOURCE_TRANSPORT_FAILURE",
+    "OPERATIONAL_LIMIT",
     "PRODUCER_ENVELOPE_INVALID",
     "RUN_CONTEXT_BINDING_INVALID",
     "RUN_CONTEXT_INVALID",
@@ -157,6 +167,24 @@ _GROUNDER_FAILURE_DIAGNOSTIC_CODES = frozenset((
 _GROUNDER_STAGE_MAX_ITEMS = 10_000
 _GROUNDER_STAGE_MAX_BYTES = 1_000_000
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
+_EVENT_MODEL_SNAPSHOT_FIELDS = frozenset((
+    "schema_version", "provider", "model", "base_endpoint", "role", "capabilities",
+    "timeout_seconds", "request_budget", "max_tokens", "max_input_bytes",
+    "max_output_bytes", "remote_enabled", "fee_authorized", "json_mode",
+    "thinking_enabled",
+))
+_EVENT_SOURCE_SNAPSHOT_FIELDS = frozenset((
+    "schema_version", "provider", "paygo_off_confirmed", "request_budget", "credit_budget",
+    "max_request_bytes", "max_response_bytes", "timeout_seconds", "time_budget_seconds",
+    "byte_budget", "max_search_results", "max_extract_urls", "grounder_limits",
+))
+_EVENT_GROUNDER_LIMIT_FIELDS = frozenset((
+    "run_input_bounds", "max_json_bytes", "max_source_body_bytes", "max_catalog_entries",
+    "max_catalog_bytes", "max_catalog_paragraphs",
+))
+_EVENT_RUN_INPUT_BOUND_FIELDS = frozenset((
+    "max_run_input_bytes", "max_string_bytes", "max_array_items",
+))
 
 
 class HostStoreError(RuntimeError):
@@ -322,16 +350,100 @@ def _validated_profile(value: Any) -> Dict[str, Any]:
     return snapshot
 
 
+def _validated_event_configuration_snapshot(value: Any) -> Dict[str, Any]:
+    """Accept the legacy empty shell or the exact non-secret Event snapshot."""
+
+    if type(value) is not dict or set(value) != _CONFIGURATION_FIELDS:
+        raise ValueError("configuration_snapshot must contain exactly models, sources, and skills")
+    models = value["models"]
+    sources = value["sources"]
+    skills = value["skills"]
+    if any(type(items) is not list for items in (models, sources, skills)):
+        raise ValueError("configuration_snapshot fields must be exact JSON arrays")
+    if not skills:
+        if not models and not sources:
+            return {"models": [], "sources": [], "skills": []}
+    else:
+        raise ValueError("Event configuration snapshot must not contain skill records")
+
+    if len(models) != 2 or len(sources) != 1:
+        raise ValueError("Event configuration requires two ordered models and one source")
+
+    from .host_event import _is_loopback_endpoint
+    from .host_grounder_run_input import HostGrounderRunInputBounds
+    from .host_model import ModelRuntimeConfig
+    from .host_sources import TavilyCredentialRef, TavilySourceConfig
+
+    for expected_role, item in zip(("discovery", "semantic"), models):
+        if (
+            type(item) is not dict
+            or set(item) != _EVENT_MODEL_SNAPSHOT_FIELDS
+            or item["schema_version"] != "host-event-model-snapshot-v0.1"
+            or item["role"] != expected_role
+            or type(item["capabilities"]) is not list
+        ):
+            raise ValueError("Event model snapshot has an invalid closed shape or role order")
+        model_values = {
+            key: item[key]
+            for key in _EVENT_MODEL_SNAPSHOT_FIELDS
+            if key not in ("schema_version", "capabilities")
+        }
+        model_values["capabilities"] = tuple(item["capabilities"])
+        try:
+            model = ModelRuntimeConfig(**model_values)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Event model snapshot fails typed configuration validation") from error
+        if (
+            model.role != expected_role
+            or model.remote_enabled is not True
+            or model.fee_authorized is not True
+            or _is_loopback_endpoint(model.base_endpoint)
+        ):
+            raise ValueError("Event model snapshot must be remote, fee-authorized, and non-local")
+
+    source = sources[0]
+    if (
+        type(source) is not dict
+        or set(source) != _EVENT_SOURCE_SNAPSHOT_FIELDS
+        or source["schema_version"] != "host-event-source-snapshot-v0.1"
+        or source["provider"] != "tavily"
+    ):
+        raise ValueError("Event source snapshot has an invalid closed shape or provider")
+    grounder_limits = source["grounder_limits"]
+    if (
+        type(grounder_limits) is not dict
+        or set(grounder_limits) != _EVENT_GROUNDER_LIMIT_FIELDS
+        or type(grounder_limits["run_input_bounds"]) is not dict
+        or set(grounder_limits["run_input_bounds"]) != _EVENT_RUN_INPUT_BOUND_FIELDS
+    ):
+        raise ValueError("Event Grounder limits have an invalid closed field set")
+    try:
+        HostGrounderRunInputBounds(**grounder_limits["run_input_bounds"])
+        for name in _EVENT_GROUNDER_LIMIT_FIELDS - {"run_input_bounds"}:
+            if type(grounder_limits[name]) is not int or grounder_limits[name] <= 0:
+                raise ValueError("Event Grounder limits must be positive exact integers")
+        source_values = {
+            name: source[name]
+            for name in (
+                "paygo_off_confirmed", "request_budget", "credit_budget",
+                "max_request_bytes", "max_response_bytes", "timeout_seconds",
+                "time_budget_seconds", "byte_budget", "max_search_results", "max_extract_urls",
+            )
+        }
+        # Constructor-only sentinel: this reference is never resolved or retained.
+        TavilySourceConfig(
+            credential_ref=TavilyCredentialRef(env_name="HOST_STORE_VALIDATION_ONLY"),
+            **source_values
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError("Event source snapshot fails typed configuration validation") from error
+    return _canonical_value(value, "configuration_snapshot")
+
+
 def _validated_metadata(value: Any) -> Dict[str, Any]:
     if type(value) is not dict or set(value) != _METADATA_FIELDS:
         raise ValueError("metadata must contain exactly the three frozen snapshot fields")
-    configuration = value["configuration_snapshot"]
-    if (
-        type(configuration) is not dict
-        or set(configuration) != _CONFIGURATION_FIELDS
-        or any(type(configuration[field]) is not list or configuration[field] for field in _CONFIGURATION_FIELDS)
-    ):
-        raise ValueError("configuration_snapshot must be the empty in-slice shell snapshot")
+    configuration = _validated_event_configuration_snapshot(value["configuration_snapshot"])
     execution = value["execution_snapshot"]
     if type(execution) is not dict:
         raise ValueError("execution_snapshot must contain only closed configured executor records")
@@ -352,7 +464,7 @@ def _validated_metadata(value: Any) -> Dict[str, Any]:
         if type(version) is not str or _SAFE_VERSION_RE.fullmatch(version) is None:
             raise ValueError("contract version values must be short non-secret identifiers")
     snapshot = {
-        "configuration_snapshot": {"models": [], "sources": [], "skills": []},
+        "configuration_snapshot": configuration,
         "execution_snapshot": dict(execution),
         "contract_versions": dict(versions),
     }
@@ -369,8 +481,14 @@ def _validated_diagnostics(value: Any) -> List[str]:
     return result
 
 
-def _grounder_stage_outcome(result: Any, run_id: str, host_raw_input: str) -> Dict[str, Any]:
-    """Project one exact v0.7 no-submission runtime result onto a closed DTO."""
+def _grounder_stage_outcome(
+    result: Any,
+    run_id: str,
+    host_raw_input: str,
+    *,
+    require_submission: bool = False,
+) -> Dict[str, Any]:
+    """Project one exact v0.7 runtime result onto its closed stage DTO."""
 
     from .host_grounder_builder import (
         CoverageSidecar,
@@ -409,7 +527,40 @@ def _grounder_stage_outcome(result: Any, run_id: str, host_raw_input: str) -> Di
         or build.raw_input is not context.raw_input
     ):
         raise ValueError("Grounder result identity is not bound to this Host run")
-    if build.submission is not None or build.source_batch is not None:
+    submission_projection = None
+    submission_sha256 = None
+    if require_submission:
+        from .core_application import SourceSubmissionBatch
+        from .event_intelligence import (
+            EventIntelligenceSubmission,
+            assess_event_intelligence_submission,
+        )
+        from .host_batch_snapshot import _submission_projection
+        from .host_gate import validate_source_batch
+
+        batch = build.source_batch
+        submission = build.submission
+        if batch is None or submission is None:
+            raise ValueError("positive Grounder stage requires its EI submission batch")
+        if type(batch) is not SourceSubmissionBatch:
+            raise TypeError("positive Grounder stage requires exact SourceSubmissionBatch")
+        if type(submission) is not EventIntelligenceSubmission:
+            raise TypeError("positive Grounder stage requires exact EI submission")
+        if batch.raw_input is not build.raw_input or batch.raw_input is not context.raw_input:
+            raise ValueError("Grounder source batch is not bound to its exact Host raw input")
+        if type(batch.submissions) is not tuple or len(batch.submissions) != 1:
+            raise ValueError("Grounder source batch must contain exactly one submission")
+        if batch.submissions[0] is not submission:
+            raise ValueError("Grounder source batch must retain the exact built submission")
+        gate = validate_source_batch(context.raw_input, batch)
+        if not gate.allowed:
+            raise ValueError("Grounder source batch failed the existing intrinsic gate")
+        assessment = assess_event_intelligence_submission(submission)
+        submission_projection = _submission_projection(submission, assessment)
+        submission_sha256 = hashlib.sha256(
+            _canonical_json(submission_projection, "Grounder EI submission snapshot").encode("utf-8")
+        ).hexdigest()
+    elif build.submission is not None or build.source_batch is not None:
         raise ValueError("pre-Core stage archive requires a missing EI submission")
     if type(host_raw_input) is not str:
         raise TypeError("Host run snapshot input must be an exact string")
@@ -675,7 +826,18 @@ def _grounder_stage_outcome(result: Any, run_id: str, host_raw_input: str) -> Di
         "coverage": coverage,
         "provenance": provenance,
     }
-    _validate_grounder_stage_outcome(outcome)
+    if require_submission:
+        outcome.update({
+            "schema_version": _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
+            "submission_status": "PRESENT",
+            "ei_status": "ASSESSED",
+            "submission": submission_projection,
+            "submission_sha256": submission_sha256,
+            "source_batch_count": 1,
+        })
+        _validate_grounder_submission_stage_outcome(outcome)
+    else:
+        _validate_grounder_stage_outcome(outcome)
     return outcome
 
 
@@ -790,6 +952,94 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
     return dict(value)
 
 
+def _validate_grounder_submission_stage_outcome(value: Any) -> Dict[str, Any]:
+    fields = {
+        "schema_version", "grounder_status", "source_status", "semantic_status",
+        "builder_status", "submission_status", "ei_status", "counts", "diagnostic_counts",
+        "coverage", "provenance", "submission", "submission_sha256", "source_batch_count",
+    }
+    if type(value) is not dict or set(value) != fields:
+        raise ValueError("Grounder submission outcome has an invalid closed field set")
+    if (
+        value["schema_version"] != _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION
+        or value["grounder_status"] != "COMPLETED"
+        or value["source_status"] != "UNKNOWN"
+        or value["semantic_status"] != "RECEIPT_VALIDATED"
+        or value["builder_status"] != "COMPLETED"
+        or value["submission_status"] != "PRESENT"
+        or value["ei_status"] != "ASSESSED"
+    ):
+        raise ValueError("Grounder submission outcome version or status is invalid")
+    if type(value["source_batch_count"]) is not int or value["source_batch_count"] != 1:
+        raise ValueError("Grounder submission outcome requires exactly one source batch")
+    if type(value["submission_sha256"]) is not str or _SHA256_RE.fullmatch(value["submission_sha256"]) is None:
+        raise ValueError("Grounder submission digest is malformed")
+
+    common = {
+        key: value[key]
+        for key in (
+            "grounder_status", "source_status", "semantic_status", "builder_status",
+            "submission_status", "ei_status", "counts", "diagnostic_counts", "coverage", "provenance",
+        )
+    }
+    common.update({
+        "schema_version": _GROUNDER_STAGE_OUTCOME_VERSION,
+        "submission_status": "MISSING",
+        "ei_status": "NOT_RUN",
+    })
+    _validate_grounder_stage_outcome(common)
+
+    submission_projection = value["submission"]
+    if type(submission_projection) is not dict:
+        raise ValueError("Grounder EI submission snapshot must be an object")
+    for name in ("sources", "statements", "hypotheses"):
+        entries = submission_projection.get(name)
+        if type(entries) is not list or len(entries) > _GROUNDER_STAGE_MAX_ITEMS:
+            raise ValueError("Grounder EI submission {} exceed the archive bound".format(name))
+    assessment_projection = submission_projection.get("assessment")
+    if (
+        type(assessment_projection) is not dict
+        or type(assessment_projection.get("issues")) is not list
+        or len(assessment_projection["issues"]) > _GROUNDER_STAGE_MAX_ITEMS
+    ):
+        raise ValueError("Grounder EI assessment issues exceed the archive bound")
+
+    from .host_batch_snapshot import _decode_submission
+
+    _submission, assessment = _decode_submission(submission_projection)
+    if assessment.submission is not _submission:
+        raise ValueError("Grounder EI assessment does not retain the exact decoded submission")
+    expected_digest = hashlib.sha256(
+        _canonical_json(submission_projection, "Grounder EI submission snapshot").encode("utf-8")
+    ).hexdigest()
+    if expected_digest != value["submission_sha256"]:
+        raise ValueError("Grounder EI submission digest mismatch")
+    if len(_canonical_json(value, "Grounder submission outcome").encode("utf-8")) > _GROUNDER_STAGE_MAX_BYTES:
+        raise ValueError("Grounder submission outcome exceeds its archive byte bound")
+    return dict(value)
+
+
+def _grounder_public_stage_outcome(value: Any) -> Dict[str, Any]:
+    """Return a closed, non-content-bearing view for Host history consumers."""
+
+    if type(value) is not dict or value.get("schema_version") != _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION:
+        return value
+    outcome = _validate_grounder_submission_stage_outcome(value)
+    assessment_status = outcome["submission"]["assessment"]["status"]
+    if assessment_status not in ("accepted", "incomplete"):
+        raise StoreCorruptionError("Grounder EI assessment status is outside its closed enum")
+    safe_fields = {
+        "schema_version", "grounder_status", "source_status", "semantic_status",
+        "builder_status", "submission_status", "ei_status", "counts", "diagnostic_counts",
+        "coverage", "provenance", "submission_sha256", "source_batch_count",
+    }
+    public = {key: outcome[key] for key in safe_fields}
+    public["ei_assessment_status"] = assessment_status
+    if set(public) != safe_fields | {"ei_assessment_status"}:
+        raise StoreCorruptionError("Grounder public submission projection has an invalid closed field set")
+    return public
+
+
 def _validate_shell_outcome(value: Any) -> Any:
     """Accept only terminal status tags or this slice's fixed blocked shell DTO."""
 
@@ -797,6 +1047,8 @@ def _validate_shell_outcome(value: Any) -> Any:
         return value
     if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION:
         return _validate_grounder_stage_outcome(value)
+    if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION:
+        return _validate_grounder_submission_stage_outcome(value)
     batch_fields = {"schema_version", "case_count", "unavailable_count", "status"}
     if type(value) is dict and set(value) == batch_fields:
         if (
@@ -1259,6 +1511,7 @@ class HostStore:
         finished = set()
         terminal_seen = False
         grounder_result_seen = False
+        grounder_submission_result_seen = False
         grounder_interrupted_seen = False
         grounder_failure_seen = False
         for event_index, event in enumerate(events):
@@ -1303,7 +1556,12 @@ class HostStore:
                     raise StoreCorruptionError("stage result payload violates the shell contract") from error
                 is_grounder_outcome = (
                     type(payload["outcome"]) is dict
-                    and payload["outcome"].get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION
+                    and payload["outcome"].get("schema_version") in _GROUNDER_STAGE_OUTCOME_VERSIONS
+                )
+                is_grounder_submission_outcome = (
+                    type(payload["outcome"]) is dict
+                    and payload["outcome"].get("schema_version")
+                    == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION
                 )
                 if event["stage_name"] == "grounder":
                     if event["status"] == "INTERRUPTED":
@@ -1325,7 +1583,14 @@ class HostStore:
                             != start_snapshot["input_sha256"]
                         ):
                             raise StoreCorruptionError("Grounder outcome is not bound to the immutable Host raw input")
-                        grounder_result_seen = True
+                        if is_grounder_submission_outcome:
+                            if start_snapshot.get("mode") != "event" or stage_diagnostics:
+                                raise StoreCorruptionError(
+                                    "Grounder submission outcome has invalid mode or diagnostics"
+                                )
+                            grounder_submission_result_seen = True
+                        else:
+                            grounder_result_seen = True
                     elif (
                         event["status"] in ("FAILED", "BLOCKED")
                         and not is_grounder_outcome
@@ -1374,6 +1639,13 @@ class HostStore:
                         ).fetchone() is not None
                     ):
                         raise StoreCorruptionError("missing-submission Grounder run has an invalid terminal record")
+                elif grounder_submission_result_seen:
+                    if _GROUNDER_STAGE_DIAGNOSTIC in run_diagnostics:
+                        raise StoreCorruptionError("Grounder submission run has a missing-submission diagnostic")
+                    if event["status"] == "INTERRUPTED" and run_diagnostics != ["PROCESS_RESTART"]:
+                        raise StoreCorruptionError(
+                            "interrupted Grounder submission run has invalid restart diagnostics"
+                        )
                 elif grounder_interrupted_seen:
                     if event["status"] != "INTERRUPTED" or run_diagnostics != ["PROCESS_RESTART"]:
                         raise StoreCorruptionError("interrupted Grounder run has an invalid terminal record")
@@ -1528,9 +1800,12 @@ class HostStore:
             raise ValueError("stage status must be a terminal Host status")
         if (
             type(outcome) is dict
-            and outcome.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION
+            and outcome.get("schema_version") in _GROUNDER_STAGE_OUTCOME_VERSIONS
         ):
-            raise ValueError("Grounder typed outcome requires save_grounder_stage_result")
+            raise ValueError(
+                "Grounder typed outcome requires save_grounder_stage_result or "
+                "save_grounder_submission_stage_result"
+            )
         normalized_diagnostics = _validated_diagnostics(diagnostics)
         normalized_outcome = _validate_shell_outcome(outcome)
         payload = {"outcome": normalized_outcome, "diagnostics": normalized_diagnostics}
@@ -1834,6 +2109,67 @@ class HostStore:
             )
         return None
 
+    def save_grounder_submission_stage_result(
+        self, run_id: str, stage_id: str, result: Any
+    ) -> None:
+        """Persist one exact v0.7 Grounder result with its assessed EI submission.
+
+        This closes only the Grounder stage. The run remains RUNNING for the
+        separate Core worker, and no Core archive may predate this commit.
+        """
+
+        self._validate_run_id(run_id)
+        self._validate_stage_id(stage_id)
+        with self._lock, self._transaction() as connection:
+            self._require_run(connection, run_id)
+            run_status, started, finished = self._status_and_stages(run_id)
+            if run_status != "RUNNING":
+                raise ValueError("Grounder submission result requires a RUNNING Host run")
+            start_event = started.get(stage_id)
+            if start_event is None or stage_id in finished or start_event["stage_name"] != "grounder":
+                raise ValueError("Grounder submission result requires one prior unmatched grounder stage")
+            if set(started) != finished | {stage_id}:
+                raise ValueError("all other Host stages must finish before Grounder submission storage")
+            if any(
+                stage["stage_name"] == "grounder" and other_id != stage_id
+                for other_id, stage in started.items()
+            ):
+                raise ValueError("Host run already contains another Grounder stage")
+            start_snapshot = _decode_canonical_json(
+                self._events_for(run_id)[0]["payload_json"]
+            )
+            if type(start_snapshot) is not dict or start_snapshot.get("mode") != "event":
+                raise ValueError("Grounder submission result is restricted to Event runs")
+            if (
+                type(start_snapshot.get("input")) is not str
+                or type(start_snapshot.get("input_sha256")) is not str
+                or hashlib.sha256(start_snapshot["input"].encode("utf-8", "strict")).hexdigest()
+                != start_snapshot["input_sha256"]
+            ):
+                raise StoreCorruptionError("immutable Host input snapshot hash is invalid")
+            outcome = _grounder_stage_outcome(
+                result, run_id, start_snapshot["input"], require_submission=True
+            )
+            if outcome["provenance"]["host_raw_input_sha256"] != start_snapshot["input_sha256"]:
+                raise ValueError("Grounder raw input digest does not match the immutable Host snapshot")
+            if connection.execute(
+                "SELECT 1 FROM direct_cases WHERE run_id=? UNION ALL "
+                "SELECT 1 FROM batch_archives WHERE run_id=? LIMIT 1",
+                (run_id, run_id),
+            ).fetchone() is not None:
+                raise ValueError("Grounder submission result cannot follow a Core archive")
+            self._append_event(
+                connection,
+                run_id,
+                "stage_finished",
+                stage_id,
+                "grounder",
+                "COMPLETED",
+                {"outcome": outcome, "diagnostics": []},
+                _timestamp(),
+            )
+        return None
+
     def _read_batch_archive(
         self, run_id: str
     ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
@@ -1981,7 +2317,9 @@ class HostStore:
                 }
                 if event["event_type"] == "stage_finished":
                     finish_payload = _decode_canonical_json(event["payload_json"])
-                    public_event["outcome"] = finish_payload["outcome"]
+                    public_event["outcome"] = _grounder_public_stage_outcome(
+                        finish_payload["outcome"]
+                    )
                     public_event["diagnostics"] = finish_payload["diagnostics"]
                     public_event["completed_at"] = event["occurred_at"]
                 stage_events.append(public_event)

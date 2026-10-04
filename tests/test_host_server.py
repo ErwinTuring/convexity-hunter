@@ -991,12 +991,21 @@ class HostServerBatchTests(unittest.TestCase):
     def tearDown(self):
         self._stop_server()
 
-    def _start_server(self, *, world_executor=None, event_executor=None):
+    def _start_server(
+        self,
+        *,
+        world_executor=None,
+        event_executor=None,
+        event_grounder=None,
+        event_core_executor=None,
+    ):
         server = create_server(
             self.journal,
             render_workbench=lambda _token: "<!doctype html>",
             world_executor=world_executor,
             event_executor=event_executor,
+            event_grounder=event_grounder,
+            event_core_executor=event_core_executor,
             port=0,
             request_timeout_seconds=0.5,
         )
@@ -1229,6 +1238,335 @@ class HostServerBatchTests(unittest.TestCase):
                 }
             },
         )
+
+    def _event_configuration_snapshot_accessor(self):
+        from convexity_hunter.host_event import create_event_grounder
+        from tests.test_host_event import _config
+
+        return create_event_grounder(_config(), repo_root=ROOT).configuration_snapshot
+
+    def _new_grounder_store(self, filename):
+        from convexity_hunter.host_store import HostStore
+
+        temporary_directory = tempfile.TemporaryDirectory(
+            dir=pathlib.Path(tempfile.gettempdir()).resolve()
+        )
+        store = HostStore(pathlib.Path(temporary_directory.name) / filename)
+        self.journal = store
+        return temporary_directory, store
+
+    def test_staged_event_no_submission_persists_negative_result_after_run_start(self):
+        from tests.test_host_store import make_grounder_no_submission_result
+
+        temporary_directory, store = self._new_grounder_store("grounder-negative.sqlite3")
+        timeline = []
+        result_by_run = {}
+        raw_input = "synthetic fixture event"
+        original_create_run = store.create_run
+
+        def create_run(**kwargs):
+            timeline.append("create_run")
+            return original_create_run(**kwargs)
+
+        store.create_run = create_run
+
+        def snapshot():
+            timeline.append("configuration_snapshot")
+            return self._event_configuration_snapshot_accessor()()
+
+        def grounder(actual_input, *, run_id, bounds):
+            timeline.append("grounder")
+            self.assertEqual(actual_input, raw_input)
+            self.assertIsInstance(bounds, CoreOperationalBounds)
+            run = store.get_run(run_id)
+            self.assertEqual(run["status"], "RUNNING")
+            self.assertEqual(
+                [(event["event"], event["stage"]) for event in run["events"]],
+                [("stage_started", "grounder")],
+            )
+            result = make_grounder_no_submission_result(run_id)
+            result_by_run[run_id] = result
+            return result
+
+        grounder.configuration_snapshot = snapshot
+
+        def core_executor(*_args, **_kwargs):
+            self.fail("Core executor must not run without a source batch")
+
+        try:
+            self._start_server(
+                event_grounder=grounder,
+                event_core_executor=core_executor,
+            )
+            status = self._decoded(self._request("GET", "/api/status"))
+            self.assertEqual(status["executors"]["event"], "CONFIGURED")
+
+            response = self._post(raw_input, mode="event")
+            self.assertEqual(response[0], 201)
+            body = self._decoded(response)
+            self.assertEqual(body["status"], "BLOCKED")
+            self.assertEqual(body["reason"], "GROUNDING_NO_SUBMISSION")
+            run = store.get_run(body["run_id"])
+            self.assertEqual(run["status"], "BLOCKED")
+            self.assertEqual(
+                [event["stage"] for event in run["events"]], ["grounder", "grounder"]
+            )
+            self.assertEqual(run["events"][1]["status"], "COMPLETED")
+            self.assertEqual(
+                run["events"][1]["outcome"]["schema_version"],
+                "host-grounder-stage-outcome-v0.1",
+            )
+            self.assertEqual(
+                run["metadata"]["configuration_snapshot"],
+                self._event_configuration_snapshot_accessor()(),
+            )
+            self.assertEqual(
+                timeline, ["configuration_snapshot", "create_run", "grounder"]
+            )
+            self.assertEqual(store.get_batch_summary(body["run_id"]), None)
+            self.assertIsNotNone(result_by_run[body["run_id"]])
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
+    def test_staged_event_positive_submission_is_saved_before_exact_batch_core(self):
+        from tests.test_host_store import make_grounder_submission_result
+
+        temporary_directory, store = self._new_grounder_store("grounder-positive.sqlite3")
+        raw_input = "synthetic fixture event"
+        holder = {}
+        core_calls = []
+        market_bridge = BatchFakeMarketBridge(())
+
+        def grounder(actual_input, *, run_id, bounds):
+            self.assertEqual(actual_input, raw_input)
+            self.assertIsInstance(bounds, CoreOperationalBounds)
+            run = store.get_run(run_id)
+            self.assertEqual(run["status"], "RUNNING")
+            self.assertEqual(
+                [(event["event"], event["stage"]) for event in run["events"]],
+                [("stage_started", "grounder")],
+            )
+            holder["result"] = make_grounder_submission_result(run_id)
+            return holder["result"]
+
+        grounder.configuration_snapshot = self._event_configuration_snapshot_accessor()
+
+        def core_executor(actual_input, *, bounds, source_batch):
+            core_calls.append((actual_input, bounds, source_batch))
+            self.assertEqual(actual_input, raw_input)
+            self.assertIs(source_batch, holder["result"].build_result.source_batch)
+            self.assertIsInstance(bounds, CoreOperationalBounds)
+            run_id = holder["result"].build_result.context.run_id
+            run = store.get_run(run_id)
+            self.assertEqual(run["status"], "RUNNING")
+            self.assertEqual(
+                [(event["event"], event["stage"], event["status"])
+                 for event in run["events"]],
+                [
+                    ("stage_started", "grounder", "RUNNING"),
+                    ("stage_finished", "grounder", "COMPLETED"),
+                    ("stage_started", "executor", "RUNNING"),
+                ],
+            )
+            saved_outcome = run["events"][1]["outcome"]
+            self.assertEqual(saved_outcome["source_status"], "UNKNOWN")
+            self.assertEqual(saved_outcome["ei_assessment_status"], "incomplete")
+            return run_event_core(
+                source_batch.raw_input,
+                grounder=lambda candidate: (
+                    source_batch if candidate is source_batch.raw_input else None
+                ),
+                market_bridge=market_bridge,
+                policy=make_batch_policy([]),
+            )
+
+        try:
+            self._start_server(
+                event_grounder=grounder,
+                event_core_executor=core_executor,
+            )
+            response = self._post(raw_input, mode="event")
+            self.assertEqual(response[0], 201)
+            body = self._decoded(response)
+            self.assertEqual(body["status"], "BLOCKED")
+            self.assertEqual(len(core_calls), 1)
+            self.assertIs(
+                core_calls[0][2], holder["result"].build_result.source_batch
+            )
+            self.assertEqual(market_bridge.calls, [])
+
+            run_id = body["run_id"]
+            summary = store.get_batch_summary(run_id)
+            self.assertIsNotNone(summary)
+            self.assertEqual(summary["host_status"], "BLOCKED")
+            self.assertEqual(summary["case_count"], 0)
+            self.assertEqual(summary["unavailable_count"], 1)
+            run = store.get_run(run_id)
+            grounder_outcome = run["events"][1]["outcome"]
+            self.assertNotIn("submission", grounder_outcome)
+            self.assertEqual(grounder_outcome["ei_assessment_status"], "incomplete")
+            self.assertIsNone(
+                host_server_module._public_outcome(
+                    dict(grounder_outcome, ei_assessment_status="INCOMPLETE")
+                )
+            )
+
+            public_response = self._request("GET", "/api/runs/{}".format(run_id))
+            self.assertEqual(public_response[0], 200)
+            public = self._decoded(public_response)
+            public_grounder_outcome = public["events"][1]["outcome"]
+            self.assertEqual(
+                public_grounder_outcome["ei_assessment_status"], "incomplete"
+            )
+            self.assertEqual(public_grounder_outcome["source_status"], "UNKNOWN")
+            serialized = json.dumps(public, ensure_ascii=False).encode("utf-8")
+            for private_value in (
+                b"PRIVATE_SUBMISSION_STATEMENT",
+                b"PRIVATE_SUBMISSION_UNCERTAINTY",
+                b"private.example/source/private-path",
+                b"PRIVATE_SOURCE_TITLE",
+            ):
+                self.assertNotIn(private_value, serialized)
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
+    def test_staged_event_failures_use_closed_truthful_codes(self):
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+
+        temporary_directory, store = self._new_grounder_store("grounder-failures.sqlite3")
+
+        def grounder(raw_input, *, run_id, bounds):
+            del run_id, bounds
+            if raw_input == "typed source stop":
+                raise HostGrounderRuntimeError("NO_SEARCH_RESULTS")
+            raise RuntimeError("PRIVATE_EXCEPTION_PATH_SENTINEL")
+
+        grounder.configuration_snapshot = self._event_configuration_snapshot_accessor()
+
+        def core_executor(*_args, **_kwargs):
+            self.fail("Core executor must not run after Grounder failure")
+
+        try:
+            self._start_server(
+                event_grounder=grounder,
+                event_core_executor=core_executor,
+            )
+            typed_response = self._post("typed source stop", mode="event")
+            typed_body = self._decoded(typed_response)
+            self.assertEqual(typed_body["status"], "BLOCKED")
+            self.assertEqual(typed_body["reason"], "NO_SEARCH_RESULTS")
+            self.assertEqual(store.get_run(typed_body["run_id"])["status"], "BLOCKED")
+
+            unexpected_response = self._post("unexpected failure", mode="event")
+            unexpected_body = self._decoded(unexpected_response)
+            self.assertEqual(unexpected_body["status"], "FAILED")
+            self.assertEqual(unexpected_body["reason"], "RUN_CONTEXT_INVALID")
+            stored = store.get_run(unexpected_body["run_id"])
+            self.assertEqual(stored["status"], "FAILED")
+            self.assertNotIn(
+                "PRIVATE_EXCEPTION_PATH_SENTINEL",
+                json.dumps(stored, ensure_ascii=False),
+            )
+            self.assertNotIn(b"PRIVATE_EXCEPTION_PATH_SENTINEL", unexpected_response[2])
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
+    def test_missing_tavily_credential_blocks_before_transport_or_core_without_leakage(self):
+        from convexity_hunter.host_event import create_event_grounder
+        from convexity_hunter.host_sources import TavilyTransportError
+        from tests.test_host_event import _config
+
+        transport_calls = []
+        core_calls = []
+
+        def transport(*_args, **_kwargs):
+            transport_calls.append("transport")
+            self.fail("missing credentials must be rejected before HTTP transport")
+
+        grounder = create_event_grounder(
+            _config(),
+            repo_root=ROOT,
+            source_transport=transport,
+            discovery_transport=transport,
+            semantic_transport=transport,
+        )
+
+        def core_executor(*_args, **_kwargs):
+            core_calls.append("core")
+            self.fail("Core must not run after missing source credentials")
+
+        try:
+            self._start_server(
+                event_grounder=grounder,
+                event_core_executor=core_executor,
+            )
+            with patch.dict("os.environ", {"SYNTHETIC_TAVILY_KEY": ""}):
+                response = self._post("synthetic credential failure", mode="event")
+
+            self.assertEqual(response[0], 201)
+            body = self._decoded(response)
+            self.assertEqual(body["status"], "BLOCKED")
+            self.assertEqual(body["reason"], "SOURCE_CREDENTIAL_UNAVAILABLE")
+            self.assertEqual(transport_calls, [])
+            self.assertEqual(core_calls, [])
+            run = self.journal.get_run(body["run_id"])
+            self.assertEqual(run["status"], "BLOCKED")
+            self.assertEqual(run["diagnostics"], ["SOURCE_CREDENTIAL_UNAVAILABLE"])
+            self.assertNotIn(b"INVALID_API_KEY", response[2])
+            self.assertNotIn(b"SYNTHETIC_TAVILY_KEY", response[2])
+            self.assertNotIn(
+                "INVALID_API_KEY", json.dumps(run, ensure_ascii=False)
+            )
+
+            from convexity_hunter.host_sources import TavilyCredentialError
+
+            rejected_key = TavilyTransportError("HTTP_ERROR", status=401)
+            self.assertEqual(
+                host_server_module._grounder_failure_status(rejected_key),
+                ("BLOCKED", "SOURCE_CREDENTIAL_UNAVAILABLE"),
+            )
+            self.assertEqual(
+                host_server_module._grounder_failure_status(
+                    TavilyCredentialError("PRIVATE_CREDENTIAL_DIAGNOSTIC")
+                ),
+                ("BLOCKED", "SOURCE_CREDENTIAL_UNAVAILABLE"),
+            )
+        finally:
+            self._stop_server()
+
+    def test_staged_event_configuration_is_validated_by_store_before_callback(self):
+        temporary_directory, store = self._new_grounder_store("grounder-invalid-config.sqlite3")
+        called = []
+
+        def grounder(*_args, **_kwargs):
+            called.append("grounder")
+            raise AssertionError("invalid configuration must stop before Grounder")
+
+        grounder.configuration_snapshot = lambda: {
+            "models": [], "sources": [], "skills": [], "unapproved": "PRIVATE_CONFIG_SENTINEL"
+        }
+
+        try:
+            self._start_server(
+                event_grounder=grounder,
+                event_core_executor=lambda *_args, **_kwargs: None,
+            )
+            response = self._post("synthetic fixture event", mode="event")
+            self.assertEqual(response[0], 500)
+            self.assertEqual(self._decoded(response), {"error": "journal unavailable"})
+            self.assertEqual(called, [])
+            self.assertEqual(store.list_runs(), [])
+            self.assertNotIn(b"PRIVATE_CONFIG_SENTINEL", response[2])
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
 
     def test_real_store_batch_archive_reopens_without_callback_reacquisition(self):
         from convexity_hunter.host_store import HostStore

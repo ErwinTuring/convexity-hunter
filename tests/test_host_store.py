@@ -17,6 +17,7 @@ import traceback
 import unittest
 from dataclasses import replace
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -57,6 +58,58 @@ def _run_start_metadata():
             "host_shell": HOST_SHELL_VERSION,
             "standard_research_profile": "standard-research-profile:v0.1",
         },
+    }
+
+
+def _event_configuration_snapshot():
+    def model(role):
+        return {
+            "schema_version": "host-event-model-snapshot-v0.1",
+            "provider": "fixture-provider",
+            "model": "fixture-model",
+            "base_endpoint": "https://models.example.test/v1",
+            "role": role,
+            "capabilities": ["chat_completions", "json_mode"],
+            "timeout_seconds": 2.5,
+            "request_budget": 2,
+            "max_tokens": 128,
+            "max_input_bytes": 8192,
+            "max_output_bytes": 4096,
+            "remote_enabled": True,
+            "fee_authorized": True,
+            "json_mode": True,
+            "thinking_enabled": False,
+        }
+
+    return {
+        "models": [model("discovery"), model("semantic")],
+        "sources": [{
+            "schema_version": "host-event-source-snapshot-v0.1",
+            "provider": "tavily",
+            "paygo_off_confirmed": True,
+            "request_budget": 3,
+            "credit_budget": 12,
+            "max_request_bytes": 8192,
+            "max_response_bytes": 65536,
+            "timeout_seconds": 2.5,
+            "time_budget_seconds": 20.0,
+            "byte_budget": 131072,
+            "max_search_results": 5,
+            "max_extract_urls": 5,
+            "grounder_limits": {
+                "run_input_bounds": {
+                    "max_run_input_bytes": 8192,
+                    "max_string_bytes": 4096,
+                    "max_array_items": 20,
+                },
+                "max_json_bytes": 131072,
+                "max_source_body_bytes": 131072,
+                "max_catalog_entries": 100,
+                "max_catalog_bytes": 262144,
+                "max_catalog_paragraphs": 200,
+            },
+        }],
+        "skills": [],
     }
 
 
@@ -225,6 +278,45 @@ def make_grounder_no_submission_result(run_id="grounder-run"):
         HostGrounderCallSummary("semantic", "fixture-provider", "fixture-model", "fixture-model", "unused-id", "stop", 10, 20),
         audit,
     )
+
+
+def make_grounder_submission_result(run_id="grounder-run"):
+    from convexity_hunter.core_application import SourceSubmissionBatch
+    from convexity_hunter.event_intelligence import (
+        EventIntelligenceSubmission,
+        EventSourceReference,
+        EventStatement,
+        EventStatementKind,
+        EventUnderlyingHypothesis,
+    )
+
+    result = make_grounder_no_submission_result(run_id)
+    context = result.build_result.context
+    now = context.observed_at
+    submission = EventIntelligenceSubmission(
+        submission_id="submission-1",
+        event_id="event-1",
+        producer_id="host-grounder",
+        producer_version="0.3",
+        observed_at=now,
+        event_description=context.raw_input.description,
+        event_date_range=None,
+        sources=(EventSourceReference(
+            "source-1", "https://private.example/source/private-path", "PRIVATE_SOURCE_TITLE", now
+        ),),
+        statements=(EventStatement(
+            "statement-1", EventStatementKind.OBSERVED_FACT,
+            "PRIVATE_SUBMISSION_STATEMENT", ("source-1",), (),
+        ),),
+        hypotheses=(EventUnderlyingHypothesis(
+            "hypothesis-1", None, None, None, None, None,
+            supporting_statement_ids=("statement-1",),
+            uncertainties=("PRIVATE_SUBMISSION_UNCERTAINTY",),
+        ),),
+    )
+    batch = SourceSubmissionBatch(context.raw_input, (submission,))
+    build = replace(result.build_result, submission=submission, source_batch=batch)
+    return replace(result, build_result=build)
 
 
 def make_v1_database(path):
@@ -416,6 +508,274 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(self.store.get_run(world_run)["status"], "RUNNING")
         self.assertEqual(len(self.store.get_run(world_run)["events"]), 1)
 
+    def test_grounder_submission_stage_persists_assessed_closed_snapshot_and_safe_history(self):
+        from convexity_hunter.event_intelligence import assess_event_intelligence_submission
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_submission_result(run_id)
+        self.assertIsNone(
+            self.store.save_grounder_submission_stage_result(run_id, stage_id, result)
+        )
+
+        run = self.store.get_run(run_id)
+        self.assertEqual(run["status"], "RUNNING")
+        self.assertEqual([event["event"] for event in run["events"]], ["stage_started", "stage_finished"])
+        self.assertEqual(run["events"][-1]["status"], "COMPLETED")
+        public = run["events"][-1]["outcome"]
+        self.assertEqual(public["schema_version"], "host-grounder-submission-stage-outcome-v0.1")
+        self.assertEqual(public["submission_status"], "PRESENT")
+        self.assertEqual(public["ei_status"], "ASSESSED")
+        self.assertEqual(public["source_batch_count"], 1)
+        self.assertNotIn("submission", public)
+
+        raw = self.store._conn().execute(
+            "SELECT payload_json FROM events WHERE run_id=? AND event_type='stage_finished'",
+            (run_id,),
+        ).fetchone()["payload_json"]
+        stored = json.loads(raw)["outcome"]
+        self.assertEqual(set(stored), {
+            "schema_version", "grounder_status", "source_status", "semantic_status",
+            "builder_status", "submission_status", "ei_status", "counts", "diagnostic_counts",
+            "coverage", "provenance", "submission", "submission_sha256", "source_batch_count",
+        })
+        self.assertEqual(stored["counts"], {
+            "source_body_count": 1, "claim_count": 1, "hypothesis_count": 0,
+            "field_binding_count": 1, "coverage_count": 1,
+        })
+        assessment = assess_event_intelligence_submission(result.build_result.submission)
+        self.assertEqual(
+            stored["submission"]["assessment"]["status"], assessment.status.value
+        )
+        self.assertEqual(
+            stored["submission"]["assessment"]["issues"],
+            [{"code": issue.code.value, "subject_id": issue.subject_id} for issue in assessment.issues],
+        )
+        canonical_submission = json.dumps(
+            stored["submission"], ensure_ascii=False, allow_nan=False,
+            separators=(",", ":"), sort_keys=True,
+        ).encode("utf-8")
+        self.assertEqual(stored["submission_sha256"], hashlib.sha256(canonical_submission).hexdigest())
+        self.assertEqual(public["ei_assessment_status"], assessment.status.value)
+        self.assertEqual(public["submission_sha256"], stored["submission_sha256"])
+        public_wire = json.dumps(run["events"], ensure_ascii=False, sort_keys=True)
+        for private_value in (
+            "https://private.example/source/private-path", "PRIVATE_SOURCE_TITLE",
+            "PRIVATE_SUBMISSION_STATEMENT", "PRIVATE_SUBMISSION_UNCERTAINTY",
+        ):
+            self.assertNotIn(private_value, public_wire)
+        self.assertIsNone(self.store._conn().execute(
+            "SELECT 1 FROM direct_cases WHERE run_id=? UNION ALL "
+            "SELECT 1 FROM batch_archives WHERE run_id=? LIMIT 1", (run_id, run_id)
+        ).fetchone())
+
+    def test_grounder_submission_rejects_wrong_batch_binding_type_and_input(self):
+        from convexity_hunter.core_application import SourceSubmissionBatch
+
+        for label in ("wrong raw input object", "wrong sole submission", "wrong batch type", "multiple submissions"):
+            with self.subTest(label=label):
+                run_id = self.create_run("event", "synthetic fixture event")
+                stage_id = self.store.start_stage(run_id, "grounder")
+                result = make_grounder_submission_result(run_id)
+                build = result.build_result
+                if label == "wrong raw input object":
+                    invalid_build = replace(
+                        build, source_batch=replace(build.source_batch, raw_input=object())
+                    )
+                    message = "exact Host raw input"
+                elif label == "wrong sole submission":
+                    other = replace(build.submission, submission_id="other-submission")
+                    invalid_build = replace(
+                        build, source_batch=SourceSubmissionBatch(build.raw_input, (other,))
+                    )
+                    message = "exact built submission"
+                elif label == "wrong batch type":
+                    invalid_build = replace(build, source_batch=object())
+                    message = "exact SourceSubmissionBatch"
+                else:
+                    second = replace(build.submission, submission_id="second-submission")
+                    invalid_build = replace(
+                        build,
+                        source_batch=SourceSubmissionBatch(
+                            build.raw_input, (build.submission, second)
+                        ),
+                    )
+                    message = "exactly one submission"
+                invalid = replace(result, build_result=invalid_build)
+                with self.assertRaisesRegex((TypeError, ValueError), message):
+                    self.store.save_grounder_submission_stage_result(run_id, stage_id, invalid)
+                self.assertEqual([event["event"] for event in self.store.get_run(run_id)["events"]], ["stage_started"])
+
+        run_id = self.create_run("event", "different Host input")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        with self.assertRaisesRegex(ValueError, "does not match the immutable Host run input"):
+            self.store.save_grounder_submission_stage_result(
+                run_id, stage_id, make_grounder_submission_result(run_id)
+            )
+        self.assertEqual([event["event"] for event in self.store.get_run(run_id)["events"]], ["stage_started"])
+
+        run_id = self.create_run("world", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        with self.assertRaisesRegex(ValueError, "restricted to Event runs"):
+            self.store.save_grounder_submission_stage_result(
+                run_id, stage_id, make_grounder_submission_result(run_id)
+            )
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        with self.assertRaisesRegex(TypeError, "exact v0.7 evidence-catalog runtime result"):
+            self.store.save_grounder_submission_stage_result(run_id, stage_id, object())
+
+    def test_grounder_submission_reuses_receipt_audit_hash_and_finish_reason_guards(self):
+        from types import MappingProxyType
+
+        invalid_cases = ("receipt", "audit_hash", "finish_reason")
+        for invalid_case in invalid_cases:
+            with self.subTest(invalid_case=invalid_case):
+                run_id = self.create_run("event", "synthetic fixture event")
+                stage_id = self.store.start_stage(run_id, "grounder")
+                result = make_grounder_submission_result(run_id)
+                if invalid_case == "receipt":
+                    receipt = dict(result.build_result.semantic_validation.receipt)
+                    receipt["validator_version"] = "fixture-validator-v0.1"
+                    semantic = replace(
+                        result.build_result.semantic_validation,
+                        receipt=MappingProxyType(receipt),
+                    )
+                    result = replace(
+                        result,
+                        build_result=replace(result.build_result, semantic_validation=semantic),
+                    )
+                    message = "receipt version or identity disagrees"
+                elif invalid_case == "audit_hash":
+                    result = replace(
+                        result, audit=replace(result.audit, catalog_sha256="f" * 64)
+                    )
+                    message = "catalog digest does not match its bytes"
+                else:
+                    result = replace(
+                        result,
+                        discovery_call=replace(result.discovery_call, finish_reason="length"),
+                    )
+                    message = "model-call metadata is malformed"
+                with self.assertRaisesRegex(ValueError, message):
+                    self.store.save_grounder_submission_stage_result(run_id, stage_id, result)
+                self.assertEqual(
+                    [event["event"] for event in self.store.get_run(run_id)["events"]],
+                    ["stage_started"],
+                )
+
+    def test_grounder_submission_waits_for_other_stages_and_cannot_use_generic_finish(self):
+        from convexity_hunter.host_store import _grounder_stage_outcome
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        grounder_id = self.store.start_stage(run_id, "grounder")
+        executor_id = self.store.start_stage(run_id, "executor")
+        result = make_grounder_submission_result(run_id)
+        with self.assertRaisesRegex(ValueError, "all other Host stages must finish"):
+            self.store.save_grounder_submission_stage_result(run_id, grounder_id, result)
+        outcome = _grounder_stage_outcome(
+            result, run_id, "synthetic fixture event", require_submission=True
+        )
+        with self.assertRaisesRegex(ValueError, "requires save_grounder_stage_result"):
+            self.store.finish_stage(run_id, grounder_id, "COMPLETED", outcome, ())
+        with self.assertRaisesRegex(ValueError, "requires save_grounder_stage_result"):
+            self.store.finish_stage(run_id, executor_id, "COMPLETED", outcome, ())
+        self.assertEqual(len(self.store.get_run(run_id)["events"]), 2)
+
+        self.store.finish_stage(run_id, executor_id, "COMPLETED", "COMPLETED", ())
+        self.store.save_grounder_submission_stage_result(run_id, grounder_id, result)
+        self.assertEqual(self.store.get_run(run_id)["status"], "RUNNING")
+        self.assertEqual(self.store.get_run(run_id)["events"][-1]["outcome"]["source_batch_count"], 1)
+
+    def test_grounder_submission_history_survives_restart_without_replay(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        self.store.save_grounder_submission_stage_result(
+            run_id, stage_id, make_grounder_submission_result(run_id)
+        )
+        self.store.close()
+
+        recovered = HostStore(self.db_path)
+        self.addCleanup(recovered.close)
+        run = recovered.get_run(run_id)
+        self.assertEqual(run["status"], "INTERRUPTED")
+        self.assertEqual(run["diagnostics"], ["PROCESS_RESTART"])
+        self.assertEqual(run["events"][-1]["event"], "stage_finished")
+        self.assertEqual(run["events"][-1]["stage_id"], stage_id)
+        self.assertEqual(run["events"][-1]["outcome"]["schema_version"], "host-grounder-submission-stage-outcome-v0.1")
+        self.assertNotIn("submission", run["events"][-1]["outcome"])
+        self.assertEqual(recovered._conn().execute(
+            "SELECT COUNT(*) FROM events WHERE run_id=? AND event_type='stage_started'", (run_id,)
+        ).fetchone()[0], 1)
+        self.assertEqual(recovered._conn().execute(
+            "SELECT COUNT(*) FROM events WHERE run_id=? AND event_type='stage_finished'", (run_id,)
+        ).fetchone()[0], 1)
+        self.assertIsNotNone(recovered._conn().execute(
+            "SELECT payload_json FROM events WHERE run_id=? AND event_type='stage_finished'", (run_id,)
+        ).fetchone())
+        self.assertIsNone(recovered._conn().execute(
+            "SELECT 1 FROM batch_archives WHERE run_id=?", (run_id,)
+        ).fetchone())
+
+    def test_grounder_submission_read_rejects_tampered_codec_assessment_and_digest(self):
+        for tamper in ("assessment", "digest", "closed_field"):
+            with self.subTest(tamper=tamper):
+                run_id = self.create_run("event", "synthetic fixture event")
+                stage_id = self.store.start_stage(run_id, "grounder")
+                self.store.save_grounder_submission_stage_result(
+                    run_id, stage_id, make_grounder_submission_result(run_id)
+                )
+                finish = self.store._conn().execute(
+                    "SELECT event_seq,payload_json FROM events WHERE run_id=? AND event_type='stage_finished'",
+                    (run_id,),
+                ).fetchone()
+                payload = json.loads(finish["payload_json"])
+                if tamper == "assessment":
+                    payload["outcome"]["submission"]["assessment"]["assessment_version"] = "forged-v0.1"
+                elif tamper == "digest":
+                    payload["outcome"]["submission_sha256"] = "f" * 64
+                else:
+                    payload["outcome"]["unknown"] = "not closed"
+                payload_json = json.dumps(
+                    payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
+                )
+                with self.store._transaction() as connection:
+                    if connection.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='events_no_update'"
+                    ).fetchone() is not None:
+                        connection.execute("DROP TRIGGER events_no_update")
+                    connection.execute(
+                        "UPDATE events SET payload_json=? WHERE event_seq=?",
+                        (payload_json, finish["event_seq"]),
+                    )
+                with self.assertRaisesRegex(StoreCorruptionError, "stage result payload violates"):
+                    self.store.get_run(run_id)
+
+    def test_grounder_submission_read_rejects_tampered_original_input_binding(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        self.store.save_grounder_submission_stage_result(
+            run_id, stage_id, make_grounder_submission_result(run_id)
+        )
+        finish = self.store._conn().execute(
+            "SELECT event_seq,payload_json FROM events WHERE run_id=? AND event_type='stage_finished'",
+            (run_id,),
+        ).fetchone()
+        payload = json.loads(finish["payload_json"])
+        payload["outcome"]["provenance"]["host_raw_input_sha256"] = "f" * 64
+        payload_json = json.dumps(
+            payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
+        )
+        with self.store._transaction() as connection:
+            connection.execute("DROP TRIGGER events_no_update")
+            connection.execute(
+                "UPDATE events SET payload_json=? WHERE event_seq=?",
+                (payload_json, finish["event_seq"]),
+            )
+        with self.assertRaisesRegex(StoreCorruptionError, "not bound to the immutable Host raw input"):
+            self.store.get_run(run_id)
+
     def test_grounder_receipt_validator_version_must_match_audit_before_write(self):
         from types import MappingProxyType
 
@@ -516,6 +876,11 @@ class HostStoreTests(unittest.TestCase):
         for status, diagnostic in (
             ("FAILED", "SEMANTIC_CALL_FAILED"),
             ("BLOCKED", "MODEL_REQUEST_TOO_LARGE"),
+            ("FAILED", "NO_SEARCH_RESULTS"),
+            ("FAILED", "EXTRACTION_FAILURE"),
+            ("FAILED", "SOURCE_CREDENTIAL_UNAVAILABLE"),
+            ("FAILED", "SOURCE_TRANSPORT_FAILURE"),
+            ("BLOCKED", "OPERATIONAL_LIMIT"),
         ):
             with self.subTest(status=status):
                 run_id = self.create_run("event", "grounder terminal case")
@@ -681,6 +1046,71 @@ class HostStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.finish_stage(run_id, stage_id, "BLOCKED", blocked_outcome(), ("not a code",))
         self.assertEqual(self.store.get_run(run_id)["status"], "RUNNING")
+
+    def test_event_configuration_snapshot_is_closed_typed_and_never_resolves_credentials(self):
+        from convexity_hunter.host_sources import TavilyCredentialRef
+
+        metadata = _run_start_metadata()
+        metadata["configuration_snapshot"] = _event_configuration_snapshot()
+        with patch.object(
+            TavilyCredentialRef, "resolve", side_effect=AssertionError("must not resolve credentials")
+        ):
+            run_id = self.store.create_run(
+                "event", "synthetic fixture event", BOUNDS,
+                STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+            )
+        self.assertEqual(
+            self.store.get_run(run_id)["metadata"]["configuration_snapshot"],
+            _event_configuration_snapshot(),
+        )
+        self.assertEqual(SCHEMA_VERSION, 3)
+        legacy_id = self.create_run("world", "legacy empty shell snapshot")
+        self.assertEqual(
+            self.store.get_run(legacy_id)["metadata"]["configuration_snapshot"],
+            {"models": [], "sources": [], "skills": []},
+        )
+
+    def test_event_configuration_snapshot_rejects_unknown_and_unapproved_values(self):
+        invalid_snapshots = []
+
+        snapshot = _event_configuration_snapshot()
+        snapshot["models"][0]["credential_ref"] = {"env_name": "PRIVATE_ENV_NAME"}
+        invalid_snapshots.append(("model credential field", snapshot))
+
+        snapshot = _event_configuration_snapshot()
+        snapshot["models"][0]["base_endpoint"] = "http://127.0.0.1:9000/v1"
+        invalid_snapshots.append(("local model endpoint", snapshot))
+
+        snapshot = _event_configuration_snapshot()
+        snapshot["models"][0]["role"], snapshot["models"][1]["role"] = "semantic", "discovery"
+        invalid_snapshots.append(("model role order", snapshot))
+
+        snapshot = _event_configuration_snapshot()
+        snapshot["sources"][0]["provider"] = "other"
+        invalid_snapshots.append(("source provider", snapshot))
+
+        snapshot = _event_configuration_snapshot()
+        snapshot["sources"][0]["credential_path"] = "/private/credential"
+        invalid_snapshots.append(("source credential field", snapshot))
+
+        snapshot = _event_configuration_snapshot()
+        snapshot["sources"][0]["grounder_limits"]["unknown_limit"] = 1
+        invalid_snapshots.append(("unknown Grounder limit", snapshot))
+
+        snapshot = _event_configuration_snapshot()
+        snapshot["skills"].append({"name": "unapproved-skill"})
+        invalid_snapshots.append(("skill entry", snapshot))
+
+        for label, snapshot in invalid_snapshots:
+            with self.subTest(label=label):
+                metadata = _run_start_metadata()
+                metadata["configuration_snapshot"] = snapshot
+                with self.assertRaises((TypeError, ValueError)):
+                    self.store.create_run(
+                        "event", "input", BOUNDS,
+                        STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+                    )
+        self.assertEqual(self.store.list_runs(), [])
 
     def test_nonprivate_existing_parent_is_rejected_without_chmod(self):
         shared = self.root / "existing-shared"

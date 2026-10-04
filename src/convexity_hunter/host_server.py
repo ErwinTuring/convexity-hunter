@@ -24,7 +24,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 from urllib.parse import unquote_to_bytes, urlsplit
 
-from .core_application import CoreDirectResult, CoreOperationalBounds, CoreRunResult
+from .core_application import (
+    CoreDirectResult,
+    CoreOperationalBounds,
+    CoreRunResult,
+    SourceSubmissionBatch,
+)
 from .core_research import CoreDisposition, CoreReasonCode
 from .host_direct import HostDirectBoundsError, HostDirectInputError
 from .host_profile import PROFILE_ID, PROFILE_VERSION, STANDARD_RESEARCH_PROFILE
@@ -78,6 +83,18 @@ _BATCH_LIMIT_REASON_RE = re.compile(
     r"(?:submissions|hypotheses|browser_rows|cases):[0-9]+>[0-9]+\Z",
     re.ASCII,
 )
+_GROUNDER_SUBMISSION_PUBLIC_FIELDS = frozenset((
+    "schema_version", "grounder_status", "source_status", "semantic_status",
+    "builder_status", "submission_status", "ei_status", "counts",
+    "diagnostic_counts", "coverage", "provenance", "submission_sha256",
+    "source_batch_count", "ei_assessment_status",
+))
+_GROUNDER_BUDGET_ERROR_CODES = frozenset((
+    "REQUEST_BUDGET_EXHAUSTED",
+    "CREDIT_BUDGET_EXHAUSTED",
+    "TIME_BUDGET_EXHAUSTED",
+    "BYTE_BUDGET_EXHAUSTED",
+))
 
 
 class _DiscardingTextStream:
@@ -241,6 +258,7 @@ def _run_start_metadata(
     world_configured: bool = False,
     event_configured: bool = False,
     direct_configured: bool = False,
+    configuration_snapshot: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     execution_snapshot: Dict[str, Any] = {}
     if world_configured:
@@ -259,7 +277,11 @@ def _run_start_metadata(
             "version": _DIRECT_EXECUTOR_VERSION,
         }
     return {
-        "configuration_snapshot": _configuration_snapshot(),
+        "configuration_snapshot": (
+            _configuration_snapshot()
+            if configuration_snapshot is None
+            else configuration_snapshot
+        ),
         "execution_snapshot": execution_snapshot,
         "contract_versions": _version_snapshot(),
     }
@@ -276,6 +298,35 @@ def _public_diagnostics(value: Any) -> list[str]:
     return list(value)
 
 
+def _grounder_failure_status(error: Exception) -> Tuple[str, str]:
+    """Map typed Grounder/source failures to Store-admitted closed codes."""
+
+    from .host_grounder_runtime import HostGrounderRuntimeError
+    from .host_model import ModelTransportError
+    from .host_sources import TavilyCredentialError, TavilyTransportError
+
+    if type(error) is HostGrounderRuntimeError:
+        from .host_store import _GROUNDER_FAILURE_DIAGNOSTIC_CODES
+
+        if type(error.code) is str and error.code in _GROUNDER_FAILURE_DIAGNOSTIC_CODES:
+            return "BLOCKED", error.code
+        return "FAILED", "RUN_CONTEXT_INVALID"
+    if type(error) is TavilyTransportError:
+        if type(error.status) is int and error.status == 401:
+            return "BLOCKED", "SOURCE_CREDENTIAL_UNAVAILABLE"
+        diagnostic = (
+            "OPERATIONAL_LIMIT"
+            if error.code in _GROUNDER_BUDGET_ERROR_CODES
+            else "SOURCE_TRANSPORT_FAILURE"
+        )
+        return "BLOCKED", diagnostic
+    if type(error) is TavilyCredentialError:
+        return "BLOCKED", "SOURCE_CREDENTIAL_UNAVAILABLE"
+    if type(error) is ModelTransportError and error.code in _GROUNDER_BUDGET_ERROR_CODES:
+        return "BLOCKED", "OPERATIONAL_LIMIT"
+    return "FAILED", "RUN_CONTEXT_INVALID"
+
+
 def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
     if type(value) is str:
         return {"status": value} if value in _RUN_STATUSES else None
@@ -287,6 +338,64 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
 
             return _validate_grounder_stage_outcome(value)
         except (TypeError, ValueError):
+            return None
+    if value.get("schema_version") == "host-grounder-submission-stage-outcome-v0.1":
+        try:
+            if "submission" in value:
+                from .host_store import _grounder_public_stage_outcome
+
+                projected = _grounder_public_stage_outcome(value)
+            else:
+                projected = value
+            if (
+                type(projected) is not dict
+                or set(projected) != _GROUNDER_SUBMISSION_PUBLIC_FIELDS
+            ):
+                return None
+            fixed = {
+                "schema_version": "host-grounder-submission-stage-outcome-v0.1",
+                "grounder_status": "COMPLETED",
+                "source_status": "UNKNOWN",
+                "semantic_status": "RECEIPT_VALIDATED",
+                "builder_status": "COMPLETED",
+                "submission_status": "PRESENT",
+                "ei_status": "ASSESSED",
+            }
+            if any(
+                projected.get(key) != expected_value
+                for key, expected_value in fixed.items()
+            ):
+                return None
+            # EI wire values are lowercase enum values. Never normalize an
+            # untrusted value into an acceptance state.
+            if (
+                type(projected.get("ei_assessment_status")) is not str
+                or projected["ei_assessment_status"] not in ("accepted", "incomplete")
+            ):
+                return None
+            counts = projected.get("counts")
+            if (
+                type(counts) is not dict
+                or set(counts) != {
+                    "source_body_count", "claim_count", "hypothesis_count",
+                    "field_binding_count", "coverage_count",
+                }
+                or any(type(count) is not int or count < 0 for count in counts.values())
+                or type(projected.get("source_batch_count")) is not int
+                or projected["source_batch_count"] != 1
+                or type(projected.get("submission_sha256")) is not str
+                or re.fullmatch(
+                    r"[0-9a-f]{64}", projected["submission_sha256"], re.ASCII
+                ) is None
+                or type(projected.get("diagnostic_counts")) is not list
+                or type(projected.get("coverage")) is not list
+                or type(projected.get("provenance")) is not dict
+            ):
+                return None
+            return {
+                key: projected[key] for key in _GROUNDER_SUBMISSION_PUBLIC_FIELDS
+            }
+        except (AttributeError, TypeError, ValueError):
             return None
     if (
         set(value) == {"schema_version", "case_id", "classification"}
@@ -928,7 +1037,10 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                         ),
                         "event": (
                             "CONFIGURED"
-                            if self.server.event_executor is not None
+                            if (
+                                self.server.event_executor is not None
+                                or self.server.event_grounder is not None
+                            )
                             else "NOT_CONFIGURED"
                         ),
                         "direct": (
@@ -1204,10 +1316,30 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             # whose version is recorded below is the only one this run may use.
             world_executor = self.server.world_executor
             event_executor = self.server.event_executor
+            event_grounder = self.server.event_grounder
+            event_core_executor = self.server.event_core_executor
             direct_executor = self.server.direct_executor
+            staged_event_configured = (
+                request.mode == "event" and event_grounder is not None
+            )
             direct_configured = (
                 request.mode == "direct" and direct_executor is not None
             )
+            configuration_snapshot = _configuration_snapshot()
+            if staged_event_configured:
+                snapshot_callback = getattr(
+                    event_grounder, "configuration_snapshot", None
+                )
+                if not callable(snapshot_callback):
+                    raise ValueError("Event Grounder has no safe configuration snapshot")
+                configuration_snapshot = snapshot_callback()
+                if type(configuration_snapshot) is not dict:
+                    raise ValueError("Event Grounder configuration snapshot is invalid")
+        except Exception:
+            self._send_json(500, {"error": "event configuration unavailable"})
+            return
+
+        try:
             run_id = self.server.journal.create_run(
                 mode=request.mode,
                 input=request.input,
@@ -1215,15 +1347,30 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                 profile_snapshot=STANDARD_RESEARCH_PROFILE.snapshot(),
                 metadata=_run_start_metadata(
                     world_configured=world_executor is not None,
-                    event_configured=event_executor is not None,
+                    event_configured=(
+                        event_executor is not None or staged_event_configured
+                    ),
                     direct_configured=direct_executor is not None,
+                    configuration_snapshot=configuration_snapshot,
                 ),
             )
             if type(run_id) is not str or _RUN_ID_RE.fullmatch(run_id) is None:
                 raise ValueError("journal returned an invalid run identifier")
-            stage_id = self.server.journal.start_stage(run_id, "executor")
+            stage_id = self.server.journal.start_stage(
+                run_id, "grounder" if staged_event_configured else "executor"
+            )
         except Exception:
             self._send_json(500, {"error": "journal unavailable"})
+            return
+
+        if staged_event_configured:
+            self._post_grounded_event_run(
+                request,
+                run_id,
+                stage_id,
+                event_grounder,
+                event_core_executor,
+            )
             return
 
         if request.mode in ("world", "event"):
@@ -1443,10 +1590,19 @@ class HostRequestHandler(BaseHTTPRequestHandler):
         run_id: str,
         stage_id: str,
         executor: Callable[..., CoreRunResult],
+        *,
+        source_batch: Optional[SourceSubmissionBatch] = None,
     ) -> None:
         try:
             # One trusted callback only. It runs after run_start and stage_started.
-            result = executor(request.input, bounds=request.bounds)
+            if source_batch is None:
+                result = executor(request.input, bounds=request.bounds)
+            else:
+                result = executor(
+                    request.input,
+                    bounds=request.bounds,
+                    source_batch=source_batch,
+                )
         except Exception:
             if not self._complete_terminal_run(
                 run_id,
@@ -1468,6 +1624,8 @@ class HostRequestHandler(BaseHTTPRequestHandler):
 
         try:
             result = _validate_batch_result(result, request)
+            if source_batch is not None and result.case_set.submissions is not source_batch:
+                raise ValueError("Core result did not preserve the Grounder source batch")
         except Exception:
             if not self._complete_terminal_run(
                 run_id,
@@ -1546,6 +1704,154 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_json(201, {"run_id": run_id, "status": status})
 
+    def _post_grounded_event_run(
+        self,
+        request: ValidatedRunRequest,
+        run_id: str,
+        grounder_stage_id: str,
+        event_grounder: Callable[..., Any],
+        event_core_executor: Callable[..., CoreRunResult],
+    ) -> None:
+        """Run Grounder first, then persist and execute its exact source batch."""
+
+        try:
+            result = event_grounder(
+                request.input, run_id=run_id, bounds=request.bounds
+            )
+        except Exception as error:
+            status, diagnostic = _grounder_failure_status(error)
+            if not self._complete_terminal_run(
+                run_id,
+                grounder_stage_id,
+                status=status,
+                outcome=status,
+                diagnostics=(diagnostic,),
+            ):
+                return
+            self._send_json(
+                201,
+                {"run_id": run_id, "status": status, "reason": diagnostic},
+            )
+            return
+
+        try:
+            from .host_grounder_builder import HostBuildResult
+            from .host_grounder_runtime import HostGrounderEvidenceCatalogRuntimeResult
+
+            if type(result) is not HostGrounderEvidenceCatalogRuntimeResult:
+                raise ValueError("Grounder must return the exact v0.7 runtime result")
+            build = result.build_result
+            if type(build) is not HostBuildResult:
+                raise ValueError("Grounder result has no exact HostBuildResult")
+        except Exception:
+            if not self._complete_terminal_run(
+                run_id,
+                grounder_stage_id,
+                status="FAILED",
+                outcome="FAILED",
+                diagnostics=("RUN_CONTEXT_INVALID",),
+            ):
+                return
+            self._send_json(
+                201,
+                {"run_id": run_id, "status": "FAILED", "reason": "RUN_CONTEXT_INVALID"},
+            )
+            return
+
+        if build.submission is None:
+            if build.source_batch is not None:
+                self._finish_grounder_error(
+                    run_id, grounder_stage_id, "FAILED", "RUN_CONTEXT_INVALID"
+                )
+                return
+            try:
+                save_grounder = getattr(
+                    self.server.journal, "save_grounder_stage_result", None
+                )
+                if not callable(save_grounder):
+                    raise ValueError("Grounder negative-stage writer is unavailable")
+                saved = save_grounder(run_id, grounder_stage_id, result)
+                if saved is not None:
+                    raise ValueError("Grounder negative-stage writer returned invalid value")
+            except Exception:
+                self._finish_grounder_error(
+                    run_id, grounder_stage_id, "FAILED", "AUDIT_RETENTION_FAILED"
+                )
+                return
+            self._send_json(
+                201,
+                {
+                    "run_id": run_id,
+                    "status": "BLOCKED",
+                    "reason": "GROUNDING_NO_SUBMISSION",
+                },
+            )
+            return
+
+        source_batch = build.source_batch
+        try:
+            if type(source_batch) is not SourceSubmissionBatch:
+                raise ValueError("Grounder result has no exact SourceSubmissionBatch")
+            source_batch.__post_init__()
+            if (
+                not source_batch.submissions
+                or len(source_batch.submissions) != 1
+                or source_batch.raw_input is not build.raw_input
+                or source_batch.submissions[0] is not build.submission
+            ):
+                raise ValueError("Grounder source batch is not bound to its submission")
+        except Exception:
+            self._finish_grounder_error(
+                run_id, grounder_stage_id, "FAILED", "RUN_CONTEXT_BINDING_INVALID"
+            )
+            return
+
+        try:
+            save_grounder = getattr(
+                self.server.journal, "save_grounder_submission_stage_result", None
+            )
+            if not callable(save_grounder):
+                raise ValueError("Grounder submission-stage writer is unavailable")
+            saved = save_grounder(run_id, grounder_stage_id, result)
+            if saved is not None:
+                raise ValueError("Grounder submission-stage writer returned invalid value")
+        except Exception:
+            self._finish_grounder_error(
+                run_id, grounder_stage_id, "FAILED", "AUDIT_RETENTION_FAILED"
+            )
+            return
+
+        try:
+            executor_stage_id = self.server.journal.start_stage(run_id, "executor")
+        except Exception:
+            # The durable positive Grounder stage is retained. Recovery will
+            # mark this still-running run INTERRUPTED; no Core call is made.
+            self._send_json(500, {"error": "journal unavailable"})
+            return
+        self._post_batch_run(
+            request,
+            run_id,
+            executor_stage_id,
+            event_core_executor,
+            source_batch=source_batch,
+        )
+
+    def _finish_grounder_error(
+        self, run_id: str, stage_id: str, status: str, diagnostic: str
+    ) -> None:
+        if not self._complete_terminal_run(
+            run_id,
+            stage_id,
+            status=status,
+            outcome=status,
+            diagnostics=(diagnostic,),
+        ):
+            return
+        self._send_json(
+            201,
+            {"run_id": run_id, "status": status, "reason": diagnostic},
+        )
+
     def _complete_terminal_run(
         self,
         run_id: str,
@@ -1615,6 +1921,8 @@ def create_server(
     render_workbench: Callable[[str], str],
     world_executor: Optional[Callable[..., CoreRunResult]] = None,
     event_executor: Optional[Callable[..., CoreRunResult]] = None,
+    event_grounder: Optional[Callable[..., Any]] = None,
+    event_core_executor: Optional[Callable[..., CoreRunResult]] = None,
     direct_executor: Optional[Callable[..., CoreDirectResult]] = None,
     port: int = DEFAULT_PORT,
     request_timeout_seconds: float = REQUEST_TIMEOUT_SECONDS,
@@ -1629,6 +1937,24 @@ def create_server(
         raise TypeError("world_executor must be callable or None")
     if event_executor is not None and not callable(event_executor):
         raise TypeError("event_executor must be callable or None")
+    if event_grounder is not None and not callable(event_grounder):
+        raise TypeError("event_grounder must be callable or None")
+    if event_core_executor is not None and not callable(event_core_executor):
+        raise TypeError("event_core_executor must be callable or None")
+    if (event_grounder is None) != (event_core_executor is None):
+        raise ValueError(
+            "event_grounder and event_core_executor must be configured together"
+        )
+    if event_executor is not None and event_grounder is not None:
+        raise ValueError(
+            "event_executor is mutually exclusive with the staged Event callbacks"
+        )
+    if event_grounder is not None and not callable(
+        getattr(event_grounder, "configuration_snapshot", None)
+    ):
+        raise TypeError(
+            "event_grounder must expose a callable configuration_snapshot()"
+        )
     if (
         type(request_timeout_seconds) not in (int, float)
         or not math.isfinite(request_timeout_seconds)
@@ -1657,6 +1983,8 @@ def create_server(
     server.render_workbench = render_workbench
     server.world_executor = world_executor
     server.event_executor = event_executor
+    server.event_grounder = event_grounder
+    server.event_core_executor = event_core_executor
     server.direct_executor = direct_executor
     server.csrf_token = secrets.token_urlsafe(32)
     return server

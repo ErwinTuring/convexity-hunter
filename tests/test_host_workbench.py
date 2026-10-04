@@ -293,6 +293,84 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   if (innerHtmlWrites !== 0) throw new Error("Grounder outcome reached innerHTML");
   if (grounder.calls.some((call) => call.path.includes("/cases/"))) throw new Error("Grounder stage rendering triggered an extra detail request");
 
+  const positiveOutcome = {
+    ...grounderOutcome,
+    schema_version: "host-grounder-submission-stage-outcome-v0.1",
+    submission_status: "PRESENT",
+    ei_status: "ASSESSED",
+    ei_assessment_status: "incomplete",
+    source_batch_count: 1,
+    submission_sha256: digest("2"),
+    submission: {
+      event_id: "PRIVATE_EVENT_ID_SENTINEL",
+      account_id: "PRIVATE_ACCOUNT_ID_SENTINEL",
+      source_url: "https://private.example/submission?token=PRIVATE_SUBMISSION_URL_SENTINEL",
+      raw_input: "PRIVATE_TYPED_SUBMISSION_SENTINEL",
+      credential: "PRIVATE_SUBMISSION_CREDENTIAL_SENTINEL",
+      config_path: "PRIVATE_CONFIG_PATH_SENTINEL",
+      model_output: "PRIVATE_MODEL_OUTPUT_SENTINEL"
+    },
+    future_private_field: "UNKNOWN_POSITIVE_FIELD_SENTINEL"
+  };
+  const positive = await scenario({
+    mode: "event", cases: [], runStatus: "RUNNING",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: positiveOutcome }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await positive.clickRun();
+  const positiveText = positive.elements.get("run-events").textContent;
+  for (const expected of [
+    "host-grounder-submission-stage-outcome-v0.1", "EI submission：PRESENT", "EI：ASSESSED",
+    "EI 确定性评估：INCOMPLETE", "Source batch 数：1", "Submission SHA-256：" + digest("2"),
+    "Hypothesis 数：0", "Coverage 数：2", "Producer wire：grounder-output-v0.3",
+    "model=unresolved", "validator=contradicted", "不自动表示研究成功、Core 结果或市场完成"
+  ]) {
+    if (!positiveText.includes(expected)) throw new Error("Positive Grounder safe stage field was omitted: " + expected);
+  }
+  if (positiveText.includes("EI 确定性评估：ACCEPTED")) throw new Error("ASSESSED was incorrectly promoted to ACCEPTED");
+  for (const forbidden of [
+    "PRIVATE_EVENT_ID_SENTINEL", "PRIVATE_SUBMISSION_URL_SENTINEL", "PRIVATE_TYPED_SUBMISSION_SENTINEL",
+    "PRIVATE_ACCOUNT_ID_SENTINEL", "PRIVATE_SUBMISSION_CREDENTIAL_SENTINEL", "PRIVATE_CONFIG_PATH_SENTINEL",
+    "PRIVATE_MODEL_OUTPUT_SENTINEL", "UNKNOWN_POSITIVE_FIELD_SENTINEL", "PRIVATE_PROVIDER", "PRIVATE_MODEL_NAME",
+    "RAW_MODEL_BODY_SENTINEL", "RAW_BODY_SENTINEL", "DO_NOT_DISPLAY"
+  ]) {
+    if (positiveText.includes(forbidden)) throw new Error("Private or unknown positive Grounder data was displayed: " + forbidden);
+  }
+  if (positiveText.includes("question-1") || positiveText.includes("question-2")) throw new Error("positive coverage exposed unbounded subquestion identifiers");
+  if (innerHtmlWrites !== 0) throw new Error("positive Grounder outcome reached innerHTML");
+  if (positive.calls.some((call) => call.path.includes("/cases/"))) throw new Error("positive Grounder rendering triggered an extra detail request");
+  const allowedPositiveReads = ["/api/status", "/api/profile", "/api/runs", "/api/runs/" + runId];
+  if (positive.calls.some((call) => call.method !== "GET" || !allowedPositiveReads.includes(call.path))) {
+    throw new Error("positive Grounder rendering triggered an extra or non-GET request");
+  }
+
+  const accepted = await scenario({
+    mode: "event", cases: [], runStatus: "RUNNING",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: {
+      ...positiveOutcome, ei_assessment_status: "accepted"
+    } }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await accepted.clickRun();
+  const acceptedText = accepted.elements.get("run-events").textContent;
+  if (!acceptedText.includes("EI 确定性评估：ACCEPTED")) throw new Error("actual accepted EI assessment status was not displayed");
+  if (acceptedText.includes("研究成功（ACCEPTED）") || acceptedText.includes("市场完成（ACCEPTED）")) throw new Error("EI acceptance was presented as research or market success");
+  if (accepted.calls.some((call) => call.path.includes("/cases/"))) throw new Error("accepted Grounder rendering triggered an extra detail request");
+
+  const invalidAssessment = "<img src=x onerror=alert(1)>";
+  const invalidPositive = await scenario({
+    mode: "event", cases: [], runStatus: "RUNNING",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: {
+      ...positiveOutcome, ei_assessment_status: invalidAssessment
+    } }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await invalidPositive.clickRun();
+  const invalidPositiveText = invalidPositive.elements.get("run-events").textContent;
+  if (!invalidPositiveText.includes("EI 确定性评估：字段缺失或不可识别")) throw new Error("invalid EI assessment status did not fail closed");
+  if (invalidPositiveText.includes(invalidAssessment)) throw new Error("unrecognized EI assessment status was echoed");
+  if (innerHtmlWrites !== 0) throw new Error("adversarial positive outcome reached innerHTML");
+
   for (const [mode, cases] of [["world", [{ case_id: "world:one" }, { case_id: "world:two" }]], ["event", [{ case_id: "event:one" }]]]) {
     const keyedCases = cases.map((item) => ({ case_id: item.case_id, case_key: caseKeyFor(item.case_id) }));
     const lane = await scenario({
