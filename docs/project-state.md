@@ -11,6 +11,14 @@ preparation still does not resolve independent listing/date evidence.
 73 Host/Store tests, compile/diff checks and independent targeted re-review
 passed. No acceptance rule, stage schema or economic calculation changed.
 
+The separate post-fix one-shot validation completed Grounder/semantic receipt/
+Builder with 5 bodies and 14 claims, but zero hypotheses and no submission.
+Host is `BLOCKED / GROUNDING_NO_SUBMISSION`, EI `NOT_RUN`; rejected claims 12,
+missing bindings 27, no projectable hypothesis 1. Model coverage `supported`
+does not override validator `unresolved`. No Core cases or extra repeat batch.
+Real standalone EI acceptance remains unproven. Compliant submission preparation
+and independent identity/date resolution remain the next implementation gap.
+
 Current local work: the frozen [Event connection](local-event-delivery-v0.1.md)
 has an explicit experimental standalone entry point, bounded source/model
 driver, assessed positive-stage archive and same-Core callback. Full regression

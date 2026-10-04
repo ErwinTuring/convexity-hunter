@@ -44,6 +44,22 @@ no full suite or live replay belongs to this small diagnostic fix.
 Work-share timing is incomplete: Builder recorded approximately 2m52 preparation
 but could not separate coding from test work. No whole-phase 70% claim is made.
 
+One separately preregistered post-fix validation used the unchanged literal clue,
+model/source budgets and workload limits, with declared evaluation date
+`2026-10-05`. It completed Grounder/semantic receipt/Builder, but returned
+`BLOCKED / GROUNDING_NO_SUBMISSION`: 5 source bodies, 14 claims, 0 hypotheses,
+8 bindings, 1 coverage entry. Diagnostics: `CLAIM_REJECTED_BY_VALIDATOR` 12,
+`FIELD_BINDING_MISSING` 27, `NO_PROJECTABLE_HYPOTHESIS` 1. Coverage model status
+is `supported`, validator status `unresolved`; source remains `UNKNOWN` and EI
+`NOT_RUN`. No Core/executor stage or case set. This is an independently completed
+negative result, not proof of real EI acceptance or the previous run's cause.
+No further batch, query tuning or fabricated hypothesis follows this experiment.
+The next substantive gap is compliant hypothesis/submission preparation and
+independent Host identity/date evidence, not transport availability. The current
+default preparer retains unknowns. Its guard/runtime exists, but automatic
+listing/date resolution is not implemented; no new provider or weakened contract
+is authorized by this result alone.
+
 ### Event connection implemented
 
 The frozen [Event delivery boundary](local-event-delivery-v0.1.md) now has local

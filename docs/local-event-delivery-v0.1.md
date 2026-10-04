@@ -181,3 +181,28 @@ The extra fixed codes belong to run diagnostics only. The Grounder stage keeps
 its original admitted top-level code, preserving the existing closed stage
 schema and historical read-side validation. Stage outcome and HTTP `reason`
 remain unchanged; no Store schema migration or new endpoint is introduced.
+
+### One diagnostic-delivery validation after the fix
+
+One new independent attempt is preregistered after the diagnostic fix passes
+73 focused tests and targeted re-review. It uses the same literal research clue,
+source/model settings and operational ceilings, but declares evaluation date
+`2026-10-05`. Existing private credential references remain external. Only the
+new run can provide its own specific semantic failure codes; it cannot recover
+the previous run's cause or establish that stochastic outputs are equivalent.
+No query optimization, budget increase, model/provider change, raw response
+retention, retry or acceptance relaxation is permitted. A separate private
+database and exclusive spent marker are used. No extra attempt follows merely
+to obtain better or accepted output.
+
+Outcome: HTTP 201, Host `BLOCKED / GROUNDING_NO_SUBMISSION`. Grounder is
+`COMPLETED`, semantic receipt `RECEIPT_VALIDATED`, Builder `COMPLETED`, submission
+`MISSING`, EI `NOT_RUN`, source status `UNKNOWN`. Five bodies, fourteen claims,
+zero hypotheses, eight field bindings and one coverage entry were retained as
+bounded aggregate evidence. Builder diagnostic counts: rejected claim 12,
+missing field binding 27, no projectable hypothesis 1. Coverage says model
+`supported` but validator `unresolved`; a model's self-report is not authority.
+There is no executor stage, case set or Core result. No additional call follows.
+This new completed negative does not explain the prior semantic rejection or
+prove that the diagnostic projection was exercised live; synthetic tests cover
+that projection. Both private databases and spent markers remain preserved.
