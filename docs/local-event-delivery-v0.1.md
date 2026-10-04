@@ -128,3 +128,16 @@ explicit configuration. No retry, alternate source/model, or market call to
 improve coverage is permitted. A missing submission remains an inspectable
 negative Host result. This is a new integration attempt, not replay of a spent
 retained-packet trial or proof that historical facts remain currently applicable.
+
+The new attempt uses evaluation date `2026-10-04` and the literal input
+`IREN GPU/Dell/Microsoft project financing`, which is a research clue, not a
+verified event statement. Explicit workload caps are one submission, four
+hypotheses, 400 Browser rows, 200 cases and ten-second quote timeout. These are
+operational ceilings, not economic selection rules. The existing approved
+Standard Research Profile remains unchanged. Source ceilings are two requests,
+three credits and five extracted URLs; model ceilings are one request per role,
+45-second timeout, 8,000 discovery / 6,000 semantic output tokens. No new
+expected window, listing identity or reassessment date is supplied by the runner.
+The private experiment database is retained outside Git; only closed status,
+reason codes and aggregate counts may enter the durable checkpoint. A spent
+marker prevents repeat execution, including after partial transport failure.
