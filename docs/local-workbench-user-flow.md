@@ -12,6 +12,16 @@ Grounder 未通过真实验收前，不添加一键启用或合成生产默认�
 
 ## 启动与输入
 
+另有显式实验入口 `examples/local_event_host.py`，接入 Tavily Basic Search/Extract、
+DeepSeek 两角色核验及同一 Event Core。它可脱离 Codex 启动，但尚未证明真实
+Event Intelligence 接受：默认 context preparer 保留未知主体与日期证据，不补造。
+启动须明确提供仓库外的 `host-event-config-v0.1` 配置文件、`--evaluation-date`、
+`--maturity-authority`、`--futu-port`、私有 `--db`，可指定 `--port`。
+配置只引用外部凭证；预算与授权标志必须显式设置。服务启动不读取凭证或连接行情。
+未形成 submission 时显示 `BLOCKED / GROUNDING_NO_SUBMISSION`；形成 submission
+时先存档实际 EI assessment，再交给原 Core。搜索成功、EI 接受和 Core 完成互不等同。
+完整边界见 [Event 接入说明](local-event-delivery-v0.1.md)。默认主 CLI 行为不变。
+
 在仓库根目录运行：
 
 ```bash
