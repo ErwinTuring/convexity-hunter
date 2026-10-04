@@ -141,3 +141,17 @@ expected window, listing identity or reassessment date is supplied by the runner
 The private experiment database is retained outside Git; only closed status,
 reason codes and aggregate counts may enter the durable checkpoint. A spent
 marker prevents repeat execution, including after partial transport failure.
+
+First Host attempt ended `BLOCKED / SOURCE_CREDENTIAL_UNAVAILABLE` before Core.
+Local resolver inspection found the stale `.env` reference absent; the existing
+user-private `tavily.env.txt` parses successfully, as does the existing DeepSeek
+configuration. No credential values were printed or persisted. The first private
+database and spent marker remain intact. This is a local configuration failure,
+not evidence about Tavily search or Grounder semantic quality.
+
+One separately registered corrective attempt uses that existing credential file
+with the same input, evaluation date and all source/model/workload ceilings.
+It creates its own private database and exclusive spent marker. No retry of the
+first artifact, increased budget, alternative provider, or evidence threshold
+change is authorized. This continuation corrects configuration before the first
+external acquisition; its outcome must still be recorded separately.
