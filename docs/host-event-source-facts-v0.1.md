@@ -19,9 +19,10 @@ Preserve an existing description and all other context identities.
 Only the same unique fact may supply a singleton occurrence-date range:
 
 - Use an already retained, hash-checked body. Require HTTPS `sec.gov` or
-  `www.sec.gov`, exact EDGAR `/Archives/edgar/data/<CIK>/<accession>/...`
+  `www.sec.gov`, exact EDGAR `/Archives/edgar/data/<CIK>/<accession>/<filename>`
   locator, no userinfo, query, fragment, non-default port, traversal or
-  encoded path ambiguity. A domain alone is not evidence.
+  encoded path ambiguity. The filename is exactly one safe segment: no extra
+  segments, encoded separators or dot segments. A domain alone is not evidence.
 - The body must independently identify one consistent SEC filing form,
   accession, registrant and CIK. In this first bounded implementation use
   explicit SEC submission-header labels `CONFORMED SUBMISSION TYPE: 8-K`,
