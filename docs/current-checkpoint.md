@@ -11,6 +11,39 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Current executable boundary — 2026-10-04
 
+### Real Event integration outcome — 2026-10-05
+
+The separately preregistered fresh-source IREN attempt used the declared
+`2026-10-04` evaluation date; actual execution crossed into `2026-10-05`.
+Those dates are distinct, not a historical as-of replay or a claim of current
+research applicability. The first local HTTP attempt stopped at
+`SOURCE_CREDENTIAL_UNAVAILABLE`: the remembered `.env` path was absent. The
+existing user-private Tavily file and DeepSeek configuration passed local
+resolver checks without exposing values. The failed database and spent marker
+were retained. A separately registered same-budget corrective attempt followed.
+
+Corrective Host POST returned HTTP 201 and `BLOCKED / SEMANTIC_VERDICT_REJECTED`.
+Grounder started and finished once; no executor stage, EI assessment or Core
+archive was created. This code identifies the semantic wire/receipt validation
+boundary, not an EI rejection, negative verdict on all facts, or source-quality
+failure. Search/extraction and both model calls precede that boundary in the
+bounded implementation. Exact completed-call usage, raw output and the specific
+failed semantic check were not retained; do not manufacture those details.
+Private databases/spent markers remain outside Git. No retry or weakened
+acceptance follows this result. No model/source bodies or credentials enter Git.
+
+The runtime already exposes closed `failure_stage` / `failure_check`, but Host
+failure delivery dropped them. A narrow behavior-preserving diagnostic fix now
+retains only fixed semantic run codes, preserves the original reason and
+BLOCKED status, and never persist arbitrary exception text. This cannot recover
+the missing detail from the spent attempt or prove real Event acceptance.
+Final Host/Store regression passed 73 tests (0.964 seconds); compileall and diff
+checks passed. Independent review's missing-attribute finding was corrected,
+and targeted re-review passed. Stage schema and Core acceptance are unchanged;
+no full suite or live replay belongs to this small diagnostic fix.
+Work-share timing is incomplete: Builder recorded approximately 2m52 preparation
+but could not separate coding from test work. No whole-phase 70% claim is made.
+
 ### Event connection implemented
 
 The frozen [Event delivery boundary](local-event-delivery-v0.1.md) now has local

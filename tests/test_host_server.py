@@ -1477,6 +1477,226 @@ class HostServerBatchTests(unittest.TestCase):
             store.close()
             temporary_directory.cleanup()
 
+    def test_semantic_failure_subcause_projection_is_closed_and_stage_bound(self):
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+
+        stage_codes = {
+            "semantic_wire_parse": "SEMANTIC_FAILURE_STAGE_WIRE_PARSE",
+            "semantic_receipt_construction": "SEMANTIC_FAILURE_STAGE_RECEIPT_CONSTRUCTION",
+            "semantic_receipt_validation": "SEMANTIC_FAILURE_STAGE_RECEIPT_VALIDATION",
+        }
+        check_codes = {
+            "wire_decode": "SEMANTIC_FAILURE_CHECK_WIRE_DECODE",
+            "topshape": "SEMANTIC_FAILURE_CHECK_TOPSHAPE",
+            "run_binding": "SEMANTIC_FAILURE_CHECK_RUN_BINDING",
+            "catalog_validation": "SEMANTIC_FAILURE_CHECK_CATALOG_VALIDATION",
+            "producer_binding_alignment": "SEMANTIC_FAILURE_CHECK_PRODUCER_BINDING_ALIGNMENT",
+            "evidence_ref_expansion": "SEMANTIC_FAILURE_CHECK_EVIDENCE_REF_EXPANSION",
+            "internal_verdict_validation": "SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_VALIDATION",
+        }
+        project = host_server_module._semantic_failure_diagnostic_codes
+
+        for stage, stage_code in stage_codes.items():
+            with self.subTest(stage=stage):
+                error = HostGrounderRuntimeError(
+                    "SEMANTIC_VERDICT_REJECTED", failure_stage=stage
+                )
+                self.assertEqual(project(error), (stage_code,))
+
+        for check, check_code in check_codes.items():
+            with self.subTest(check=check):
+                error = HostGrounderRuntimeError(
+                    "SEMANTIC_VERDICT_REJECTED",
+                    failure_stage="semantic_wire_parse",
+                    failure_check=check,
+                )
+                self.assertEqual(
+                    project(error),
+                    (stage_codes["semantic_wire_parse"], check_code),
+                )
+
+        unknown_stage = HostGrounderRuntimeError("SEMANTIC_VERDICT_REJECTED")
+        unknown_stage.failure_stage = "PRIVATE_STAGE_SENTINEL"
+        unknown_stage.failure_check = "wire_decode"
+        self.assertEqual(project(unknown_stage), ())
+
+        bypassed_check = HostGrounderRuntimeError("SEMANTIC_VERDICT_REJECTED")
+        bypassed_check.failure_stage = "semantic_receipt_validation"
+        bypassed_check.failure_check = "wire_decode"
+        bypassed_check.private_detail = "PRIVATE_CHECK_SENTINEL"
+        self.assertEqual(
+            project(bypassed_check),
+            (stage_codes["semantic_receipt_validation"],),
+        )
+
+        unknown_check = HostGrounderRuntimeError("SEMANTIC_VERDICT_REJECTED")
+        unknown_check.failure_stage = "semantic_wire_parse"
+        unknown_check.failure_check = "PRIVATE_CHECK_SENTINEL"
+        self.assertEqual(
+            project(unknown_check), (stage_codes["semantic_wire_parse"],)
+        )
+
+        missing_attrs = HostGrounderRuntimeError("SEMANTIC_VERDICT_REJECTED")
+        del missing_attrs.failure_stage
+        del missing_attrs.failure_check
+        self.assertEqual(project(missing_attrs), ())
+
+        missing_check = HostGrounderRuntimeError(
+            "SEMANTIC_VERDICT_REJECTED", failure_stage="semantic_wire_parse"
+        )
+        del missing_check.failure_check
+        self.assertEqual(
+            project(missing_check), (stage_codes["semantic_wire_parse"],)
+        )
+
+        unrelated = HostGrounderRuntimeError("NO_SEARCH_RESULTS")
+        unrelated.failure_stage = "semantic_wire_parse"
+        unrelated.failure_check = "wire_decode"
+        self.assertEqual(project(unrelated), ())
+
+    def test_semantic_failure_subcauses_survive_store_reload_and_http_history(self):
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+        from convexity_hunter.host_store import HostStore
+
+        temporary_directory = tempfile.TemporaryDirectory(
+            dir=pathlib.Path(tempfile.gettempdir()).resolve()
+        )
+        db_path = pathlib.Path(temporary_directory.name) / "semantic-failure.sqlite3"
+        store = HostStore(db_path)
+        self.journal = store
+        case_names = (
+            "valid semantic cause",
+            "unknown semantic stage",
+            "bypassed semantic check",
+            "unknown semantic check",
+            "missing semantic failure attributes",
+        )
+        run_ids = {}
+        core_calls = []
+
+        def grounder(raw_input, *, run_id, bounds):
+            del run_id, bounds
+            if raw_input == case_names[0]:
+                raise HostGrounderRuntimeError(
+                    "SEMANTIC_VERDICT_REJECTED",
+                    failure_stage="semantic_wire_parse",
+                    failure_check="evidence_ref_expansion",
+                )
+            error = HostGrounderRuntimeError("SEMANTIC_VERDICT_REJECTED")
+            if raw_input == case_names[1]:
+                error.failure_stage = "PRIVATE_STAGE_SENTINEL"
+                error.failure_check = "wire_decode"
+                error.private_detail = "PRIVATE_ERROR_ATTRIBUTE_SENTINEL"
+            elif raw_input == case_names[2]:
+                error.failure_stage = "semantic_receipt_validation"
+                error.failure_check = "wire_decode"
+                error.private_detail = "PRIVATE_ERROR_ATTRIBUTE_SENTINEL"
+            elif raw_input == case_names[3]:
+                error.failure_stage = "semantic_wire_parse"
+                error.failure_check = "PRIVATE_CHECK_SENTINEL"
+                error.private_detail = "PRIVATE_ERROR_ATTRIBUTE_SENTINEL"
+            else:
+                del error.failure_stage
+                del error.failure_check
+                error.private_detail = "PRIVATE_ERROR_ATTRIBUTE_SENTINEL"
+            raise error
+
+        grounder.configuration_snapshot = self._event_configuration_snapshot_accessor()
+
+        def core_executor(*_args, **_kwargs):
+            core_calls.append("core")
+            self.fail("Core must not run after semantic Grounder failure")
+
+        try:
+            self._start_server(
+                event_grounder=grounder,
+                event_core_executor=core_executor,
+            )
+            for raw_input in case_names:
+                response = self._post(raw_input, mode="event")
+                self.assertEqual(response[0], 201)
+                body = self._decoded(response)
+                self.assertEqual(body["status"], "BLOCKED")
+                self.assertEqual(body["reason"], "SEMANTIC_VERDICT_REJECTED")
+                run_ids[raw_input] = body["run_id"]
+                run = store.get_run(body["run_id"])
+                self.assertEqual(run["status"], "BLOCKED")
+                self.assertEqual(
+                    run["events"][1]["diagnostics"], ["SEMANTIC_VERDICT_REJECTED"]
+                )
+                self.assertIsNone(store.get_batch_summary(body["run_id"]))
+                for secret in (
+                    "PRIVATE_STAGE_SENTINEL",
+                    "PRIVATE_CHECK_SENTINEL",
+                    "PRIVATE_ERROR_ATTRIBUTE_SENTINEL",
+                ):
+                    self.assertNotIn(secret, response[2].decode("utf-8"))
+                    self.assertNotIn(secret, json.dumps(run, ensure_ascii=False))
+
+            valid_codes = [
+                "SEMANTIC_VERDICT_REJECTED",
+                "SEMANTIC_FAILURE_STAGE_WIRE_PARSE",
+                "SEMANTIC_FAILURE_CHECK_EVIDENCE_REF_EXPANSION",
+            ]
+            self.assertEqual(
+                store.get_run(run_ids[case_names[0]])["diagnostics"], valid_codes
+            )
+            self.assertEqual(
+                store.get_run(run_ids[case_names[1]])["diagnostics"],
+                ["SEMANTIC_VERDICT_REJECTED"],
+            )
+            self.assertEqual(
+                store.get_run(run_ids[case_names[2]])["diagnostics"],
+                [
+                    "SEMANTIC_VERDICT_REJECTED",
+                    "SEMANTIC_FAILURE_STAGE_RECEIPT_VALIDATION",
+                ],
+            )
+            self.assertEqual(
+                store.get_run(run_ids[case_names[3]])["diagnostics"],
+                [
+                    "SEMANTIC_VERDICT_REJECTED",
+                    "SEMANTIC_FAILURE_STAGE_WIRE_PARSE",
+                ],
+            )
+            self.assertEqual(
+                store.get_run(run_ids[case_names[4]])["diagnostics"],
+                ["SEMANTIC_VERDICT_REJECTED"],
+            )
+            self.assertEqual(core_calls, [])
+
+            self._stop_server()
+            store.close()
+            store = HostStore(db_path)
+            self.journal = store
+            self._start_server()
+            for raw_input, run_id in run_ids.items():
+                response = self._request("GET", "/api/runs/{}".format(run_id))
+                self.assertEqual(response[0], 200)
+                public_run = self._decoded(response)
+                expected = (
+                    valid_codes
+                    if raw_input == case_names[0]
+                    else store.get_run(run_id)["diagnostics"]
+                )
+                self.assertEqual(public_run["diagnostics"], expected)
+                self.assertEqual(
+                    public_run["events"][1]["diagnostics"],
+                    ["SEMANTIC_VERDICT_REJECTED"],
+                )
+                serialized = response[2].decode("utf-8")
+                for secret in (
+                    "PRIVATE_STAGE_SENTINEL",
+                    "PRIVATE_CHECK_SENTINEL",
+                    "PRIVATE_ERROR_ATTRIBUTE_SENTINEL",
+                ):
+                    self.assertNotIn(secret, serialized)
+            self.assertEqual(core_calls, [])
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
     def test_missing_tavily_credential_blocks_before_transport_or_core_without_leakage(self):
         from convexity_hunter.host_event import create_event_grounder
         from convexity_hunter.host_sources import TavilyTransportError

@@ -95,6 +95,20 @@ _GROUNDER_BUDGET_ERROR_CODES = frozenset((
     "TIME_BUDGET_EXHAUSTED",
     "BYTE_BUDGET_EXHAUSTED",
 ))
+_SEMANTIC_FAILURE_STAGE_DIAGNOSTICS = {
+    "semantic_wire_parse": "SEMANTIC_FAILURE_STAGE_WIRE_PARSE",
+    "semantic_receipt_construction": "SEMANTIC_FAILURE_STAGE_RECEIPT_CONSTRUCTION",
+    "semantic_receipt_validation": "SEMANTIC_FAILURE_STAGE_RECEIPT_VALIDATION",
+}
+_SEMANTIC_FAILURE_CHECK_DIAGNOSTICS = {
+    "wire_decode": "SEMANTIC_FAILURE_CHECK_WIRE_DECODE",
+    "topshape": "SEMANTIC_FAILURE_CHECK_TOPSHAPE",
+    "run_binding": "SEMANTIC_FAILURE_CHECK_RUN_BINDING",
+    "catalog_validation": "SEMANTIC_FAILURE_CHECK_CATALOG_VALIDATION",
+    "producer_binding_alignment": "SEMANTIC_FAILURE_CHECK_PRODUCER_BINDING_ALIGNMENT",
+    "evidence_ref_expansion": "SEMANTIC_FAILURE_CHECK_EVIDENCE_REF_EXPANSION",
+    "internal_verdict_validation": "SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_VALIDATION",
+}
 
 
 class _DiscardingTextStream:
@@ -325,6 +339,33 @@ def _grounder_failure_status(error: Exception) -> Tuple[str, str]:
     if type(error) is ModelTransportError and error.code in _GROUNDER_BUDGET_ERROR_CODES:
         return "BLOCKED", "OPERATIONAL_LIMIT"
     return "FAILED", "RUN_CONTEXT_INVALID"
+
+
+def _semantic_failure_diagnostic_codes(error: Exception) -> Tuple[str, ...]:
+    """Project only the closed semantic subcause fields onto fixed codes."""
+
+    from .host_grounder_runtime import HostGrounderRuntimeError
+
+    if (
+        type(error) is not HostGrounderRuntimeError
+        or type(error.code) is not str
+        or error.code != "SEMANTIC_VERDICT_REJECTED"
+    ):
+        return ()
+    stage = getattr(error, "failure_stage", None)
+    if type(stage) is not str:
+        return ()
+    stage_code = _SEMANTIC_FAILURE_STAGE_DIAGNOSTICS.get(stage)
+    if stage_code is None:
+        return ()
+    codes = [stage_code]
+    if stage == "semantic_wire_parse":
+        check = getattr(error, "failure_check", None)
+        if type(check) is str:
+            check_code = _SEMANTIC_FAILURE_CHECK_DIAGNOSTICS.get(check)
+            if check_code is not None:
+                codes.append(check_code)
+    return tuple(codes)
 
 
 def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
@@ -1720,12 +1761,14 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             )
         except Exception as error:
             status, diagnostic = _grounder_failure_status(error)
+            diagnostics = (diagnostic,) + _semantic_failure_diagnostic_codes(error)
             if not self._complete_terminal_run(
                 run_id,
                 grounder_stage_id,
                 status=status,
                 outcome=status,
-                diagnostics=(diagnostic,),
+                diagnostics=diagnostics,
+                stage_diagnostics=(diagnostic,),
             ):
                 return
             self._send_json(
@@ -1860,6 +1903,7 @@ class HostRequestHandler(BaseHTTPRequestHandler):
         status: str,
         outcome: Any,
         diagnostics: Tuple[str, ...],
+        stage_diagnostics: Optional[Tuple[str, ...]] = None,
     ) -> bool:
         try:
             self.server.journal.finish_stage(
@@ -1867,7 +1911,9 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                 stage_id,
                 status=status,
                 outcome=outcome,
-                diagnostics=diagnostics,
+                diagnostics=(
+                    diagnostics if stage_diagnostics is None else stage_diagnostics
+                ),
             )
             self.server.journal.finish_run(
                 run_id, status=status, diagnostics=diagnostics

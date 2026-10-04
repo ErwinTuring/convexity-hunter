@@ -155,3 +155,29 @@ It creates its own private database and exclusive spent marker. No retry of the
 first artifact, increased budget, alternative provider, or evidence threshold
 change is authorized. This continuation corrects configuration before the first
 external acquisition; its outcome must still be recorded separately.
+
+Corrective execution on `2026-10-05` (declared evaluation date still
+`2026-10-04`) returned HTTP 201, `BLOCKED / SEMANTIC_VERDICT_REJECTED`, one
+started/finished Grounder stage and no executor/Core result. The specific failed
+wire/receipt check is unavailable: existing Host delivery retained only the
+top-level reason. Do not interpret that as all facts rejected, EI INCOMPLETE,
+poor source quality or a recovered raw response. No further call is part of this
+spent attempt.
+
+### Additive closed semantic failure diagnostics
+
+Preserve the existing top-level reason and terminal status. For an exact
+`HostGrounderRuntimeError` carrying `SEMANTIC_VERDICT_REJECTED`, Host delivery may
+append only fixed codes for `semantic_wire_parse`,
+`semantic_receipt_construction` or `semantic_receipt_validation`. For wire parse
+only, it may additionally map the existing seven closed checks: `wire_decode`,
+`topshape`, `run_binding`, `catalog_validation`, `producer_binding_alignment`,
+`evidence_ref_expansion`, `internal_verdict_validation`. Unknown, inconsistent
+values, including invalid attributes introduced through constructor bypass,
+must not be serialized. Do not retain exception
+text, payloads, paths, arbitrary keys or provider identifiers. This is diagnostic
+delivery, not a new validator, automatic retry or retrospective result recovery.
+The extra fixed codes belong to run diagnostics only. The Grounder stage keeps
+its original admitted top-level code, preserving the existing closed stage
+schema and historical read-side validation. Stage outcome and HTTP `reason`
+remain unchanged; no Store schema migration or new endpoint is introduced.
