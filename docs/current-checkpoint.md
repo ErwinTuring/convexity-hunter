@@ -24,6 +24,19 @@ Final validation: 32 Event / 81 related / 1,819 full-suite tests; compileall,
 targeted re-review and diff checks passed. No live acquisition or spent replay.
 Role timing is incomplete; no whole-phase 70% share is established.
 
+Bounded normal-driver preflight: Tavily-reported locators/IDs/hashes cannot
+independently establish final source origin. The preparer runs after registry,
+catalog and receipt construction; inserting new fetched bodies there would
+violate immutable registry/hash binding. The minimum successor is bounded
+Host-owned HTTPS retrieval before context/catalog/receipt construction, with
+TLS validation, restricted redirects, exact final-origin checks and capped
+reads. Direct pages are HTML; the current Markdown grammar cannot silently
+consume transformed HTML as if it were the same source. A narrow origin,
+direct-body handoff and provenance-preserving parsing contract must be frozen
+before that BUILD. No direct retrieval or automatic source authorization was
+performed. This is a source-admission boundary, not an EI rejection or a need
+for a new paid provider.
+
 ### Bounded Host fact preparation — 2026-10-05
 
 [Source facts v0.1](host-event-source-facts-v0.1.md) is frozen and implemented,
