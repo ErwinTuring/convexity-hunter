@@ -1,5 +1,14 @@
 # Project State
 
+Latest bounded implementation: [Host listing composite v0.1](host-listing-source-composite-v0.1.md)
+is an opt-in helper consuming explicitly Host-authorized retained sources and
+verified hypothesis/entity bindings. Default automatic acquisition/authorization
+is not implemented; real EI acceptance remains unproven. Independent targeted
+review passed after a conflicting-header casefold fix. Final validation: 32
+Event / 81 related / 1,819 full-suite tests (303.357s), compileall and diff checks.
+No live source/model/market request or spent-protocol replay. Timing is incomplete;
+no 70% work-share claim is established.
+
 Current bounded implementation: [Host Event source facts v0.1](host-event-source-facts-v0.1.md)
 fills only a unique verified observed-fact description and, when the strict SEC
 submission/body/binding rule applies, a source-derived occurrence date. No

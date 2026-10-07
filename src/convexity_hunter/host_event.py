@@ -38,6 +38,7 @@ from .host_grounder_runtime import (
     HostGrounderRuntimeError,
     run_host_grounder_same_run_evidence_catalog_v0_5,
 )
+from .market_data import UnderlyingKey, UnderlyingSecurityType
 from .host_model import (
     ChatCompletionsClient,
     ModelCredential,
@@ -460,6 +461,488 @@ def _preparation_evidence(snapshot: object, receipt: object, context: HostBuildC
     ):
         return None
     return envelope, frozenset(verified_claim_ids), frozenset(verified_binding_indices)
+
+
+_LISTING_TICKER = re.compile(r"[A-Z0-9]+(?:[.-][A-Z0-9]+)*\Z")
+_LISTING_ASCII_CASEFOLD = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+)
+_LISTING_SEC_MARKER = "(Exact name of registrant as specified in its charter)"
+_LISTING_SEC_LABELS = (
+    "Title of each class",
+    "Trading Symbol(s)",
+    "Name of each exchange on which registered",
+)
+_LISTING_MD_SEPARATOR = re.compile(r":?-{3,}:?\Z")
+_LISTING_NASDAQ_HEADING = re.compile(
+    r"#{1,6} (?P<issuer>.+) Ordinary Shares \((?P<symbol>[^()]*)\)\Z"
+)
+_LISTING_YAHOO_HEADING = re.compile(
+    r"# (?P<issuer>.+) \((?P<symbol>[^()]*)\)(?P<suffix>.*)\Z"
+)
+_LISTING_YAHOO_QUOTE = "NasdaqGS - Delayed Quote•USD"
+_LISTING_CURRENCY_BASIS = "yahoo_provider_reported_quote_denomination"
+
+
+def _listing_lines(body: str):
+    """Split only LF/CRLF while keeping zero-based code-point spans."""
+    result = []
+    start = 0
+    while start < len(body):
+        newline = body.find("\n", start)
+        if newline < 0:
+            end = len(body)
+            next_start = end
+        else:
+            end = newline - 1 if newline > start and body[newline - 1] == "\r" else newline
+            next_start = newline + 1
+        result.append((body[start:end], start, end))
+        if newline < 0:
+            break
+        start = next_start
+    return result
+
+
+def _listing_ascii_field(value: object):
+    if type(value) is not str or any(
+        (ord(char) < 0x20 and char != "\t") or ord(char) > 0x7E
+        for char in value
+    ):
+        return None
+    normalized = re.sub(r"[ \t]+", " ", value).strip(" \t")
+    return normalized or None
+
+
+def _listing_issuer(value: object):
+    issuer = _listing_ascii_field(value)
+    if issuer is None or any(char in issuer for char in "<>[]{}|`*_#"):
+        return None
+    return value
+
+
+def _listing_markdown_cells(line: str):
+    stripped = line.strip(" \t")
+    if "|" not in stripped:
+        return None
+    cells = stripped.split("|")
+    if cells and not cells[0].strip(" \t"):
+        cells = cells[1:]
+    if cells and not cells[-1].strip(" \t"):
+        cells = cells[:-1]
+    if len(cells) != 3:
+        return None
+    return tuple(cell.strip(" \t") for cell in cells)
+
+
+def _listing_excerpt(source_id: str, source: HostSourceBody, start: int, end: int):
+    text = source.body[start:end]
+    return {
+        "start": start,
+        "end": end,
+        "text": text,
+        "sha256": hashlib.sha256(text.encode("utf-8", errors="strict")).hexdigest(),
+    }
+
+
+def _listing_url_info(locator: object):
+    if type(locator) is not str or not locator or locator != locator.strip():
+        return None
+    if any(ord(char) <= 0x20 or ord(char) == 0x7F for char in locator):
+        return None
+    try:
+        parsed = urlsplit(locator)
+    except ValueError:
+        return None
+    host = parsed.hostname
+    if host not in ("sec.gov", "www.sec.gov", "www.nasdaq.com", "finance.yahoo.com"):
+        return None
+    try:
+        port = parsed.port
+    except ValueError:
+        port = -1
+    expected_authority = (host, host + ":443")
+    valid = (
+        parsed.scheme.casefold() == "https"
+        and parsed.username is None
+        and parsed.password is None
+        and port in (None, 443)
+        and parsed.netloc.casefold() in expected_authority
+        and "?" not in locator
+        and "#" not in locator
+        and not parsed.query
+        and not parsed.fragment
+        and parsed.path.isascii()
+        and "%" not in parsed.path
+        and "\\" not in parsed.path
+        and "//" not in parsed.path
+        and all(segment not in (".", "..") for segment in parsed.path.split("/"))
+    )
+    return {
+        "host": host,
+        "path": parsed.path,
+        "origin": "{}://{}".format(parsed.scheme, parsed.netloc),
+        "valid": valid,
+    }
+
+
+def _parse_sec_listing_body(source_id: str, source: HostSourceBody, symbol: str):
+    lines = _listing_lines(source.body)
+    markers = [index for index, item in enumerate(lines) if item[0] == _LISTING_SEC_MARKER]
+    expected_labels = tuple(_listing_ascii_field(label).casefold() for label in _LISTING_SEC_LABELS)
+    headers = []
+    for index, (line, _start, _end) in enumerate(lines):
+        cells = _listing_markdown_cells(line)
+        if cells is not None and tuple(
+            _listing_ascii_field(cell).casefold()
+            if _listing_ascii_field(cell) is not None
+            else None
+            for cell in cells
+        ) == expected_labels:
+            headers.append((index, cells))
+
+    target_row_seen = False
+    parsed_rows = []
+    for header_index, _cells in headers:
+        separator_index = header_index + 1
+        if separator_index >= len(lines):
+            continue
+        separator = _listing_markdown_cells(lines[separator_index][0])
+        if separator is None or not all(_LISTING_MD_SEPARATOR.fullmatch(cell) for cell in separator):
+            continue
+        rows = []
+        cursor = separator_index + 1
+        malformed = False
+        while cursor < len(lines):
+            line = lines[cursor][0]
+            if not line.strip(" \t") or "|" not in line:
+                break
+            cells = _listing_markdown_cells(line)
+            if cells is None:
+                malformed = True
+                break
+            if _listing_ascii_field(cells[1]) == symbol:
+                target_row_seen = True
+            rows.append((cursor, cells))
+            cursor += 1
+        if not malformed and len(rows) == 1:
+            parsed_rows.append((header_index, separator_index, rows[0]))
+
+    issuer = None
+    issuer_index = None
+    if len(markers) == 1:
+        issuer_index = markers[0] - 1
+        while issuer_index >= 0 and not lines[issuer_index][0].strip(" \t"):
+            issuer_index -= 1
+        if issuer_index >= 0:
+            issuer = _listing_issuer(lines[issuer_index][0])
+
+    if (
+        len(markers) != 1
+        or issuer is None
+        or len(headers) != 1
+        or len(parsed_rows) != 1
+    ):
+        return None, target_row_seen
+
+    header_index, separator_index, (row_index, row) = parsed_rows[0]
+    class_name = _listing_ascii_field(row[0])
+    row_symbol = _listing_ascii_field(row[1])
+    exchange = _listing_ascii_field(row[2])
+    target_row_seen = target_row_seen or row_symbol == symbol
+    if (
+        class_name != "Ordinary shares, no par value"
+        or row_symbol != symbol
+        or exchange != "The Nasdaq Stock Market LLC"
+    ):
+        return None, target_row_seen
+
+    if issuer_index is None or issuer_index < 0:
+        return None, target_row_seen
+    spans = [
+        _listing_excerpt(source_id, source, lines[issuer_index][1], lines[issuer_index][2]),
+        _listing_excerpt(source_id, source, lines[markers[0]][1], lines[markers[0]][2]),
+        _listing_excerpt(source_id, source, lines[header_index][1], lines[header_index][2]),
+        _listing_excerpt(source_id, source, lines[separator_index][1], lines[separator_index][2]),
+        _listing_excerpt(source_id, source, lines[row_index][1], lines[row_index][2]),
+    ]
+    return {
+        "role": "sec_listing_class",
+        "source_id": source_id,
+        "locator": source.final_locator,
+        "origin": "https://{}".format(urlsplit(source.final_locator).netloc),
+        "body_sha256": hashlib.sha256(source.body.encode("utf-8", errors="strict")).hexdigest(),
+        "issuer": issuer,
+        "share_class": row[0],
+        "symbol": row_symbol,
+        "registered_exchange": row[2],
+        "excerpts": spans,
+    }, target_row_seen
+
+
+def _nasdaq_listing_path(info: dict, symbol: str):
+    if info["host"] != "www.nasdaq.com":
+        return False, False
+    prefix = "/market-activity/stocks/{}".format(symbol.lower())
+    path = info["path"]
+    if path == prefix:
+        return True, True
+    if not path.startswith(prefix + "/"):
+        return False, False
+    suffix = path[len(prefix) + 1:]
+    safe_segment = bool(re.fullmatch(r"[A-Za-z0-9._~-]+", suffix)) and suffix not in (".", "..")
+    return True, safe_segment
+
+
+def _parse_nasdaq_listing_body(source_id: str, source: HostSourceBody, symbol: str):
+    lines = _listing_lines(source.body)
+    instrument_headings = []
+    for line, start, end in lines:
+        if not re.match(r"^#{1,6} ", line) or "Ordinary Shares" not in line:
+            continue
+        instrument_headings.append((line, start, end))
+    if len(instrument_headings) != 1:
+        return None
+    line, start, end = instrument_headings[0]
+    match = _LISTING_NASDAQ_HEADING.fullmatch(line)
+    if match is None:
+        return None
+    issuer = _listing_issuer(match.group("issuer"))
+    observed_symbol = match.group("symbol")
+    if issuer is None or not _LISTING_TICKER.fullmatch(observed_symbol) or observed_symbol != symbol:
+        return None
+    info = _listing_url_info(source.final_locator)
+    return {
+        "role": "nasdaq_instrument_heading",
+        "source_id": source_id,
+        "locator": source.final_locator,
+        "origin": "https://{}".format(urlsplit(source.final_locator).netloc),
+        "body_sha256": hashlib.sha256(source.body.encode("utf-8", errors="strict")).hexdigest(),
+        "issuer": issuer,
+        "share_class": "Ordinary Shares",
+        "symbol": observed_symbol,
+        "excerpts": [_listing_excerpt(source_id, source, start, end)],
+    }
+
+
+def _yahoo_listing_path(info: dict, symbol: str):
+    if info["host"] != "finance.yahoo.com":
+        return False, False
+    exact = "/quote/{}/".format(symbol)
+    prefix = "/quote/{}".format(symbol)
+    path = info["path"]
+    if path == exact:
+        return True, True
+    if path == prefix or path.startswith(prefix + "/"):
+        return True, False
+    return False, False
+
+
+def _parse_yahoo_listing_body(source_id: str, source: HostSourceBody, symbol: str):
+    lines = _listing_lines(source.body)
+    quote_headers = [
+        (index, line, start, end)
+        for index, (line, start, end) in enumerate(lines)
+        if "quote" in line.translate(_LISTING_ASCII_CASEFOLD)
+    ]
+    instrument_headings = []
+    for index, (line, start, end) in enumerate(lines):
+        match = _LISTING_YAHOO_HEADING.fullmatch(line)
+        if match is not None:
+            instrument_headings.append((index, match, start, end))
+    if len(quote_headers) != 1 or len(instrument_headings) != 1:
+        return None
+    quote_index, quote_line, quote_start, quote_end = quote_headers[0]
+    heading_index, match, heading_start, heading_end = instrument_headings[0]
+    if (
+        quote_line != _LISTING_YAHOO_QUOTE
+        or match.group("suffix")
+        or not _LISTING_TICKER.fullmatch(match.group("symbol"))
+        or match.group("symbol") != symbol
+    ):
+        return None
+    next_nonblank = quote_index + 1
+    while next_nonblank < len(lines) and not lines[next_nonblank][0].strip(" \t"):
+        next_nonblank += 1
+    issuer = _listing_issuer(match.group("issuer"))
+    if issuer is None or next_nonblank != heading_index:
+        return None
+    info = _listing_url_info(source.final_locator)
+    return {
+        "role": "yahoo_quote_denomination",
+        "source_id": source_id,
+        "locator": source.final_locator,
+        "origin": "https://{}".format(urlsplit(source.final_locator).netloc),
+        "body_sha256": hashlib.sha256(source.body.encode("utf-8", errors="strict")).hexdigest(),
+        "issuer": issuer,
+        "symbol": match.group("symbol"),
+        "currency": "USD",
+        "currency_basis": _LISTING_CURRENCY_BASIS,
+        "excerpts": [
+            _listing_excerpt(source_id, source, quote_start, quote_end),
+            _listing_excerpt(source_id, source, heading_start, heading_end),
+        ],
+    }
+
+
+def _listing_evidence_for_symbol(
+    context: HostBuildContext, authorized_source_ids: tuple, symbol: str
+):
+    sec_sources = []
+    nasdaq_sources = []
+    yahoo_sources = []
+    conflict = False
+    for source_id in authorized_source_ids:
+        source = context.source_bodies.get(source_id)
+        if type(source) is not HostSourceBody:
+            continue
+        info = _listing_url_info(source.final_locator)
+        if info is None:
+            continue
+        if info["host"] in ("sec.gov", "www.sec.gov") and info["path"].startswith(
+            "/Archives/edgar/data/"
+        ):
+            parsed, target_row_seen = _parse_sec_listing_body(source_id, source, symbol)
+            locator_valid = _sec_locator_parts(source.final_locator) is not None and info["valid"]
+            if target_row_seen and (parsed is None or not locator_valid):
+                conflict = True
+            elif parsed is not None and parsed["symbol"] == symbol:
+                if locator_valid:
+                    sec_sources.append(parsed)
+                else:
+                    conflict = True
+        elif info["host"] == "www.nasdaq.com":
+            target_path, suffix_valid = _nasdaq_listing_path(info, symbol)
+            if target_path:
+                parsed = _parse_nasdaq_listing_body(source_id, source, symbol)
+                if not info["valid"] or not suffix_valid or parsed is None:
+                    conflict = True
+                else:
+                    nasdaq_sources.append(parsed)
+        elif info["host"] == "finance.yahoo.com":
+            target_path, path_valid = _yahoo_listing_path(info, symbol)
+            if target_path:
+                parsed = _parse_yahoo_listing_body(source_id, source, symbol)
+                if not info["valid"] or not path_valid or parsed is None:
+                    conflict = True
+                else:
+                    yahoo_sources.append(parsed)
+
+    if conflict or not (
+        len(sec_sources) == len(nasdaq_sources) == len(yahoo_sources) == 1
+    ):
+        return None
+    evidence = (sec_sources[0], nasdaq_sources[0], yahoo_sources[0])
+    issuers = tuple(_listing_ascii_field(item["issuer"]).casefold() for item in evidence)
+    if len(set(issuers)) != 1:
+        return None
+    return evidence
+
+
+def _make_listing_source_preparer(
+    authorized_source_ids: tuple,
+) -> Callable[[object, object, HostBuildContext], HostBuildContext]:
+    """Create an opt-in preparer over an exact, trusted source-ID tuple."""
+    if type(authorized_source_ids) is not tuple:
+        raise TypeError("authorized_source_ids must be an exact tuple")
+    if any(
+        type(source_id) is not str
+        or not source_id
+        or source_id != source_id.strip()
+        for source_id in authorized_source_ids
+    ):
+        raise ValueError("authorized_source_ids must contain canonical nonempty IDs")
+    try:
+        for source_id in authorized_source_ids:
+            source_id.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        raise ValueError("authorized_source_ids must contain valid UTF-8 IDs") from None
+    if len(set(authorized_source_ids)) != len(authorized_source_ids):
+        raise ValueError("authorized_source_ids must be unique")
+
+    def prepare_listing_sources(
+        snapshot: object, receipt: object, original_context: HostBuildContext
+    ) -> HostBuildContext:
+        prepared = _retain_unknown_context(snapshot, receipt, original_context)
+        if not authorized_source_ids:
+            return prepared
+        validation = _preparation_evidence(snapshot, receipt, original_context)
+        if validation is None or type(receipt) is not _RECEIPT_MAPPING_TYPE:
+            return prepared
+        envelope, _verified_claim_ids, verified_binding_indices = validation
+        verified_hypothesis_ids = receipt.get("verified_hypothesis_ids")
+        hypotheses = envelope.get("hypotheses")
+        field_bindings = envelope.get("field_bindings")
+        if (
+            type(verified_hypothesis_ids) is not tuple
+            or any(type(value) is not str or not value for value in verified_hypothesis_ids)
+            or len(set(verified_hypothesis_ids)) != len(verified_hypothesis_ids)
+            or type(hypotheses) is not list
+            or type(field_bindings) is not list
+        ):
+            return prepared
+
+        verified_hypothesis_set = frozenset(verified_hypothesis_ids)
+        bindings = dict(prepared.underlying_bindings)
+        changed = False
+        evidence_by_symbol = {}
+        for hypothesis_index, hypothesis in enumerate(hypotheses):
+            if type(hypothesis) is not dict:
+                continue
+            hypothesis_id = hypothesis.get("hypothesis_id")
+            symbol = hypothesis.get("underlying_symbol")
+            if (
+                type(hypothesis_id) is not str
+                or hypothesis_id not in verified_hypothesis_set
+                or type(symbol) is not str
+                or not _LISTING_TICKER.fullmatch(symbol)
+            ):
+                continue
+            pair = (hypothesis_id, symbol)
+            if pair in bindings:
+                continue
+            expected_path = "/hypotheses/{}/underlying_symbol".format(hypothesis_index)
+            matching = [
+                (index, item)
+                for index, item in enumerate(field_bindings)
+                if type(item) is dict and item.get("field_path") == expected_path
+            ]
+            if (
+                len(matching) != 1
+                or matching[0][1].get("semantic_role") != "entity"
+                or matching[0][0] not in verified_binding_indices
+            ):
+                continue
+            if symbol not in evidence_by_symbol:
+                evidence_by_symbol[symbol] = _listing_evidence_for_symbol(
+                    original_context, authorized_source_ids, symbol
+                )
+            evidence = evidence_by_symbol[symbol]
+            if evidence is None:
+                continue
+            sec_evidence, nasdaq_evidence, yahoo_evidence = evidence
+            reference = json.dumps(
+                {
+                    "rule_version": "host-listing-source-composite-v0.1",
+                    "symbol": symbol,
+                    "security_type": "EQUITY",
+                    "listing_mic": None,
+                    "currency": "USD",
+                    "currency_basis": _LISTING_CURRENCY_BASIS,
+                    "sources": [sec_evidence, nasdaq_evidence, yahoo_evidence],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            bindings[pair] = (
+                UnderlyingKey(symbol, None, UnderlyingSecurityType.EQUITY, "USD"),
+                reference,
+            )
+            changed = True
+        return replace(prepared, underlying_bindings=bindings) if changed else prepared
+
+    return prepare_listing_sources
 
 
 def _sec_locator_parts(locator: object):

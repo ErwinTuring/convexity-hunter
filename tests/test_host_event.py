@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from unittest.mock import patch
@@ -16,11 +17,16 @@ from convexity_hunter.event_entry import UserEventInput
 from convexity_hunter.event_intelligence import MethodologizedDateRange
 from convexity_hunter.host_event import (
     HostEventGrounderConfig,
+    _make_listing_source_preparer,
     _retain_unknown_context,
     _publication_datetime,
     create_event_grounder,
 )
-from convexity_hunter.host_grounder_builder import HostBuildContext, HostSourceBody
+from convexity_hunter.host_grounder_builder import (
+    CallerPolicyProvenance,
+    HostBuildContext,
+    HostSourceBody,
+)
 from convexity_hunter.host_grounder_evidence_catalog import (
     build_host_evidence_catalog,
     parse_grounder_output_v0_3,
@@ -40,6 +46,7 @@ from convexity_hunter.host_model import (
     ModelRuntimeConfig,
 )
 from convexity_hunter.host_sources import TavilyCredentialRef, TavilySourceConfig
+from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
 
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -415,6 +422,274 @@ def _source_fact_case(
     return ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash), receipt, context
 
 
+def _listing_source_material(run_id, symbol, *, locator_overrides=None, body_overrides=None):
+    source_ids = {
+        "sec": "{}-trusted-sec".format(run_id),
+        "nasdaq": "{}-trusted-nasdaq".format(run_id),
+        "yahoo": "{}-trusted-yahoo".format(run_id),
+    }
+    locators = {
+        "sec": (
+            "https://www.sec.gov/Archives/edgar/data/1234567890/"
+            "123456789012345678/cover.htm"
+        ),
+        "nasdaq": "https://www.nasdaq.com/market-activity/stocks/{}/analyst-research".format(
+            symbol.lower()
+        ),
+        "yahoo": "https://finance.yahoo.com/quote/{}/".format(symbol),
+    }
+    bodies = {
+        "sec": (
+            "Example Holdings, Inc.\r\n"
+            "(Exact name of registrant as specified in its charter)\r\n"
+            "\r\n"
+            "| Title of each class | Trading Symbol(s) | "
+            "Name of each exchange on which registered |\r\n"
+            "| --- | --- | --- |\r\n"
+            "| Ordinary shares, no par value | {} | "
+            "The Nasdaq Stock Market LLC |\r\n"
+            "\r\n"
+            "A synthetic event was reported.\r\n"
+        ).format(symbol),
+        "nasdaq": "# Example Holdings, Inc. Ordinary Shares ({})\n".format(symbol),
+        "yahoo": "NasdaqGS - Delayed Quote•USD\r\n\r\n# Example Holdings, Inc. ({})\r\n".format(
+            symbol
+        ),
+    }
+    for role, locator in (locator_overrides or {}).items():
+        locators[role] = locator
+    for role, body in (body_overrides or {}).items():
+        bodies[role] = body
+    source_order = tuple(
+        (source_ids[role], locators[role]) for role in ("sec", "nasdaq", "yahoo")
+    )
+    bodies_by_url = {locators[role]: bodies[role] for role in ("sec", "nasdaq", "yahoo")}
+    return source_ids, source_order, bodies, bodies_by_url
+
+
+def _listing_identity_case(
+    run_id="listing-preparer-run",
+    symbol="Z7QX",
+    *,
+    locator_overrides=None,
+    body_overrides=None,
+    verified_hypothesis_ids=None,
+    verified_binding_indices=(0,),
+    duplicate_entity_binding=False,
+):
+    source_ids, source_order, bodies, bodies_by_url = _listing_source_material(
+        run_id,
+        symbol,
+        locator_overrides=locator_overrides,
+        body_overrides=body_overrides,
+    )
+    run_input, context = _context_and_run_input(
+        run_id,
+        "Assess a synthetic listing event.",
+        source_order,
+        bodies_by_url,
+        HostGrounderRunInputBounds(20_000, 10_000, 20),
+    )
+    hypothesis_id = "hypothesis-generated-{}".format(run_id)
+    field_bindings = [
+        {
+            "field_path": "/hypotheses/0/underlying_symbol",
+            "semantic_role": "entity",
+        }
+    ]
+    if duplicate_entity_binding:
+        field_bindings.append(dict(field_bindings[0]))
+    envelope = {
+        "schema_version": "grounder-output-v0.1",
+        "stage": "semantic",
+        "request_id": run_id,
+        "claims": [],
+        "hypotheses": [
+            {"hypothesis_id": hypothesis_id, "underlying_symbol": symbol}
+        ],
+        "coverage": [],
+        "field_bindings": field_bindings,
+    }
+    canonical_bytes = json.dumps(
+        envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    envelope_hash = hashlib.sha256(canonical_bytes).hexdigest()
+    receipt = MappingProxyType(
+        {
+            "schema_version": "semantic-validation-v0.2",
+            "run_id": run_id,
+            "canonical_input_hash": run_input.canonical_input_hash,
+            "envelope_hash": envelope_hash,
+            "source_body_hashes": tuple(
+                (source_id, context.source_bodies[source_id].body_sha256)
+                for source_id in sorted(context.source_bodies)
+            ),
+            "verified_claim_ids": (),
+            "verified_hypothesis_ids": (
+                (hypothesis_id,)
+                if verified_hypothesis_ids is None
+                else verified_hypothesis_ids
+            ),
+            "verified_binding_indices": verified_binding_indices,
+        }
+    )
+    return (
+        ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash),
+        receipt,
+        context,
+        source_ids,
+        source_order,
+        bodies,
+        bodies_by_url,
+        hypothesis_id,
+        run_input,
+    )
+
+
+def _listing_runtime_wires(run_id, symbol, source_order, bodies_by_url, config):
+    run_input, context = _context_and_run_input(
+        run_id,
+        "Assess a synthetic listing event.",
+        source_order,
+        bodies_by_url,
+        config.run_input_bounds,
+    )
+    catalog = build_host_evidence_catalog(
+        run_id,
+        run_input.canonical_input_hash,
+        context.source_bodies,
+        max_catalog_entries=config.max_catalog_entries,
+        max_catalog_bytes=config.max_catalog_bytes,
+        max_catalog_paragraphs=config.max_catalog_paragraphs,
+        max_string_bytes=run_input.bounds.max_string_bytes,
+        max_array_items=run_input.bounds.max_array_items,
+    )
+    claim_id = "claim-generated-{}".format(run_id)
+    hypothesis_id = "hypothesis-generated-{}".format(run_id)
+    claim_quote = "A synthetic event was reported."
+    sec_source_id = source_order[0][0]
+    claim_entry = next(
+        entry
+        for entry in catalog.entries
+        if entry.quote.rstrip("\r\n") == claim_quote
+    )
+    symbol_entry = next(
+        entry
+        for entry in catalog.entries
+        if entry.source_id == sec_source_id and symbol in entry.quote
+    )
+    producer = {
+        "schema_version": "grounder-output-v0.3",
+        "stage": "semantic",
+        "request_id": run_id,
+        "claims": [
+            {
+                "claim_id": claim_id,
+                "kind": "observed_fact",
+                "evidence_id": claim_entry.evidence_id,
+                "text": claim_quote,
+                "entity_refs": [],
+                "event_date": None,
+                "published_at": None,
+                "dependency_claim_ids": [],
+                "uncertainty": [],
+                "falsification_conditions": [],
+            }
+        ],
+        "hypotheses": [
+            {
+                "hypothesis_id": hypothesis_id,
+                "underlying_symbol": symbol,
+                "impact_path": None,
+                "distribution_mode": None,
+                "distribution_hypothesis": None,
+                "expected_window": None,
+                "reassessment": None,
+                "supporting_claim_ids": [claim_id],
+                "contradicting_claim_ids": [],
+                "contradiction_review": None,
+                "uncertainties": [],
+                "falsification_conditions": [],
+            }
+        ],
+        "coverage": [
+            {
+                "subquestion_id": "user_event_input",
+                "status": "supported",
+                "claim_ids": [claim_id],
+                "gap": None,
+            }
+        ],
+        "field_bindings": [
+            {
+                "field_path": "/hypotheses/0/underlying_symbol",
+                "evidence_id": symbol_entry.evidence_id,
+                "semantic_role": "entity",
+                "status": "supported",
+            }
+        ],
+    }
+    normalized, normalized_bytes = parse_grounder_output_v0_3(
+        json.dumps(producer, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        config.max_json_bytes,
+        max_string_bytes=run_input.bounds.max_string_bytes,
+        max_array_items=run_input.bounds.max_array_items,
+        run_id=run_id,
+        canonical_input_hash=run_input.canonical_input_hash,
+        source_bodies=context.source_bodies,
+        catalog=catalog,
+    )
+    event_ref = {"evidence_id": claim_entry.evidence_id}
+    symbol_ref = {"evidence_id": symbol_entry.evidence_id}
+    semantic = {
+        "schema_version": "semantic-verdict-v0.3",
+        "run_id": run_id,
+        "envelope_hash": hashlib.sha256(normalized_bytes).hexdigest(),
+        "source_body_hashes": [
+            {"source_id": source_id, "sha256": source.body_sha256}
+            for source_id, source in sorted(context.source_bodies.items())
+        ],
+        "claims": [
+            {
+                "claim_id": claim_id,
+                "outcome": "supported",
+                "rationale": "Synthetic registered text supports the event claim.",
+                "evidence_refs": [event_ref],
+            }
+        ],
+        "hypotheses": [
+            {
+                "hypothesis_id": hypothesis_id,
+                "outcome": "supported",
+                "rationale": "Synthetic validator confirms the hypothesis record.",
+                "evidence_refs": [event_ref],
+            }
+        ],
+        "field_bindings": [
+            {
+                "index": 0,
+                "outcome": "supported",
+                "rationale": "Synthetic validator confirms the exact symbol binding.",
+                "evidence_refs": [symbol_ref],
+            }
+        ],
+        "coverage": [
+            {
+                "index": 0,
+                "subquestion_id": "user_event_input",
+                "outcome": "supported",
+                "rationale": "Synthetic registered text addresses the prompt.",
+                "evidence_refs": [event_ref],
+            }
+        ],
+    }
+    return (
+        json.dumps(producer, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        json.dumps(semantic, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        normalized,
+    )
+
+
 class _SyntheticModelTransport:
     def __init__(self, discovery_content, semantic_content):
         self.contents = {
@@ -549,6 +824,287 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(
             source.body[methodology["start"]:methodology["end"]], _SEC_SENTENCE
         )
+
+    def test_listing_preparer_requires_explicit_exact_authorized_source_tuple(self):
+        case = _listing_identity_case()
+        snapshot, receipt, context, source_ids = case[:4]
+        with self.assertRaises(TypeError):
+            _make_listing_source_preparer(list(source_ids.values()))
+        with self.assertRaises(ValueError):
+            _make_listing_source_preparer((source_ids["sec"], source_ids["sec"]))
+
+        prepared_empty = _make_listing_source_preparer(())(snapshot, receipt, context)
+        prepared_unselected = _make_listing_source_preparer(("not-authorized",))(
+            snapshot, receipt, context
+        )
+        self.assertEqual(prepared_empty.underlying_bindings, {})
+        self.assertEqual(prepared_unselected.underlying_bindings, {})
+        self.assertIs(prepared_empty.raw_input, context.raw_input)
+        self.assertIs(prepared_unselected, context)
+
+    def test_listing_preparer_requires_verified_hypothesis_and_unique_verified_entity_binding(self):
+        cases = (
+            {"verified_hypothesis_ids": ()},
+            {"verified_binding_indices": ()},
+            {"duplicate_entity_binding": True},
+        )
+        for options in cases:
+            with self.subTest(options=options):
+                case = _listing_identity_case(**options)
+                snapshot, receipt, context, source_ids = case[:4]
+                prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+                    snapshot, receipt, context
+                )
+                self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_listing_preparer_fails_closed_on_url_ambiguity(self):
+        cases = (
+            ("spoof", "https://finance.yahoo.com.attacker.invalid/quote/Z7QX/"),
+            ("userinfo", "https://user@finance.yahoo.com/quote/Z7QX/"),
+            ("port", "https://finance.yahoo.com:8443/quote/Z7QX/"),
+            ("query", "https://finance.yahoo.com/quote/Z7QX/?"),
+            ("encoded-path", "https://finance.yahoo.com/quote/Z7QX/%2e%2e"),
+        )
+        for label, locator in cases:
+            with self.subTest(locator=label):
+                case = _listing_identity_case(
+                    locator_overrides={"yahoo": locator}
+                )
+                snapshot, receipt, context, source_ids = case[:4]
+                prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+                    snapshot, receipt, context
+                )
+                self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_listing_preparer_fails_closed_on_duplicate_or_conflicting_body_fields(self):
+        valid = _listing_source_material("listing-conflict-run", "Z7QX")
+        _source_ids, _order, bodies, _by_url = valid
+        duplicate_sec = bodies["sec"].replace(
+            "| Ordinary shares, no par value | Z7QX | The Nasdaq Stock Market LLC |\r\n\r\n",
+            "| Ordinary shares, no par value | Z7QX | The Nasdaq Stock Market LLC |\r\n"
+            "| Ordinary shares, no par value | Z7QX | The Nasdaq Stock Market LLC |\r\n\r\n",
+        )
+        cases = (
+            ("duplicate-row", {"sec": duplicate_sec}),
+            (
+                "wrong-denomination",
+                {"yahoo": bodies["yahoo"].replace("•USD", "•EUR")},
+            ),
+            (
+                "issuer-conflict",
+                {"yahoo": bodies["yahoo"].replace("Example Holdings, Inc.", "Different Holdings")},
+            ),
+        )
+        for label, body_overrides in cases:
+            with self.subTest(body=label):
+                case = _listing_identity_case(body_overrides=body_overrides)
+                snapshot, receipt, context, source_ids = case[:4]
+                prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+                    snapshot, receipt, context
+                )
+                self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_listing_preparer_accepts_ascii_tab_whitespace_but_rejects_other_controls(self):
+        valid = _listing_source_material("listing-tab-run", "Z7QX")
+        _source_ids, _order, bodies, _by_url = valid
+        tab_bodies = {
+            "sec": (
+                bodies["sec"]
+                .replace("Example Holdings, Inc.", "Example\tHoldings, Inc.")
+                .replace("Ordinary shares, no par value", "Ordinary\tshares, no par value")
+                .replace("The Nasdaq Stock Market LLC", "The Nasdaq\tStock Market LLC")
+            ),
+            "nasdaq": bodies["nasdaq"].replace(
+                "Example Holdings, Inc.", "Example\tHoldings, Inc."
+            ),
+            "yahoo": bodies["yahoo"].replace(
+                "Example Holdings, Inc.", "Example\tHoldings, Inc."
+            ),
+        }
+        case = _listing_identity_case(body_overrides=tab_bodies)
+        snapshot, receipt, context, source_ids = case[:4]
+        prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+            snapshot, receipt, context
+        )
+        pair = ("hypothesis-generated-listing-preparer-run", "Z7QX")
+        self.assertIn(pair, prepared.underlying_bindings)
+        provenance = json.loads(prepared.underlying_bindings[pair][1])
+        sec_excerpts = provenance["sources"][0]["excerpts"]
+        self.assertTrue(any("Ordinary\tshares" in item["text"] for item in sec_excerpts))
+
+        control_bodies = dict(bodies)
+        control_bodies["sec"] = bodies["sec"].replace(
+            "Example Holdings, Inc.", "Example\vHoldings, Inc."
+        )
+        case = _listing_identity_case(body_overrides=control_bodies)
+        snapshot, receipt, context, source_ids = case[:4]
+        prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+            snapshot, receipt, context
+        )
+        self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_listing_preparer_rejects_nonempty_yahoo_heading_suffix(self):
+        case = _listing_identity_case(
+            body_overrides={
+                "yahoo": (
+                    "NasdaqGS - Delayed Quote•USD\r\n\r\n"
+                    "# Example Holdings, Inc. (Z7QX) trailing text\r\n"
+                )
+            }
+        )
+        snapshot, receipt, context, source_ids = case[:4]
+        prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+            snapshot, receipt, context
+        )
+        self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_listing_preparer_rejects_competing_case_variant_yahoo_quote_header(self):
+        case = _listing_identity_case(
+            body_overrides={
+                "yahoo": (
+                    "NYSE - delayed quote•EUR\r\n"
+                    "NasdaqGS - Delayed Quote•USD\r\n\r\n"
+                    "# Example Holdings, Inc. (Z7QX)\r\n"
+                )
+            }
+        )
+        snapshot, receipt, context, source_ids = case[:4]
+        prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+            snapshot, receipt, context
+        )
+        self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_listing_preparer_rejects_single_case_variant_yahoo_quote_header(self):
+        case = _listing_identity_case(
+            body_overrides={
+                "yahoo": (
+                    "nasdaqgs - delayed quote•usd\r\n\r\n"
+                    "# Example Holdings, Inc. (Z7QX)\r\n"
+                )
+            }
+        )
+        snapshot, receipt, context, source_ids = case[:4]
+        prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+            snapshot, receipt, context
+        )
+        self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_listing_preparer_revalidates_constructor_bypassed_source_body(self):
+        case = _listing_identity_case()
+        snapshot, receipt, context, source_ids = case[:4]
+        sec_source = context.source_bodies[source_ids["sec"]]
+        object.__setattr__(sec_source, "body_sha256", "0" * 64)
+
+        prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+            snapshot, receipt, context
+        )
+        self.assertEqual(prepared.underlying_bindings, {})
+        self.assertIs(prepared.source_bodies[source_ids["sec"]], sec_source)
+
+    def test_listing_preparer_preserves_existing_context_and_binding_objects(self):
+        case = _listing_identity_case()
+        snapshot, receipt, context, source_ids = case[:4]
+        preserved_key = UnderlyingKey("OTHER", "XNAS", UnderlyingSecurityType.EQUITY, "USD")
+        preserved_reference = object()
+        policy = CallerPolicyProvenance(
+            context.run_id,
+            context.canonical_input_hash,
+            datetime.date(2026, 10, 10),
+            "synthetic retained policy",
+            "synthetic caller",
+        )
+        date_range = MethodologizedDateRange(
+            datetime.date(2026, 10, 1),
+            datetime.date(2026, 10, 2),
+            "synthetic retained range",
+        )
+        preserved_context = replace(
+            context,
+            event_description_binding="caller-description",
+            event_date_range=date_range,
+            underlying_bindings={
+                ("caller-hypothesis", "OTHER"): (preserved_key, preserved_reference)
+            },
+            caller_policy_provenance=policy,
+        )
+        prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+            snapshot, receipt, preserved_context
+        )
+
+        self.assertIsNot(prepared, preserved_context)
+        self.assertIs(prepared.raw_input, preserved_context.raw_input)
+        self.assertIs(prepared.event_date_range, date_range)
+        self.assertEqual(prepared.event_description_binding, "caller-description")
+        self.assertIs(prepared.caller_policy_provenance, policy)
+        for source_id in source_ids.values():
+            self.assertIs(
+                prepared.source_bodies[source_id], preserved_context.source_bodies[source_id]
+            )
+        preserved = prepared.underlying_bindings[("caller-hypothesis", "OTHER")]
+        self.assertIs(preserved[0], preserved_key)
+        self.assertIs(preserved[1], preserved_reference)
+        self.assertIn(
+            ("hypothesis-generated-listing-preparer-run", "Z7QX"),
+            prepared.underlying_bindings,
+        )
+
+    def test_opt_in_listing_preparer_passes_dynamic_identity_through_runtime_guard(self):
+        run_id = "runtime-listing-composite-51"
+        symbol = "Z7QX"
+        source_ids, source_order, _bodies, bodies_by_url = _listing_source_material(
+            run_id, symbol
+        )
+        config = _config(source_order=source_order)
+        discovery, semantic, _normalized = _listing_runtime_wires(
+            run_id, symbol, source_order, bodies_by_url, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=source_order,
+            body_overrides=bodies_by_url,
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        preparer = _make_listing_source_preparer(tuple(source_ids.values()))
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+            host_context_preparer=preparer,
+        )
+
+        result = callback(
+            "Assess a synthetic listing event.",
+            run_id=run_id,
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        prepared = result.build_result.context
+        pair = ("hypothesis-generated-{}".format(run_id), symbol)
+        key, reference = prepared.underlying_bindings[pair]
+        self.assertEqual(key, UnderlyingKey(symbol, None, UnderlyingSecurityType.EQUITY, "USD"))
+        self.assertEqual(prepared.event_description_binding, "claim-generated-{}".format(run_id))
+        provenance = json.loads(reference)
+        self.assertEqual(provenance["rule_version"], "host-listing-source-composite-v0.1")
+        self.assertEqual(
+            provenance["currency_basis"], "yahoo_provider_reported_quote_denomination"
+        )
+        self.assertEqual(
+            [source["role"] for source in provenance["sources"]],
+            ["sec_listing_class", "nasdaq_instrument_heading", "yahoo_quote_denomination"],
+        )
+        for source_record in provenance["sources"]:
+            registered = prepared.source_bodies[source_record["source_id"]]
+            self.assertEqual(
+                source_record["body_sha256"], _digest(registered.body)
+            )
+            for excerpt in source_record["excerpts"]:
+                self.assertEqual(
+                    registered.body[excerpt["start"]:excerpt["end"]], excerpt["text"]
+                )
+                self.assertEqual(excerpt["sha256"], _digest(excerpt["text"]))
+        self.assertEqual(len(source_transport.calls), 2)
+        self.assertEqual(len(model_transport.calls), 2)
 
     def test_occurrence_month_mapping_does_not_depend_on_datetime_strptime(self):
         snapshot, receipt, context = _source_fact_case()

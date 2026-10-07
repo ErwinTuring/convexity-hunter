@@ -1,7 +1,7 @@
 # Host Listing Source Composite v0.1
 
-Status: FROZEN / BUILD READY / INDEPENDENT CONTRACT REVIEW PASS.
-Production implementation absent.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS — OPT-IN ONLY.
+Production helper exists; the normal driver does not enable it automatically.
 
 The [bounded IREN packet](standalone-iren-identity-packet-2026-10-02.md)
 already passed `READY_FOR_BOUNDED_HOST_KEY` review. This successor automates
@@ -117,6 +117,14 @@ duplicate sources/rows/headers; URL spoof/path ambiguity; body hash mismatch;
 fill-only identity and no extra calls. Include actual runtime integration and
 constructor-bypass controls. Public factory signature/exports remain unchanged.
 Independent contract and implementation review precede release.
+
+Release validation (2026-10-07): 32 Event tests, 81 related tests and 1,819
+full-suite tests passed (303.357s); compileall and diff checks passed. Independent
+review found a case-sensitive competing quote-header check; the ASCII-casefold
+fix and adversarial lower-case conflicting-currency tests passed targeted
+re-review. Public exports remain 2 and the factory signature is unchanged.
+These are synthetic implementation results, not live-format or EI acceptance
+evidence. Builder timing was not recorded; no 70% work-share claim is made.
 
 An adapter consuming supplied evidence is not an automatic source-acquisition
 pipeline. If the existing source batch lacks these bodies, leave identity

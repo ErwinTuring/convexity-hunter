@@ -5,6 +5,10 @@ review are complete. Full regression passed
 1,795 tests before narrow review fixes, final focused regression 114 afterward.
 No real Event acceptance result is claimed.
 
+The [listing composite](host-listing-source-composite-v0.1.md) now provides an
+opt-in trusted context preparer. Normal driver source acquisition/authorization
+is still absent; the helper's synthetic validation is not a real Event closure.
+
 ## Existing authority
 
 Reuse the [standalone architecture](standalone-mvp-architecture-v0.1.md),

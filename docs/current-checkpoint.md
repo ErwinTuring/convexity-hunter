@@ -11,6 +11,19 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Current executable boundary — 2026-10-04
 
+### Opt-in Host listing composite — 2026-10-07
+
+[Listing composite v0.1](host-listing-source-composite-v0.1.md) is implemented
+and independently reviewed. Only explicit trusted Host-authorized source IDs
+may contribute SEC class/ticker, Nasdaq issuer/class and Yahoo provider-reported
+USD denomination. Exact body hashes/excerpts and verified hypothesis/entity
+bindings remain required. It fills missing keys only; no MIC, current standing,
+quote freshness or EI acceptance is inferred. The normal driver does not
+automatically acquire or authorize these sources and remains unchanged.
+Final validation: 32 Event / 81 related / 1,819 full-suite tests; compileall,
+targeted re-review and diff checks passed. No live acquisition or spent replay.
+Role timing is incomplete; no whole-phase 70% share is established.
+
 ### Bounded Host fact preparation — 2026-10-05
 
 [Source facts v0.1](host-event-source-facts-v0.1.md) is frozen and implemented,
