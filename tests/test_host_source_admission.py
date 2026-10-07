@@ -1,0 +1,446 @@
+"""Offline security and parsing tests for bounded Host source admission."""
+
+import datetime
+import hashlib
+import socket
+import ssl
+import threading
+import time
+import unittest
+from unittest.mock import Mock, patch
+
+from convexity_hunter.host_source_admission import (
+    MAX_SOURCE_ADMISSION_REDIRECTS,
+    MAX_SOURCE_ADMISSION_REQUESTS,
+    _PinnedHTTPSConnection,
+    _Reply,
+    _SourceAdmissionClient,
+    _family_target,
+    _nasdaq_html,
+    _revalidate_source_admission,
+    _sec_html,
+    _source_id_for_locator,
+    _yahoo_html,
+)
+
+
+SEC_PATH = "/Archives/edgar/data/320193/000032019326000123/example.htm"
+SEC_LOCATOR = "https://www.sec.gov" + SEC_PATH
+SEC_REDIRECT_LOCATOR = "https://sec.gov" + SEC_PATH
+NASDAQ_LOCATOR = "https://www.nasdaq.com/market-activity/stocks/acme"
+YAHOO_LOCATOR = "https://finance.yahoo.com/quote/ACME/"
+NOW = datetime.datetime(2026, 10, 7, 8, 30, tzinfo=datetime.timezone.utc)
+
+SEC_HTML = b"""<!doctype html><html><body>
+<p>ACME HOLDINGS, INC.</p>
+<p>(Exact name of registrant as specified in its charter)</p>
+<p>A synthetic event was reported.</p>
+<p>On October 3, 2026, ACME HOLDINGS, INC. completed its acquisition of Example Corp.</p>
+<table>
+<tr><th>Title of each class</th><th>Trading Symbol(s)</th><th>Name of each exchange on which registered</th></tr>
+<tr><td>Ordinary shares, no par value</td><td>ACME</td><td>The Nasdaq Stock Market LLC</td></tr>
+</table></body></html>"""
+NASDAQ_HTML = (
+    b"<!doctype html><html><body><h1>ACME HOLDINGS, INC. Ordinary Shares (ACME)</h1></body></html>"
+)
+YAHOO_HTML = (
+    "<!doctype html><html><body><div>NasdaqGS - Delayed Quote&#8226;USD</div>"
+    "<h1>ACME HOLDINGS, INC. (ACME)</h1></body></html>"
+).encode("utf-8")
+
+
+class _ResponseTransport:
+    def __init__(self, replies):
+        self.replies = {url: list(items) for url, items in replies.items()}
+        self.calls = []
+
+    def __call__(self, locator, address, timeout, max_bytes):
+        self.calls.append((locator, address, timeout, max_bytes))
+        rows = self.replies.get(locator, [])
+        if not rows:
+            raise OSError("synthetic transport exhausted")
+        return rows.pop(0)
+
+
+def _ok(body, content_type="text/html; charset=UTF-8"):
+    return _Reply(200, {"Content-Type": content_type}, body)
+
+
+def _client(transport, *, resolver=None, max_bytes=100_000, byte_budget=500_000):
+    return _SourceAdmissionClient(
+        timeout_seconds=2.5,
+        max_response_bytes=max_bytes,
+        byte_budget=byte_budget,
+        _transport=transport,
+        _resolver=resolver or (lambda _host, _port: ("93.184.216.34",)),
+        _clock=lambda: NOW,
+    )
+
+
+class HostSourceAdmissionTests(unittest.TestCase):
+    def test_exact_targets_accept_realistic_tickers_paths_and_headings(self):
+        self.assertEqual(_family_target(SEC_LOCATOR)[0], "sec")
+        self.assertEqual(_family_target(NASDAQ_LOCATOR)[2][0], "ACME")
+        self.assertEqual(_family_target(YAHOO_LOCATOR)[2][0], "ACME")
+        self.assertTrue(_family_target("https://www.nasdaq.com/market-activity/stocks/brk-b"))
+        self.assertIsNone(_family_target("https://www.sec.gov/Archives/edgar/data/1/abc/../x.htm"))
+
+        sec = _sec_html(SEC_HTML.decode("utf-8"))
+        nasdaq = _nasdaq_html(NASDAQ_HTML.decode("utf-8"), "ACME")
+        yahoo = _yahoo_html(YAHOO_HTML.decode("utf-8"), "ACME")
+        self.assertEqual(sec.symbol, "ACME")
+        self.assertIn("On October 3, 2026", sec.body)
+        self.assertIn("| Ordinary shares, no par value | ACME | The Nasdaq Stock Market LLC |", sec.body)
+        self.assertNotIn("CONFORMED SUBMISSION TYPE", sec.body)
+        script_polluted = SEC_HTML.replace(
+            b"<body>",
+            b"<body><script>FAKE EVENT TEXT; (Exact name of registrant as specified in its charter)</script>",
+        )
+        script_parsed = _sec_html(script_polluted.decode("utf-8"))
+        self.assertIsNotNone(script_parsed)
+        self.assertNotIn("FAKE EVENT TEXT", script_parsed.body)
+        self.assertEqual(nasdaq.body, "# ACME HOLDINGS, INC. Ordinary Shares (ACME)\n")
+        self.assertEqual(yahoo.body, "NasdaqGS - Delayed Quote•USD\n\n# ACME HOLDINGS, INC. (ACME)\n")
+        unsupported_common_stock = SEC_HTML.replace(
+            b"Ordinary shares, no par value", b"Common Stock"
+        )
+        self.assertIsNone(_sec_html(unsupported_common_stock.decode("utf-8")))
+
+    def test_hidden_sec_cover_table_and_event_descendants_are_excluded(self):
+        raw = SEC_HTML.decode("utf-8")
+        attributes = (
+            "hidden", 'hidden="false"', 'aria-hidden=" \tTRUE\r\n"',
+            'style=" DISPLAY\t:\nNONE !IMPORTANT ; color:red"',
+            'style="visibility : HIDDEN"',
+            'style=" Visibility : collapse ! important "',
+        )
+        for attrs in attributes:
+            with self.subTest(attrs=attrs):
+                self.assertIsNone(_sec_html(raw.replace("<table>", "<table " + attrs + ">")))
+                hidden_event = raw.replace(
+                    "<p>A synthetic event was reported.</p>",
+                    "<div " + attrs + "><p><span>HIDDEN SEC EVENT</span></p></div>",
+                )
+                parsed = _sec_html(hidden_event)
+                self.assertIsNotNone(parsed)
+                self.assertNotIn("HIDDEN SEC EVENT", parsed.body)
+                self.assertIn("On October 3, 2026", parsed.body)
+        visible = _sec_html(raw.replace("<table>", '<table aria-hidden="false" style="display:table">'))
+        self.assertEqual(visible.symbol, "ACME")
+        self.assertIn("A synthetic event was reported.", visible.body)
+
+    def test_hidden_yahoo_usd_is_not_admitted_as_visible_denomination(self):
+        raw = YAHOO_HTML.decode("utf-8")
+        for attrs in (
+            "hidden", 'aria-hidden="true"', 'style="display : NONE !important"',
+            'style="VISIBILITY : hidden !IMPORTANT"', 'style="visibility:collapse"',
+        ):
+            with self.subTest(attrs=attrs):
+                self.assertIsNone(_yahoo_html(raw.replace("USD", "<span " + attrs + "><b>USD</b></span>"), "ACME"))
+        visible = raw.replace("USD", '<span aria-hidden="false" style="visibility:visible">USD</span>')
+        self.assertEqual(_yahoo_html(visible, "ACME").body, _yahoo_html(raw, "ACME").body)
+
+    def test_hidden_void_elements_leave_following_visible_evidence_intact(self):
+        raw = SEC_HTML.decode("utf-8")
+        for element in ('<input hidden>', '<br aria-hidden="true">', '<img style="display:none"/>'):
+            with self.subTest(element=element):
+                parsed = _sec_html(raw.replace("<body>", "<body>" + element))
+                self.assertIsNotNone(parsed)
+                self.assertEqual(parsed.symbol, "ACME")
+                self.assertIn("A synthetic event was reported.", parsed.body)
+                self.assertIn("On October 3, 2026", parsed.body)
+
+    def test_target_validation_rejects_ambiguous_or_out_of_scope_urls(self):
+        bad = (
+            "http://www.sec.gov" + SEC_PATH,
+            "https://user@www.sec.gov" + SEC_PATH,
+            "https://www.sec.gov:8443" + SEC_PATH,
+            SEC_LOCATOR + "?download=1",
+            SEC_LOCATOR + "#section",
+            "https://www.sec.gov/Archives/edgar/data/320193/%2e%2e/example.htm",
+            "https://www.sec.gov.evil.example" + SEC_PATH,
+            "https://www.nasdaq.com/market-activity/stocks/ACME/../quote",
+            "https://finance.yahoo.com/quote/ACME/?guccounter=1",
+        )
+        for locator in bad:
+            with self.subTest(locator=locator):
+                self.assertIsNone(_family_target(locator))
+
+    def test_tls_context_verifies_certificate_and_socket_uses_origin_sni(self):
+        connection = _PinnedHTTPSConnection("www.sec.gov", "93.184.216.34", 3.0)
+        self.assertTrue(connection._context.check_hostname)
+        self.assertEqual(connection._context.verify_mode, ssl.CERT_REQUIRED)
+
+        raw_socket = Mock()
+        wrapped_socket = Mock()
+        context = Mock()
+        context.wrap_socket.return_value = wrapped_socket
+        wrapped_socket.do_handshake.side_effect = lambda: self.assertIs(
+            connection.sock, wrapped_socket
+        )
+        connection._context = context
+        with patch("convexity_hunter.host_source_admission.socket.create_connection", return_value=raw_socket) as connect:
+            connection.connect()
+        connect.assert_called_once_with(("93.184.216.34", 443), 3.0)
+        context.wrap_socket.assert_called_once_with(
+            raw_socket,
+            server_hostname="www.sec.gov",
+            do_handshake_on_connect=False,
+        )
+        wrapped_socket.settimeout.assert_called_once_with(3.0)
+        wrapped_socket.do_handshake.assert_called_once_with()
+        self.assertIs(connection.sock, wrapped_socket)
+        connection.close()
+
+    def test_private_or_mixed_dns_answers_fail_before_transport(self):
+        for addresses in (("127.0.0.1",), ("93.184.216.34", "169.254.169.254"), ("::1",)):
+            with self.subTest(addresses=addresses):
+                transport = _ResponseTransport({SEC_LOCATOR: [_ok(SEC_HTML)]})
+                client = _client(transport, resolver=lambda _host, _port: addresses)
+                result = client.admit_candidates((SEC_LOCATOR,))
+                self.assertEqual(result.admissions, ())
+                self.assertEqual(result.failures[0].code, "DNS_ADDRESS_BLOCKED")
+                self.assertEqual(result.request_count, 0)
+                self.assertEqual(transport.calls, [])
+
+    def test_slow_dns_is_daemonized_and_bounded(self):
+        entered = threading.Event()
+        release = threading.Event()
+        threads = []
+        real_thread = threading.Thread
+        transport = _ResponseTransport({SEC_LOCATOR: [_ok(SEC_HTML)]})
+
+        def slow_resolver(_host, _port):
+            entered.set()
+            release.wait(1.0)
+            return ("93.184.216.34",)
+
+        def thread_factory(*args, **kwargs):
+            thread = real_thread(*args, **kwargs)
+            threads.append(thread)
+            return thread
+
+        client = _SourceAdmissionClient(
+            timeout_seconds=0.01,
+            max_response_bytes=100_000,
+            byte_budget=100_000,
+            _transport=transport,
+            _resolver=slow_resolver,
+            _clock=lambda: NOW,
+            _monotonic=time.monotonic,
+        )
+        started = time.monotonic()
+        with patch("convexity_hunter.host_source_admission.threading.Thread", side_effect=thread_factory):
+            try:
+                result = client.admit_candidates((SEC_LOCATOR,))
+            finally:
+                release.set()
+        for thread in threads:
+            thread.join(timeout=1.0)
+        elapsed = time.monotonic() - started
+        self.assertTrue(entered.is_set())
+        self.assertLess(elapsed, 0.5)
+        self.assertEqual(result.admissions, ())
+        self.assertEqual(result.failures[0].code, "DNS_RESOLUTION_FAILED")
+        self.assertEqual(result.request_count, 0)
+        self.assertEqual(transport.calls, [])
+        self.assertEqual(len(threads), 1)
+        self.assertTrue(threads[0].daemon)
+        self.assertFalse(threads[0].is_alive())
+
+    def test_monotonic_deadline_rejects_a_late_response_without_retry(self):
+        now = [10.0]
+        calls = []
+
+        def transport(locator, address, timeout, max_bytes):
+            calls.append((locator, address, timeout, max_bytes))
+            now[0] = 10.06
+            return _ok(SEC_HTML)
+
+        client = _SourceAdmissionClient(
+            timeout_seconds=0.01,
+            max_response_bytes=100_000,
+            byte_budget=100_000,
+            _transport=transport,
+            _resolver=lambda _host, _port: ("93.184.216.34",),
+            _clock=lambda: NOW,
+            _monotonic=lambda: now[0],
+        )
+        result = client.admit_candidates((SEC_LOCATOR,))
+        self.assertEqual(result.admissions, ())
+        self.assertEqual(result.failures[0].code, "ADMISSION_DEADLINE_EXCEEDED")
+        self.assertEqual(result.request_count, 1)
+        self.assertEqual(len(calls), 1)
+        self.assertLessEqual(calls[0][2], 0.01)
+
+    def test_stalled_production_response_is_closed_by_wall_clock_watchdog(self):
+        client_socket, peer_socket = socket.socketpair()
+        connect_calls = []
+
+        def stalled_connect(connection):
+            connect_calls.append(connection)
+            client_socket.settimeout(1.0)
+            connection.sock = client_socket
+
+        client = _SourceAdmissionClient(
+            timeout_seconds=0.05,
+            max_response_bytes=100_000,
+            byte_budget=100_000,
+            _resolver=lambda _host, _port: ("93.184.216.34",),
+            _clock=lambda: NOW,
+            _monotonic=time.monotonic,
+        )
+        started = time.monotonic()
+        try:
+            with patch.object(_PinnedHTTPSConnection, "connect", stalled_connect):
+                result = client.admit_candidates((SEC_LOCATOR,))
+            elapsed = time.monotonic() - started
+            self.assertLess(elapsed, 0.5)
+            self.assertEqual(result.admissions, ())
+            self.assertEqual(result.failures[0].code, "TRANSPORT_FAILED")
+            self.assertEqual(result.request_count, 1)
+            self.assertEqual(len(connect_calls), 1)
+            self.assertLess(client_socket.fileno(), 0)
+        finally:
+            client_socket.close()
+            peer_socket.close()
+
+    def test_redirect_revalidates_exact_target_and_retains_final_origin(self):
+        transport = _ResponseTransport(
+            {
+                SEC_REDIRECT_LOCATOR: [
+                    _Reply(302, {"Location": SEC_LOCATOR}, b"")
+                ],
+                SEC_LOCATOR: [_ok(SEC_HTML)],
+            }
+        )
+        resolutions = []
+        client = _client(
+            transport,
+            resolver=lambda host, _port: resolutions.append(host) or ("93.184.216.34",),
+        )
+        result = client.admit_candidates((SEC_REDIRECT_LOCATOR,))
+        self.assertEqual(result.request_count, 4)
+        self.assertEqual(resolutions[:2], ["sec.gov", "www.sec.gov"])
+        self.assertEqual(len(result.admissions), 1)
+        admitted = result.admissions[0]
+        self.assertEqual(admitted.initial_locator, SEC_REDIRECT_LOCATOR)
+        self.assertEqual(admitted.final_locator, SEC_LOCATOR)
+        self.assertEqual(admitted.origin, "https://www.sec.gov")
+        self.assertEqual(admitted.raw_body_sha256, hashlib.sha256(SEC_HTML).hexdigest())
+        self.assertNotEqual(admitted.raw_body_sha256, admitted.parsed_body_sha256)
+        self.assertEqual(admitted.raw_body_bytes, len(SEC_HTML))
+        self.assertEqual(admitted.retrieved_at, NOW)
+        self.assertEqual(admitted.content_type, "text/html")
+        self.assertEqual(admitted.parser_id, "sec-edgar-cover-v1")
+        self.assertEqual(admitted.parser_version, "1")
+        self.assertIn("On October 3, 2026", admitted.parsed_body)
+        for anchor in admitted.raw_anchors:
+            raw_excerpt = SEC_HTML.decode("utf-8")[anchor.raw_start:anchor.raw_end]
+            self.assertEqual(hashlib.sha256(raw_excerpt.encode("utf-8")).hexdigest(), anchor.raw_sha256)
+            self.assertLessEqual(anchor.parsed_end, len(admitted.parsed_body))
+        self.assertNotIn("<table>", repr(admitted))
+        self.assertEqual(
+            admitted.source_id,
+            _source_id_for_locator(SEC_REDIRECT_LOCATOR),
+        )
+
+    def test_parsed_sec_cover_row_authorizes_only_its_ticker_supplements(self):
+        transport = _ResponseTransport(
+            {
+                SEC_LOCATOR: [_ok(SEC_HTML)],
+                NASDAQ_LOCATOR: [_ok(NASDAQ_HTML)],
+                YAHOO_LOCATOR: [_ok(YAHOO_HTML)],
+            }
+        )
+        result = _client(transport).admit_candidates((SEC_LOCATOR,))
+        self.assertEqual(
+            [admission.family for admission in result.admissions],
+            ["sec", "nasdaq", "yahoo"],
+        )
+        self.assertEqual(
+            [call[0] for call in transport.calls],
+            [SEC_LOCATOR, NASDAQ_LOCATOR, YAHOO_LOCATOR],
+        )
+        self.assertEqual(result.request_count, 3)
+        self.assertEqual(result.response_bytes, len(SEC_HTML) + len(NASDAQ_HTML) + len(YAHOO_HTML))
+        self.assertEqual(result.admissions[1].parsed_symbol, "ACME")
+        self.assertEqual(result.admissions[2].parsed_symbol, "ACME")
+
+    def test_raw_html_envelope_cap_is_independent_of_parsed_body_cap(self):
+        raw_html = SEC_HTML.replace(
+            b"<body>", b"<body><!--" + (b"x" * 25_000) + b"-->"
+        )
+        transport = _ResponseTransport({SEC_LOCATOR: [_ok(raw_html)]})
+        result = _client(transport, max_bytes=50_000, byte_budget=50_000).admit_candidates(
+            (SEC_LOCATOR,)
+        )
+        self.assertEqual(len(result.admissions), 1)
+        admitted = result.admissions[0]
+        self.assertGreater(admitted.raw_body_bytes, 20_000)
+        self.assertLessEqual(len(admitted.parsed_body.encode("utf-8")), 20_000)
+        self.assertIsNotNone(
+            _revalidate_source_admission(
+                admitted, max_raw_bytes=50_000, max_parsed_bytes=20_000
+            )
+        )
+        self.assertIsNone(
+            _revalidate_source_admission(
+                admitted, max_raw_bytes=20_000, max_parsed_bytes=20_000
+            )
+        )
+
+    def test_redirect_to_other_origin_or_target_is_rejected_without_origin_claim(self):
+        bad_target = "https://www.nasdaq.com/market-activity/stocks/acme"
+        transport = _ResponseTransport(
+            {SEC_LOCATOR: [_Reply(302, {"Location": bad_target}, b"")]}
+        )
+        result = _client(transport).admit_candidates((SEC_LOCATOR,))
+        self.assertEqual(result.admissions, ())
+        self.assertEqual(result.failures[0].code, "REDIRECT_INVALID")
+        self.assertNotIn("origin", vars(result.failures[0]))
+        self.assertEqual(result.request_count, 1)
+
+    def test_redirect_limit_and_global_get_cap_include_redirect_requests(self):
+        extra_sec = "https://www.sec.gov/Archives/edgar/data/320193/000032019326000123/other.htm"
+        redirect = _Reply(302, {"Location": SEC_LOCATOR}, b"")
+        transport = _ResponseTransport(
+            {
+                SEC_LOCATOR: [redirect, redirect, redirect],
+                extra_sec: [_ok(SEC_HTML)],
+                NASDAQ_LOCATOR: [_ok(NASDAQ_HTML)],
+                YAHOO_LOCATOR: [_ok(YAHOO_HTML)],
+            }
+        )
+        result = _client(transport).admit_candidates(
+            (SEC_LOCATOR, extra_sec, NASDAQ_LOCATOR, YAHOO_LOCATOR)
+        )
+        self.assertEqual(MAX_SOURCE_ADMISSION_REDIRECTS, 2)
+        self.assertLessEqual(result.request_count, MAX_SOURCE_ADMISSION_REQUESTS)
+        self.assertEqual(result.request_count, 5)
+        self.assertEqual(len(transport.calls), 5)
+
+    def test_content_type_utf8_and_body_caps_fail_closed_without_clipping(self):
+        cases = (
+            (_ok(SEC_HTML, "application/pdf"), 100_000, "CONTENT_TYPE_UNSUPPORTED"),
+            (_ok(b"\xff\xfe", "text/html; charset=utf-8"), 100_000, "UTF8_DECODE_FAILED"),
+            (_ok(SEC_HTML), 12, "BODY_LIMIT_EXCEEDED"),
+            (_ok(SEC_HTML, "text/plain; charset=iso-8859-1"), 100_000, "CONTENT_TYPE_UNSUPPORTED"),
+        )
+        for reply, cap, expected in cases:
+            with self.subTest(expected=expected):
+                transport = _ResponseTransport({SEC_LOCATOR: [reply]})
+                result = _client(transport, max_bytes=cap).admit_candidates((SEC_LOCATOR,))
+                self.assertEqual(result.admissions, ())
+                self.assertEqual(result.failures[0].code, expected)
+                self.assertEqual(result.request_count, 1)
+
+    def test_unsupported_html_shape_is_not_registered(self):
+        transport = _ResponseTransport({SEC_LOCATOR: [_ok(b"<html><body>Not a filing cover</body></html>")]})
+        result = _client(transport).admit_candidates((SEC_LOCATOR,))
+        self.assertEqual(result.admissions, ())
+        self.assertEqual(result.failures[0].code, "PARSER_UNSUPPORTED")
+
+
+if __name__ == "__main__":
+    unittest.main()

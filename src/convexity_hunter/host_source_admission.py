@@ -1,0 +1,1291 @@
+"""Narrow Host-owned HTTPS admission for existing Event source families.
+
+This is deliberately not a crawler. It performs at most five target GETs per
+run (redirect requests count), validates every exact target and DNS result,
+pins the socket to a validated public address, and parses only the small SEC,
+Nasdaq, and Yahoo identity formats already consumed by Host Event.
+"""
+
+from __future__ import annotations
+
+import datetime
+import hashlib
+import html
+import http.client
+import ipaddress
+import queue
+import re
+import socket
+import ssl
+import threading
+import time
+from dataclasses import dataclass
+from html.parser import HTMLParser
+from typing import Callable, Mapping, Optional, Sequence, Tuple
+from urllib.parse import urljoin, urlsplit
+
+
+MAX_SOURCE_ADMISSION_REQUESTS = 5
+MAX_SOURCE_ADMISSION_REDIRECTS = 2
+_PARSER_VERSION = "1"
+_SEC_HOSTS = frozenset(("sec.gov", "www.sec.gov"))
+_ALLOWED_HOSTS = _SEC_HOSTS | frozenset(("www.nasdaq.com", "finance.yahoo.com"))
+_TICKER = re.compile(r"[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*\Z")
+_SEC_PATH = re.compile(
+    r"/Archives/edgar/data/(?P<cik>[0-9]{1,10})/"
+    r"(?P<accession>(?:[0-9]{18}|[0-9]{10}-[0-9]{2}-[0-9]{6}))/"
+    r"(?P<filename>[A-Za-z0-9][A-Za-z0-9._-]*)\Z"
+)
+_SEC_HEADER = "| Title of each class | Trading Symbol(s) | Name of each exchange on which registered |"
+_SEC_MARKER = "(Exact name of registrant as specified in its charter)"
+_SEC_TITLE = "Title of each class"
+_SEC_TICKER = "Trading Symbol(s)"
+_SEC_EXCHANGE = "Name of each exchange on which registered"
+_SEC_ISSUER = re.compile(r"[\x20-\x7e]+\Z")
+_NASDAQ_HEADING = re.compile(
+    r"(?P<issuer>[^\r\n]+) Ordinary Shares \((?P<symbol>[^()]*)\)\Z"
+)
+_YAHOO_HEADING = re.compile(r"(?P<issuer>[^\r\n]+) \((?P<symbol>[^()]*)\)\Z")
+_YAHOO_QUOTE = "NasdaqGS - Delayed Quote•USD"
+_BLOCK_TAGS = frozenset(
+    ("article", "blockquote", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "p", "section", "tr")
+)
+_VOID_TAGS = frozenset(("area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"))
+_HIDDEN_TAGS = frozenset(("noscript", "script", "style", "template"))
+_ASCII_WHITESPACE = " \t\r\n\f"
+_HIDDEN_STYLE = re.compile(
+    r"[ \t\r\n\f]*(?:display[ \t\r\n\f]*:[ \t\r\n\f]*none|"
+    r"visibility[ \t\r\n\f]*:[ \t\r\n\f]*(?:hidden|collapse))"
+    r"[ \t\r\n\f]*(?:![ \t\r\n\f]*important[ \t\r\n\f]*)?",
+    re.IGNORECASE | re.ASCII,
+)
+_FAILURE_CODES = frozenset(
+    (
+        "URL_NOT_ADMISSIBLE",
+        "DNS_RESOLUTION_FAILED",
+        "DNS_ADDRESS_BLOCKED",
+        "TRANSPORT_FAILED",
+        "HTTP_STATUS_UNSUPPORTED",
+        "REDIRECT_INVALID",
+        "REDIRECT_LIMIT",
+        "CONTENT_TYPE_UNSUPPORTED",
+        "BODY_LIMIT_EXCEEDED",
+        "UTF8_DECODE_FAILED",
+        "PARSER_UNSUPPORTED",
+        "REQUEST_LIMIT_REACHED",
+        "SOURCE_ID_COLLISION",
+        "DNS_LIMIT_REACHED",
+        "ADMISSION_DEADLINE_EXCEEDED",
+    )
+)
+
+
+@dataclass(frozen=True, repr=False)
+class AdmissionAnchor:
+    """Exact raw-response span linked to one parsed-body span."""
+
+    field: str
+    raw_start: int
+    raw_end: int
+    raw_sha256: str
+    parsed_start: int
+    parsed_end: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.field) is not str
+            or not self.field
+            or type(self.raw_start) is not int
+            or type(self.raw_end) is not int
+            or self.raw_start < 0
+            or self.raw_end < self.raw_start
+            or type(self.parsed_start) is not int
+            or type(self.parsed_end) is not int
+            or self.parsed_start < 0
+            or self.parsed_end < self.parsed_start
+            or type(self.raw_sha256) is not str
+            or not re.fullmatch(r"[0-9a-f]{64}", self.raw_sha256)
+        ):
+            raise ValueError("admission anchor is invalid")
+
+    def as_dict(self) -> dict:
+        return {
+            "field": self.field,
+            "raw_start": self.raw_start,
+            "raw_end": self.raw_end,
+            "raw_sha256": self.raw_sha256,
+            "parsed_start": self.parsed_start,
+            "parsed_end": self.parsed_end,
+        }
+
+
+@dataclass(frozen=True, repr=False)
+class SourceAdmission:
+    """A successful retrieval plus a source-specific parsed evidence body."""
+
+    source_id: str
+    family: str
+    initial_locator: str
+    final_locator: str
+    origin: str
+    retrieved_at: datetime.datetime
+    content_type: str
+    raw_body_sha256: str
+    raw_body_bytes: int
+    parser_id: str
+    parser_version: str
+    parsed_body_sha256: str
+    parsed_body: str
+    raw_anchors: Tuple[AdmissionAnchor, ...]
+    parsed_symbol: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.source_id) is not str
+            or not self.source_id.startswith("host-admission-")
+            or self.family not in ("sec", "nasdaq", "yahoo")
+            or type(self.initial_locator) is not str
+            or type(self.final_locator) is not str
+            or type(self.origin) is not str
+            or type(self.retrieved_at) is not datetime.datetime
+            or self.retrieved_at.tzinfo is None
+            or self.retrieved_at.utcoffset() is None
+            or type(self.content_type) is not str
+            or type(self.raw_body_bytes) is not int
+            or self.raw_body_bytes <= 0
+            or type(self.parser_id) is not str
+            or type(self.parser_version) is not str
+            or type(self.parsed_body) is not str
+            or not self.parsed_body
+            or type(self.raw_anchors) is not tuple
+            or any(type(anchor) is not AdmissionAnchor for anchor in self.raw_anchors)
+            or type(self.raw_body_sha256) is not str
+            or not re.fullmatch(r"[0-9a-f]{64}", self.raw_body_sha256)
+            or type(self.parsed_body_sha256) is not str
+            or hashlib.sha256(self.parsed_body.encode("utf-8")).hexdigest()
+            != self.parsed_body_sha256
+            or (
+                self.parsed_symbol is not None
+                and (type(self.parsed_symbol) is not str or not _TICKER.fullmatch(self.parsed_symbol))
+            )
+        ):
+            raise ValueError("source admission record is invalid")
+
+    def provenance(self) -> dict:
+        """Return the non-secret lineage projection used in listing references."""
+        return {
+            "initial_locator": self.initial_locator,
+            "final_locator": self.final_locator,
+            "origin": self.origin,
+            "retrieved_at": self.retrieved_at.astimezone(datetime.timezone.utc).isoformat(),
+            "content_type": self.content_type,
+            "raw_body_sha256": self.raw_body_sha256,
+            "raw_body_bytes": self.raw_body_bytes,
+            "parser_id": self.parser_id,
+            "parser_version": self.parser_version,
+            "parsed_body_sha256": self.parsed_body_sha256,
+            "raw_anchors": [anchor.as_dict() for anchor in self.raw_anchors],
+        }
+
+    def __repr__(self) -> str:
+        return "SourceAdmission(<redacted>)"
+
+
+@dataclass(frozen=True, repr=False)
+class AdmissionFailure:
+    """Closed failure code; deliberately contains no URL, body, or exception."""
+
+    code: str
+
+    def __post_init__(self) -> None:
+        if type(self.code) is not str or self.code not in _FAILURE_CODES:
+            raise ValueError("admission failure code is invalid")
+
+    def __repr__(self) -> str:
+        return "AdmissionFailure({})".format(self.code)
+
+
+@dataclass(frozen=True, repr=False)
+class AdmissionBatch:
+    admissions: Tuple[SourceAdmission, ...]
+    failures: Tuple[AdmissionFailure, ...]
+    request_count: int
+    response_bytes: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.admissions) is not tuple
+            or any(type(item) is not SourceAdmission for item in self.admissions)
+            or type(self.failures) is not tuple
+            or any(type(item) is not AdmissionFailure for item in self.failures)
+            or type(self.request_count) is not int
+            or not 0 <= self.request_count <= MAX_SOURCE_ADMISSION_REQUESTS
+            or type(self.response_bytes) is not int
+            or self.response_bytes < 0
+        ):
+            raise ValueError("admission batch is invalid")
+
+    def __repr__(self) -> str:
+        return "AdmissionBatch(admissions={}, failures={}, request_count={}, response_bytes={})".format(
+            len(self.admissions), len(self.failures), self.request_count, self.response_bytes
+        )
+
+
+@dataclass(frozen=True, repr=False)
+class _ParsedPage:
+    body: str
+    parser_id: str
+    anchors: Tuple[AdmissionAnchor, ...]
+    symbol: Optional[str]
+
+
+@dataclass(frozen=True, repr=False)
+class _Reply:
+    status: int
+    headers: Mapping[str, str]
+    body: bytes
+
+
+@dataclass(frozen=True, repr=False)
+class _TextChunk:
+    text: str
+    raw_start: int
+    raw_end: int
+    table_id: Optional[int]
+
+
+@dataclass(frozen=True, repr=False)
+class _Heading:
+    level: int
+    text: str
+    raw_start: int
+    raw_end: int
+
+
+class _BoundedHTML(HTMLParser):
+    """Collect only text, tables, and headings needed by the three parsers."""
+
+    def __init__(self, source: str):
+        super().__init__(convert_charrefs=False)
+        self._source = source
+        self._line_starts = [0]
+        self._line_starts.extend(index + 1 for index, char in enumerate(source) if char == "\n")
+        self.chunks = []
+        self.tables = []
+        self.headings = []
+        self._table_stack = []
+        self._row = None
+        self._cell = None
+        self._heading = None
+        self._hidden_stack = []
+
+    def _offset(self) -> int:
+        line, column = self.getpos()
+        if line < 1 or line > len(self._line_starts):
+            return len(self._source)
+        return min(len(self._source), self._line_starts[line - 1] + column)
+
+    def _append_text(self, text: str, raw_start: int, raw_end: int) -> None:
+        if not text:
+            return
+        table_id = self._table_stack[-1] if self._table_stack else None
+        self.chunks.append(_TextChunk(text, raw_start, raw_end, table_id))
+        if self._cell is not None:
+            self._cell["chunks"].append((text, raw_start, raw_end))
+        if self._heading is not None:
+            self._heading["chunks"].append((text, raw_start, raw_end))
+
+    def _boundary(self, *, paragraph: bool = False) -> None:
+        self._append_text("\n\n" if paragraph else "\n", self._offset(), self._offset())
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.casefold()
+        if self._hidden_stack:
+            if tag not in _VOID_TAGS:
+                self._hidden_stack.append(tag)
+            return
+        hidden = tag in _HIDDEN_TAGS or any(
+            name == "hidden"
+            or (name == "aria-hidden" and value is not None
+                and value.strip(_ASCII_WHITESPACE).lower() == "true")
+            or (name == "style" and value is not None
+                and any(_HIDDEN_STYLE.fullmatch(part) for part in value.split(";")))
+            for name, value in attrs
+        )
+        if hidden:
+            if tag not in _VOID_TAGS:
+                self._hidden_stack.append(tag)
+            return
+        if tag in _BLOCK_TAGS:
+            self._boundary()
+        if tag == "table":
+            table = {"rows": [], "raw_start": self._offset(), "raw_end": None}
+            self.tables.append(table)
+            self._table_stack.append(len(self.tables) - 1)
+        elif tag == "tr" and self._table_stack:
+            self._row = []
+        elif tag in ("td", "th") and self._row is not None:
+            self._cell = {"chunks": [], "tag": tag}
+        elif re.fullmatch(r"h[1-6]", tag):
+            self._heading = {"level": int(tag[1]), "chunks": [], "raw_start": self._offset()}
+
+    def handle_endtag(self, tag):
+        tag = tag.casefold()
+        if self._hidden_stack:
+            for index in range(len(self._hidden_stack) - 1, -1, -1):
+                if self._hidden_stack[index] == tag:
+                    del self._hidden_stack[index:]
+                    break
+            return
+        offset = self._offset()
+        if tag in ("td", "th") and self._cell is not None and self._row is not None:
+            self._row.append(self._cell)
+            self._cell = None
+        elif tag == "tr" and self._row is not None and self._table_stack:
+            self.tables[self._table_stack[-1]]["rows"].append(self._row)
+            self._row = None
+        elif tag == "table" and self._table_stack:
+            table_id = self._table_stack.pop()
+            self.tables[table_id]["raw_end"] = offset
+        elif re.fullmatch(r"h[1-6]", tag) and self._heading is not None:
+            parts = self._heading["chunks"]
+            text = "".join(item[0] for item in parts)
+            starts = [item[1] for item in parts]
+            ends = [item[2] for item in parts]
+            if text:
+                self.headings.append(
+                    _Heading(
+                        self._heading["level"],
+                        text,
+                        min(starts),
+                        max(ends),
+                    )
+                )
+            self._heading = None
+        if tag in _BLOCK_TAGS:
+            self._boundary(paragraph=tag == "p")
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag.casefold() not in _VOID_TAGS:
+            self.handle_endtag(tag)
+
+    def handle_data(self, data):
+        if self._hidden_stack:
+            return
+        start = self._offset()
+        self._append_text(data, start, start + len(data))
+
+    def handle_entityref(self, name):
+        if self._hidden_stack:
+            return
+        start = self._offset()
+        raw = "&{};".format(name)
+        self._append_text(html.unescape(raw), start, min(len(self._source), start + len(raw)))
+
+    def handle_charref(self, name):
+        if self._hidden_stack:
+            return
+        start = self._offset()
+        raw = "&#{};".format(name)
+        self._append_text(html.unescape(raw), start, min(len(self._source), start + len(raw)))
+
+    def result(self) -> "_BoundedHTML":
+        self.feed(self._source)
+        self.close()
+        if self._table_stack or self._row is not None or self._cell is not None or self._heading is not None:
+            raise ValueError("incomplete HTML structure")
+        return self
+
+
+def _source_offset_hash(raw: str, start: int, end: int) -> str:
+    return hashlib.sha256(raw[start:end].encode("utf-8", errors="strict")).hexdigest()
+
+
+def _anchor(field: str, raw: str, raw_start: int, raw_end: int, parsed_start: int, parsed_end: int) -> AdmissionAnchor:
+    return AdmissionAnchor(
+        field,
+        raw_start,
+        raw_end,
+        _source_offset_hash(raw, raw_start, raw_end),
+        parsed_start,
+        parsed_end,
+    )
+
+
+def _family_target(locator: object):
+    """Return strict family/path identity, without resolving a host."""
+    if (
+        type(locator) is not str
+        or not locator
+        or locator != locator.strip()
+        or not locator.isascii()
+        or any(ord(char) <= 0x20 or ord(char) == 0x7F for char in locator)
+        or "?" in locator
+        or "#" in locator
+        or "\\" in locator
+    ):
+        return None
+    try:
+        parsed = urlsplit(locator)
+        port = parsed.port
+    except ValueError:
+        return None
+    host = parsed.hostname
+    if (
+        parsed.scheme != "https"
+        or host not in _ALLOWED_HOSTS
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in (None, 443)
+        or parsed.netloc not in (host, host + ":443")
+        or parsed.query
+        or parsed.fragment
+        or not parsed.path.isascii()
+        or "%" in parsed.path
+        or "//" in parsed.path
+        or any(segment in (".", "..") for segment in parsed.path.split("/"))
+    ):
+        return None
+    if host in _SEC_HOSTS:
+        match = _SEC_PATH.fullmatch(parsed.path)
+        if match is None:
+            return None
+        accession = match.group("accession")
+        return ("sec", parsed, (match.group("cik"), accession, match.group("filename")))
+    if host == "www.nasdaq.com":
+        match = re.fullmatch(
+            r"/market-activity/stocks/(?P<symbol>[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)(?:/(?P<subpage>[A-Za-z0-9-]+))?",
+            parsed.path,
+        )
+        if match is None:
+            return None
+        return ("nasdaq", parsed, (match.group("symbol").upper(), parsed.path))
+    if host == "finance.yahoo.com":
+        match = re.fullmatch(r"/quote/(?P<symbol>[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)/", parsed.path)
+        if match is None:
+            return None
+        return ("yahoo", parsed, (match.group("symbol").upper(), parsed.path))
+    return None
+
+
+def _same_target(initial, current) -> bool:
+    if initial[0] != current[0]:
+        return False
+    if initial[0] == "sec":
+        # Host aliases may differ, but a redirect may not switch filing.
+        return initial[2] == current[2] and initial[1].path == current[1].path
+    return initial[2] == current[2]
+
+
+def _source_id_for_locator(locator: str) -> str:
+    return "host-admission-" + hashlib.sha256(locator.encode("ascii")).hexdigest()[:24]
+
+
+def _revalidate_source_admission(
+    value: object, *, max_raw_bytes: int, max_parsed_bytes: int
+) -> Optional[SourceAdmission]:
+    """Recheck a client result before the immutable source registry is built."""
+    if type(value) is not SourceAdmission:
+        return None
+    try:
+        anchors = tuple(
+            AdmissionAnchor(
+                anchor.field,
+                anchor.raw_start,
+                anchor.raw_end,
+                anchor.raw_sha256,
+                anchor.parsed_start,
+                anchor.parsed_end,
+            )
+            for anchor in value.raw_anchors
+        )
+        checked = SourceAdmission(
+            source_id=value.source_id,
+            family=value.family,
+            initial_locator=value.initial_locator,
+            final_locator=value.final_locator,
+            origin=value.origin,
+            retrieved_at=value.retrieved_at,
+            content_type=value.content_type,
+            raw_body_sha256=value.raw_body_sha256,
+            raw_body_bytes=value.raw_body_bytes,
+            parser_id=value.parser_id,
+            parser_version=value.parser_version,
+            parsed_body_sha256=value.parsed_body_sha256,
+            parsed_body=value.parsed_body,
+            raw_anchors=anchors,
+            parsed_symbol=value.parsed_symbol,
+        )
+        initial = _family_target(checked.initial_locator)
+        final = _family_target(checked.final_locator)
+        parser_ids = {
+            "sec": "sec-edgar-cover-v1",
+            "nasdaq": "nasdaq-instrument-v1",
+            "yahoo": "yahoo-quote-header-v1",
+        }
+        if (
+            initial is None
+            or final is None
+            or not _same_target(initial, final)
+            or checked.family != initial[0]
+            or checked.source_id != _source_id_for_locator(checked.initial_locator)
+            or checked.origin != "https://{}".format(final[1].hostname)
+            or checked.content_type != "text/html"
+            or checked.parser_version != _PARSER_VERSION
+            or checked.parser_id != parser_ids[checked.family]
+            or checked.raw_body_bytes > max_raw_bytes
+            or len(checked.parsed_body.encode("utf-8")) > max_parsed_bytes
+            or any(
+                anchor.raw_end > checked.raw_body_bytes
+                or anchor.parsed_end > len(checked.parsed_body)
+                for anchor in anchors
+            )
+            or (
+                checked.family == "sec"
+                and (checked.parsed_symbol is None or checked.parsed_symbol != checked.parsed_symbol.upper())
+            )
+            or (
+                checked.family != "sec"
+                and (
+                    checked.parsed_symbol != initial[2][0]
+                    or checked.parsed_symbol != checked.parsed_symbol.upper()
+                )
+            )
+        ):
+            return None
+        return checked
+    except (AttributeError, TypeError, ValueError, UnicodeEncodeError):
+        return None
+
+
+def _safe_addresses(
+    host: str,
+    resolver: Callable[[str, int], Sequence[str]],
+    *,
+    timeout_seconds: float,
+    deadline: float,
+    monotonic: Callable[[], float],
+) -> Tuple[str, ...]:
+    values = _bounded_daemon_call(
+        lambda: tuple(resolver(host, 443)),
+        timeout_seconds=timeout_seconds,
+        deadline=deadline,
+        monotonic=monotonic,
+        timeout_code="DNS_RESOLUTION_FAILED",
+        thread_name="host-admission-dns",
+    )
+    if not values:
+        raise _AdmissionProblem("DNS_RESOLUTION_FAILED")
+    normalized = []
+    for value in values:
+        try:
+            address = ipaddress.ip_address(value)
+        except (TypeError, ValueError):
+            raise _AdmissionProblem("DNS_RESOLUTION_FAILED") from None
+        if not address.is_global or address.is_multicast or address.is_unspecified:
+            raise _AdmissionProblem("DNS_ADDRESS_BLOCKED")
+        normalized.append(str(address))
+    return tuple(dict.fromkeys(normalized))
+
+
+def _bounded_daemon_call(
+    function: Callable[[], object],
+    *,
+    timeout_seconds: float,
+    deadline: float,
+    monotonic: Callable[[], float],
+    timeout_code: str,
+    thread_name: str,
+):
+    completed = queue.Queue(maxsize=1)
+
+    def run() -> None:
+        try:
+            result = (True, function())
+        except Exception:
+            result = (False, None)
+        try:
+            completed.put_nowait(result)
+        except queue.Full:
+            pass
+
+    try:
+        threading.Thread(target=run, name=thread_name, daemon=True).start()
+        succeeded, value = completed.get(timeout=timeout_seconds)
+    except queue.Empty:
+        if deadline - monotonic() <= 0:
+            raise _AdmissionProblem("ADMISSION_DEADLINE_EXCEEDED") from None
+        raise _AdmissionProblem(timeout_code) from None
+    except _AdmissionProblem:
+        raise
+    except Exception:
+        raise _AdmissionProblem(timeout_code) from None
+    if not succeeded:
+        raise _AdmissionProblem(timeout_code)
+    return value
+
+
+class _AdmissionProblem(Exception):
+    def __init__(self, code: str):
+        self.code = code if code in _FAILURE_CODES else "TRANSPORT_FAILED"
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """Connect to one pinned address while TLS still verifies the origin host."""
+
+    def __init__(self, host: str, address: str, timeout: float):
+        super().__init__(host, port=443, timeout=timeout, context=ssl.create_default_context())
+        self._pinned_address = address
+        self._aborted = threading.Event()
+
+    def abort(self) -> None:
+        self._aborted.set()
+        active_socket = self.sock
+        if active_socket is not None:
+            try:
+                active_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                active_socket.close()
+            except OSError:
+                pass
+
+    def connect(self) -> None:
+        if self._tunnel_host:
+            raise OSError("tunnels are not supported")
+        raw_socket = socket.create_connection(
+            (self._pinned_address, self.port), self.timeout
+        )
+        if self._aborted.is_set():
+            raw_socket.close()
+            raise TimeoutError("source admission deadline expired")
+        self.sock = raw_socket
+        try:
+            tls_socket = self._context.wrap_socket(
+                raw_socket,
+                server_hostname=self.host,
+                do_handshake_on_connect=False,
+            )
+            self.sock = tls_socket
+            tls_socket.settimeout(self.timeout)
+            if self._aborted.is_set():
+                self.abort()
+                raise TimeoutError("source admission deadline expired")
+            tls_socket.do_handshake()
+        except BaseException:
+            active_socket = self.sock
+            self.sock = None
+            if active_socket is not None:
+                try:
+                    active_socket.close()
+                except OSError:
+                    pass
+            raise
+
+
+def _default_resolver(host: str, port: int) -> Tuple[str, ...]:
+    records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    return tuple(record[4][0] for record in records)
+
+
+def _content_type(headers: Mapping[str, str]) -> Optional[str]:
+    values = [value for key, value in headers.items() if key.casefold() == "content-type"]
+    if len(values) != 1 or type(values[0]) is not str:
+        return None
+    pieces = [part.strip() for part in values[0].split(";")]
+    media_type = pieces[0].casefold()
+    if media_type not in ("text/html", "text/plain"):
+        return None
+    charsets = []
+    for piece in pieces[1:]:
+        if "=" not in piece:
+            continue
+        key, value = piece.split("=", 1)
+        if key.strip().casefold() == "charset":
+            charsets.append(value.strip().strip('"').casefold())
+    if len(charsets) > 1 or (charsets and charsets[0] not in ("utf-8", "utf8")):
+        return None
+    return media_type
+
+
+def _header(headers: Mapping[str, str], name: str) -> Optional[str]:
+    values = [value for key, value in headers.items() if key.casefold() == name.casefold()]
+    return values[0] if len(values) == 1 and type(values[0]) is str else None
+
+
+def _fetch_response(
+    locator: str,
+    address: str,
+    timeout: float,
+    max_bytes: int,
+) -> _Reply:
+    parsed = urlsplit(locator)
+    connection = _PinnedHTTPSConnection(parsed.hostname, address, timeout)
+    watchdog = threading.Timer(timeout, connection.abort)
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        connection.request(
+            "GET",
+            parsed.path,
+            headers={
+                "Host": parsed.hostname,
+                "User-Agent": "ConvexityHunter-SourceAdmission/0.1",
+                "Accept": "text/html, text/plain;q=0.9",
+                "Accept-Encoding": "identity",
+                "Connection": "close",
+            },
+        )
+        response = connection.getresponse()
+        headers = {}
+        for key, value in response.getheaders():
+            normalized_key = key.casefold()
+            if normalized_key in headers:
+                headers[normalized_key] = headers[normalized_key] + "\n" + value
+            else:
+                headers[normalized_key] = value
+        status = response.status
+        if status in (301, 302, 303, 307, 308):
+            return _Reply(status, headers, b"")
+        if status != 200:
+            return _Reply(status, headers, b"")
+        content_length = _header(headers, "Content-Length")
+        if content_length is not None:
+            if not re.fullmatch(r"[0-9]+", content_length) or int(content_length) > max_bytes:
+                return _Reply(status, headers, b"\x00" * (max_bytes + 1))
+        content_encoding = _header(headers, "Content-Encoding")
+        if content_encoding not in (None, "", "identity"):
+            return _Reply(status, headers, b"\x00" * (max_bytes + 1))
+        body = response.read(max_bytes + 1)
+        return _Reply(status, headers, body)
+    finally:
+        watchdog.cancel()
+        watchdog.join(timeout=0.1)
+        connection.close()
+
+
+def _cell_text(cell: dict) -> str:
+    return "".join(part[0] for part in cell["chunks"])
+
+
+def _ascii_space(value: str) -> str:
+    return re.sub(r"[ \t\r\n\f\v]+", " ", value).strip(" \t\r\n\f\v")
+
+
+def _issuer_valid(value: str) -> bool:
+    return bool(value and _SEC_ISSUER.fullmatch(value) and not any(ch in value for ch in "<>[]{}|`*_#"))
+
+
+def _table_cell_span(cell: dict):
+    chunks = cell["chunks"]
+    if not chunks:
+        return None
+    return min(item[1] for item in chunks), max(item[2] for item in chunks)
+
+
+def _visible_chunks(parser: _BoundedHTML, excluded_table_ids=()):
+    excluded = frozenset(excluded_table_ids)
+    result = []
+    for chunk in parser.chunks:
+        if chunk.table_id in excluded:
+            continue
+        text = chunk.text
+        if text == "\n" and result and result[-1][0].endswith("\n"):
+            continue
+        if text:
+            result.append((text, chunk.raw_start, chunk.raw_end))
+    return result
+
+
+def _render_chunks(raw: str, chunks, excluded_raw_ranges=()):
+    excluded = tuple(excluded_raw_ranges)
+    pieces = []
+    anchors = []
+    position = 0
+    for text, raw_start, raw_end in chunks:
+        if raw_start == raw_end:
+            if text == "\n" and pieces and pieces[-1].endswith("\n"):
+                continue
+            start = position
+            pieces.append(text)
+            position += len(text)
+            continue
+        if any(raw_start < end and raw_end > start for start, end in excluded):
+            continue
+        parsed_start = position
+        pieces.append(text)
+        position += len(text)
+        anchors.append(
+            _anchor("visible_text", raw, raw_start, raw_end, parsed_start, position)
+        )
+    return "".join(pieces), anchors
+
+
+def _sec_html(source: str) -> Optional[_ParsedPage]:
+    parser = _BoundedHTML(source).result()
+    marker_lines = []
+    rendered_all, _ = _render_chunks(source, _visible_chunks(parser))
+    lines = rendered_all.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip(" \t") == _SEC_MARKER:
+            marker_lines.append(index)
+    if len(marker_lines) != 1:
+        return None
+    marker_index = marker_lines[0]
+    issuer_index = marker_index - 1
+    while issuer_index >= 0 and not lines[issuer_index].strip(" \t"):
+        issuer_index -= 1
+    if issuer_index < 0:
+        return None
+    issuer = _ascii_space(lines[issuer_index])
+    if not _issuer_valid(issuer):
+        return None
+
+    expected = tuple(value.casefold() for value in (_SEC_TITLE, _SEC_TICKER, _SEC_EXCHANGE))
+    candidate_tables = []
+    for table_id, table in enumerate(parser.tables):
+        rows = table["rows"]
+        if not rows or any(len(row) != 3 for row in rows):
+            continue
+        labels = tuple(_ascii_space(_cell_text(cell)).casefold() for cell in rows[0])
+        if labels == expected:
+            candidate_tables.append((table_id, table, rows))
+    if len(candidate_tables) != 1:
+        return None
+    table_id, table, rows = candidate_tables[0]
+    if len(rows) != 2:
+        return None
+    row = tuple(_ascii_space(_cell_text(cell)) for cell in rows[1])
+    title, symbol, exchange = row
+    if (
+        title != "Ordinary shares, no par value"
+        or not _TICKER.fullmatch(symbol)
+        or symbol != symbol.upper()
+        or exchange != "The Nasdaq Stock Market LLC"
+    ):
+        return None
+
+    # The source's registrant marker and name remain verbatim parsed text. Only
+    # the actual HTML cover-table cells are rendered into the existing narrow
+    # Markdown grammar; the raw-to-parsed anchors identify every consumed cell.
+    table_range = (table["raw_start"], table["raw_end"] or len(source))
+    visible_chunks = _visible_chunks(parser, (table_id,))
+    visible_body, visible_anchors = _render_chunks(source, visible_chunks)
+    if visible_body.count(_SEC_MARKER) != 1:
+        return None
+    table_text = "\n".join(
+        (
+            _SEC_HEADER,
+            "| --- | --- | --- |",
+            "| {} | {} | {} |".format(title, symbol, exchange),
+        )
+    )
+    body = visible_body.rstrip("\n") + "\n" + table_text + "\n"
+    anchors = list(visible_anchors)
+    table_start = len(visible_body.rstrip("\n")) + 1
+    for row_index, field_values in ((0, (_SEC_TITLE, _SEC_TICKER, _SEC_EXCHANGE)), (1, row)):
+        for column, (field, cell) in enumerate(zip(field_values, rows[row_index])):
+            span = _table_cell_span(cell)
+            if span is None:
+                return None
+            if row_index == 0:
+                parsed_start = table_start + _SEC_HEADER.index(field)
+                parsed_end = parsed_start + len(field)
+                anchor_field = "sec_cover.header.{}".format(column)
+            else:
+                table_row_start = table_start + len(_SEC_HEADER) + 1 + len("| --- | --- | --- |\n")
+                parsed_start = table_row_start + 2 + sum(len(value) + 3 for value in row[:column])
+                parsed_end = parsed_start + len(field)
+                anchor_field = "sec_cover.value.{}".format(column)
+            anchors.append(
+                _anchor(anchor_field, source, span[0], span[1], parsed_start, parsed_end)
+            )
+
+    # The parser consumed the explicit issuer marker/name as well as the table.
+    # Locate their raw text nodes and bind them to their exact parsed positions.
+    for line_index, field in ((issuer_index, "sec_cover.registrant"), (marker_index, "sec_cover.registrant_marker")):
+        target = lines[line_index].strip(" \t")
+        if not target:
+            continue
+        matching = [
+            chunk
+            for chunk in parser.chunks
+            if chunk.raw_start != chunk.raw_end and chunk.text.strip(" \t\r\n") == target
+        ]
+        if len(matching) == 1:
+            chunk = matching[0]
+            parsed_start = body.find(target)
+            if parsed_start >= 0:
+                anchors.append(
+                    _anchor(field, source, chunk.raw_start, chunk.raw_end, parsed_start, parsed_start + len(target))
+                )
+    if len(anchors) > 2048:
+        return None
+    return _ParsedPage(body, "sec-edgar-cover-v1", tuple(anchors), symbol.upper())
+
+
+def _nasdaq_html(source: str, target_symbol: str) -> Optional[_ParsedPage]:
+    parser = _BoundedHTML(source).result()
+    candidates = []
+    for heading in parser.headings:
+        text = _ascii_space(heading.text)
+        match = _NASDAQ_HEADING.fullmatch(text)
+        if match is not None and _TICKER.fullmatch(match.group("symbol")):
+            candidates.append((heading, text, match))
+    if len(candidates) != 1:
+        return None
+    heading, text, match = candidates[0]
+    issuer = _ascii_space(match.group("issuer"))
+    symbol = match.group("symbol")
+    if not _issuer_valid(issuer) or symbol.upper() != target_symbol:
+        return None
+    body = "#" * heading.level + " " + text + "\n"
+    prefix = "#" * heading.level + " "
+    anchor = _anchor(
+        "nasdaq.instrument_heading",
+        source,
+        heading.raw_start,
+        heading.raw_end,
+        len(prefix),
+        len(body.rstrip("\n")),
+    )
+    return _ParsedPage(body, "nasdaq-instrument-v1", (anchor,), symbol.upper())
+
+
+def _yahoo_html(source: str, target_symbol: str) -> Optional[_ParsedPage]:
+    parser = _BoundedHTML(source).result()
+    visible, _anchors = _render_chunks(source, _visible_chunks(parser))
+    visible_lines = [(line, start, end) for line, start, end in _line_spans(visible)]
+    quote_candidates = [
+        (line, start, end)
+        for line, start, end in visible_lines
+        if "quote" in line.casefold()
+    ]
+    heading_candidates = []
+    for heading in parser.headings:
+        text = _ascii_space(heading.text)
+        match = _YAHOO_HEADING.fullmatch(text)
+        if match is not None and _TICKER.fullmatch(match.group("symbol")):
+            heading_candidates.append((heading, text, match))
+    if len(quote_candidates) != 1 or len(heading_candidates) != 1:
+        return None
+    quote, _quote_start, _quote_end = quote_candidates[0]
+    heading, text, match = heading_candidates[0]
+    issuer = _ascii_space(match.group("issuer"))
+    symbol = match.group("symbol")
+    if quote != _YAHOO_QUOTE or not _issuer_valid(issuer) or symbol.upper() != target_symbol:
+        return None
+    if visible.find(quote) > visible.find(text):
+        return None
+    body = quote + "\n\n# " + text + "\n"
+    quote_pos = body.find(quote)
+    heading_pos = body.rfind("# " + text)
+    # Anchor exact source text nodes; the spans may include inline HTML tags.
+    quote_raw = _visible_text_raw_span(parser, quote)
+    if quote_raw is None:
+        return None
+    anchors = (
+        _anchor("yahoo.quote_denomination", source, quote_raw[0], quote_raw[1], quote_pos, quote_pos + len(quote)),
+        _anchor("yahoo.instrument_heading", source, heading.raw_start, heading.raw_end, heading_pos + 2, heading_pos + 2 + len(text)),
+    )
+    return _ParsedPage(body, "yahoo-quote-header-v1", anchors, symbol.upper())
+
+
+def _line_spans(body: str):
+    offset = 0
+    for line in body.splitlines(keepends=True):
+        end = offset + len(line.rstrip("\r\n"))
+        yield line.rstrip("\r\n"), offset, end
+        offset += len(line)
+    if body and not body.endswith(("\n", "\r")) and offset == 0:
+        yield body, 0, len(body)
+
+
+def _visible_text_raw_span(parser: _BoundedHTML, text: str):
+    chunks = [chunk for chunk in parser.chunks if chunk.raw_start != chunk.raw_end]
+    visible = "".join(chunk.text for chunk in chunks)
+    start = visible.find(text)
+    if start < 0 or visible.find(text, start + 1) >= 0:
+        return None
+    end = start + len(text)
+    position = 0
+    spans = []
+    for chunk in chunks:
+        next_position = position + len(chunk.text)
+        if position < end and next_position > start:
+            spans.append((chunk.raw_start, chunk.raw_end))
+        position = next_position
+    return (min(item[0] for item in spans), max(item[1] for item in spans)) if spans else None
+
+
+def _parse_page(
+    family: str,
+    body: str,
+    target_symbol: Optional[str],
+    content_type: str,
+) -> Optional[_ParsedPage]:
+    try:
+        if content_type != "text/html":
+            return None
+        if family == "sec":
+            return _sec_html(body)
+        if family == "nasdaq":
+            return None if target_symbol is None else _nasdaq_html(body, target_symbol)
+        if family == "yahoo":
+            return None if target_symbol is None else _yahoo_html(body, target_symbol)
+    except (ValueError, RecursionError):
+        return None
+    return None
+
+
+class _SourceAdmissionClient:
+    """Per-run bounded retrieval client; underscore-prefixed by design."""
+
+    def __init__(
+        self,
+        *,
+        timeout_seconds: float,
+        max_response_bytes: int,
+        byte_budget: int,
+        _transport: Optional[Callable] = None,
+        _resolver: Optional[Callable[[str, int], Sequence[str]]] = None,
+        _clock: Optional[Callable[[], datetime.datetime]] = None,
+        _monotonic: Optional[Callable[[], float]] = None,
+    ):
+        if type(timeout_seconds) not in (int, float) or timeout_seconds <= 0:
+            raise ValueError("timeout must be positive")
+        if type(max_response_bytes) is not int or max_response_bytes <= 0:
+            raise ValueError("max response bytes must be positive")
+        if type(byte_budget) is not int or byte_budget < 0:
+            raise ValueError("byte budget must be nonnegative")
+        if _transport is not None and (_resolver is None or not callable(_resolver)):
+            raise ValueError("synthetic transport requires a synthetic resolver")
+        if _transport is not None and not callable(_transport):
+            raise TypeError("synthetic transport must be callable")
+        if _clock is not None and not callable(_clock):
+            raise TypeError("clock must be callable")
+        if _monotonic is not None and not callable(_monotonic):
+            raise TypeError("monotonic clock must be callable")
+        self._timeout = float(timeout_seconds)
+        self._max_response_bytes = max_response_bytes
+        self._byte_budget = byte_budget
+        self._transport = _transport
+        self._resolver = _resolver or _default_resolver
+        self._clock = _clock or (lambda: datetime.datetime.now(datetime.timezone.utc))
+        self._monotonic = _monotonic or time.monotonic
+        self._request_count = 0
+        self._dns_count = 0
+        self._response_bytes = 0
+
+    def admit_candidates(self, locators: Sequence[str]) -> AdmissionBatch:
+        if not isinstance(locators, (tuple, list)):
+            raise TypeError("candidate locators must be a sequence")
+        deadline = self._monotonic() + self._timeout * MAX_SOURCE_ADMISSION_REQUESTS
+        candidates = []
+        seen = set()
+        failures = []
+        for locator in locators:
+            target = _family_target(locator)
+            if target is None:
+                continue
+            if locator in seen:
+                continue
+            seen.add(locator)
+            candidates.append((locator, target))
+
+        # Give an explicit SEC cover row the opportunity to authorize only its
+        # own ticker's two bounded identity supplements before other candidates.
+        candidates.sort(key=lambda item: (0 if item[1][0] == "sec" else 1, locators.index(item[0])))
+        admissions = []
+        attempted = set()
+        admitted_symbols = set()
+        for locator, target in candidates:
+            if self._request_count >= MAX_SOURCE_ADMISSION_REQUESTS:
+                failures.append(AdmissionFailure("REQUEST_LIMIT_REACHED"))
+                break
+            if locator in attempted:
+                continue
+            attempted.add(locator)
+            result, failure = self._admit_one(locator, target, deadline)
+            if failure is not None:
+                failures.append(failure)
+                continue
+            admissions.append(result)
+            if target[0] == "sec" and result.parsed_symbol:
+                admitted_symbols.add(result.parsed_symbol)
+                supplements = (
+                    "https://www.nasdaq.com/market-activity/stocks/{}".format(result.parsed_symbol.lower()),
+                    "https://finance.yahoo.com/quote/{}/".format(result.parsed_symbol),
+                )
+                for supplement in supplements:
+                    supplement_target = _family_target(supplement)
+                    if supplement_target is None:
+                        continue
+                    if any(
+                        old_target[0] == supplement_target[0]
+                        and old_target[2][0] == result.parsed_symbol
+                        for _old_locator, old_target in candidates
+                    ):
+                        continue
+                    if self._request_count >= MAX_SOURCE_ADMISSION_REQUESTS:
+                        break
+                    if supplement in attempted:
+                        continue
+                    attempted.add(supplement)
+                    supplemental, supplement_failure = self._admit_one(
+                        supplement, supplement_target, deadline
+                    )
+                    if supplement_failure is not None:
+                        failures.append(supplement_failure)
+                    else:
+                        admissions.append(supplemental)
+        return AdmissionBatch(
+            tuple(admissions), tuple(failures), self._request_count, self._response_bytes
+        )
+
+    def _one_get(
+        self, locator: str, address: str, timeout: float, max_bytes: int
+    ) -> _Reply:
+        if self._transport is not None:
+            reply = self._transport(locator, address, timeout, max_bytes)
+            if type(reply) is not _Reply:
+                raise _AdmissionProblem("TRANSPORT_FAILED")
+            return reply
+        return _fetch_response(locator, address, timeout, max_bytes)
+
+    def _remaining(self, deadline: float) -> float:
+        remaining = deadline - self._monotonic()
+        if remaining <= 0:
+            raise _AdmissionProblem("ADMISSION_DEADLINE_EXCEEDED")
+        return remaining
+
+    def _request(self, locator: str, initial_target, deadline: float):
+        current = locator
+        redirects = 0
+        while True:
+            remaining = self._remaining(deadline)
+            if self._request_count >= MAX_SOURCE_ADMISSION_REQUESTS:
+                raise _AdmissionProblem("REQUEST_LIMIT_REACHED")
+            current_target = _family_target(current)
+            if current_target is None or not _same_target(initial_target, current_target):
+                raise _AdmissionProblem("REDIRECT_INVALID")
+            if self._dns_count >= MAX_SOURCE_ADMISSION_REQUESTS:
+                raise _AdmissionProblem("DNS_LIMIT_REACHED")
+            self._dns_count += 1
+            host = current_target[1].hostname
+            addresses = _safe_addresses(
+                host,
+                self._resolver,
+                timeout_seconds=min(self._timeout, remaining),
+                deadline=deadline,
+                monotonic=self._monotonic,
+            )
+            remaining = self._remaining(deadline)
+            remaining_bytes = self._byte_budget - self._response_bytes
+            cap = min(self._max_response_bytes, remaining_bytes)
+            if cap <= 0:
+                raise _AdmissionProblem("BODY_LIMIT_EXCEEDED")
+            self._request_count += 1
+            try:
+                reply = self._one_get(
+                    current, addresses[0], min(self._timeout, remaining), cap
+                )
+            except _AdmissionProblem:
+                raise
+            except (OSError, http.client.HTTPException, ssl.SSLError, TimeoutError):
+                if deadline - self._monotonic() <= 0:
+                    raise _AdmissionProblem("ADMISSION_DEADLINE_EXCEEDED") from None
+                raise _AdmissionProblem("TRANSPORT_FAILED") from None
+            except Exception:
+                if deadline - self._monotonic() <= 0:
+                    raise _AdmissionProblem("ADMISSION_DEADLINE_EXCEEDED") from None
+                raise _AdmissionProblem("TRANSPORT_FAILED") from None
+            self._remaining(deadline)
+            if type(reply.status) is not int or not isinstance(reply.headers, Mapping) or type(reply.body) is not bytes:
+                raise _AdmissionProblem("TRANSPORT_FAILED")
+            if reply.status in (301, 302, 303, 307, 308):
+                if redirects >= MAX_SOURCE_ADMISSION_REDIRECTS:
+                    raise _AdmissionProblem("REDIRECT_LIMIT")
+                location = _header(reply.headers, "Location")
+                if not location:
+                    raise _AdmissionProblem("REDIRECT_INVALID")
+                next_locator = urljoin(current, location)
+                next_target = _family_target(next_locator)
+                if next_target is None or not _same_target(initial_target, next_target):
+                    raise _AdmissionProblem("REDIRECT_INVALID")
+                current = next_locator
+                redirects += 1
+                continue
+            if reply.status != 200:
+                raise _AdmissionProblem("HTTP_STATUS_UNSUPPORTED")
+            if len(reply.body) > cap:
+                self._response_bytes += cap + 1
+                raise _AdmissionProblem("BODY_LIMIT_EXCEEDED")
+            self._response_bytes += len(reply.body)
+            content_type = _content_type(reply.headers)
+            if content_type is None:
+                raise _AdmissionProblem("CONTENT_TYPE_UNSUPPORTED")
+            content_encoding = _header(reply.headers, "Content-Encoding")
+            if content_encoding not in (None, "", "identity"):
+                raise _AdmissionProblem("CONTENT_TYPE_UNSUPPORTED")
+            try:
+                decoded = reply.body.decode("utf-8", errors="strict")
+            except UnicodeDecodeError:
+                raise _AdmissionProblem("UTF8_DECODE_FAILED") from None
+            parsed = _parse_page(
+                initial_target[0],
+                decoded,
+                initial_target[2][0] if initial_target[0] != "sec" else None,
+                content_type,
+            )
+            if parsed is None:
+                raise _AdmissionProblem("PARSER_UNSUPPORTED")
+            self._remaining(deadline)
+            return current, initial_target, content_type, reply.body, parsed
+
+    def _admit_one(self, initial_locator: str, target, deadline: float):
+        try:
+            final_locator, _target, content_type, raw_body, parsed = self._request(
+                initial_locator, target, deadline
+            )
+            self._remaining(deadline)
+            now = self._clock()
+            if type(now) is not datetime.datetime or now.tzinfo is None or now.utcoffset() is None:
+                raise _AdmissionProblem("TRANSPORT_FAILED")
+            family, final_url, _identity = _family_target(final_locator)
+            source_id = _source_id_for_locator(initial_locator)
+            admission = SourceAdmission(
+                source_id=source_id,
+                family=family,
+                initial_locator=initial_locator,
+                final_locator=final_locator,
+                origin="https://{}".format(final_url.hostname),
+                retrieved_at=now.astimezone(datetime.timezone.utc),
+                content_type=content_type,
+                raw_body_sha256=hashlib.sha256(raw_body).hexdigest(),
+                raw_body_bytes=len(raw_body),
+                parser_id=parsed.parser_id,
+                parser_version=_PARSER_VERSION,
+                parsed_body_sha256=hashlib.sha256(parsed.body.encode("utf-8")).hexdigest(),
+                parsed_body=parsed.body,
+                raw_anchors=parsed.anchors,
+                parsed_symbol=parsed.symbol,
+            )
+            return admission, None
+        except _AdmissionProblem as error:
+            return None, AdmissionFailure(error.code)
+        except Exception:
+            return None, AdmissionFailure("TRANSPORT_FAILED")
+
+
+def _create_source_admission_client(
+    *, timeout_seconds: float, max_response_bytes: int, byte_budget: int
+) -> _SourceAdmissionClient:
+    """Private factory kept separate so fixture drivers can patch it offline."""
+    return _SourceAdmissionClient(
+        timeout_seconds=timeout_seconds,
+        max_response_bytes=max_response_bytes,
+        byte_budget=byte_budget,
+    )

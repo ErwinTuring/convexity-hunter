@@ -1,26 +1,58 @@
-# 本机工作台与 Direct 接入
+# 本机工作台与研究入口
 
 本机 HTTP/CLI 和 Direct 执行器可独立于 Codex 运行，不等于三入口真实研究已经接通。
 默认没有研究执行器；未配置的入口必须留下
 `BLOCKED / HOST_EXECUTOR_NOT_CONFIGURED`，不能展示为研究成功或没有机会。
-默认 CLI 的 World/Event 尚未接入真实来源，页面保持禁用；Direct 需显式启用。
+未配置的 World/Event 保持禁用；Direct 需显式启用。常规 CLI 的 Event/World
+可用显式外部配置接线，真实 EI/Core 结果仍以运行记录为准。
 
 批量交付层现已支持本机程序显式注入可信 World/Event 回调，保存所有案例并
-默认显示完整 compact comparison；这不等于默认 CLI 已配置真实来源。
-Grounder 未通过真实验收前，不添加一键启用或合成生产默认值。接口与存档
+默认显示完整 compact comparison；这不等于无配置启动时具备真实来源。
+没有合成生产默认值。接口与存档
 边界见 [批量交付说明](local-batch-delivery-v0.1.md)。
 
 ## 启动与输入
 
 另有显式实验入口 `examples/local_event_host.py`，接入 Tavily Basic Search/Extract、
 DeepSeek 两角色核验及同一 Event Core。它可脱离 Codex 启动，但尚未证明真实
-Event Intelligence 接受：默认 context preparer 保留未知主体与日期证据，不补造。
+Event Intelligence 接受：只按受支持格式解析来源，未知主体与日期证据不补造。
 启动须明确提供仓库外的 `host-event-config-v0.1` 配置文件、`--evaluation-date`、
 `--maturity-authority`、`--futu-port`、私有 `--db`，可指定 `--port`。
 配置只引用外部凭证；预算与授权标志必须显式设置。服务启动不读取凭证或连接行情。
 未形成 submission 时显示 `BLOCKED / GROUNDING_NO_SUBMISSION`；形成 submission
 时先存档实际 EI assessment，再交给原 Core。搜索成功、EI 接受和 Core 完成互不等同。
-完整边界见 [Event 接入说明](local-event-delivery-v0.1.md)。默认主 CLI 行为不变。
+完整边界见 [Event 接入说明](local-event-delivery-v0.1.md)。实验入口仍保留，
+常规主 CLI 不再要求用户另写 Python 回调才能配置 Event。
+
+常规 Event 启动使用同一严格外部配置、明确日期及成熟期权政策：
+
+```bash
+PYTHONPATH=src python3 -m convexity_hunter.host_server \
+  --db /private/tmp/convexity-hunter-session/runs.sqlite --port 8080 \
+  --event-config /absolute/private/path/event-config.json \
+  --evaluation-date 2026-10-07 \
+  --maturity-authority neutral_structural_research --futu-port 11111
+```
+
+外部配置路径是示例，须替换为实际存在的本机配置；不要把凭证内容写入命令。
+日期是明确的研究输入，不是自动滚动政策。加 `--enable-direct` 可同时启用
+Direct。启动只安装回调，真实 source/model/行情请求仅在提交研究时发生。
+启动成功不等于 EI `ACCEPTED`。本轮一次真实 Event 生成了 submission，但
+EI `INCOMPLETE`；直接来源因非公网 DNS 答案被拒绝，不放宽安全规则重试。
+
+World 在同一命令上加 `--world-config /absolute/private/path/world-config.json`。
+该独立非秘密 JSON 使用 `host-world-config-v0.1`：`skill` 明确提供固定
+last30days 3.21.1 路径/哈希、已批准外部 Python、来源 allowlist、允许传递的
+环境变量名称、阶段/字节/TTL 限额；`bounds` 提供五项最大工作量。
+共享 Event 的 Tavily/DeepSeek 配置，每模型角色预算至少为两次，分别分配给
+Skill 和 Grounder。配置只包含授权名称，不能包含 cookie/key 的值，也不自动
+读取 Skill 私有配置或环境凭证。缺少实际授权环境值时，不能声称来源全覆盖。
+原始 native 评分不进入 Hunter，全部已接受假设继续进入同一 Core。
+操作失败或来源不足保留原因，不解释为“市场没有事件”。
+常规 World 启动存档复用已冻结的共享模型/来源配置投影。旧 Store 的
+`skills` 数组只接受空值，因此这里的 `skills=[]` 不是“未使用 Skill”的证明；
+实际消费的 native 来源通过 Core source provenance 保留，失败/未消费状态
+通过 closed reason 保留。此交付不新增 Skill 配置存档 schema。
 
 在仓库根目录运行：
 

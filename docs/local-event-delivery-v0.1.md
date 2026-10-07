@@ -1,9 +1,59 @@
 # Local Event delivery v0.1
 
-Contract status: FROZEN after bounded preflight. Implementation and independent
-review are complete. Full regression passed
-1,795 tests before narrow review fixes, final focused regression 114 afterward.
-No real Event acceptance result is claimed.
+Original staged-Event contract status: FROZEN after bounded preflight, with
+implementation and independent review complete. Historical validation passed
+1,795 tests before narrow fixes and 114 focused tests afterward. The approved
+integrated continuation and actual real result are recorded below; no real
+Event acceptance is claimed.
+
+## Approved integrated MVP continuation — 2026-10-07
+
+The user authorizes bounded Host-owned HTTPS source admission and normal Event
+wiring as one integrated work unit, not another Grounder successor architecture.
+Admission must happen before context/catalog/receipt construction, distinguish
+raw HTTP bytes from parsed evidence, and retain initial/final locator, origin,
+retrieval time, content type, raw hash, parser ID/version and parsed hash.
+HTTPS/TLS, public-address checks, validated redirects, time/byte/request caps,
+no credentials/cookies/JavaScript/retry and source-specific parsing are required.
+Raw HTTP response caps use the configured HTTP byte limit; the parsed evidence
+registry separately retains its existing total source-body limit. A parser may
+not clip a body or silently increase model-context capacity to fit a response.
+Only admitted records may authorize the existing listing composite. Origin
+verification does not establish universal source truth or relax EI acceptance.
+The following runtime descriptions remain historical until this integration
+passes focused validation/review and a separately bounded real Event run.
+
+### Preregistered real Event acceptance run
+
+The integrated driver will receive exactly: `Research Plug Power Gateway
+asset-sale amendment: staged closing, cash proceeds, outside date and remaining
+obligations.` Evaluation date is `2026-10-07`; maturity authority is explicitly
+`NEUTRAL_STRUCTURAL_RESEARCH`, never inferred from publication dates. This input
+is familiar and independently verifiable, not selected to guarantee acceptance.
+
+One fresh run/SQLite archive and exclusive spent marker authorize at most one
+Tavily Basic Search plus one Basic Extract (five URLs, three-credit ceiling),
+one configured DeepSeek discovery request and one semantic request (8,000/6,000
+output-token ceilings, 45-second request timeout), and five direct source GETs
+including redirect hops. No automatic retry or quote refresh is authorized.
+Operational limits are one submission, four hypotheses, 400 Browser rows, 200
+cases and a ten-second quote wait. The existing approved Standard Research
+Profile is unchanged. Credentials are resolved externally at execution only.
+The one loopback POST waits at most 600 seconds for those bounded operations;
+this does not increase external request counts or permit replay.
+The external runner observes the unchanged production admission client's
+returned batch to report only request/admission counts and closed failure-code
+distribution. It supplies no fixture transport and never prints source bodies,
+locators or raw responses. This prevents a blocked run from losing the exact
+admission layer while leaving the production result/authority unchanged.
+
+EI acceptance, market acquisition, Core classification and persistence are
+reported separately. Market acquisition runs only after actual EI acceptance.
+Unknown cost/sensitivity evidence remains explicit; a resulting
+`DATA_INSUFFICIENT_CORE` is not a failed source-to-Core connection. No impact
+window, reassessment date, executable-price bound or sensitivity threshold is
+invented to make this run pass. This paragraph preregisters the run; it does not
+claim execution or success.
 
 The [listing composite](host-listing-source-composite-v0.1.md) now provides an
 opt-in trusted context preparer. Normal driver source acquisition/authorization
@@ -47,6 +97,29 @@ All accepted branches use the same Core service, Standard Research Profile,
 explicit maturity authority and operational limits. Unknown costs/sensitivity
 remain unknown; no ranking, human selection gate or opportunity claim is added.
 Existing ordered batch archives and lazy Chinese details remain the output path.
+
+### Real integration outcome — 2026-10-07
+
+The preregistered PLUG attempt executed exactly once. Host readiness and POST
+201 succeeded; Grounder retained five bodies, 15 claims, one hypothesis and 28
+field bindings. The deterministic EI assessment is INCOMPLETE, not acceptance:
+`incomplete_event_date_range`, `missing_contradiction_review`,
+`missing_distribution_hypothesis`, `missing_distribution_mode`,
+`missing_event_description`, `missing_falsification_conditions`,
+`missing_supporting_interpretation`, `missing_temporal_applicability` and
+`missing_underlying_key` each occurred once. Core retained zero cases and one
+unavailable branch; Host ended BLOCKED. SQLite reopen and Chinese HTTP document
+readback passed. This proves real transport/storage delivery, not the full
+source-to-EI-to-market/Core path.
+
+The direct admission observer recorded zero GETs, zero admissions and one
+DNS_ADDRESS_BLOCKED. A separate read-only DNS check returned non-public
+addresses for SEC, Nasdaq and Yahoo. Public-origin validation must not be
+weakened or replaced with an unverified proxy-origin claim. DNS restoration
+alone does not establish the nine missing EI fields. The external evidence
+directory is spent and will not be replayed; no second source/model/quote batch
+was acquired. Source facts/listing grammars remain narrow; unavailable facts,
+share-class labels and temporal evidence are not invented.
 
 ### Positive-stage freeze
 

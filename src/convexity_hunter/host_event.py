@@ -51,6 +51,13 @@ from .host_sources import (
     TavilySourceConfig,
     TavilyTransportError,
 )
+from .host_source_admission import (
+    AdmissionBatch,
+    MAX_SOURCE_ADMISSION_REQUESTS,
+    SourceAdmission,
+    _create_source_admission_client,
+    _revalidate_source_admission,
+)
 
 
 __all__ = ("HostEventGrounderConfig", "create_event_grounder")
@@ -840,6 +847,8 @@ def _listing_evidence_for_symbol(
 
 def _make_listing_source_preparer(
     authorized_source_ids: tuple,
+    *,
+    admission_records: tuple = (),
 ) -> Callable[[object, object, HostBuildContext], HostBuildContext]:
     """Create an opt-in preparer over an exact, trusted source-ID tuple."""
     if type(authorized_source_ids) is not tuple:
@@ -858,6 +867,16 @@ def _make_listing_source_preparer(
         raise ValueError("authorized_source_ids must contain valid UTF-8 IDs") from None
     if len(set(authorized_source_ids)) != len(authorized_source_ids):
         raise ValueError("authorized_source_ids must be unique")
+    if type(admission_records) is not tuple or any(
+        type(item) is not SourceAdmission for item in admission_records
+    ):
+        raise TypeError("admission_records must be a tuple of successful Host admissions")
+    admission_by_id = {item.source_id: item for item in admission_records}
+    if (
+        len(admission_by_id) != len(admission_records)
+        or any(source_id not in authorized_source_ids for source_id in admission_by_id)
+    ):
+        raise ValueError("admission records must match the exact authorized source IDs")
 
     def prepare_listing_sources(
         snapshot: object, receipt: object, original_context: HostBuildContext
@@ -920,6 +939,19 @@ def _make_listing_source_preparer(
             if evidence is None:
                 continue
             sec_evidence, nasdaq_evidence, yahoo_evidence = evidence
+            admission_mismatch = False
+            for source_evidence in evidence:
+                admission = admission_by_id.get(source_evidence["source_id"])
+                if admission is not None:
+                    if (
+                        admission.final_locator != source_evidence["locator"]
+                        or admission.parsed_body_sha256 != source_evidence["body_sha256"]
+                    ):
+                        admission_mismatch = True
+                        break
+                    source_evidence["source_admission"] = admission.provenance()
+            if admission_mismatch:
+                continue
             reference = json.dumps(
                 {
                     "rule_version": "host-listing-source-composite-v0.1",
@@ -1211,6 +1243,12 @@ def _safe_configuration_snapshot(config: HostEventGrounderConfig) -> bytes:
                     "max_catalog_bytes": config.max_catalog_bytes,
                     "max_catalog_paragraphs": config.max_catalog_paragraphs,
                 },
+                # This closed snapshot persists the admission formula inputs:
+                # per-GET raw cap = max_response_bytes; aggregate raw cap =
+                # min(5 * that cap, byte_budget - Tavily bytes already spent)
+                # when byte_budget is configured, else 5 * that cap. The
+                # grounder limit is the separate total parsed-context cap;
+                # admission wall time is timeout_seconds * 5 monotonic seconds.
             }
         ],
         "skills": [],
@@ -1384,6 +1422,108 @@ def create_event_grounder(
                 published_at=_publication_datetime(body.publication_date),
             )
 
+        # Direct admission is a separate, Host-owned read. A failure for one
+        # locator leaves that Tavily record unadmitted and does not claim an
+        # origin; it does not turn into an Event-wide source or semantic veto.
+        candidate_locators = tuple(body.url for body in extracted.bodies)
+        admitted_sources = ()
+        admission_raw_response_limit = active_config.source.max_response_bytes
+        admission_raw_budget_limit = (
+            MAX_SOURCE_ADMISSION_REQUESTS * admission_raw_response_limit
+        )
+        if active_config.source.byte_budget is not None:
+            admission_raw_budget_limit = min(
+                admission_raw_budget_limit,
+                max(0, active_config.source.byte_budget - source_client.bytes_used),
+            )
+        tavily_body_bytes = sum(
+            len(source.body.encode("utf-8", errors="strict"))
+            for source in source_bodies.values()
+        )
+        pending_source_bodies = {}
+        admitted_source_list = []
+        try:
+            admission_client = _create_source_admission_client(
+                timeout_seconds=active_config.source.timeout_seconds,
+                max_response_bytes=admission_raw_response_limit,
+                byte_budget=admission_raw_budget_limit,
+            )
+            admission_batch = admission_client.admit_candidates(candidate_locators)
+            if type(admission_batch) is AdmissionBatch:
+                admission_batch = AdmissionBatch(
+                    tuple(admission_batch.admissions),
+                    tuple(admission_batch.failures),
+                    admission_batch.request_count,
+                    admission_batch.response_bytes,
+                )
+                if admission_batch.response_bytes > admission_raw_budget_limit:
+                    admission_batch = AdmissionBatch((), (), 0, 0)
+                candidate_set = frozenset(candidate_locators)
+                authorized_supplements = set()
+                admitted_ids = set()
+                admitted_initials = set()
+                registered_bytes = tavily_body_bytes
+                for candidate in admission_batch.admissions:
+                    admission = _revalidate_source_admission(
+                        candidate,
+                        max_raw_bytes=admission_raw_response_limit,
+                        max_parsed_bytes=active_config.max_source_body_bytes,
+                    )
+                    if admission is None or admission.source_id in admitted_ids:
+                        continue
+                    if (
+                        admission.initial_locator not in candidate_set
+                        and admission.initial_locator not in authorized_supplements
+                    ):
+                        continue
+                    if admission.initial_locator in admitted_initials:
+                        continue
+                    if admission.source_id in source_bodies or admission.source_id in pending_source_bodies:
+                        continue
+                    parsed_bytes = len(admission.parsed_body.encode("utf-8", errors="strict"))
+                    if (
+                        len(source_bodies) + len(pending_source_bodies)
+                        >= run_input.bounds.max_array_items
+                        or registered_bytes + parsed_bytes > active_config.max_source_body_bytes
+                    ):
+                        continue
+                    pending_source_bodies[admission.source_id] = HostSourceBody(
+                        body=admission.parsed_body,
+                        body_sha256=admission.parsed_body_sha256,
+                        final_locator=admission.final_locator,
+                        retrieved_at=admission.retrieved_at,
+                    )
+                    admitted_source_list.append(admission)
+                    admitted_ids.add(admission.source_id)
+                    admitted_initials.add(admission.initial_locator)
+                    registered_bytes += parsed_bytes
+                    if admission.family == "sec" and admission.initial_locator in candidate_set:
+                        symbol = admission.parsed_symbol
+                        if symbol is not None:
+                            authorized_supplements.add(
+                                "https://www.nasdaq.com/market-activity/stocks/{}".format(
+                                    symbol.lower()
+                                )
+                            )
+                            authorized_supplements.add(
+                                "https://finance.yahoo.com/quote/{}/".format(symbol)
+                            )
+            source_bodies.update(pending_source_bodies)
+            admitted_sources = tuple(admitted_source_list)
+        except Exception:
+            # Keep the origin-admission failure local and closed. In particular,
+            # never persist or expose arbitrary transport/parser exception text.
+            pending_source_bodies.clear()
+            admitted_source_list = []
+            admitted_sources = ()
+
+        run_context_preparer = context_preparer
+        if host_context_preparer is None:
+            run_context_preparer = _make_listing_source_preparer(
+                tuple(source.source_id for source in admitted_sources),
+                admission_records=admitted_sources,
+            )
+
         context = HostBuildContext(
             raw_input=user_input,
             submission_id=run_id,
@@ -1412,7 +1552,7 @@ def create_event_grounder(
             max_catalog_entries=active_config.max_catalog_entries,
             max_catalog_bytes=active_config.max_catalog_bytes,
             max_catalog_paragraphs=active_config.max_catalog_paragraphs,
-            host_context_preparer=context_preparer,
+            host_context_preparer=run_context_preparer,
         )
 
     event_grounder.configuration_snapshot = configuration_snapshot

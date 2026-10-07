@@ -1726,8 +1726,14 @@ class HostServerBatchTests(unittest.TestCase):
                 event_grounder=grounder,
                 event_core_executor=core_executor,
             )
-            with patch.dict("os.environ", {"SYNTHETIC_TAVILY_KEY": ""}):
-                response = self._post("synthetic credential failure", mode="event")
+            with patch(
+                "convexity_hunter.host_event._create_source_admission_client"
+            ) as admission_factory:
+                with patch.dict("os.environ", {"SYNTHETIC_TAVILY_KEY": ""}):
+                    response = self._post(
+                        "synthetic credential failure", mode="event"
+                    )
+                admission_factory.assert_not_called()
 
             self.assertEqual(response[0], 201)
             body = self._decoded(response)
@@ -1788,7 +1794,7 @@ class HostServerBatchTests(unittest.TestCase):
             store.close()
             temporary_directory.cleanup()
 
-    def test_real_store_batch_archive_reopens_without_callback_reacquisition(self):
+    def test_real_store_configured_world_archive_reopens_without_callback_reacquisition(self):
         from convexity_hunter.host_store import HostStore
 
         temporary_directory = tempfile.TemporaryDirectory(
@@ -1806,6 +1812,14 @@ class HostServerBatchTests(unittest.TestCase):
             self.assertEqual(actual_input, raw_input)
             return result
 
+        executor.configuration_snapshot = self._event_configuration_snapshot_accessor()
+        expected_snapshot = executor.configuration_snapshot()
+        self.assertTrue(expected_snapshot["models"])
+        self.assertTrue(expected_snapshot["sources"])
+        # Frozen Store metadata has no Skill record shape; native provenance is
+        # retained separately in the batch archive, not inferred from this list.
+        self.assertEqual(expected_snapshot["skills"], [])
+
         try:
             self._start_server(world_executor=executor)
             created = self._post(raw_input)
@@ -1813,6 +1827,10 @@ class HostServerBatchTests(unittest.TestCase):
             created_body = self._decoded(created)
             self.assertEqual(created_body["status"], "COMPLETED")
             run_id = created_body["run_id"]
+            self.assertEqual(
+                store.get_run(run_id)["metadata"]["configuration_snapshot"],
+                expected_snapshot,
+            )
             archived_summary = store.get_batch_summary(run_id)
             self.assertEqual(archived_summary["host_status"], "COMPLETED")
             self.assertEqual(
@@ -1851,6 +1869,10 @@ class HostServerBatchTests(unittest.TestCase):
             store.close()
             store = HostStore(db_path)
             self.journal = store
+            self.assertEqual(
+                store.get_run(run_id)["metadata"]["configuration_snapshot"],
+                expected_snapshot,
+            )
             self._start_server()
             reopened_run_response = self._request("GET", run_path)
             reopened_case_response = self._request("GET", case_path)
@@ -1864,6 +1886,29 @@ class HostServerBatchTests(unittest.TestCase):
                 self._decoded(reopened_case_response), self._decoded(case_response)
             )
             self.assertEqual(callback_calls, [raw_input])
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
+    def test_real_store_world_rejects_unrepresentable_skill_metadata_before_execution(self):
+        temporary_directory, store = self._new_grounder_store("world-invalid-config.sqlite3")
+        calls = []
+
+        def executor(raw_input, *, bounds):
+            calls.append(raw_input)
+            raise AssertionError("invalid metadata must fail before execution")
+
+        snapshot = self._event_configuration_snapshot_accessor()()
+        snapshot["skills"] = [{"version": "unsupported-skill-record"}]
+        executor.configuration_snapshot = lambda: snapshot
+        try:
+            self._start_server(world_executor=executor)
+            response = self._post("synthetic World input")
+            self.assertEqual(response[0], 500)
+            self.assertEqual(self._decoded(response), {"error": "journal unavailable"})
+            self.assertEqual(calls, [])
+            self.assertEqual(store.list_runs(), [])
         finally:
             self._stop_server()
             store.close()
@@ -2406,6 +2451,123 @@ class HostServerDirectStoreIntegrationTests(unittest.TestCase):
 
 
 class HostServerCliTests(unittest.TestCase):
+    def test_world_cli_requires_shared_event_configuration(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                host_server_module.main(
+                    ["--db", "/tmp/unused.sqlite3", "--world-config", "/outside/world.json"]
+                )
+
+    def test_world_cli_coexists_lazily_and_invalid_config_stops_before_store(self):
+        from unittest.mock import Mock
+        from convexity_hunter.host_world_config import HostWorldConfigurationError
+
+        arguments = [
+            "--db", "/tmp/unused.sqlite3", "--enable-direct",
+            "--event-config", "/outside/event.json",
+            "--world-config", "/outside/PRIVATE-world.json",
+            "--evaluation-date", "2030-01-01",
+            "--maturity-authority", "neutral_structural_research",
+            "--futu-port", "12345",
+        ]
+        for error_code in (None, "CONFIG_NOT_EXTERNAL"):
+            with self.subTest(error_code=error_code), contextlib.ExitStack() as stack:
+                journal = Mock()
+                server = Mock(server_port=8080)
+                server.serve_forever.side_effect = KeyboardInterrupt
+                event_config, world_config, bridge = object(), object(), object()
+                world_runner = Mock(return_value="world-result")
+                grounder = Mock()
+                snapshot = {"models": [], "sources": [], "skills": []}
+                grounder.configuration_snapshot.return_value = snapshot
+                stack.enter_context(patch("convexity_hunter.host_event_config.load_event_grounder_config", return_value=event_config))
+                stack.enter_context(patch("convexity_hunter.host_event.create_event_grounder", return_value=grounder))
+                stack.enter_context(patch("convexity_hunter.host_event_core.create_event_core_executor", return_value=lambda *_a, **_k: None))
+                make_bridge = stack.enter_context(patch("convexity_hunter.core_futu.FutuMarketBridge", return_value=bridge))
+                load_world = stack.enter_context(patch(
+                    "convexity_hunter.host_world_config.load_world_config",
+                    return_value=world_config,
+                    side_effect=HostWorldConfigurationError(error_code) if error_code else None,
+                ))
+                make_world = stack.enter_context(patch("convexity_hunter.host_world.create_world_runner", return_value=world_runner))
+                direct = lambda *_a, **_k: None
+                stack.enter_context(patch.object(host_server_module, "_make_futu_direct_executor", return_value=direct))
+                open_context = stack.enter_context(patch.object(host_server_module, "_open_suppressed_futu_quote_context"))
+                open_store = stack.enter_context(patch.object(host_server_module, "_open_store", return_value=journal))
+                stack.enter_context(patch.object(host_server_module, "_load_workbench_renderer", return_value=lambda _token: ""))
+                create = stack.enter_context(patch.object(host_server_module, "create_server", return_value=server))
+                stderr = io.StringIO()
+                stack.enter_context(contextlib.redirect_stderr(stderr))
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                result = host_server_module.main(arguments)
+                load_world.assert_called_once_with(
+                    pathlib.Path("/outside/PRIVATE-world.json"), repo_root=ROOT.resolve(),
+                    grounder_config=event_config, evaluation_date=datetime.date(2030, 1, 1),
+                    maturity_authority=OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
+                )
+                open_context.assert_not_called()
+                if error_code:
+                    self.assertEqual(result, 2)
+                    self.assertEqual(stderr.getvalue(), "World configuration invalid (CONFIG_NOT_EXTERNAL)\n")
+                    open_store.assert_not_called()
+                    create.assert_not_called()
+                    make_world.assert_not_called()
+                else:
+                    self.assertEqual(result, 0)
+                    make_bridge.assert_called_once()
+                    make_world.assert_called_once_with(world_config, repo_root=ROOT.resolve(), market_bridge=bridge)
+                    callbacks = create.call_args.kwargs
+                    self.assertIs(
+                        callbacks["world_executor"].configuration_snapshot,
+                        grounder.configuration_snapshot,
+                    )
+                    self.assertEqual(callbacks["world_executor"].configuration_snapshot(), snapshot)
+                    self.assertIs(callbacks["direct_executor"], direct)
+                    self.assertTrue(callable(callbacks["event_grounder"]))
+                    self.assertTrue(callable(callbacks["event_core_executor"]))
+                    bounds = CoreOperationalBounds(1, 2, 3, 4, 5.0)
+                    with patch.object(host_server_module, "_discard_sdk_output", return_value=contextlib.nullcontext()) as silence:
+                        self.assertEqual(callbacks["world_executor"]("raw World text", bounds=bounds), "world-result")
+                        silence.assert_called_once_with()
+                    world_runner.assert_called_once_with("raw World text", bounds=bounds)
+
+    def test_cli_rejects_futu_without_entry_and_requires_event_authorities(self):
+        invalid_arguments = (
+            (
+                "--db", "/tmp/unused.sqlite3",
+                "--futu-port", "12345",
+            ),
+            (
+                "--db", "/tmp/unused.sqlite3",
+                "--event-config", "/outside/event.json",
+            ),
+            (
+                "--db", "/tmp/unused.sqlite3",
+                "--event-config", "/outside/event.json",
+                "--futu-port", "12345",
+                "--evaluation-date", "2030-01-01",
+            ),
+            (
+                "--db", "/tmp/unused.sqlite3",
+                "--event-config", "/outside/event.json",
+                "--futu-port", "12345",
+                "--evaluation-date", "2030-1-1",
+                "--maturity-authority", "neutral_structural_research",
+            ),
+            (
+                "--db", "/tmp/unused.sqlite3",
+                "--event-config", "/outside/event.json",
+                "--futu-port", "12345",
+                "--evaluation-date", "2030-01-01",
+                "--maturity-authority", "invented_authority",
+            ),
+        )
+        for arguments in invalid_arguments:
+            with self.subTest(arguments=arguments):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        host_server_module.main(list(arguments))
+
     def test_direct_cli_requires_explicit_futu_port_and_opt_in(self):
         invalid_arguments = (
             ("--db", "/tmp/unused.sqlite3", "--enable-direct"),
@@ -2423,6 +2585,54 @@ class HostServerCliTests(unittest.TestCase):
                 with contextlib.redirect_stderr(io.StringIO()):
                     with self.assertRaises(SystemExit):
                         host_server_module.main(list(arguments))
+
+    def test_unconfigured_cli_preserves_plain_workbench_startup(self):
+        class Journal:
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        class Server:
+            server_port = 8765
+            closed = False
+
+            def serve_forever(self):
+                raise KeyboardInterrupt
+
+            def server_close(self):
+                self.closed = True
+
+        journal = Journal()
+        server = Server()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                patch.object(host_server_module, "_open_store", return_value=journal)
+            )
+            stack.enter_context(
+                patch.object(
+                    host_server_module,
+                    "_load_workbench_renderer",
+                    return_value=lambda _token: "",
+                )
+            )
+            create = stack.enter_context(
+                patch.object(host_server_module, "create_server", return_value=server)
+            )
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+
+            result = host_server_module.main(
+                ["--db", "/tmp/unused.sqlite3", "--port", "8765"]
+            )
+
+        self.assertEqual(result, 0)
+        self.assertIsNone(create.call_args.kwargs["direct_executor"])
+        self.assertNotIn("event_grounder", create.call_args.kwargs)
+        self.assertNotIn("event_core_executor", create.call_args.kwargs)
+        self.assertNotIn("world_executor", create.call_args.kwargs)
+        self.assertEqual(create.call_args.kwargs["port"], 8765)
+        self.assertTrue(journal.closed)
+        self.assertTrue(server.closed)
 
     def test_enabled_cli_installs_lazy_direct_executor_without_sdk_startup(self):
         class Journal:
@@ -2486,6 +2696,151 @@ class HostServerCliTests(unittest.TestCase):
         open_context.assert_not_called()
         self.assertTrue(journal.closed)
         self.assertTrue(server.closed)
+
+    def test_event_and_direct_cli_share_host_and_wire_explicit_lazy_event_core(self):
+        class Journal:
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        class Server:
+            server_port = 8080
+            closed = False
+
+            def serve_forever(self):
+                raise KeyboardInterrupt
+
+            def server_close(self):
+                self.closed = True
+
+        config = object()
+        grounder = lambda *_args, **_kwargs: None
+        direct_executor = lambda *_args, **_kwargs: None
+        event_core = lambda *_args, **_kwargs: None
+        market_bridge = object()
+        journal = Journal()
+        server = Server()
+        external_config = pathlib.Path("/outside/event-config.json")
+
+        with contextlib.ExitStack() as stack:
+            load_config = stack.enter_context(
+                patch(
+                    "convexity_hunter.host_event_config.load_event_grounder_config",
+                    return_value=config,
+                )
+            )
+            make_grounder = stack.enter_context(
+                patch(
+                    "convexity_hunter.host_event.create_event_grounder",
+                    return_value=grounder,
+                )
+            )
+            make_event_core = stack.enter_context(
+                patch(
+                    "convexity_hunter.host_event_core.create_event_core_executor",
+                    return_value=event_core,
+                )
+            )
+            make_market_bridge = stack.enter_context(
+                patch(
+                    "convexity_hunter.core_futu.FutuMarketBridge",
+                    return_value=market_bridge,
+                )
+            )
+            stack.enter_context(
+                patch.object(host_server_module, "_open_store", return_value=journal)
+            )
+            stack.enter_context(
+                patch.object(
+                    host_server_module,
+                    "_load_workbench_renderer",
+                    return_value=lambda _token: "",
+                )
+            )
+            make_direct = stack.enter_context(
+                patch.object(
+                    host_server_module,
+                    "_make_futu_direct_executor",
+                    return_value=direct_executor,
+                )
+            )
+            create = stack.enter_context(
+                patch.object(host_server_module, "create_server", return_value=server)
+            )
+            open_context = stack.enter_context(
+                patch.object(host_server_module, "_open_suppressed_futu_quote_context")
+            )
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+
+            result = host_server_module.main(
+                [
+                    "--db", "/tmp/unused.sqlite3",
+                    "--enable-direct",
+                    "--event-config", str(external_config),
+                    "--evaluation-date", "2030-01-01",
+                    "--maturity-authority", "neutral_structural_research",
+                    "--futu-port", "12345",
+                ]
+            )
+
+        self.assertEqual(result, 0)
+        repo_root = ROOT.resolve()
+        load_config.assert_called_once_with(external_config, repo_root=repo_root)
+        make_grounder.assert_called_once_with(config, repo_root=repo_root)
+        self.assertEqual(
+            make_market_bridge.call_args.kwargs.keys(), {"quote_context_factory"}
+        )
+        make_event_core.assert_called_once_with(
+            evaluation_date=datetime.date(2030, 1, 1),
+            maturity_authority=OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
+            market_bridge=market_bridge,
+        )
+        make_direct.assert_called_once_with(12345)
+        self.assertIs(create.call_args.kwargs["direct_executor"], direct_executor)
+        self.assertIs(create.call_args.kwargs["event_grounder"], grounder)
+        self.assertTrue(callable(create.call_args.kwargs["event_core_executor"]))
+        open_context.assert_not_called()
+        self.assertTrue(journal.closed)
+        self.assertTrue(server.closed)
+
+    def test_invalid_event_config_fails_closed_before_store_open_without_echoing_path(self):
+        from convexity_hunter.host_event_config import HostEventConfigurationError
+
+        config_path = "/private/path/never-echo-event-config.json"
+        with contextlib.ExitStack() as stack:
+            load_config = stack.enter_context(
+                patch(
+                    "convexity_hunter.host_event_config.load_event_grounder_config",
+                    side_effect=HostEventConfigurationError("CONFIG_NOT_EXTERNAL"),
+                )
+            )
+            open_store = stack.enter_context(
+                patch.object(host_server_module, "_open_store")
+            )
+            create_server = stack.enter_context(
+                patch.object(host_server_module, "create_server")
+            )
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = host_server_module.main(
+                    [
+                        "--db", "/tmp/unused.sqlite3",
+                        "--event-config", config_path,
+                        "--evaluation-date", "2030-01-01",
+                        "--maturity-authority", "neutral_structural_research",
+                        "--futu-port", "12345",
+                    ]
+                )
+
+        self.assertEqual(result, 2)
+        self.assertEqual(
+            stderr.getvalue(), "Event configuration invalid (CONFIG_NOT_EXTERNAL)\n"
+        )
+        self.assertNotIn(config_path, stderr.getvalue())
+        load_config.assert_called_once()
+        open_store.assert_not_called()
+        create_server.assert_not_called()
 
     def test_constructed_futu_direct_executor_does_not_initialize_sdk(self):
         with patch(

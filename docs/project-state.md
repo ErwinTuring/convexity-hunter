@@ -1,9 +1,30 @@
 # Project State
 
-Latest bounded implementation: [Host listing composite v0.1](host-listing-source-composite-v0.1.md)
+2026-10-07 integrated MVP continuation implements user-approved bounded HTTPS
+source admission before context/catalog/receipt, normal Event/World CLI wiring
+and existing Tavily/last30days World composition. No new Skill/provider/model,
+economic threshold or EI relaxation. The one real Event attempt reached an
+INCOMPLETE EI submission, zero Core cases and one unavailable branch; SQLite
+restart and Chinese HTTP readback passed. Direct admission stopped safely on
+non-public DNS answers, before any GET. World live execution is not claimed:
+the approved Reddit/X credential environment values are absent. See
+[current checkpoint](current-checkpoint.md) and
+[preregistered Event protocol](local-event-delivery-v0.1.md).
+
+The earlier quota-safe pause was resumed without losing changes. Source
+deadline/hidden-attribute and World JSON/overflow findings passed independent
+targeted re-review. Final regression passed all 1,860 tests in 368.916 seconds;
+compileall, local Markdown links/fences and diff checks passed. Normal World
+configuration metadata also passed independent Store save/reopen review.
+No three-entry real completion or investment-value claim follows from tests.
+Resume from the current checkpoint, not a spent experiment.
+
+Earlier bounded implementation: [Host listing composite v0.1](host-listing-source-composite-v0.1.md)
 is an opt-in helper consuming explicitly Host-authorized retained sources and
-verified hypothesis/entity bindings. Default automatic acquisition/authorization
-is not implemented; real EI acceptance remains unproven. Independent targeted
+verified hypothesis/entity bindings. At that historical checkpoint, default
+automatic acquisition/authorization was not implemented; the approved integrated
+continuation above adds it before catalog construction. Real EI acceptance
+remains unproven. Independent targeted
 review passed after a conflicting-header casefold fix. Final validation: 32
 Event / 81 related / 1,819 full-suite tests (303.357s), compileall and diff checks.
 No live source/model/market request or spent-protocol replay. Timing is incomplete;

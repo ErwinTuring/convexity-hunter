@@ -1,15 +1,15 @@
 """Bounded loopback HTTP/CLI shell for the standalone Host.
 
-World and Event research can be enabled only through explicitly injected,
-trusted Python executors. Direct can be enabled only through an explicitly
-injected executor; the CLI's opt-in Futu bridge is lazy and connects only when
-a Direct request is executed.
+World research requires an explicitly injected trusted executor. Event can be
+enabled from an external strict configuration, and Direct is opt-in. The CLI's
+Futu bridge is lazy and connects only when a research request needs it.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import datetime
 import hashlib
 import json
 import math
@@ -252,7 +252,12 @@ def _origin_for_port(port: int) -> str:
 
 
 def _configuration_snapshot() -> Dict[str, Any]:
-    """Required frozen Store payload, not a claim that host config was inspected."""
+    """Legacy shell payload, not evidence of absent models, sources, or Skill.
+
+    The frozen Store metadata has no Skill configuration representation. Its
+    required skills=[] remains even when native Skill provenance is available
+    in a World SourceSubmissionBatch.
+    """
 
     return {"models": [], "sources": [], "skills": []}
 
@@ -1367,15 +1372,21 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                 request.mode == "direct" and direct_executor is not None
             )
             configuration_snapshot = _configuration_snapshot()
+            snapshot_callback = None
             if staged_event_configured:
                 snapshot_callback = getattr(
                     event_grounder, "configuration_snapshot", None
                 )
+            elif request.mode == "world" and world_executor is not None:
+                snapshot_callback = getattr(
+                    world_executor, "configuration_snapshot", None
+                )
+            if staged_event_configured or snapshot_callback is not None:
                 if not callable(snapshot_callback):
-                    raise ValueError("Event Grounder has no safe configuration snapshot")
+                    raise ValueError("configured executor has no safe configuration snapshot")
                 configuration_snapshot = snapshot_callback()
                 if type(configuration_snapshot) is not dict:
-                    raise ValueError("Event Grounder configuration snapshot is invalid")
+                    raise ValueError("executor configuration snapshot is invalid")
         except Exception:
             self._send_json(500, {"error": "event configuration unavailable"})
             return
@@ -2060,6 +2071,24 @@ def _positive_cli_port(value: str) -> int:
     return port
 
 
+def _exact_iso_cli_date(value: str) -> datetime.date:
+    """Parse only the explicit YYYY-MM-DD form used by Event CLI policy."""
+
+    if type(value) is not str or re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value
+    ) is None:
+        raise argparse.ArgumentTypeError("date must use exact YYYY-MM-DD form")
+    try:
+        parsed = datetime.date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "date must be a valid YYYY-MM-DD value"
+        ) from None
+    if parsed.isoformat() != value:
+        raise argparse.ArgumentTypeError("date must use exact YYYY-MM-DD form")
+    return parsed
+
+
 def _open_suppressed_futu_quote_context(port: int) -> object:
     """Open only the quote context after disabling the installed SDK logger."""
 
@@ -2120,8 +2149,12 @@ def _make_futu_direct_executor(port: int) -> Callable[..., CoreDirectResult]:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    from .option_chain_discovery import OptionMaturityAuthority
+
     parser = argparse.ArgumentParser(description="Run the Convexity Hunter local Host.")
-    parser.add_argument("--db", required=True, type=Path, help="external SQLite journal path")
+    parser.add_argument(
+        "--db", required=True, type=Path, help="external SQLite journal path"
+    )
     parser.add_argument(
         "--port",
         type=_positive_cli_port,
@@ -2134,30 +2167,162 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="enable explicit Direct research through a local Futu quote service",
     )
     parser.add_argument(
+        "--event-config",
+        type=Path,
+        help="external non-secret strict Event Grounder configuration",
+    )
+    parser.add_argument(
+        "--world-config",
+        type=Path,
+        help="external non-secret World skill/bounds configuration (requires --event-config)",
+    )
+    parser.add_argument(
+        "--evaluation-date",
+        type=_exact_iso_cli_date,
+        help="explicit Event evaluation date in exact YYYY-MM-DD form",
+    )
+    parser.add_argument(
+        "--maturity-authority",
+        choices=tuple(authority.value for authority in OptionMaturityAuthority),
+        help="explicit Event maturity authority",
+    )
+    parser.add_argument(
         "--futu-port",
         type=_positive_cli_port,
-        help="explicit localhost Futu OpenD quote port (required with --enable-direct)",
+        help="explicit localhost Futu OpenD quote port (required for Direct or Event)",
     )
     args = parser.parse_args(argv)
-    if args.enable_direct and args.futu_port is None:
-        parser.error("--futu-port is required when --enable-direct is set")
-    if not args.enable_direct and args.futu_port is not None:
-        parser.error("--futu-port requires --enable-direct")
+    event_enabled = args.event_config is not None
+    world_enabled = args.world_config is not None
+    if world_enabled and not event_enabled:
+        parser.error("--world-config requires --event-config")
+    if (args.enable_direct or event_enabled) and args.futu_port is None:
+        parser.error("--futu-port is required with --enable-direct or --event-config")
+    if not (args.enable_direct or event_enabled) and args.futu_port is not None:
+        parser.error("--futu-port requires --enable-direct or --event-config")
+    if event_enabled:
+        if args.evaluation_date is None:
+            parser.error("--evaluation-date is required with --event-config")
+        if args.maturity_authority is None:
+            parser.error("--maturity-authority is required with --event-config")
+    elif args.evaluation_date is not None or args.maturity_authority is not None:
+        parser.error(
+            "--evaluation-date and --maturity-authority require --event-config"
+        )
 
     journal = None
     server = None
     try:
-        journal = _open_store(args.db)
+        event_grounder = None
+        event_core_executor = None
+        world_executor = None
+        if event_enabled:
+            from .host_event import create_event_grounder
+            from .host_event_config import (
+                HostEventConfigurationError,
+                load_event_grounder_config,
+            )
+            from .host_event_core import create_event_core_executor
+
+            try:
+                event_config = load_event_grounder_config(
+                    args.event_config,
+                    repo_root=Path(__file__).resolve().parents[2],
+                )
+            except HostEventConfigurationError as error:
+                print(
+                    "Event configuration invalid ({})".format(error.code),
+                    file=sys.stderr,
+                )
+                return 2
+
+            event_grounder = create_event_grounder(
+                event_config,
+                repo_root=Path(__file__).resolve().parents[2],
+            )
+            from .core_futu import FutuMarketBridge
+
+            market_bridge = FutuMarketBridge(
+                quote_context_factory=lambda: _open_suppressed_futu_quote_context(
+                    args.futu_port
+                )
+            )
+            configured_event_core_executor = create_event_core_executor(
+                evaluation_date=args.evaluation_date,
+                maturity_authority=OptionMaturityAuthority(args.maturity_authority),
+                market_bridge=market_bridge,
+            )
+
+            def event_core_executor(
+                raw_input: str,
+                *,
+                bounds: CoreOperationalBounds,
+                source_batch: SourceSubmissionBatch,
+            ) -> CoreRunResult:
+                with _discard_sdk_output():
+                    return configured_event_core_executor(
+                        raw_input, bounds=bounds, source_batch=source_batch
+                    )
+
+            if world_enabled:
+                from .host_world import create_world_runner
+                from .host_world_config import (
+                    HostWorldConfigurationError,
+                    load_world_config,
+                )
+
+                try:
+                    world_config = load_world_config(
+                        args.world_config,
+                        repo_root=Path(__file__).resolve().parents[2],
+                        grounder_config=event_config,
+                        evaluation_date=args.evaluation_date,
+                        maturity_authority=OptionMaturityAuthority(args.maturity_authority),
+                    )
+                    configured_world_executor = create_world_runner(
+                        world_config,
+                        repo_root=Path(__file__).resolve().parents[2],
+                        market_bridge=market_bridge,
+                    )
+                except HostWorldConfigurationError as error:
+                    print("World configuration invalid ({})".format(error.code), file=sys.stderr)
+                    return 2
+                except Exception:
+                    print("World configuration invalid (INVALID_CONFIGURATION)", file=sys.stderr)
+                    return 2
+
+                def world_executor(
+                    raw_input: str, *, bounds: CoreOperationalBounds
+                ) -> CoreRunResult:
+                    with _discard_sdk_output():
+                        return configured_world_executor(raw_input, bounds=bounds)
+
+                # Reuse the frozen shared models/source projection. skills=[]
+                # is a legacy metadata constraint, not a claim of no Skill use.
+                world_executor.configuration_snapshot = event_grounder.configuration_snapshot
+
         direct_executor = (
             _make_futu_direct_executor(args.futu_port)
             if args.enable_direct
             else None
         )
+        journal = _open_store(args.db)
+        event_callbacks = (
+            {
+                "event_grounder": event_grounder,
+                "event_core_executor": event_core_executor,
+            }
+            if event_enabled
+            else {}
+        )
+        if world_enabled:
+            event_callbacks["world_executor"] = world_executor
         server = create_server(
             journal,
             render_workbench=_load_workbench_renderer(),
             direct_executor=direct_executor,
             port=args.port,
+            **event_callbacks
         )
         print("Convexity Hunter local Host: http://127.0.0.1:{}".format(server.server_port))
         server.serve_forever()

@@ -11,6 +11,75 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Current executable boundary — 2026-10-04
 
+### Integrated local MVP continuation — 2026-10-07 (code delivered; live blockers retained)
+
+The user has now authorized the bounded HTTPS admission described below,
+normal Event wiring, one fresh bounded Event acceptance run, and thin World
+composition using existing Tavily and pinned last30days Host. These are one
+integrated delivery, not additional successor contract-freeze work units.
+Admission precedes context/catalog/receipt and keeps raw/parsed provenance;
+existing EI, Core and security boundaries remain unchanged. The exact fresh
+Event protocol is preregistered in [local Event delivery](local-event-delivery-v0.1.md).
+Implementation/review completed below; historical outcomes are not retagged or
+replayed, and no new real EI acceptance is claimed.
+
+Historical quota-safe pause on 2026-10-07: five-hour usage reached 98%; weekly usage 65%.
+At that pause all workers stopped with written changes preserved, nothing
+staged, committed or pushed. Normal Event CLI had nine passing CLI tests;
+Source Admission and World factory were uncommitted. Pre-review regression passed
+1,844 tests in 305.718 seconds. Deadline remediation passed 53 focused tests;
+World factory passed nine focused tests including HostStore readback. Compile
+passed before the last hidden-attribute attempt. These are not final release
+validation or three real operational lanes.
+
+Continuation: DNS/transport deadline and hidden-attribute P2s are both closed;
+independent targeted source review passed. Literal hidden, aria-hidden and
+inline display/visibility suppression includes descendants and preserves
+visible evidence after hidden void elements. Source/Event 50 tests and
+Host/server/store 77 tests passed. Normal World CLI/external config wiring is
+implemented. World failure-path P2s (reserved limit reason and permissive
+native JSON decoding) and CLI configuration-metadata P2 are fixed; independent
+targeted reviews passed. Configured World uses the frozen shared model/source
+metadata projection; `skills=[]` is a legacy Store constraint, not proof that
+no Skill ran. Final release regression passed all 1,860 tests in 368.916
+seconds; compileall, four-document local link/fence checks (181 links) and
+diff checks passed. Independent source, World factory and CLI targeted
+reviews passed. No new provider, source permission, EI relaxation or economic
+default was introduced. The installed Python/urllib3 emitted its existing
+LibreSSL compatibility warning; tests still passed.
+
+Fresh preregistered external runner:
+`/private/tmp/ch-event-mvp-2026-10-07-lElQM7/run_event_once.py` with adjacent
+non-secret config. The preregistered single run is now **spent**, not replayable.
+Actual result: Host READY, POST 201, Grounder completed with five source bodies,
+15 claims, one hypothesis and 28 field bindings; EI INCOMPLETE; zero Core
+cases and one unavailable branch; Host BLOCKED. SQLite restart readback and
+Chinese HTTP document read passed. Admission observed zero GETs/zero admissions
+and one DNS_ADDRESS_BLOCKED. Independent read-only DNS classification found
+non-public answers for SEC, Nasdaq and Yahoo: this is an operational source
+origin blocker, not permission to weaken public-address validation. No Futu
+research was performed. On resume inspect the spent marker; never replay.
+The runner delegates to
+production factories and observes closed admission failure counts without
+fixture transports. If the evaluation date is no longer current, explicitly
+preregister a fresh current-date run; never retag historical evidence.
+Prepared World runner/config:
+`/private/tmp/ch-world-mvp-2026-10-07-r1OGJ1/`. Offline strict config/pin check
+passes without calls; no spent marker or World SQLite exists. Authorized
+source environment values AUTH_TOKEN, CT0 and SCRAPECREATORS_API_KEY are absent
+in the current process. Do not run or claim a properly-enabled full-source
+World experiment until those values are made available externally. Do not
+read/print them into agent context, silently switch to HN-only coverage, or
+interpret absent authentication as no events. The external config preserves
+the approved four-source grammar, CPython 3.12.14 pin, explicit limits and
+existing model budgets split one request per role for Skill and one for
+Grounder. Normal CLI wiring exists; operational readiness remains separate.
+
+The narrow IREN listing grammar still does not support Common Stock; retain
+unknown evidence rather than manufacture labels. No CostLedger/sensitivity
+assumption, EI gate or Core economic policy was changed. Role-level coding vs
+diagnostic time was not measured reliably; no 70% completion-share claim.
+
 ### Opt-in Host listing composite — 2026-10-07
 
 [Listing composite v0.1](host-listing-source-composite-v0.1.md) is implemented
@@ -32,8 +101,8 @@ Host-owned HTTPS retrieval before context/catalog/receipt construction, with
 TLS validation, restricted redirects, exact final-origin checks and capped
 reads. Direct pages are HTML; the current Markdown grammar cannot silently
 consume transformed HTML as if it were the same source. A narrow origin,
-direct-body handoff and provenance-preserving parsing contract must be frozen
-before that BUILD. No direct retrieval or automatic source authorization was
+direct-body handoff and provenance-preserving parsing boundary was approved
+by the new integrated user task above. At that preflight, no direct retrieval or automatic source authorization was
 performed. This is a source-admission boundary, not an EI rejection or a need
 for a new paid provider.
 

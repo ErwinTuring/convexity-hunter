@@ -46,6 +46,15 @@ from convexity_hunter.host_model import (
     ModelRuntimeConfig,
 )
 from convexity_hunter.host_sources import TavilyCredentialRef, TavilySourceConfig
+from convexity_hunter.host_source_admission import (
+    AdmissionBatch,
+    _Reply,
+    _SourceAdmissionClient,
+    _nasdaq_html,
+    _sec_html,
+    _source_id_for_locator,
+    _yahoo_html,
+)
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
 
 
@@ -90,6 +99,11 @@ class _SyntheticResponse:
 
     def close(self):
         self.closed = True
+
+
+class _NoNetworkAdmissionClient:
+    def admit_candidates(self, _locators):
+        return AdmissionBatch((), (), 0, 0)
 
 
 class _SyntheticSourceTransport:
@@ -785,6 +799,12 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         self.environment.start()
         self.addCleanup(self.environment.stop)
+        self.admission_factory = patch(
+            "convexity_hunter.host_event._create_source_admission_client",
+            side_effect=lambda **_kwargs: _NoNetworkAdmissionClient(),
+        )
+        self.admission_factory.start()
+        self.addCleanup(self.admission_factory.stop)
 
     def test_factory_returns_frozen_callback_signature_and_redacts_config(self):
         config = _config()
@@ -1105,6 +1125,169 @@ class HostEventGrounderTests(unittest.TestCase):
                 self.assertEqual(excerpt["sha256"], _digest(excerpt["text"]))
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
+
+    def test_default_event_path_admits_html_before_models_and_preserves_lineage(self):
+        run_id = "default-admission-listing-run"
+        initial_sec = _SEC_LOCATOR
+        final_sec = initial_sec.replace("www.sec.gov", "sec.gov")
+        symbol = "ACME"
+        nasdaq_url = "https://www.nasdaq.com/market-activity/stocks/acme"
+        yahoo_url = "https://finance.yahoo.com/quote/ACME/"
+        sec_html = (
+            "<!doctype html><html><body>"
+            "<p>ACME HOLDINGS, INC.</p>"
+            "<p>(Exact name of registrant as specified in its charter)</p>"
+            "<p>A synthetic event was reported.</p>"
+            "<p>On October 3, 2026, ACME HOLDINGS, INC. completed its acquisition of Example Corp.</p>"
+            "<table>"
+            "<tr><th>Title of each class</th><th>Trading Symbol(s)</th>"
+            "<th>Name of each exchange on which registered</th></tr>"
+            "<tr><td>Ordinary shares, no par value</td><td>ACME</td>"
+            "<td>The Nasdaq Stock Market LLC</td></tr>"
+            "</table></body></html>"
+        ).encode("utf-8")
+        # The ignored HTML envelope is intentionally larger than the parsed
+        # context ceiling; HTTP and parsed-evidence limits must stay separate.
+        sec_html = sec_html.replace(
+            b"<body>", b"<body><!--" + (b"x" * 25_000) + b"-->"
+        )
+        nasdaq_html = (
+            b"<!doctype html><html><body>"
+            b"<h1>ACME HOLDINGS, INC. Ordinary Shares (ACME)</h1>"
+            b"</body></html>"
+        )
+        yahoo_html = (
+            "<!doctype html><html><body><div>NasdaqGS - Delayed Quote&#8226;USD</div>"
+            "<h1>ACME HOLDINGS, INC. (ACME)</h1></body></html>"
+        ).encode("utf-8")
+
+        source_ids = (
+            _source_id_for_locator(initial_sec),
+            _source_id_for_locator(nasdaq_url),
+            _source_id_for_locator(yahoo_url),
+        )
+        sec_parsed = _sec_html(sec_html.decode("utf-8"))
+        nasdaq_parsed = _nasdaq_html(nasdaq_html.decode("utf-8"), symbol)
+        yahoo_parsed = _yahoo_html(yahoo_html.decode("utf-8"), symbol)
+        self.assertIsNotNone(sec_parsed)
+        self.assertIsNotNone(nasdaq_parsed)
+        self.assertIsNotNone(yahoo_parsed)
+        source_order = (
+            (source_ids[0], final_sec),
+            (source_ids[1], nasdaq_url),
+            (source_ids[2], yahoo_url),
+            ("tavily-sec", initial_sec),
+        )
+        bodies_by_url = {
+            final_sec: sec_parsed.body,
+            nasdaq_url: nasdaq_parsed.body,
+            yahoo_url: yahoo_parsed.body,
+            initial_sec: "Tavily retained text is not admitted listing evidence.\n",
+        }
+        config = _config(
+            source_order=(("tavily-sec", initial_sec),),
+            max_source_body_bytes=20_000,
+        )
+        config = replace(
+            config,
+            source=replace(config.source, max_response_bytes=100_000),
+        )
+        discovery, semantic, _normalized = _listing_runtime_wires(
+            run_id, symbol, source_order, bodies_by_url, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=(("tavily-sec", initial_sec),),
+            body_overrides={initial_sec: bodies_by_url[initial_sec]},
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+
+        class _AdmissionTransport:
+            def __init__(self):
+                self.calls = []
+                self.replies = {
+                    initial_sec: [_Reply(302, {"Location": final_sec}, b"")],
+                    final_sec: [_Reply(200, {"Content-Type": "text/html; charset=utf-8"}, sec_html)],
+                    nasdaq_url: [_Reply(200, {"Content-Type": "text/html; charset=utf-8"}, nasdaq_html)],
+                    yahoo_url: [_Reply(200, {"Content-Type": "text/html; charset=utf-8"}, yahoo_html)],
+                }
+
+            def __call__(self, locator, address, timeout, max_bytes):
+                self.calls.append((locator, address, timeout, max_bytes))
+                reply = self.replies[locator].pop(0)
+                if len(reply.body) > max_bytes:
+                    return _Reply(reply.status, reply.headers, reply.body[: max_bytes + 1])
+                return reply
+
+        admission_transport = _AdmissionTransport()
+        admission_client = _SourceAdmissionClient(
+            timeout_seconds=config.source.timeout_seconds,
+            max_response_bytes=config.source.max_response_bytes,
+            byte_budget=5 * config.source.max_response_bytes,
+            _transport=admission_transport,
+            _resolver=lambda _host, _port: ("93.184.216.34",),
+            _clock=lambda: _NOW,
+        )
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        with patch(
+            "convexity_hunter.host_event._create_source_admission_client",
+            return_value=admission_client,
+        ) as client_factory:
+            result = callback(
+                "Assess a synthetic listing event.",
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        prepared = result.build_result.context
+        pair = ("hypothesis-generated-{}".format(run_id), symbol)
+        key, reference = prepared.underlying_bindings[pair]
+        self.assertEqual(key, UnderlyingKey(symbol, None, UnderlyingSecurityType.EQUITY, "USD"))
+        self.assertIsNone(prepared.event_date_range)
+        self.assertGreater(len(sec_html), config.max_source_body_bytes)
+        self.assertLessEqual(len(prepared.source_bodies[source_ids[0]].body.encode("utf-8")), 20_000)
+        self.assertEqual(len(admission_transport.calls), 4)
+        self.assertEqual(len(source_transport.calls), 2)
+        self.assertEqual(len(model_transport.calls), 2)
+        client_factory.assert_called_once_with(
+            timeout_seconds=2.0,
+            max_response_bytes=100_000,
+            byte_budget=500_000,
+        )
+        safe_snapshot_source = callback.configuration_snapshot()["sources"][0]
+        self.assertEqual(safe_snapshot_source["max_response_bytes"], 100_000)
+        self.assertEqual(
+            safe_snapshot_source["grounder_limits"]["max_source_body_bytes"],
+            20_000,
+        )
+        model_payloads = json.dumps(model_transport.calls, ensure_ascii=False)
+        self.assertIn(source_ids[0], model_payloads)
+        self.assertIn("A synthetic event was reported.", model_payloads)
+        self.assertIn("| Ordinary shares, no par value | ACME |", model_payloads)
+        self.assertNotIn("<table>", model_payloads)
+        self.assertNotIn("x" * 100, model_payloads)
+        provenance = json.loads(reference)
+        self.assertEqual(
+            [source["role"] for source in provenance["sources"]],
+            ["sec_listing_class", "nasdaq_instrument_heading", "yahoo_quote_denomination"],
+        )
+        for source in provenance["sources"]:
+            admission = source["source_admission"]
+            self.assertEqual(admission["parsed_body_sha256"], source["body_sha256"])
+            self.assertNotEqual(admission["raw_body_sha256"], admission["parsed_body_sha256"])
+            self.assertIn("initial_locator", admission)
+            self.assertIn("final_locator", admission)
+            self.assertIn("origin", admission)
+            self.assertIn("parser_id", admission)
+            self.assertIn("raw_anchors", admission)
+        self.assertEqual(provenance["sources"][0]["source_admission"]["initial_locator"], initial_sec)
+        self.assertEqual(provenance["sources"][0]["source_admission"]["final_locator"], final_sec)
 
     def test_occurrence_month_mapping_does_not_depend_on_datetime_strptime(self):
         snapshot, receipt, context = _source_fact_case()
