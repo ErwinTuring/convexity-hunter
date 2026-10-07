@@ -110,6 +110,10 @@ any provider. The Host captures it in the immutable run-start transaction.
 A context preparer must obey the existing independent listing/date evidence
 boundary. A preparer that merely preserves unknown fields is lawful but cannot
 be described as completed listing resolution or complete Event grounding.
+The bounded [source-facts successor](host-event-source-facts-v0.1.md) permits
+the default preparer to bind a unique verified description and narrowly
+source-derived SEC occurrence date. It still resolves no listing identity and
+does not establish complete Event grounding or real EI acceptance.
 Any conservative stop on failed extraction is an acquisition limitation, not
 proof that the event has no sources or no research value.
 

@@ -11,6 +11,34 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Current executable boundary — 2026-10-04
 
+### Bounded Host fact preparation — 2026-10-05
+
+[Source facts v0.1](host-event-source-facts-v0.1.md) is frozen and implemented,
+with independent review PASS and final 1,808-test regression PASS (308.972s).
+The default preparer can bind one unique
+verified observed fact and resolve a singleton occurrence date only from the
+narrow SEC submission-header/completed-action grammar and verified exact body
+binding. Existing fields retain identity; unsupported or conflicting evidence
+stays unknown. Actual Grounder-chain synthetic integration is tested, not just
+hand-built snapshot fixtures. Listing/share-class/trading-currency authority
+remains unresolved; no hypothesis, impact window or reassessment is invented.
+No real API call, spent-protocol replay, EI acceptance or Core result is claimed.
+This supersedes the earlier default-preparer implementation notes below; the
+recorded historical experiment outcomes remain unchanged.
+
+Final focused validation: 21 Event / 70 related tests; both independent findings
+(additional source dates and case-variant duplicate SEC headers) are fixed and
+targeted re-review passed. English months no longer depend on locale. Public
+Host Event exports remain 2 and the factory signature is unchanged. The first
+full-suite run had 26 sandbox loopback permission errors; it is not a pass.
+The final rerun with loopback permission passed all 1,808 tests. Release
+validation completed on 2026-10-07; no research as-of or source timestamp was
+changed to that date.
+Compilation succeeded after user-cache permission was allowed. Documentation
+links/fences and diff checks pass; recheck after final result edits.
+Role timing is partial and overlapping; no whole-phase 70% implementation share
+is claimed. See the source-facts contract for the recorded measurements.
+
 ### Real Event integration outcome — 2026-10-05
 
 The separately preregistered fresh-source IREN attempt used the declared

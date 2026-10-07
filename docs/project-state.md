@@ -1,5 +1,16 @@
 # Project State
 
+Current bounded implementation: [Host Event source facts v0.1](host-event-source-facts-v0.1.md)
+fills only a unique verified observed-fact description and, when the strict SEC
+submission/body/binding rule applies, a source-derived occurrence date. No
+listing/currency/share-class proof, hypothesis, impact window or reassessment is
+created. The actual Grounder-chain synthetic integration test passes; real EI
+acceptance remains unproven. Independent review and targeted fixes passed;
+21 focused / 70 related tests and final 1,808-test regression pass (308.972s).
+Compileall, API compatibility, documentation and diff checks pass. Completed
+on 2026-10-07 after local permission waits; no new live acquisition.
+No further live batch or source/model request belongs to this work unit.
+
 2026-10-05: fresh-source Event integration reached the semantic validation
 boundary and stopped `BLOCKED / SEMANTIC_VERDICT_REJECTED`, with no EI/Core
 result. The preceding local path failure and corrective attempt are separate,

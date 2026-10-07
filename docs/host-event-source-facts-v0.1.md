@@ -1,6 +1,6 @@
 # Host Event Source Facts v0.1
 
-Status: FROZEN / BUILD READY; production date resolver not yet implemented.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS.
 
 This bounded successor supplements [context preparation v0.1](host-grounder-context-preparation-v0.1.md).
 Independent contract review passed. It adds no source/model call, provider,
@@ -60,3 +60,25 @@ This is deliberately narrow source parsing, not a general prose Grounder.
 Most extracted filings may lack submission headers and remain unresolved.
 No real acceptance, listing resolution or explanation of the earlier zero
 hypotheses is claimed. No spent experiment is reopened.
+
+## Implementation validation
+
+The default preparer consumes the actual normalized v0.1 snapshot, not the
+external v0.3 wire shape. A synthetic integration through `create_event_grounder`
+tests producer, verifier, receipt and default preparation together. Supplied
+description identity is preserved; another fact cannot lend it an event date.
+English month parsing uses a fixed mapping, not the process locale.
+
+Independent review's two findings were fixed: additional explicit dates anywhere
+in the source body keep chronology unresolved, and case-variant duplicate SEC
+header labels are rejected before canonical parsing. Targeted re-review passed.
+Final focused coverage is 21 Event tests / 70 related tests. Final whole-suite
+regression passed 1,808 tests in 308.972 seconds; the initial sandboxed
+run's 26 loopback-permission errors are not a passing result.
+
+This work crossed local execution dates 2026-10-05 through 2026-10-07, including
+permission waits. No live provider/source/model acquisition was performed.
+Builder recorded 0m47 preparation, 12m19 mixed implementation/test authoring,
+2m03 validation, then 0m30 and 3m14 corrective passes. Independent initial review
+recorded about 9m40. These are partial, overlapping role measurements, not a
+whole-phase pure-coding percentage; the 70% implementation target is not proven.

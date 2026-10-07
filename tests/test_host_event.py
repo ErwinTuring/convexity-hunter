@@ -8,12 +8,15 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import patch
 
 from convexity_hunter.core_application import CoreOperationalBounds
 from convexity_hunter.event_entry import UserEventInput
+from convexity_hunter.event_intelligence import MethodologizedDateRange
 from convexity_hunter.host_event import (
     HostEventGrounderConfig,
+    _retain_unknown_context,
     _publication_datetime,
     create_event_grounder,
 )
@@ -31,6 +34,7 @@ from convexity_hunter.host_grounder_runtime import (
     HostGrounderEvidenceCatalogRuntimeResult,
     HostGrounderRuntimeError,
 )
+from convexity_hunter.host_grounder_receipt import ValidatedEnvelopeSnapshot
 from convexity_hunter.host_model import (
     ModelCredential,
     ModelRuntimeConfig,
@@ -49,6 +53,19 @@ _BODY_BY_URL = {
 _SEARCH_ORDER = (
     ("source-z", "https://source.example/z"),
     ("source-a", "https://source.example/a"),
+)
+_SEC_LOCATOR = (
+    "https://www.sec.gov/Archives/edgar/data/320193/"
+    "000032019326000123/example.htm"
+)
+_SEC_SENTENCE = (
+    "On October 3, 2026, ACME HOLDINGS, INC. completed its acquisition of Example Corp."
+)
+_SEC_HEADER = (
+    "CONFORMED SUBMISSION TYPE: 8-K\n"
+    "ACCESSION NUMBER: 0000320193-26-000123\n"
+    "COMPANY CONFORMED NAME: ACME HOLDINGS, INC.\n"
+    "CENTRAL INDEX KEY: 0000320193\n\n"
 )
 
 
@@ -154,7 +171,16 @@ def _context_and_run_input(run_id, raw_input, source_order, bodies_by_url, bound
     return run_input, context
 
 
-def _model_outputs(run_id, raw_input, source_order, bodies_by_url, config):
+def _model_outputs(
+    run_id,
+    raw_input,
+    source_order,
+    bodies_by_url,
+    config,
+    *,
+    fact_text=None,
+    event_date=None,
+):
     run_input, context = _context_and_run_input(
         run_id,
         raw_input,
@@ -162,6 +188,8 @@ def _model_outputs(run_id, raw_input, source_order, bodies_by_url, config):
         bodies_by_url,
         config.run_input_bounds,
     )
+
+
     catalog = build_host_evidence_catalog(
         run_id,
         run_input.canonical_input_hash,
@@ -172,21 +200,72 @@ def _model_outputs(run_id, raw_input, source_order, bodies_by_url, config):
         max_string_bytes=run_input.bounds.max_string_bytes,
         max_array_items=run_input.bounds.max_array_items,
     )
+    producer_claims = []
+    producer_bindings = []
+    verdict_claims = []
+    verdict_bindings = []
+    coverage_claim_ids = []
+    if fact_text is not None:
+        entry = next(
+            entry
+            for entry in catalog.entries
+            if entry.quote.rstrip("\r\n") == fact_text
+        )
+        evidence_ref = {"evidence_id": entry.evidence_id}
+        producer_claims.append(
+            {
+                "claim_id": "fact-1",
+                "kind": "observed_fact",
+                "evidence_id": entry.evidence_id,
+                "text": fact_text,
+                "entity_refs": [],
+                "event_date": event_date,
+                "published_at": None,
+                "dependency_claim_ids": [],
+                "uncertainty": [],
+                "falsification_conditions": [],
+            }
+        )
+        producer_bindings.append(
+            {
+                "field_path": "/claims/0/event_date",
+                "evidence_id": entry.evidence_id,
+                "semantic_role": "date",
+                "status": "supported",
+            }
+        )
+        verdict_claims.append(
+            {
+                "claim_id": "fact-1",
+                "outcome": "supported",
+                "rationale": "Synthetic source sentence supports the fact.",
+                "evidence_refs": [evidence_ref],
+            }
+        )
+        verdict_bindings.append(
+            {
+                "index": 0,
+                "outcome": "supported",
+                "rationale": "Synthetic source sentence localizes the date field.",
+                "evidence_refs": [evidence_ref],
+            }
+        )
+        coverage_claim_ids.append("fact-1")
     producer = {
         "schema_version": "grounder-output-v0.3",
         "stage": "semantic",
         "request_id": run_id,
-        "claims": [],
+        "claims": producer_claims,
         "hypotheses": [],
         "coverage": [
             {
                 "subquestion_id": "user_event_input",
                 "status": "unresolved",
-                "claim_ids": [],
+                "claim_ids": coverage_claim_ids,
                 "gap": "Synthetic fixture supplies no supported hypothesis.",
             }
         ],
-        "field_bindings": [],
+        "field_bindings": producer_bindings,
     }
     normalized, normalized_bytes = parse_grounder_output_v0_3(
         json.dumps(producer, sort_keys=True, separators=(",", ":")),
@@ -206,9 +285,9 @@ def _model_outputs(run_id, raw_input, source_order, bodies_by_url, config):
             {"source_id": source_id, "sha256": source.body_sha256}
             for source_id, source in sorted(context.source_bodies.items())
         ],
-        "claims": [],
+        "claims": verdict_claims,
         "hypotheses": [],
-        "field_bindings": [],
+        "field_bindings": verdict_bindings,
         "coverage": [
             {
                 "index": 0,
@@ -224,6 +303,116 @@ def _model_outputs(run_id, raw_input, source_order, bodies_by_url, config):
         json.dumps(verdict, sort_keys=True, separators=(",", ":")),
         normalized,
     )
+
+
+def _source_fact_case(
+    *,
+    sentence=_SEC_SENTENCE,
+    body=None,
+    locator=_SEC_LOCATOR,
+    model_date="2026-10-03",
+    observed_at=_NOW,
+    verified_claim=True,
+    verified_binding=True,
+    receipt_body_hash=None,
+    binding_offset_delta=0,
+    extra_claim=False,
+    description=None,
+    date_range=None,
+):
+    if body is None:
+        body = _SEC_HEADER + sentence + "\n"
+    source_id = "sec-fact"
+    source = HostSourceBody(
+        body, _digest(body), locator, _NOW, "Synthetic SEC filing", None
+    )
+    claims = [
+        {
+            "claim_id": "fact-1",
+            "kind": "observed_fact",
+            "source_id": source_id,
+            "locator": locator,
+            "quote": sentence,
+            "text": sentence,
+            "event_date": model_date,
+        }
+    ]
+    if extra_claim:
+        claims.append(
+            {
+                "claim_id": "fact-2",
+                "kind": "observed_fact",
+                "source_id": source_id,
+                "locator": locator,
+                "quote": "Additional source-backed fact.",
+                "text": "Additional source-backed fact.",
+                "event_date": None,
+            }
+        )
+        body += "Additional source-backed fact.\n"
+        source = HostSourceBody(
+            body, _digest(body), locator, _NOW, "Synthetic SEC filing", None
+        )
+    start = body.find(sentence)
+    envelope = {
+        "schema_version": "grounder-output-v0.1",
+        "stage": "semantic",
+        "request_id": _RUN_ID,
+        "claims": claims,
+        "hypotheses": [],
+        "coverage": [
+            {
+                "subquestion_id": "user_event_input",
+                "status": "unresolved",
+                "claim_ids": [],
+                "gap": "Synthetic fixture.",
+            }
+        ],
+        "field_bindings": [
+            {
+                "field_path": "/claims/0/event_date",
+                "source_id": source_id,
+                "quote": sentence,
+                "start": start + binding_offset_delta,
+                "end": start + len(sentence) + binding_offset_delta,
+                "semantic_role": "date",
+                "status": "supported",
+            }
+        ],
+    }
+    canonical_bytes = json.dumps(
+        envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    envelope_hash = _digest(canonical_bytes.decode("utf-8"))
+    context = HostBuildContext(
+        raw_input=UserEventInput(_RAW_INPUT),
+        submission_id=_RUN_ID,
+        event_id=_RUN_ID,
+        producer_id="convexity-hunter-event-grounder",
+        producer_version="v0.1",
+        observed_at=observed_at,
+        source_bodies={source_id: source},
+        run_id=_RUN_ID,
+        canonical_input_hash="a" * 64,
+        event_description_binding=description,
+        event_date_range=date_range,
+    )
+    receipt = MappingProxyType(
+        {
+            "schema_version": "semantic-validation-v0.2",
+            "run_id": _RUN_ID,
+            "canonical_input_hash": context.canonical_input_hash,
+            "envelope_hash": envelope_hash,
+            "source_body_hashes": (
+                (source_id, receipt_body_hash or source.body_sha256),
+            ),
+            "verified_claim_ids": (
+                ("fact-1", "fact-2") if extra_claim else ("fact-1",)
+            ) if verified_claim else (),
+            "verified_binding_indices": (0,) if verified_binding else (),
+        }
+    )
+    return ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash), receipt, context
 
 
 class _SyntheticModelTransport:
@@ -325,6 +514,10 @@ class HostEventGrounderTests(unittest.TestCase):
     def test_factory_returns_frozen_callback_signature_and_redacts_config(self):
         config = _config()
         callback = create_event_grounder(config, repo_root=_ROOT)
+        self.assertIs(
+            inspect.getclosurevars(callback).nonlocals["context_preparer"],
+            _retain_unknown_context,
+        )
         self.assertEqual(
             tuple(inspect.signature(callback).parameters),
             ("raw_input", "run_id", "bounds"),
@@ -332,6 +525,328 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertNotIn("SYNTHETIC", repr(config))
         with self.assertRaisesRegex(TypeError, "host_context_preparer"):
             create_event_grounder(config, repo_root=_ROOT, host_context_preparer=object())
+
+    def test_default_context_preparer_binds_unique_sec_fact_and_exact_date_evidence(self):
+        snapshot, receipt, context = _source_fact_case()
+        source = context.source_bodies["sec-fact"]
+        prepared = _retain_unknown_context(snapshot, receipt, context)
+
+        self.assertIsNot(prepared, context)
+        self.assertEqual(prepared.event_description_binding, "fact-1")
+        self.assertIs(prepared.raw_input, context.raw_input)
+        self.assertIs(prepared.source_bodies["sec-fact"], source)
+        self.assertEqual(prepared.underlying_bindings, {})
+        self.assertEqual(prepared.event_date_range.start_date, datetime.date(2026, 10, 3))
+        self.assertEqual(prepared.event_date_range.end_date, datetime.date(2026, 10, 3))
+        methodology = json.loads(prepared.event_date_range.methodology)
+        self.assertEqual(
+            methodology["rule_version"],
+            "host-event-source-facts-v0.1/sec-8-k-occurrence-date",
+        )
+        self.assertEqual(methodology["source_id"], "sec-fact")
+        self.assertEqual(methodology["body_sha256"], source.body_sha256)
+        self.assertEqual(methodology["locator"], _SEC_LOCATOR)
+        self.assertEqual(
+            source.body[methodology["start"]:methodology["end"]], _SEC_SENTENCE
+        )
+
+    def test_occurrence_month_mapping_does_not_depend_on_datetime_strptime(self):
+        snapshot, receipt, context = _source_fact_case()
+        datetime_without_parser = SimpleNamespace(
+            date=datetime.date,
+            timezone=datetime.timezone,
+        )
+        with patch(
+            "convexity_hunter.host_event.datetime", datetime_without_parser
+        ):
+            prepared = _retain_unknown_context(snapshot, receipt, context)
+        self.assertEqual(
+            prepared.event_date_range.start_date, datetime.date(2026, 10, 3)
+        )
+
+    def test_extra_explicit_dates_anywhere_in_sec_body_leave_date_unknown(self):
+        extra_dates = (
+            "The acquisition was completed on October 4, 2026.",
+            "Supplemental filing date: 2026-10-04.",
+            "Supplemental filing date: 10/4/2026.",
+        )
+        for extra_date in extra_dates:
+            with self.subTest(extra_date=extra_date):
+                body = _SEC_HEADER + _SEC_SENTENCE + "\n" + extra_date + "\n"
+                snapshot, receipt, context = _source_fact_case(body=body)
+                prepared = _retain_unknown_context(snapshot, receipt, context)
+
+                self.assertEqual(prepared.event_description_binding, "fact-1")
+                self.assertIsNone(prepared.event_date_range)
+                self.assertIs(
+                    prepared.source_bodies["sec-fact"],
+                    context.source_bodies["sec-fact"],
+                )
+                self.assertEqual(prepared.source_bodies["sec-fact"].body, body)
+                self.assertEqual(
+                    prepared.source_bodies["sec-fact"].title,
+                    "Synthetic SEC filing",
+                )
+
+    def test_casevariant_duplicate_sec_headers_are_rejected(self):
+        duplicate_fields = (
+            ("form", "CONFORMED SUBMISSION TYPE", "8-K", "10-K"),
+            (
+                "accession",
+                "ACCESSION NUMBER",
+                "0000320193-26-000123",
+                "0000320193-26-000124",
+            ),
+            (
+                "registrant",
+                "COMPANY CONFORMED NAME",
+                "ACME HOLDINGS, INC.",
+                "OTHER CORPORATION, INC.",
+            ),
+            ("cik", "CENTRAL INDEX KEY", "0000320193", "0000320194"),
+        )
+        for key, label, canonical_value, conflicting_value in duplicate_fields:
+            for variant, repeated_value in (
+                ("same", canonical_value),
+                ("conflicting", conflicting_value),
+            ):
+                with self.subTest(field=key, variant=variant):
+                    body = (
+                        _SEC_HEADER
+                        + "{}: {}\n".format(label.lower(), repeated_value)
+                        + _SEC_SENTENCE
+                        + "\n"
+                    )
+                    snapshot, receipt, context = _source_fact_case(body=body)
+                    prepared = _retain_unknown_context(snapshot, receipt, context)
+
+                    self.assertEqual(prepared.event_description_binding, "fact-1")
+                    self.assertIsNone(prepared.event_date_range)
+                    self.assertIs(
+                        prepared.source_bodies["sec-fact"],
+                        context.source_bodies["sec-fact"],
+                    )
+                    self.assertEqual(prepared.source_bodies["sec-fact"].body, body)
+
+    def test_create_event_grounder_default_preparer_fills_from_validated_runtime_snapshot(self):
+        source_order = (("sec-fact", _SEC_LOCATOR),)
+        source_bodies = {_SEC_LOCATOR: _SEC_HEADER + _SEC_SENTENCE + "\n"}
+        config = _config(source_order=source_order)
+        discovery, semantic, _normalized = _model_outputs(
+            _RUN_ID,
+            _RAW_INPUT,
+            source_order,
+            source_bodies,
+            config,
+            fact_text=_SEC_SENTENCE,
+            event_date="2026-10-03",
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=source_order,
+            body_overrides=source_bodies,
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        result = callback(
+            _RAW_INPUT,
+            run_id=_RUN_ID,
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        prepared = result.build_result.context
+        self.assertEqual(prepared.event_description_binding, "fact-1")
+        self.assertEqual(prepared.event_date_range.start_date, datetime.date(2026, 10, 3))
+        self.assertEqual(prepared.event_date_range.end_date, datetime.date(2026, 10, 3))
+        self.assertEqual(prepared.underlying_bindings, {})
+        self.assertEqual(len(source_transport.calls), 2)
+        self.assertEqual(len(model_transport.calls), 2)
+
+    def test_existing_description_mismatch_does_not_receive_candidate_date(self):
+        snapshot, receipt, context = _source_fact_case(description="fact-2")
+        prepared = _retain_unknown_context(snapshot, receipt, context)
+        self.assertIs(prepared, context)
+        self.assertEqual(prepared.event_description_binding, "fact-2")
+        self.assertIsNone(prepared.event_date_range)
+
+    def test_default_context_preparer_rejects_unbound_or_ambiguous_inputs(self):
+        cases = (
+            (
+                "url-spoof",
+                {"locator": _SEC_LOCATOR.replace("www.sec.gov", "www.sec.gov.attacker.invalid")},
+                "fact-1",
+                None,
+            ),
+            (
+                "url-userinfo",
+                {"locator": _SEC_LOCATOR.replace("https://www.sec.gov", "https://sec.gov@www.sec.gov")},
+                "fact-1",
+                None,
+            ),
+            (
+                "url-nondefault-port",
+                {"locator": _SEC_LOCATOR.replace("www.sec.gov", "www.sec.gov:8443")},
+                "fact-1",
+                None,
+            ),
+            (
+                "url-empty-query",
+                {"locator": _SEC_LOCATOR + "?"},
+                "fact-1",
+                None,
+            ),
+            (
+                "url-encoded-separator",
+                {"locator": _SEC_LOCATOR.replace("example.htm", "example%2fother.htm")},
+                "fact-1",
+                None,
+            ),
+            (
+                "url-extra-path-segment",
+                {"locator": _SEC_LOCATOR.replace("example.htm", "extra/example.htm")},
+                "fact-1",
+                None,
+            ),
+            (
+                "url-locator-cik-mismatch",
+                {"locator": _SEC_LOCATOR.replace("/data/320193/", "/data/320194/")},
+                "fact-1",
+                None,
+            ),
+            (
+                "header-form-mismatch",
+                {"body": _SEC_HEADER.replace("8-K", "10-K") + _SEC_SENTENCE + "\n"},
+                "fact-1",
+                None,
+            ),
+            (
+                "header-accession-mismatch",
+                {"body": _SEC_HEADER.replace("000123", "000124") + _SEC_SENTENCE + "\n"},
+                "fact-1",
+                None,
+            ),
+            (
+                "header-cik-mismatch",
+                {"body": _SEC_HEADER.replace("0000320193", "0000320194") + _SEC_SENTENCE + "\n"},
+                "fact-1",
+                None,
+            ),
+            (
+                "duplicate-header-metadata",
+                {"body": _SEC_HEADER + "COMPANY CONFORMED NAME: OTHER CORP\n" + _SEC_SENTENCE + "\n"},
+                "fact-1",
+                None,
+            ),
+            (
+                "receipt-source-hash-mismatch",
+                {"receipt_body_hash": "f" * 64},
+                None,
+                None,
+            ),
+            (
+                "unverified-fact",
+                {"verified_claim": False},
+                None,
+                None,
+            ),
+            (
+                "unverified-date-binding",
+                {"verified_binding": False},
+                "fact-1",
+                None,
+            ),
+            (
+                "wrong-date-binding-offset",
+                {"binding_offset_delta": 1},
+                "fact-1",
+                None,
+            ),
+            (
+                "model-source-date-disagreement",
+                {"model_date": "2026-10-02"},
+                "fact-1",
+                None,
+            ),
+            (
+                "future-occurrence-date",
+                {
+                    "sentence": _SEC_SENTENCE.replace("October 3", "October 5"),
+                    "model_date": "2026-10-05",
+                },
+                "fact-1",
+                None,
+            ),
+            (
+                "invalid-calendar-date",
+                {
+                    "sentence": _SEC_SENTENCE.replace("October 3", "February 30"),
+                    "model_date": "2026-02-30",
+                },
+                "fact-1",
+                None,
+            ),
+            (
+                "conditional-action",
+                {
+                    "sentence": (
+                        "On October 3, 2026, ACME HOLDINGS, INC. signed a conditional "
+                        "agreement to acquire Example Corp."
+                    )
+                },
+                "fact-1",
+                None,
+            ),
+            (
+                "multiple-verified-facts",
+                {"extra_claim": True},
+                None,
+                None,
+            ),
+            (
+                "multiple-occurrence-sentences",
+                {
+                    "body": (
+                        _SEC_HEADER
+                        + _SEC_SENTENCE
+                        + "\nOn October 2, 2026, ACME HOLDINGS, INC. signed another agreement.\n"
+                    )
+                },
+                "fact-1",
+                None,
+            ),
+        )
+        for label, options, expected_description, expected_date in cases:
+            with self.subTest(case=label):
+                snapshot, receipt, context = _source_fact_case(**options)
+                prepared = _retain_unknown_context(snapshot, receipt, context)
+                self.assertEqual(prepared.event_description_binding, expected_description)
+                actual_date = (
+                    None
+                    if prepared.event_date_range is None
+                    else prepared.event_date_range.start_date
+                )
+                self.assertEqual(actual_date, expected_date)
+                self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_default_context_preparer_preserves_caller_supplied_fields_by_identity(self):
+        supplied_range = MethodologizedDateRange(
+            datetime.date(2026, 9, 1),
+            datetime.date(2026, 9, 2),
+            "caller-supplied methodology",
+        )
+        snapshot, receipt, context = _source_fact_case(
+            description="caller-supplied description", date_range=supplied_range
+        )
+        prepared = _retain_unknown_context(snapshot, receipt, context)
+        self.assertIs(prepared, context)
+        self.assertIs(prepared.event_date_range, supplied_range)
+        self.assertEqual(prepared.event_description_binding, "caller-supplied description")
 
     def test_run_start_configuration_snapshot_is_exact_safe_and_detached(self):
         callback = create_event_grounder(_config(), repo_root=_ROOT)
