@@ -184,6 +184,33 @@ Next work is a narrowly reviewed separation of source-body parsing from
 listing qualification; do not repeat search/model/quote acquisition to mask
 this boundary. Existing composite/EI gates remain unchanged.
 
+### SEC text-admission correction — 2026-10-09
+
+User-approved bounded successor implemented; [frozen scope](local-event-delivery-v0.1.md#sec-cover-text-parsing-successor--2026-10-09).
+The original ordinary-share/Nasdaq literal path preserves parser ID/version
+`sec-edgar-cover-v1` / `1`. Other safe single cover rows use
+`sec-edgar-cover-text-v2` / `2`, preserving raw anchors and hashes. Title and
+exchange remain observed text (including legitimate par-value dollar signs
+and parentheses), not security/currency/listing classification. Controls,
+unsafe Markdown delimiters, ambiguous tables/rows and metadata version
+mismatches fail closed. The normalized title/exchange length limit is 256.
+
+V2 does not trigger automatic Nasdaq/Yahoo supplements; explicit locators
+retain their existing handling. The listing composite and EI acceptance are
+unchanged: a Common Stock / Nasdaq Capital Market row with matching
+supplemental sources still cannot establish an `UnderlyingKey`. No new
+search/model/source/market request was made; the prior probe remains spent.
+The actual PLUG HTTP body was not retained, so live-format compatibility is
+not proven by these synthetic fixtures.
+
+Validation: 62 focused tests PASS; independent Popper review and five targeted
+synthetic tests PASS. Main's 171 related Host/Event/World/server/store/admission
+tests PASS after rerunning outside the sandbox's loopback-binding restriction.
+Complete regression: 1,875 tests PASS (300.582 seconds); compileall, diff checks
+and four-document fence/187-local-link checks PASS. The full suite emitted the
+existing urllib3/LibreSSL compatibility warning without test failures; no
+environment/package change was made. No live EI/Core closure is claimed.
+
 ### Integrated local MVP continuation — 2026-10-07 (code delivered; live blockers retained)
 
 The user has now authorized the bounded HTTPS admission described below,

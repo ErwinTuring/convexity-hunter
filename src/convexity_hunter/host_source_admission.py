@@ -30,7 +30,12 @@ from urllib.parse import urljoin, urlsplit
 
 MAX_SOURCE_ADMISSION_REQUESTS = 5
 MAX_SOURCE_ADMISSION_REDIRECTS = 2
-_PARSER_VERSION = "1"
+_PARSER_METADATA = {
+    "sec-edgar-cover-v1": ("sec", "1"),
+    "sec-edgar-cover-text-v2": ("sec", "2"),
+    "nasdaq-instrument-v1": ("nasdaq", "1"),
+    "yahoo-quote-header-v1": ("yahoo", "1"),
+}
 _SEC_HOSTS = frozenset(("sec.gov", "www.sec.gov"))
 _ALLOWED_HOSTS = _SEC_HOSTS | frozenset(("www.nasdaq.com", "finance.yahoo.com"))
 _SEC_USER_AGENT_FILE_ENV = "CONVEXITY_HUNTER_SEC_USER_AGENT_FILE"
@@ -57,6 +62,7 @@ _SEC_TITLE = "Title of each class"
 _SEC_TICKER = "Trading Symbol(s)"
 _SEC_EXCHANGE = "Name of each exchange on which registered"
 _SEC_ISSUER = re.compile(r"[\x20-\x7e]+\Z")
+_SEC_MARKDOWN_UNSAFE = frozenset("\\`*_{}[]#<>|~")
 _NASDAQ_HEADING = re.compile(
     r"(?P<issuer>[^\r\n]+) Ordinary Shares \((?P<symbol>[^()]*)\)\Z"
 )
@@ -534,11 +540,7 @@ def _revalidate_source_admission(
         )
         initial = _family_target(checked.initial_locator)
         final = _family_target(checked.final_locator)
-        parser_ids = {
-            "sec": "sec-edgar-cover-v1",
-            "nasdaq": "nasdaq-instrument-v1",
-            "yahoo": "yahoo-quote-header-v1",
-        }
+        parser_metadata = _PARSER_METADATA.get(checked.parser_id)
         if (
             initial is None
             or final is None
@@ -547,8 +549,7 @@ def _revalidate_source_admission(
             or checked.source_id != _source_id_for_locator(checked.initial_locator)
             or checked.origin != "https://{}".format(final[1].hostname)
             or checked.content_type != "text/html"
-            or checked.parser_version != _PARSER_VERSION
-            or checked.parser_id != parser_ids[checked.family]
+            or parser_metadata != (checked.family, checked.parser_version)
             or checked.raw_body_bytes > max_raw_bytes
             or len(checked.parsed_body.encode("utf-8")) > max_parsed_bytes
             or any(
@@ -886,6 +887,17 @@ def _issuer_valid(value: str) -> bool:
     return bool(value and _SEC_ISSUER.fullmatch(value) and not any(ch in value for ch in "<>[]{}|`*_#"))
 
 
+def _sec_cover_text_safe(value: str) -> bool:
+    if type(value) is not str or any(not (0x20 <= ord(char) <= 0x7E) for char in value):
+        return False
+    normalized = _ascii_space(value)
+    return bool(
+        normalized
+        and len(normalized) <= 256
+        and not any(char in _SEC_MARKDOWN_UNSAFE for char in normalized)
+    )
+
+
 def _table_cell_span(cell: dict):
     chunks = cell["chunks"]
     if not chunks:
@@ -965,15 +977,20 @@ def _sec_html(source: str) -> Optional[_ParsedPage]:
     table_id, table, rows = candidate_tables[0]
     if len(rows) != 2:
         return None
-    row = tuple(_ascii_space(_cell_text(cell)) for cell in rows[1])
+    raw_row = tuple(_cell_text(cell) for cell in rows[1])
+    row = tuple(_ascii_space(value) for value in raw_row)
     title, symbol, exchange = row
-    if (
-        title != "Ordinary shares, no par value"
-        or not _TICKER.fullmatch(symbol)
-        or symbol != symbol.upper()
-        or exchange != "The Nasdaq Stock Market LLC"
-    ):
+    if not _TICKER.fullmatch(symbol) or symbol != symbol.upper():
         return None
+    if (
+        title == "Ordinary shares, no par value"
+        and exchange == "The Nasdaq Stock Market LLC"
+    ):
+        parser_id = "sec-edgar-cover-v1"
+    else:
+        if not _sec_cover_text_safe(raw_row[0]) or not _sec_cover_text_safe(raw_row[2]):
+            return None
+        parser_id = "sec-edgar-cover-text-v2"
 
     # The source's registrant marker and name remain verbatim parsed text. Only
     # the actual HTML cover-table cells are rendered into the existing narrow
@@ -1031,7 +1048,7 @@ def _sec_html(source: str) -> Optional[_ParsedPage]:
                 )
     if len(anchors) > 2048:
         return None
-    return _ParsedPage(body, "sec-edgar-cover-v1", tuple(anchors), symbol.upper())
+    return _ParsedPage(body, parser_id, tuple(anchors), symbol.upper())
 
 
 def _nasdaq_html(source: str, target_symbol: str) -> Optional[_ParsedPage]:
@@ -1221,7 +1238,11 @@ class _SourceAdmissionClient:
                 failures.append(failure)
                 continue
             admissions.append(result)
-            if target[0] == "sec" and result.parsed_symbol:
+            if (
+                target[0] == "sec"
+                and result.parser_id == "sec-edgar-cover-v1"
+                and result.parsed_symbol
+            ):
                 admitted_symbols.add(result.parsed_symbol)
                 supplements = (
                     "https://www.nasdaq.com/market-activity/stocks/{}".format(result.parsed_symbol.lower()),
@@ -1363,6 +1384,9 @@ class _SourceAdmissionClient:
             if type(now) is not datetime.datetime or now.tzinfo is None or now.utcoffset() is None:
                 raise _AdmissionProblem("TRANSPORT_FAILED")
             family, final_url, _identity = _family_target(final_locator)
+            parser_metadata = _PARSER_METADATA.get(parsed.parser_id)
+            if parser_metadata is None or parser_metadata[0] != family:
+                raise _AdmissionProblem("PARSER_UNSUPPORTED")
             source_id = _source_id_for_locator(initial_locator)
             admission = SourceAdmission(
                 source_id=source_id,
@@ -1375,7 +1399,7 @@ class _SourceAdmissionClient:
                 raw_body_sha256=hashlib.sha256(raw_body).hexdigest(),
                 raw_body_bytes=len(raw_body),
                 parser_id=parsed.parser_id,
-                parser_version=_PARSER_VERSION,
+                parser_version=parser_metadata[1],
                 parsed_body_sha256=hashlib.sha256(parsed.body.encode("utf-8")).hexdigest(),
                 parsed_body=parsed.body,
                 raw_anchors=parsed.anchors,

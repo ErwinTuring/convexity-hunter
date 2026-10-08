@@ -3,6 +3,11 @@
 Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS — OPT-IN ONLY.
 Production helper exists; the normal driver does not enable it automatically.
 
+The user-approved [SEC cover-text parser successor](local-event-delivery-v0.1.md#sec-cover-text-parsing-successor--2026-10-09)
+may admit additional cover rows as source text. That does not expand this
+composite's closed ordinary-share/Nasdaq grammar or establish listing identity.
+In particular, Common Stock / Nasdaq Capital Market remains unsupported here.
+
 The [bounded IREN packet](standalone-iren-identity-packet-2026-10-02.md)
 already passed `READY_FOR_BOUNDED_HOST_KEY` review. This successor automates
 only its source-field correlation, not source acquisition or research claims.

@@ -61,6 +61,46 @@ is still absent; the helper's synthetic validation is not a real Event closure.
 
 ## Existing authority
 
+### SEC cover-text parsing successor — 2026-10-09
+
+User-approved narrow correction; frozen before BUILD, now implemented and
+independently reviewed. SEC body admission
+and listing qualification are distinct. The existing listing composite v0.1
+and EI assessor are not changed by this successor.
+
+- Keep the existing registrant marker, single unambiguous cover table, exact
+  three headers, one data row, uppercase ticker, origin/redirect checks,
+  raw-to-parsed anchors, hash provenance and all byte/time/request limits.
+- Preserve the original literal ordinary-share/Nasdaq path as
+  `sec-edgar-cover-v1` / version `1`. Previously admitted records keep their
+  meaning; do not relabel them.
+- Other cover rows may enter as source text only when their title and exchange
+  cells are nonempty printable ASCII, at most 256 normalized characters each,
+  and safe for the existing
+  Markdown rendering (no markup/control/delimiter injection). No class,
+  currency, venue alias or equity status is inferred. Use the distinct
+  `sec-edgar-cover-text-v2` / version `2` metadata.
+  Reject raw control characters and backslash, backtick, asterisk, underscore,
+  braces, brackets, hash, angle brackets, pipe and tilde in these two cells.
+  Collapse ASCII spaces for the length bound/rendering; ordinary parentheses,
+  dollar signs, ampersands and exclamation marks remain source text, not
+  currency/type authority.
+- The v2 observed ticker is not listing authority and does not authorize
+  automatic Nasdaq/Yahoo supplement requests. An explicitly supplied source
+  locator still follows the unchanged normal origin/parser rules.
+- Validate exact family/parser/version pairs at the trusted admission boundary;
+  reject unknown IDs, crossed versions and non-SEC use of the new parser.
+- The unchanged strict composite must still refuse Common Stock / Nasdaq
+  Capital Market cover rows, even when text admission succeeds and matching
+  supplemental pages are supplied. No new `UnderlyingKey` proof or EI
+  acceptance is implied.
+
+This is an explicit expansion of supported source parsing, not a claim that
+the old implementation violated its contract. Synthetic evidence proves only
+the new supported grammar; the spent HTTP-200 probe retained no raw body and
+cannot prove this successor parses that actual response. No new live batch is
+part of BUILD.
+
 Reuse the [standalone architecture](standalone-mvp-architecture-v0.1.md),
 [context preparation](host-grounder-context-preparation-v0.1.md), existing
 Tavily Basic Search/Extract and DeepSeek transports, catalog v0.5 runtime with

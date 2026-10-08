@@ -1,6 +1,23 @@
 # Project State
 
-2026-10-09 SEC contact configuration is confirmed by a status-only production-loader check. One production-path PLUG GET returned HTTP 200 but admission failed with `PARSER_UNSUPPORTED`; the one-shot marker is spent, no raw/contact retained. HTTP access is proven only for this attempt, not EI acceptance or universal access. The closed ordinary-share/Nasdaq grammar requires a separately reviewed source-parsing/listing-authority boundary correction; no production change or replay occurred. One earlier ambient-contact tool-output incident occurred (value omitted; see checkpoint). UA uses the absolute `CONVEXITY_HUNTER_SEC_USER_AGENT_FILE` path or `~/.config/convexity-hunter/sec-user-agent.txt`, for SEC hosts only.
+2026-10-09 approved SEC text-admission successor is implemented: original v1
+behavior/metadata retained; safe non-v1 cover rows use `sec-edgar-cover-text-v2`
+/ `2` with exact provenance and no automatic identity supplements. Listing
+composite/EI are unchanged; Common Stock / Nasdaq Capital Market remains
+unsupported for listing proof. No external request/replay or live compatibility
+claim. 62 focused tests, independent Popper review/five synthetic tests,
+171 related tests, 1,875 full-regression tests, compileall and documentation/diff
+checks PASS. See [checkpoint](current-checkpoint.md).
+
+Earlier 2026-10-09 probe (before the correction above): SEC contact configuration
+was confirmed by a status-only production-loader check. One production-path
+PLUG GET returned HTTP 200 but admission failed with `PARSER_UNSUPPORTED`;
+the one-shot marker is spent, no raw/contact retained. HTTP access was proven
+only for that attempt, not EI acceptance or universal access. The narrow
+ordinary-share/Nasdaq parser remained unchanged during that probe. One earlier
+ambient-contact tool-output incident occurred (value omitted; see checkpoint).
+UA uses the absolute `CONVEXITY_HUNTER_SEC_USER_AGENT_FILE` path or
+`~/.config/convexity-hunter/sec-user-agent.txt`, for SEC hosts only.
 Completed: 25 focused tests/Hume code review PASS; Main's 142 Host/Event/World/server/store tests, diff check and 180 local-link/fence docs checks PASS. Escalated compileall rerun PASS; no live retry.
 
 2026-10-08 Event: Main's separately authorized observer-corrected run is spent (not a blind replay); wrapper `/private/tmp/ch-event-observer-ayoGqldd/run_event_once.py`.

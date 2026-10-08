@@ -924,6 +924,24 @@ class HostEventGrounderTests(unittest.TestCase):
                 )
                 self.assertEqual(prepared.underlying_bindings, {})
 
+    def test_listing_preparer_rejects_sec_text_v2_common_stock_capital_market(self):
+        _source_ids, _source_order, bodies, _bodies_by_url = _listing_source_material(
+            "listing-sec-text-v2-run", "Z7QX"
+        )
+        sec_text_v2 = bodies["sec"].replace(
+            "Ordinary shares, no par value", "Common Stock"
+        ).replace("The Nasdaq Stock Market LLC", "Nasdaq Capital Market")
+        case = _listing_identity_case(
+            run_id="listing-sec-text-v2-run",
+            symbol="Z7QX",
+            body_overrides={"sec": sec_text_v2},
+        )
+        snapshot, receipt, context, source_ids = case[:4]
+        prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+            snapshot, receipt, context
+        )
+        self.assertEqual(prepared.underlying_bindings, {})
+
     def test_listing_preparer_accepts_ascii_tab_whitespace_but_rejects_other_controls(self):
         valid = _listing_source_material("listing-tab-run", "Z7QX")
         _source_ids, _order, bodies, _by_url = valid

@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -68,6 +69,12 @@ class _ResponseTransport:
 
 def _ok(body, content_type="text/html; charset=UTF-8"):
     return _Reply(200, {"Content-Type": content_type}, body)
+
+
+def _sec_html_with_cover_text(title, exchange):
+    return SEC_HTML.replace(
+        b"Ordinary shares, no par value", title.encode("ascii")
+    ).replace(b"The Nasdaq Stock Market LLC", exchange.encode("ascii"))
 
 
 def _client(transport, *, resolver=None, max_bytes=100_000, byte_budget=500_000):
@@ -287,7 +294,68 @@ class HostSourceAdmissionTests(unittest.TestCase):
         unsupported_common_stock = SEC_HTML.replace(
             b"Ordinary shares, no par value", b"Common Stock"
         )
-        self.assertIsNone(_sec_html(unsupported_common_stock.decode("utf-8")))
+        text_admitted = _sec_html(unsupported_common_stock.decode("utf-8"))
+        self.assertIsNotNone(text_admitted)
+        self.assertEqual(text_admitted.parser_id, "sec-edgar-cover-text-v2")
+        self.assertEqual(text_admitted.symbol, "ACME")
+
+    def test_sec_cover_text_v2_ascii_markdown_safety_and_cell_boundaries(self):
+        maximum = _sec_html_with_cover_text("C" * 256, "E" * 256)
+        parsed = _sec_html(maximum.decode("utf-8"))
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.parser_id, "sec-edgar-cover-text-v2")
+        self.assertEqual(parsed.symbol, "ACME")
+
+        for title, exchange in (
+            ("Common Stock, par value $0.01 per share", "Nasdaq Capital Market"),
+            ("Ordinary Common Stock (class)", "Nasdaq Capital Market!"),
+            ("Common" + (" " * 300) + "Stock", "Nasdaq Capital Market"),
+            ("Class A & B", "Nasdaq Capital Market"),
+        ):
+            with self.subTest(accepted_title=title):
+                candidate = _sec_html_with_cover_text(title, exchange)
+                parsed = _sec_html(candidate.decode("utf-8"))
+                self.assertIsNotNone(parsed)
+                self.assertEqual(parsed.parser_id, "sec-edgar-cover-text-v2")
+
+        rejected = (
+            ("", "Nasdaq Capital Market"),
+            ("Common Stock", ""),
+            (" " * 3, "Nasdaq Capital Market"),
+            ("C" * 257, "Nasdaq Capital Market"),
+            ("Common Stock", "E" * 257),
+            ("Common\tStock", "Nasdaq Capital Market"),
+            ("Common Stock", "Nasdaq\nCapital Market"),
+            ("Common|Stock", "Nasdaq Capital Market"),
+            ("Common Stock", "Nasdaq|Capital Market"),
+            ("Common *Stock*", "Nasdaq Capital Market"),
+            ("Common Stock", "Nasdaq &lt;Capital&gt; Market"),
+        )
+        for title, exchange in rejected:
+            with self.subTest(title=title, exchange=exchange):
+                candidate = _sec_html_with_cover_text(title, exchange)
+                self.assertIsNone(_sec_html(candidate.decode("utf-8")))
+
+    def test_sec_cover_text_v2_keeps_single_visible_cover_row_grammar(self):
+        candidate = _sec_html_with_cover_text("Common Stock", "Nasdaq Capital Market")
+        table_start = candidate.index(b"<table>")
+        table_end = candidate.index(b"</table>", table_start) + len(b"</table>")
+        table = candidate[table_start:table_end]
+        duplicate_table = candidate.replace(table, table + table, 1)
+        multirow = candidate.replace(
+            b"</tr>\n</table>",
+            b"</tr><tr><td>Preferred Stock</td><td>ACME</td>"
+            b"<td>Nasdaq Capital Market</td></tr>\n</table>",
+            1,
+        )
+        hidden_table = candidate.replace(b"<table>", b'<table hidden="false">', 1)
+        for label, malformed in (
+            ("duplicate-table", duplicate_table),
+            ("multirow", multirow),
+            ("hidden-table", hidden_table),
+        ):
+            with self.subTest(shape=label):
+                self.assertIsNone(_sec_html(malformed.decode("utf-8")))
 
     def test_hidden_sec_cover_table_and_event_descendants_are_excluded(self):
         raw = SEC_HTML.decode("utf-8")
@@ -549,6 +617,84 @@ class HostSourceAdmissionTests(unittest.TestCase):
         self.assertEqual(result.response_bytes, len(SEC_HTML) + len(NASDAQ_HTML) + len(YAHOO_HTML))
         self.assertEqual(result.admissions[1].parsed_symbol, "ACME")
         self.assertEqual(result.admissions[2].parsed_symbol, "ACME")
+
+    def test_sec_text_v2_retains_ticker_without_auto_supplements_and_revalidates_exactly(self):
+        raw_body = _sec_html_with_cover_text("Common Stock", "Nasdaq Capital Market")
+        transport = _ResponseTransport(
+            {
+                SEC_LOCATOR: [_ok(raw_body)],
+                NASDAQ_LOCATOR: [_ok(NASDAQ_HTML)],
+                YAHOO_LOCATOR: [_ok(YAHOO_HTML)],
+            }
+        )
+        result = _client(transport).admit_candidates((SEC_LOCATOR,))
+        self.assertEqual(result.request_count, 1)
+        self.assertEqual([call[0] for call in transport.calls], [SEC_LOCATOR])
+        self.assertEqual(len(result.admissions), 1)
+        admitted = result.admissions[0]
+        self.assertEqual(admitted.parser_id, "sec-edgar-cover-text-v2")
+        self.assertEqual(admitted.parser_version, "2")
+        self.assertEqual(admitted.parsed_symbol, "ACME")
+        self.assertEqual(admitted.raw_body_sha256, hashlib.sha256(raw_body).hexdigest())
+        self.assertEqual(admitted.raw_body_bytes, len(raw_body))
+        self.assertIsNotNone(
+            _revalidate_source_admission(
+                admitted, max_raw_bytes=100_000, max_parsed_bytes=100_000
+            )
+        )
+        raw_text = raw_body.decode("utf-8")
+        anchors_by_field = {anchor.field: anchor for anchor in admitted.raw_anchors}
+        for field, expected in (
+            ("sec_cover.value.0", "Common Stock"),
+            ("sec_cover.value.2", "Nasdaq Capital Market"),
+        ):
+            anchor = anchors_by_field[field]
+            excerpt = raw_text[anchor.raw_start:anchor.raw_end]
+            self.assertEqual(excerpt, expected)
+            self.assertEqual(
+                anchor.raw_sha256, hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
+            )
+
+        for spoof in (
+            replace(admitted, parser_id="sec-edgar-cover-v1"),
+            replace(admitted, parser_version="1"),
+            replace(admitted, parser_id="sec-edgar-cover-text-v9"),
+        ):
+            with self.subTest(parser_id=spoof.parser_id, version=spoof.parser_version):
+                self.assertIsNone(
+                    _revalidate_source_admission(
+                        spoof, max_raw_bytes=100_000, max_parsed_bytes=100_000
+                    )
+                )
+
+        nasdaq_transport = _ResponseTransport({NASDAQ_LOCATOR: [_ok(NASDAQ_HTML)]})
+        nasdaq = _client(nasdaq_transport).admit_candidates((NASDAQ_LOCATOR,)).admissions[0]
+        non_sec_v2 = replace(
+            nasdaq, parser_id="sec-edgar-cover-text-v2", parser_version="2"
+        )
+        self.assertIsNone(
+            _revalidate_source_admission(
+                non_sec_v2, max_raw_bytes=100_000, max_parsed_bytes=100_000
+            )
+        )
+
+        explicit_transport = _ResponseTransport(
+            {
+                SEC_LOCATOR: [_ok(raw_body)],
+                NASDAQ_LOCATOR: [_ok(NASDAQ_HTML)],
+                YAHOO_LOCATOR: [_ok(YAHOO_HTML)],
+            }
+        )
+        explicit = _client(explicit_transport).admit_candidates(
+            (SEC_LOCATOR, NASDAQ_LOCATOR, YAHOO_LOCATOR)
+        )
+        self.assertEqual(
+            [call[0] for call in explicit_transport.calls],
+            [SEC_LOCATOR, NASDAQ_LOCATOR, YAHOO_LOCATOR],
+        )
+        self.assertEqual(
+            [item.family for item in explicit.admissions], ["sec", "nasdaq", "yahoo"]
+        )
 
     def test_raw_html_envelope_cap_is_independent_of_parsed_body_cap(self):
         raw_html = SEC_HTML.replace(
