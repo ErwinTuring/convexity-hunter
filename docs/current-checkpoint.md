@@ -145,7 +145,8 @@ absolute `CONVEXITY_HUNTER_SEC_USER_AGENT_FILE` path or
 `~/.config/convexity-hunter/sec-user-agent.txt`, only for `sec.gov` and
 `www.sec.gov` GETs. The file must be owner-only mode 0600; SEC asks scripted
 clients to declare an application/contact User-Agent ([Accessing EDGAR Data](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data)).
-User contact configuration remains unconfirmed. Hume's early diagnostic read
+User confirmed contact configuration; the production loader's status-only
+check returned `config_ready=true` without displaying the value. Hume's early diagnostic read
 ambient contact and exposed its email in child-tool output; the value is
 omitted. No value is retained in Git/a durable report or live request; tests
 now isolate HOME/path to synthetic files.
@@ -158,6 +159,30 @@ fence docs checks PASS. Compileall's sandbox attempt failed only on cache
 permissions; the identical escalated rerun passed. No live retry.
 Budgets, TLS/public-IP/redirect checks, parser, evidence gate, and persistence
 remain unchanged.
+
+### Configured SEC production-path probe — 2026-10-09 (spent)
+
+Main executed `/private/tmp/sec-probe.agMenZ/probe_sec_once.py` once using the
+production admission client/transport and the known PLUG filing linked above.
+The probe had one GET, a ten-second deadline and a 500,000-byte cap; it used
+`_admit_one`, without listing supplements or retries. Its exclusive marker is
+spent. Sanitized result: `config_ready=true`, HTTP 200,
+`admission_success=false`, `PARSER_UNSUPPORTED`, `request_count=1`.
+No raw response/contact was displayed or retained. This demonstrates successful
+HTTP access for this URL on this attempt, not universal SEC access, listing
+verification, EI acceptance or Core completion. It does not establish why the
+earlier request returned 403.
+
+Offline code inspection shows the SEC parser only accepts the literal title
+`Ordinary shares, no par value` and exchange `The Nasdaq Stock Market LLC`,
+besides strict cover-table/registrant checks. The frozen listing composite
+also deliberately restricts those literals. A PLUG Common Stock / Nasdaq
+Capital Market row cannot satisfy that grammar. The actual response was not
+retained, so the precise rejecting branch is unobserved. Do not treat this as
+a proved parser implementation deviation or loosen identity authority silently.
+Next work is a narrowly reviewed separation of source-body parsing from
+listing qualification; do not repeat search/model/quote acquisition to mask
+this boundary. Existing composite/EI gates remain unchanged.
 
 ### Integrated local MVP continuation — 2026-10-07 (code delivered; live blockers retained)
 
