@@ -9,7 +9,52 @@ Repository: `ErwinTuring/convexity-hunter`
   `git fetch origin main`, `git rev-parse HEAD`, and
   `git status --short --branch`; Git is the sole code-state authority.
 
-## Current executable boundary — 2026-10-04
+## Current executable boundary — 2026-10-08
+
+### Local source-network correction — 2026-10-08
+
+The user-approved subscription script now appends only `www.sec.gov`,
+`www.nasdaq.com` and `finance.yahoo.com` to the existing Fake-IP blacklist
+exceptions (90 retained entries, 93 total). All three names resolved only to
+public addresses in an outside-sandbox check. IPv6, DNS IPv6, TUN, port 7890
+and every other effective configuration field remained unchanged; GitHub
+`git ls-remote` succeeded. Originals are privately backed up outside Git.
+No source/model/market request was repeated, and Host public-address admission
+remains unchanged. This removes the observed local DNS blocker, not the nine
+missing EI fields or World source credentials. The spent PLUG attempt below
+remains historical and must not be replayed.
+
+The bounded Core evidence check found no approved bridge mapping for a total
+premium upper bound/cost ledger or declared sensitivity points. Existing
+indicative asks and the approved risk profile do not supply either input.
+The six Direct tests passed; no production code or live call was changed.
+Keep `cost_ledger_missing` and `sensitivity_missing`; neither prevents a
+lawful Event/World attempt from reaching Core and recording its real status.
+
+The spent PLUG archive retains 15 observed facts and no interpretations;
+28 lexical bindings and supported input coverage do not prove complete EI
+semantics. The archive does not establish whether omitted semantic fields
+were absent from producer output or rejected before persistence. No production
+defect was demonstrated and no evidence gate was changed.
+
+A fresh same-budget PLUG wrapper is prepared at
+`/private/tmp/ch-event-mvp-2026-10-08/`, using explicit 2026-10-08 UTC evaluation
+and a date guard; the old config/clue/budgets are unchanged. The worker
+prematurely submitted an execution permission request before Main release;
+the tool reported it aborted. No evidence directory or spent marker was found.
+Do not describe it as an executed experiment or automatically re-request
+the aborted operation. Execution requires a resolved permission boundary and
+the preregistration must still be current.
+
+The fresh World wrapper at `/private/tmp/ch-world-mvp-2026-10-08-UcNMHi/`
+preserves the existing topic, pin, four-source coverage and workload/model
+budgets. Runtime-only explicit `.env` loading projects just AUTH_TOKEN, CT0
+and SCRAPECREATORS_API_KEY into the existing bounded launcher; all three must
+be present before the one-shot is claimed. Synthetic configuration/credential
+handoff checks passed, but no live World attempt occurred. The user is
+configuring X credentials outside Git; wait for confirmation, never expose
+values or replace the intended coverage with HN-only execution. This external
+wrapper is not a new production credential resolver.
 
 ### Integrated local MVP continuation — 2026-10-07 (code delivered; live blockers retained)
 

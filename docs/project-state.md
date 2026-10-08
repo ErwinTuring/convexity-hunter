@@ -1,5 +1,21 @@
 # Project State
 
+2026-10-08: the user-approved local Clash Fake-IP exceptions resolve SEC,
+Nasdaq and Yahoo to public addresses while retaining IPv6/TUN/7890 and all
+other effective settings; GitHub read access still works. This is a local
+operational correction, not new EI acceptance or permission to replay the
+spent Event run. Source admission security and existing economic gates remain
+unchanged. See [current checkpoint](current-checkpoint.md).
+
+Continuation prepared fresh Event/World external one-shot wrappers, without
+new production implementation or a completed live validation. The Event
+worker's premature permission request was aborted before an evidence/spent
+directory appeared; World awaits external X credential configuration.
+Historical PLUG diagnostics establish observed facts but no interpretations,
+not a proven adapter defect. Existing cost/sensitivity inputs remain absent
+and must not be fabricated. Six Direct tests passed; no new full-suite run
+or three-entry operational completion is claimed.
+
 2026-10-07 integrated MVP continuation implements user-approved bounded HTTPS
 source admission before context/catalog/receipt, normal Event/World CLI wiring
 and existing Tavily/last30days World composition. No new Skill/provider/model,
