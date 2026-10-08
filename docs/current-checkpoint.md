@@ -117,6 +117,48 @@ blocker is evidence-supported hypothesis production, not a proven Builder or
 normalization defect. Production remains unchanged; compileall and
 documentation/diff checks passed. This checkpoint authorizes no further call.
 
+### Observer-corrected Event continuation — 2026-10-08 (spent)
+
+Main executed one separately authorized run via
+[`run_event_once.py`](/private/tmp/ch-event-observer-ayoGqldd/run_event_once.py);
+its fresh `/private/tmp/ch-event-observer-ayoGqldd/evidence/spent` marker is
+spent. This corrected-observer run is not a blind replay of the earlier attempt.
+The wrapper-only counter fix received independent review PASS; all six offline
+synthetic tests passed. Production and acceptance gates are unchanged.
+Sanitized result: `FINISHED / Host READY / POST 201 / BLOCKED`; admission
+invocations=1, requests=1, admitted=0, `HTTP_STATUS_UNSUPPORTED`=1, observer
+`READY`. Counts: 5 source bodies, 4 claims, 0 bindings, 0 hypotheses, 1
+coverage; EI `NOT_RUN`; Core counts null/unknown. SQLite reopen and Chinese HTTP
+read passed. The unsupported status does not establish a numeric HTTP code, a
+specific site, or all-source failure. The observer preserved no raw bodies or
+model output. The prior observer defect may have affected old admission
+handling, but whether it triggered or contributed to zero hypotheses is
+unknown; do not retroactively retag that run. No producer fix or EI acceptance
+is demonstrated; MVP completion is not claimed.
+Codex web-read of [the official SEC filing](https://www.sec.gov/Archives/edgar/data/1093691/000110465926082854/tm2620282d1_8k.htm) in historical docs sample 4 states a March 31, 2027 contract outside date; this is not independent product Source Admission.
+A separate outside-sandbox single GET to that URL with UA `ConvexityHunter-SourceAdmission/0.1` returned HTTP 403, without raw persistence: this confirms this machine's denial for that known PLUG URL, not that it was the spent run's failed target or the cause of its API result.
+
+### SEC contact User-Agent configuration — 2026-10-09
+
+The SEC-only request path reads an external one-line contact header via the
+absolute `CONVEXITY_HUNTER_SEC_USER_AGENT_FILE` path or
+`~/.config/convexity-hunter/sec-user-agent.txt`, only for `sec.gov` and
+`www.sec.gov` GETs. The file must be owner-only mode 0600; SEC asks scripted
+clients to declare an application/contact User-Agent ([Accessing EDGAR Data](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data)).
+User contact configuration remains unconfirmed. Hume's early diagnostic read
+ambient contact and exposed its email in child-tool output; the value is
+omitted. No value is retained in Git/a durable report or live request; tests
+now isolate HOME/path to synthetic files.
+Missing config retains the legacy UA, so compliance is not claimed; invalid
+config fails closed as `TRANSPORT_FAILED`. The prior one-URL HTTP 403 probe is
+not the product admission API run; this change is not guaranteed to fix it.
+Completed: 25 focused tests and independent Hume code review PASS; Main's 142
+Host/Event/World/server/store tests, `git diff --check`, and 180 local-link/
+fence docs checks PASS. Compileall's sandbox attempt failed only on cache
+permissions; the identical escalated rerun passed. No live retry.
+Budgets, TLS/public-IP/redirect checks, parser, evidence gate, and persistence
+remain unchanged.
+
 ### Integrated local MVP continuation — 2026-10-07 (code delivered; live blockers retained)
 
 The user has now authorized the bounded HTTPS admission described below,

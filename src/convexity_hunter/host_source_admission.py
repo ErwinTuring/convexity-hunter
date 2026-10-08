@@ -13,14 +13,17 @@ import hashlib
 import html
 import http.client
 import ipaddress
+import os
 import queue
 import re
 import socket
+import stat
 import ssl
 import threading
 import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Callable, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urljoin, urlsplit
 
@@ -30,6 +33,18 @@ MAX_SOURCE_ADMISSION_REDIRECTS = 2
 _PARSER_VERSION = "1"
 _SEC_HOSTS = frozenset(("sec.gov", "www.sec.gov"))
 _ALLOWED_HOSTS = _SEC_HOSTS | frozenset(("www.nasdaq.com", "finance.yahoo.com"))
+_SEC_USER_AGENT_FILE_ENV = "CONVEXITY_HUNTER_SEC_USER_AGENT_FILE"
+_SEC_USER_AGENT_DEFAULT_RELATIVE_PATH = Path(".config") / "convexity-hunter" / "sec-user-agent.txt"
+_SEC_USER_AGENT_LEGACY = "ConvexityHunter-SourceAdmission/0.1"
+_SEC_USER_AGENT_PREFIX = "ConvexityHunter "
+_SEC_CONTACT_EMAIL = re.compile(
+    r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+"
+    r"(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@"
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+    r"[A-Za-z]{2,63}\Z",
+    re.ASCII,
+)
+_SOURCE_ADMISSION_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _TICKER = re.compile(r"[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*\Z")
 _SEC_PATH = re.compile(
     r"/Archives/edgar/data/(?P<cik>[0-9]{1,10})/"
@@ -715,6 +730,96 @@ def _header(headers: Mapping[str, str], name: str) -> Optional[str]:
     return values[0] if len(values) == 1 and type(values[0]) is str else None
 
 
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _sec_user_agent() -> str:
+    """Read an optional private SEC contact header only when a SEC GET is made."""
+    configured_path = os.environ.get(_SEC_USER_AGENT_FILE_ENV)
+    if configured_path is None:
+        path = Path.home() / _SEC_USER_AGENT_DEFAULT_RELATIVE_PATH
+    else:
+        path = Path(configured_path)
+        if not configured_path or not path.is_absolute():
+            raise _AdmissionProblem("TRANSPORT_FAILED")
+
+    try:
+        lexical_path = Path(os.path.abspath(path))
+        if _path_is_within(lexical_path, _SOURCE_ADMISSION_REPOSITORY_ROOT):
+            raise _AdmissionProblem("TRANSPORT_FAILED")
+        resolved_path = path.resolve(strict=True)
+    except FileNotFoundError:
+        return _SEC_USER_AGENT_LEGACY
+    except _AdmissionProblem:
+        raise
+    except Exception:
+        raise _AdmissionProblem("TRANSPORT_FAILED") from None
+    if _path_is_within(resolved_path, _SOURCE_ADMISSION_REPOSITORY_ROOT):
+        raise _AdmissionProblem("TRANSPORT_FAILED")
+
+    descriptor = None
+    try:
+        descriptor = os.open(
+            resolved_path,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0),
+        )
+        metadata = os.fstat(descriptor)
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or getuid is None
+            or metadata.st_uid != getuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
+            raise _AdmissionProblem("TRANSPORT_FAILED")
+        with os.fdopen(descriptor, "rb") as source_file:
+            descriptor = None
+            raw = source_file.read(258)
+    except FileNotFoundError:
+        return _SEC_USER_AGENT_LEGACY
+    except _AdmissionProblem:
+        raise
+    except Exception:
+        raise _AdmissionProblem("TRANSPORT_FAILED") from None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+    if raw.endswith(b"\n"):
+        raw = raw[:-1]
+    if (
+        not raw
+        or len(raw) > 256
+        or any(byte < 0x20 or byte > 0x7E for byte in raw)
+    ):
+        raise _AdmissionProblem("TRANSPORT_FAILED")
+    try:
+        user_agent = raw.decode("ascii")
+    except UnicodeDecodeError:
+        raise _AdmissionProblem("TRANSPORT_FAILED") from None
+    if not user_agent.startswith(_SEC_USER_AGENT_PREFIX):
+        raise _AdmissionProblem("TRANSPORT_FAILED")
+    email = user_agent[len(_SEC_USER_AGENT_PREFIX) :]
+    if (
+        len(email) > 254
+        or not _SEC_CONTACT_EMAIL.fullmatch(email)
+        or len(email.partition("@")[0]) > 64
+        or len(email.partition("@")[2]) > 253
+    ):
+        raise _AdmissionProblem("TRANSPORT_FAILED")
+    return user_agent
+
+
 def _fetch_response(
     locator: str,
     address: str,
@@ -722,6 +827,9 @@ def _fetch_response(
     max_bytes: int,
 ) -> _Reply:
     parsed = urlsplit(locator)
+    user_agent = _SEC_USER_AGENT_LEGACY
+    if parsed.hostname is not None and parsed.hostname.casefold() in _SEC_HOSTS:
+        user_agent = _sec_user_agent()
     connection = _PinnedHTTPSConnection(parsed.hostname, address, timeout)
     watchdog = threading.Timer(timeout, connection.abort)
     watchdog.daemon = True
@@ -732,7 +840,7 @@ def _fetch_response(
             parsed.path,
             headers={
                 "Host": parsed.hostname,
-                "User-Agent": "ConvexityHunter-SourceAdmission/0.1",
+                "User-Agent": user_agent,
                 "Accept": "text/html, text/plain;q=0.9",
                 "Accept-Encoding": "identity",
                 "Connection": "close",

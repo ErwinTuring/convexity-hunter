@@ -2,13 +2,17 @@
 
 import datetime
 import hashlib
+import os
 import socket
 import ssl
+import tempfile
 import threading
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
+from convexity_hunter import host_source_admission as admission
 from convexity_hunter.host_source_admission import (
     MAX_SOURCE_ADMISSION_REDIRECTS,
     MAX_SOURCE_ADMISSION_REQUESTS,
@@ -77,7 +81,186 @@ def _client(transport, *, resolver=None, max_bytes=100_000, byte_budget=500_000)
     )
 
 
+class _NoopTimer:
+    def __init__(self, *_args, **_kwargs):
+        self.daemon = False
+
+    def start(self):
+        pass
+
+    def cancel(self):
+        pass
+
+    def join(self, timeout=None):
+        pass
+
+
+def _capture_user_agent(locator):
+    captured = {}
+
+    class _Response:
+        status = 403
+
+        def getheaders(self):
+            return []
+
+    class _Connection:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def abort(self):
+            pass
+
+        def request(self, _method, _target, headers):
+            captured.update(headers)
+
+        def getresponse(self):
+            return _Response()
+
+        def close(self):
+            pass
+
+    with patch.object(admission, "_PinnedHTTPSConnection", _Connection), patch.object(
+        admission.threading, "Timer", _NoopTimer
+    ):
+        admission._fetch_response(locator, "93.184.216.34", 1.0, 1024)
+    return captured["User-Agent"]
+
+
+def _write_user_agent(path, contents, mode=0o600):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(contents)
+    path.chmod(mode)
+    return path
+
+
+def _production_client():
+    return _SourceAdmissionClient(
+        timeout_seconds=2.5,
+        max_response_bytes=100_000,
+        byte_budget=500_000,
+        _resolver=lambda _host, _port: ("93.184.216.34",),
+        _clock=lambda: NOW,
+    )
+
+
 class HostSourceAdmissionTests(unittest.TestCase):
+    def setUp(self):
+        self._synthetic_home = tempfile.TemporaryDirectory()
+        self.addCleanup(self._synthetic_home.cleanup)
+        home_patch = patch(
+            "pathlib.Path.home", return_value=Path(self._synthetic_home.name)
+        )
+        home_patch.start()
+        self.addCleanup(home_patch.stop)
+        environment_patch = patch.dict(os.environ)
+        environment_patch.start()
+        self.addCleanup(environment_patch.stop)
+        self._synthetic_contact_path = (
+            Path(self._synthetic_home.name) / "missing-sec-user-agent.txt"
+        )
+        os.environ[admission._SEC_USER_AGENT_FILE_ENV] = str(
+            self._synthetic_contact_path
+        )
+        self.assertFalse(self._synthetic_contact_path.exists())
+
+    def test_private_sec_contact_user_agent_is_only_read_for_sec(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = _write_user_agent(
+                Path(directory) / "sec-user-agent.txt",
+                b"ConvexityHunter synthetic@example.test\n",
+            )
+            _write_user_agent(
+                Path(directory) / admission._SEC_USER_AGENT_DEFAULT_RELATIVE_PATH,
+                b"ConvexityHunter default@example.test",
+            )
+            with patch("pathlib.Path.home", return_value=Path(directory)):
+                with patch.dict(
+                    os.environ, {admission._SEC_USER_AGENT_FILE_ENV: str(path)}
+                ):
+                    with patch.object(
+                        admission, "_sec_user_agent", wraps=admission._sec_user_agent
+                    ) as read_contact:
+                        sec = _capture_user_agent(SEC_LOCATOR)
+                        sec_alias = _capture_user_agent(SEC_REDIRECT_LOCATOR)
+                        nasdaq = _capture_user_agent(NASDAQ_LOCATOR)
+                        yahoo = _capture_user_agent(YAHOO_LOCATOR)
+            self.assertEqual(sec, "ConvexityHunter synthetic@example.test")
+            self.assertEqual(sec_alias, "ConvexityHunter synthetic@example.test")
+            self.assertEqual(nasdaq, admission._SEC_USER_AGENT_LEGACY)
+            self.assertEqual(yahoo, admission._SEC_USER_AGENT_LEGACY)
+            self.assertEqual(read_contact.call_count, 2)
+
+    def test_missing_contact_file_keeps_legacy_user_agent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("pathlib.Path.home", return_value=Path(directory)):
+                with patch.dict(os.environ):
+                    os.environ.pop(admission._SEC_USER_AGENT_FILE_ENV, None)
+                    self.assertEqual(
+                        _capture_user_agent(SEC_LOCATOR),
+                        admission._SEC_USER_AGENT_LEGACY,
+                    )
+
+    def _assert_sec_configuration_fails_closed(self, path, secret=None):
+        with tempfile.TemporaryDirectory() as home:
+            with patch("pathlib.Path.home", return_value=Path(home)):
+                with patch.dict(
+                    os.environ, {admission._SEC_USER_AGENT_FILE_ENV: str(path)}
+                ):
+                    with patch.object(admission, "_PinnedHTTPSConnection") as connection:
+                        result = _production_client().admit_candidates((SEC_LOCATOR,))
+        self.assertEqual(connection.call_count, 0)
+        self.assertEqual(result.admissions, ())
+        self.assertEqual(result.failures[0].code, "TRANSPORT_FAILED")
+        if secret is not None:
+            self.assertNotIn(secret, repr(result))
+            self.assertNotIn(secret, str(result))
+
+    def test_crlf_injection_is_rejected_without_echoing_file_text(self):
+        secret = "synthetic-secret-marker"
+        with tempfile.TemporaryDirectory() as directory:
+            path = _write_user_agent(
+                Path(directory) / "sec-user-agent.txt",
+                ("ConvexityHunter synthetic@example.test\r\nX-Injected: " + secret + "\r\n").encode("ascii"),
+            )
+            self._assert_sec_configuration_fails_closed(path, secret=secret)
+
+    def test_invalid_contact_header_is_rejected_without_echoing_file_text(self):
+        secret = "synthetic-secret-marker"
+        with tempfile.TemporaryDirectory() as directory:
+            path = _write_user_agent(
+                Path(directory) / "sec-user-agent.txt",
+                ("ConvexityHunter " + secret).encode("ascii"),
+            )
+            self._assert_sec_configuration_fails_closed(path, secret=secret)
+
+    def test_relative_explicit_contact_path_is_rejected(self):
+        self._assert_sec_configuration_fails_closed(Path("relative-contact-file"))
+
+    def test_repository_target_through_external_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            link = Path(directory) / "sec-user-agent.txt"
+            link.symlink_to(Path(__file__).resolve())
+            self._assert_sec_configuration_fails_closed(link)
+
+    def test_group_or_other_read_permission_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = _write_user_agent(
+                Path(directory) / "sec-user-agent.txt",
+                b"ConvexityHunter synthetic@example.test",
+                mode=0o644,
+            )
+            self._assert_sec_configuration_fails_closed(path)
+
+    def test_private_fifo_contact_file_fails_without_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sec-user-agent.fifo"
+            os.mkfifo(path, 0o600)
+            path.chmod(0o600)
+            started = time.monotonic()
+            self._assert_sec_configuration_fails_closed(path)
+            self.assertLess(time.monotonic() - started, 1.0)
+
     def test_exact_targets_accept_realistic_tickers_paths_and_headings(self):
         self.assertEqual(_family_target(SEC_LOCATOR)[0], "sec")
         self.assertEqual(_family_target(NASDAQ_LOCATOR)[2][0], "ACME")

@@ -1,5 +1,13 @@
 # Project State
 
+2026-10-09 SEC contact configuration is unconfirmed; one ambient-contact tool-output incident occurred (value omitted; see checkpoint). UA uses the absolute `CONVEXITY_HUNTER_SEC_USER_AGENT_FILE` path or `~/.config/convexity-hunter/sec-user-agent.txt`, for SEC hosts only. Compliance and a 403 fix are not claimed.
+Completed: 25 focused tests/Hume code review PASS; Main's 142 Host/Event/World/server/store tests, diff check and 180 local-link/fence docs checks PASS. Escalated compileall rerun PASS; no live retry.
+
+2026-10-08 Event: Main's separately authorized observer-corrected run is spent (not a blind replay); wrapper `/private/tmp/ch-event-observer-ayoGqldd/run_event_once.py`.
+FINISHED/Host READY, POST 201/BLOCKED; admission invocations=1, requests=1, admitted=0, `HTTP_STATUS_UNSUPPORTED`=1 (no numeric code/site inferred).
+5 source bodies, 4 claims, 0 bindings/hypotheses, 1 coverage; EI NOT_RUN, Core counts null/unknown; SQLite reopen and Chinese HTTP read passed.
+Observer-only fix: independent review PASS, six offline tests PASS; production unchanged, old-run causality unknown, no EI/MVP completion. See [checkpoint](current-checkpoint.md).
+
 2026-10-08: the user-approved local Clash Fake-IP exceptions resolve SEC,
 Nasdaq and Yahoo to public addresses while retaining IPv6/TUN/7890 and all
 other effective settings; GitHub read access still works. This is a local
