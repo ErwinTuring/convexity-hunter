@@ -54,6 +54,20 @@ Skill 和 Grounder。配置只包含授权名称，不能包含 cookie/key 的�
 实际消费的 native 来源通过 Core source provenance 保留，失败/未消费状态
 通过 closed reason 保留。此交付不新增 Skill 配置存档 schema。
 
+截至 2026-10-08，Main 已用同一份 reviewed runner 执行一次限额 World run，
+该运行已 spent、不可重放：READY、POST 201、Host BLOCKED；无 submission、
+hypothesis、Core case 或 unavailable case，EI 为 NOT_RUN。原因仅为
+`world_grounder_no_submission` 和 `world_last30days_partial`；
+`skill_stage_count`、`provider_request_counts` 为 null，表示未知而非零。
+配置和凭证就绪不证明 X/Reddit 已认证或覆盖成功；归档未保留 partial 的
+底层来源/阶段原因。SQLite 重启读回与中文 HTTP 文档读取成功，但没有测试
+浏览器交互。
+
+后续 World 接线只在既有 partial 分支增加固定的原生来源诊断：
+`not_ok` 表示原生报告没有明确报告 `ok`，`unknown` 表示没有可用状态。
+它们不是独立核实的鉴权结论。只标记已配置的来源，不显示原始错误文本；
+本次已结束运行的缺失详情不会被补造或重跑。
+
 在仓库根目录运行：
 
 ```bash

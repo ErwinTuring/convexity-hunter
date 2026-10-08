@@ -7,14 +7,30 @@ operational correction, not new EI acceptance or permission to replay the
 spent Event run. Source admission security and existing economic gates remain
 unchanged. See [current checkpoint](current-checkpoint.md).
 
-Continuation prepared fresh Event/World external one-shot wrappers, without
-new production implementation or a completed live validation. The Event
-worker's premature permission request was aborted before an evidence/spent
-directory appeared; World awaits external X credential configuration.
-Historical PLUG diagnostics establish observed facts but no interpretations,
-not a proven adapter defect. Existing cost/sensitivity inputs remain absent
-and must not be fabricated. Six Direct tests passed; no new full-suite run
-or three-entry operational completion is claimed.
+2026-10-08 World: Main executed the identical reviewed runner once after
+canceling the hidden child's pre-marker approval request; the run is spent,
+not replayable. READY/POST 201/BLOCKED; zero submissions/hypotheses/Core cases,
+EI NOT_RUN. Reasons: `world_grounder_no_submission` and
+`world_last30days_partial`; null Skill/provider counts are unknown. The archive
+records no deeper cause, so the partial Skill cause remains unlocated.
+Config/credential readiness does not prove X/Reddit authentication or coverage.
+SQLite restart and Chinese HTTP read passed, not browser interaction. Oct 7
+outcomes below remain historical; see the [current checkpoint](current-checkpoint.md).
+
+The subsequent minimal World diagnostic fix preserves the generic partial
+flag and adds only fixed native outcome/configured-source status notes for
+future runs. Unknown labels and raw error text are never copied into reasons;
+no EI/Core or execution rule changed. Fourteen focused tests passed, including
+Store restart retention. The spent run's missing detail remains unknown.
+Independent targeted review, compileall and local documentation/diff checks
+passed; no live retry or full-suite run belongs to this diagnostic-only fix.
+
+The Event worker's premature permission request was aborted before an
+evidence/spent directory appeared. Historical PLUG diagnostics establish
+observed facts but no interpretations, not a proven adapter defect. Existing
+cost/sensitivity inputs remain absent and must not be fabricated. Six Direct
+tests passed; no new full-suite run or three-entry operational completion is
+claimed.
 
 2026-10-07 integrated MVP continuation implements user-approved bounded HTTPS
 source admission before context/catalog/receipt, normal Event/World CLI wiring

@@ -46,15 +46,39 @@ Do not describe it as an executed experiment or automatically re-request
 the aborted operation. Execution requires a resolved permission boundary and
 the preregistration must still be current.
 
-The fresh World wrapper at `/private/tmp/ch-world-mvp-2026-10-08-UcNMHi/`
-preserves the existing topic, pin, four-source coverage and workload/model
-budgets. Runtime-only explicit `.env` loading projects just AUTH_TOKEN, CT0
-and SCRAPECREATORS_API_KEY into the existing bounded launcher; all three must
-be present before the one-shot is claimed. Synthetic configuration/credential
-handoff checks passed, but no live World attempt occurred. The user is
-configuring X credentials outside Git; wait for confirmation, never expose
-values or replace the intended coverage with HN-only execution. This external
-wrapper is not a new production credential resolver.
+The bounded World wrapper at `/private/tmp/ch-world-mvp-2026-10-08-UcNMHi/`
+preserved the existing topic, pin, four-source allowlist and workload/model
+budgets. Main canceled the hidden child's pre-marker approval request, then
+executed the identical reviewed runner exactly once through the Main-thread
+`require_escalated` approval path (not a claim about what UI was visible). The
+2026-10-08 attempt is **spent**; do not replay.
+Sanitized result: `preparation_status=READY`, `source_credentials_ready=true`,
+POST 201, `run_status=BLOCKED`; zero submissions, hypotheses, Core cases,
+unavailable cases and archived `source_reference_count=0` (not an acquisition
+or request count); EI NOT_RUN. The allowlist is not proof of four-source
+coverage, and readiness does not prove X or Reddit authentication.
+The only reasons were `world_grounder_no_submission` and
+`world_last30days_partial`. `skill_stage_count` and `provider_request_counts`
+were null (unknown, not zero). Safe archive aggregates confirm
+one BLOCKED batch with zero cases/unavailable cases and only the closed
+`HOST_BATCH_BLOCKED` diagnostic plus those reason codes. The current
+`host_world` mapping does not retain the partial Skill source/stage cause, so
+the underlying cause remains unlocated. SQLite creation/restart readback and
+Chinese HTTP document read passed; browser interaction was not tested. This
+record is separate from the historical Oct 7 results below; the wrapper is not
+a new production credential resolver.
+
+Subsequent World wiring now adds bounded, fixed native outcome/source notes
+only where the existing `world_last30days_partial` flag already occurs. Only
+configured allowlisted sources are named; raw state/error text is excluded.
+`not_ok` means the native report did not explicitly state `ok`; `unknown`
+means the report supplied no usable state. Neither independently proves
+authentication failure or coverage. Execution, EI/Core, budgets and storage
+schema remain unchanged. Fourteen focused World tests passed, including
+malicious-label non-disclosure and SQLite save/reopen. This patch did not
+replay or reconstruct the spent run; no new full-suite/live result is claimed.
+Independent targeted review passed (four synthetic tests); compileall and
+documentation/diff checks passed. No new external request followed the fix.
 
 ### Integrated local MVP continuation — 2026-10-07 (code delivered; live blockers retained)
 

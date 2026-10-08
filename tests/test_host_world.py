@@ -139,7 +139,8 @@ def _persist_world_result(raw_input, bounds, result):
     with tempfile.TemporaryDirectory(
         dir=str(canonical_temp_root), prefix="host-world-store-test-"
     ) as temp_dir:
-        store = HostStore(pathlib.Path(temp_dir) / "journal.sqlite3")
+        database_path = pathlib.Path(temp_dir) / "journal.sqlite3"
+        store = HostStore(database_path)
         try:
             run_id = store.create_run(
                 "world",
@@ -149,12 +150,16 @@ def _persist_world_result(raw_input, bounds, result):
                 metadata,
             )
             store.save_batch_result(run_id, result)
-            return store.get_batch_summary(run_id)
         finally:
             store.close()
+        reopened = HostStore(database_path)
+        try:
+            return reopened.get_batch_summary(run_id)
+        finally:
+            reopened.close()
 
 
-def _native_result(topics, *, outcome="ok", source_state="ok"):
+def _native_result(topics, *, outcome="ok", source_state="ok", source_status=None):
     report = {
         "domain": "synthetic",
         "range_from": "2026-09-30",
@@ -162,7 +167,9 @@ def _native_result(topics, *, outcome="ok", source_state="ok"):
         "generated_at": "2026-10-07T00:00:00+00:00",
         "plan": {"domain": "synthetic", "subreddits": [], "sources": ["reddit"]},
         "topics": topics,
-        "source_status": {"reddit": {"state": source_state}},
+        "source_status": source_status
+        if source_status is not None
+        else {"reddit": {"state": source_state}},
         "warnings": [],
         "outcome": outcome,
     }
@@ -416,6 +423,113 @@ class HostWorldTests(unittest.TestCase):
             )
         )
         self.assertNotIn("synthetic hidden failure", repr(result.case_set.reasons))
+
+    def test_native_partial_diagnostics_preserve_generic_reasons(self):
+        self.config = replace(
+            self.config,
+            skill=replace(
+                self.config.skill,
+                source_allowlist=("reddit", "x", "hackernews", "digg"),
+            ),
+        )
+        native = _native_result(
+            [],
+            outcome="incomplete",
+            source_status={
+                "reddit": {"state": "rate-limited"},
+                "x": {},
+                "hackernews": {"state": "ok"},
+                "digg": {"state": "unavailable"},
+            },
+        )
+        result, _captured, _discovery, _semantic = self._run_through_real_core(
+            skill_result=native
+        )
+        reasons = result.case_set.reasons
+        self.assertEqual(result.case_set.status, "COMPLETE")
+        self.assertIn("world_last30days_partial", reasons)
+        self.assertIn("world_last30days_empty", reasons)
+        self.assertIn("world_last30days_native_outcome_not_ok", reasons)
+        self.assertIn("world_last30days_native_source_reddit_not_ok", reasons)
+        self.assertIn("world_last30days_native_source_x_unknown", reasons)
+        self.assertNotIn("world_last30days_native_source_hackernews_unknown", reasons)
+        self.assertNotIn("world_last30days_native_source_hackernews_not_ok", reasons)
+        self.assertIn("world_last30days_native_source_digg_not_ok", reasons)
+        self.assertLess(
+            reasons.index("world_last30days_partial"),
+            reasons.index("world_last30days_native_outcome_not_ok"),
+        )
+        self.assertLess(
+            reasons.index("world_last30days_native_source_reddit_not_ok"),
+            reasons.index("world_last30days_empty"),
+        )
+
+    def test_malicious_native_details_and_unallowlisted_sources_do_not_leak(self):
+        secret_state = "SECRET_RAW_PROVIDER_STATE"
+        secret_source = "SECRET_EXTRA_SOURCE_NAME"
+        secret_url = "https://secret.example/private?q=token"
+        native = _native_result(
+            [_topic("lead", secret_url, rank=1, score=1, angle="x")],
+            outcome="SECRET_RAW_OUTCOME",
+            source_status={
+                "reddit": {"state": secret_state},
+                "x": {"state": "provider-error-detail"},
+                secret_source: {"state": secret_state},
+            },
+        )
+        result, _captured, _discovery, _semantic = self._run_through_real_core(
+            skill_result=native
+        )
+        reasons_repr = repr(result.case_set.reasons)
+        self.assertIn("world_last30days_native_outcome_not_ok", reasons_repr)
+        self.assertIn("world_last30days_native_source_reddit_not_ok", reasons_repr)
+        self.assertNotIn("world_last30days_native_source_x_", reasons_repr)
+        self.assertNotIn("world_last30days_native_source_unknown", reasons_repr)
+        for raw_detail in (
+            secret_state,
+            secret_source,
+            secret_url,
+            "SECRET_RAW_OUTCOME",
+            "provider-error-detail",
+        ):
+            self.assertNotIn(raw_detail, reasons_repr)
+
+        malformed = _native_result(
+            [], outcome="ok", source_status="SECRET_MALFORMED_SOURCE_STATUS"
+        )
+        malformed_result, _captured, _discovery, _semantic = (
+            self._run_through_real_core(skill_result=malformed)
+        )
+        self.assertIn(
+            "world_last30days_native_source_reddit_unknown",
+            malformed_result.case_set.reasons,
+        )
+        self.assertNotIn(
+            "SECRET_MALFORMED_SOURCE_STATUS",
+            repr(malformed_result.case_set.reasons),
+        )
+
+    def test_native_diagnostic_reasons_survive_store_save_reopen(self):
+        native = _native_result(
+            [_topic("lead", "https://lead.example/1", rank=1, score=1, angle="x")],
+            outcome="partial",
+        )
+        native_report = json.loads(native.provider_native.raw_json.decode())
+        del native_report["source_status"]
+        native = replace(
+            native,
+            provider_native=ProviderNativeOutput(
+                json.dumps(native_report, separators=(",", ":")).encode(), None
+            ),
+        )
+        result, _captured, _discovery, _semantic = self._run_through_real_core(
+            skill_result=native
+        )
+        reopened_summary = _persist_world_result(self.raw_input, self.post_bounds, result)
+        self.assertIn("world_last30days_partial", reopened_summary["reasons"])
+        self.assertIn("world_last30days_native_outcome_not_ok", reopened_summary["reasons"])
+        self.assertIn("world_last30days_native_source_reddit_unknown", reopened_summary["reasons"])
+        self.assertEqual(tuple(reopened_summary["reasons"]), result.case_set.reasons)
 
     def test_model_json_rejects_duplicate_keys_and_nonfinite_values(self):
         for text in (

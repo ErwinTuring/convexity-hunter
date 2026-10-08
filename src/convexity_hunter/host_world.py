@@ -52,6 +52,28 @@ _GROUNDER_MODEL_REQUESTS_PER_ROLE = 1
 _WORLD_MODEL_REQUESTS_PER_ROLE = (
     _SKILL_MODEL_REQUESTS_PER_ROLE + _GROUNDER_MODEL_REQUESTS_PER_ROLE
 )
+_NATIVE_SOURCE_DIAGNOSTICS = (
+    (
+        "reddit",
+        "world_last30days_native_source_reddit_not_ok",
+        "world_last30days_native_source_reddit_unknown",
+    ),
+    (
+        "x",
+        "world_last30days_native_source_x_not_ok",
+        "world_last30days_native_source_x_unknown",
+    ),
+    (
+        "hackernews",
+        "world_last30days_native_source_hackernews_not_ok",
+        "world_last30days_native_source_hackernews_unknown",
+    ),
+    (
+        "digg",
+        "world_last30days_native_source_digg_not_ok",
+        "world_last30days_native_source_digg_unknown",
+    ),
+)
 
 
 class WorldExecutor(Protocol):
@@ -335,6 +357,31 @@ def _append_reasons(result: CoreRunResult, reasons: Tuple[str, ...]) -> CoreRunR
     return CoreRunResult(case_set, compact_summary(case_set))
 
 
+def _native_diagnostic_reasons(
+    report: dict, source_allowlist: Tuple[str, ...]
+) -> Tuple[str, ...]:
+    reasons = []
+    if report.get("outcome") != "ok":
+        reasons.append("world_last30days_native_outcome_not_ok")
+
+    source_status = report.get("source_status")
+    for source, not_ok_reason, unknown_reason in _NATIVE_SOURCE_DIAGNOSTICS:
+        if source not in source_allowlist:
+            continue
+        if type(source_status) is not dict:
+            reasons.append(unknown_reason)
+            continue
+        if source not in source_status:
+            reasons.append(unknown_reason)
+            continue
+        status = source_status[source]
+        if type(status) is not dict or type(status.get("state")) is not str:
+            reasons.append(unknown_reason)
+        elif status["state"] != "ok":
+            reasons.append(not_ok_reason)
+    return tuple(reasons)
+
+
 def _empty_batch(raw_request: object) -> SourceSubmissionBatch:
     return SourceSubmissionBatch(raw_request, ())
 
@@ -510,15 +557,26 @@ def create_world_runner(
                 else:
                     report = _native_report(skill_result)
                     leads = _native_leads(report)
-                    if report.get("outcome") != "ok":
+                    outcome_partial = report.get("outcome") != "ok"
+                    if outcome_partial:
                         reasons.append("world_last30days_partial")
                     source_status = report.get("source_status")
-                    if type(source_status) is not dict or any(
+                    source_partial = type(source_status) is not dict or any(
                         type(value) is not dict or value.get("state") != "ok"
                         for value in source_status.values()
-                    ):
+                    )
+                    if source_partial:
                         if "world_last30days_partial" not in reasons:
                             reasons.append("world_last30days_partial")
+                    if (
+                        "world_last30days_partial" in reasons
+                        and (outcome_partial or source_partial)
+                    ):
+                        reasons.extend(
+                            _native_diagnostic_reasons(
+                                report, config.skill.source_allowlist
+                            )
+                        )
                     if not leads:
                         last30days_status = "empty"
                         if "world_last30days_empty" not in reasons:
