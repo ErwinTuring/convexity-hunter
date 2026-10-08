@@ -25,6 +25,10 @@ Store restart retention. The spent run's missing detail remains unknown.
 Independent targeted review, compileall and local documentation/diff checks
 passed; no live retry or full-suite run belongs to this diagnostic-only fix.
 
+The 2026-10-08 World/Event attempts were distinct and spent; both returned POST
+201, Host BLOCKED, EI NOT_RUN. See [current checkpoint](current-checkpoint.md)
+for detailed outcomes, counts, unknowns and Grounder review (`NO_DEFECT_PROVEN`).
+
 The Event worker's premature permission request was aborted before an
 evidence/spent directory appeared. Historical PLUG diagnostics establish
 observed facts but no interpretations, not a proven adapter defect. Existing

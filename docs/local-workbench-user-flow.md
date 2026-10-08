@@ -68,6 +68,10 @@ hypothesis、Core case 或 unavailable case，EI 为 NOT_RUN。原因仅为
 它们不是独立核实的鉴权结论。只标记已配置的来源，不显示原始错误文本；
 本次已结束运行的缺失详情不会被补造或重跑。
 
+2026-10-08 的 World/Event 两次独立尝试均已 spent：POST 201、Host BLOCKED、
+EI NOT_RUN。精确结果与 Grounder review (`NO_DEFECT_PROVEN`) 见
+[当前检查点](current-checkpoint.md)；本页不重复计数。
+
 在仓库根目录运行：
 
 ```bash

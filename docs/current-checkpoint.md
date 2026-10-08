@@ -80,6 +80,43 @@ replay or reconstruct the spent run; no new full-suite/live result is claimed.
 Independent targeted review passed (four synthetic tests); compileall and
 documentation/diff checks passed. No new external request followed the fix.
 
+### Fresh World/Event continuation attempts — 2026-10-08 (both spent)
+
+These are distinct new attempts, not replays of the earlier spent records;
+neither is replayable.
+
+- World `/private/tmp/ch-world-mvp-2026-10-08-diag-rUTtuq`: POST 201, Host
+  BLOCKED with no submission, zero hypotheses and zero Core cases. Exact reason
+  codes: `world_last30days_empty`, `world_grounder_no_submission`. An offline
+  allowlist check recognized all nine diagnostic codes; this is not evidence of
+  live source coverage. The run had no partial result, so no new source
+  diagnostic was emitted. Request/stage counts are unknown, not zero. External
+  credential/runtime readiness is not authentication proof. SQLite reopen and
+  Chinese HTTP document read passed; no UI interaction was tested.
+- Event `/private/tmp/ch-event-mvp-2026-10-08-cont-snLBOW`: POST 201,
+  `BLOCKED / GROUNDING_NO_SUBMISSION`; `source_body_count=5`, `claim_count=12`,
+  `field_binding_count=32`, `coverage_count=1`, `hypothesis_count=0`. Sanitized
+  runner stdout reports admission `invocations=1`, `requests=1`, `admitted=0`,
+  `failure_counts={}`. The SQLite/archive projection omits source-admission
+  counters; it is a separate observer and does not replace stdout. EI/Core were
+  NOT_RUN; their null counts are unknown, not zero. SQLite reopen and Chinese
+  HTTP document read passed.
+
+Grounder review is `NO_DEFECT_PROVEN`. The catalog normalizer expands claims
+and field bindings but leaves hypotheses untouched; strict schema validation
+does not filter them. Therefore, a successful parsed pre-Builder
+`hypothesis_count=0` means the producer emitted zero hypotheses; why remains
+unknown, and raw outputs were not retained. Thirty-eight focused
+Builder/catalog tests passed. The third count observer was cancelled, never
+prepared; its empty temporary directory was removed and no additional call was
+made. The final upstream check found the v0.6 producer prompt includes every
+required hypothesis field and permits an empty array when evidence supports no
+hypothesis; no frozen-contract contradiction was demonstrated. No production
+fix or further identical retry is justified by these results. The remaining
+blocker is evidence-supported hypothesis production, not a proven Builder or
+normalization defect. Production remains unchanged; compileall and
+documentation/diff checks passed. This checkpoint authorizes no further call.
+
 ### Integrated local MVP continuation — 2026-10-07 (code delivered; live blockers retained)
 
 The user has now authorized the bounded HTTPS admission described below,
