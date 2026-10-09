@@ -2,6 +2,78 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Yahoo format-only continuation — 2026-10-10
+
+Status: preregistered allowance executed once; spent. Production, EI, Core,
+source-parser versions and identity rules remain unchanged.
+
+The user requested continuous continuation. Bounded read-only preflight passed;
+Main freezes a separate,
+preregistered one-GET Yahoo format diagnostic: 1,500,000 raw-response bytes,
+10 seconds including DNS, exact `https://finance.yahoo.com/quote/PLUG/`, no
+redirect/retry/decompression/cookies/JavaScript/credentials. This is a new
+non-economic caller budget, chosen before acquisition from the previously
+observed 1,139,125-byte declaration; it is not quote-coverage optimization.
+The standalone aggregate raw budget is also 1,500,000 bytes, not a shared
+Event/Tavily budget increase. All previous 500,000-byte protocols
+and spent markers remain immutable; production configuration stays unchanged.
+
+Only closed format diagnostics and explicitly safe instrument-header grammar
+may be emitted; no prices or raw body persistence. Keep the current parsed
+source/model-context budgets unchanged. A larger HTTP read does not authorize
+a listing, denomination or CIK association, hidden data, clipping or a larger
+model context. The diagnostic registers no model source/context; emitted header
+metadata is bounded to four safe labels of at most 256 characters each.
+Any supported parser successor still needs actual field-shape
+evidence, a separately frozen contract and independent review before BUILD.
+
+### Actual result and next decision
+
+Luna/max implemented only a small private wrapper reusing the prior bounded
+HTTP diagnostic. Main inspected it and executed exactly one GET:
+`/private/tmp/yahoo-format.hzW70u/yahoo_format_probe.py --live`.
+Its exclusive `.py.spent` marker is consumed; old markers were not modified.
+The original four offline classification fixtures plus two synthetic format
+fixtures and compilation passed. No full suite was warranted; no production
+or test file changed.
+
+Actual HTTP 200, identity encoding, declared length 1,106,446 bytes, complete
+response within the new cap. The production visible-text projection had
+17,334 characters / 2,002 lines; the diagnostic found one matching PLUG H1
+and one quote-containing line. Neither the literal v1 header nor the closed
+safe candidate-label diagnostic grammar matched. The production v1 Yahoo
+parser returned no record. No actual quote-label spelling, denomination,
+issuer spelling agreement or supported successor grammar is established by
+those counters. Labeled CIK/ISIN/CUSIP detections were zero in this bounded
+response; this does not establish provider-global absence.
+
+Thus **bounded raw-body readability is proven for this attempt**, but source
+admission/listing identity/EI/Core are not. The normal Host configuration and
+its parsed/model budgets were not changed. The full response, visible text,
+prices, identifiers and credentials were not persisted or printed; there was
+no search/model/SEC/market-data operation, redirect, retry or hidden-data use.
+
+Do not run another format GET simply to fit the observed response to a guessed
+grammar. The more fundamental authority question now precedes more parser
+work: the current bridge requires a demonstrated Nasdaq issuer-CIK
+association, which has not been obtained. More bytes or a Yahoo parser alone
+cannot satisfy it.
+
+**User decision required; proposal only, not frozen:** allow SEC official
+issuer/security reference records to supply the explicit issuer-ID-to-security
+association, while other already-authorized sources independently corroborate
+security class/venue and quote denomination, rather than requiring Nasdaq to
+repeat the CIK. This would change the independent issuer-correlation authority,
+not merely formatting. It needs a separately reviewed exact input/provenance
+contract and actual authoritative association evidence; a SEC filing URL or
+ticker alone remains insufficient. No new provider, lookup inference, fuzzy
+name matching, market claim or EI/Core relaxation is proposed. Existing rules
+stay in force unless the user approves this authority change.
+
+This phase contains private diagnostic implementation, no production coding;
+complete activity timings were not measured, so no 70% work-share claim is
+made. Document validation is proportional to this docs-only work unit.
+
 ## Grounded state
 
 - Branch: `main`

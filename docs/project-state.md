@@ -1,5 +1,15 @@
 # Project State
 
+2026-10-10 latest: one separately frozen Yahoo-only 1,500,000-byte diagnostic
+read a complete 1,106,446-byte HTTP-200 identity response. Visible PLUG H1 was
+detected, but the current parser and closed candidate-label grammar did not
+match. This proves bounded raw readability only; no production cap/parser,
+listing identity or EI/Core state changed. Before further formatting work,
+a user-owned identity-authority decision is proposed: use explicit SEC
+official issuer/security reference association with separate existing-source
+corroboration, rather than mandatory Nasdaq CIK repetition. This is not yet
+approved or implemented. See [the current decision](current-checkpoint.md#actual-result-and-next-decision).
+
 2026-10-10 latest continuation: the approved
 `host-listing-issuer-cik-bridge-v0.1` target passed independent contract review.
 A separate once-per-target diagnostic found no labeled issuer-ID or scoped
