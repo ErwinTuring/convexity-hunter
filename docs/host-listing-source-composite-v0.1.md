@@ -7,6 +7,58 @@ make arbitrary search/model bodies eligible.
 
 ## Approved successor preflight — 2026-10-10
 
+### SEC-primary association correction and source-only BUILD boundary
+
+The user approved replacing the dual SEC/Nasdaq CIK target with
+`host-listing-issuer-sec-reference-v0.1`. The older bridge below is historical,
+superseded target evidence, not a runtime rule. SEC's official
+[association documentation](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data)
+describes CIK/name/ticker/exchange associations and explicitly does not guarantee
+accuracy or scope. Its association is primary issuer-reference evidence only:
+it does not independently prove security class, denomination, current standing,
+or a complete UnderlyingKey. Nasdaq need not repeat CIK. Exact cover identity,
+security class/venue and independent provider denomination remain required;
+no alias, punctuation stripping, ticker-only cross-source inference or EI
+acceptance change is authorized.
+
+Formal read-only preflight plus one bounded live packet established the exact
+SEC endpoint `https://www.sec.gov/files/company_tickers_exchange.json`, media
+type `application/json`, UTF-8, identity encoding, and root field order/schema
+`fields = ["cik", "name", "ticker", "exchange"]`, followed by `data` rows.
+The 523,544-byte response contained 10,435 rows and exactly one PLUG row:
+`[1093691, "PLUG POWER INC", "PLUG", "Nasdaq"]`. This is one retrieved snapshot,
+not a promise of future schema, coverage or standing.
+
+Freeze the narrow source-only parser `sec-issuer-reference-v1` / `1`:
+
+- Only the exact HTTPS endpoint; retain existing DNS/TLS, timeout, redirect,
+  byte-budget, secret handling and Host origin protections. JSON media type is
+  permitted only for this reference parser/path, never for EDGAR HTML parsers.
+- Selection is an explicit nonempty unique tuple of existing canonical uppercase
+  ticker grammar, never supplied from model-created identity authority. One GET
+  yields one source ID and only requested rows enter parsed/model context.
+- Strict root schema/order and four-element row shape; duplicate JSON keys,
+  nonfinite values, ambiguous/missing/duplicate selected tickers or malformed
+  rows fail closed. CIK is an exact non-Boolean positive int below 10^10;
+  issuer/ticker/exchange are safe explicit strings. Preserve integer CIK in the
+  source record. A later composite may compare that integer with an explicitly
+  evidenced filing identifier under its own frozen rule; padding is not source
+  evidence and URL alone is not issuer association proof.
+- Preserve original selected row tokens, full raw response hash/size, parser
+  metadata, selected-row raw byte spans/hashes and parsed spans/hash. Revalidate
+  constructor-bypassed records, exact parsed grammar, role/path/media metadata,
+  ticker selection and selected-row anchor linkage before consumption.
+- Existing filing/HTML admission and composite v0.1 remain unchanged; no
+  automatic reference supplements, v3/v4 listing unlock, new composite proof,
+  budget increase, source fallback or EI/Core identity is part of this increment.
+  A private explicit source-client operation is the only new execution surface.
+
+Source-only BUILD is READY. Full composite BUILD remains blocked: this packet's
+Nasdaq response had no supported instrument heading; Yahoo's visible label was
+`NasdaqCM - Nasdaq Real Time Price  USD`, not a current supported v1 label.
+These observations do not justify a permissive parser or source-global absence
+claim. No further user authority decision is needed for the SEC source increment.
+
 The user authorized a minimal Common Stock / Nasdaq Capital Market successor,
 only with explicit real fields, multiple-source agreement, no fuzzy identity
 inference and no SEC-single-source key. **Composite BUILD is BLOCKED; no v0.2
