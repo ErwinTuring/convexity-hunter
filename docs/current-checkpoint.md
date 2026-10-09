@@ -211,6 +211,79 @@ and four-document fence/187-local-link checks PASS. The full suite emitted the
 existing urllib3/LibreSSL compatibility warning without test failures; no
 environment/package change was made. No live EI/Core closure is claimed.
 
+### SEC v2 consistency continuation — 2026-10-09
+
+Two bounded fixes enforce the already approved v2 rule, without changing
+listing classification or EI acceptance. Host registry authorization now
+requires SEC v1/version 1 before admitting non-candidate Nasdaq/Yahoo
+supplements; v2 cannot authorize an unsolicited supplemental record. Explicit
+candidate locators and the original v1 path retain their existing handling.
+V2 cell safety now distinguishes zero-width HTML layout separators generated
+by the parser from real source-text/entity controls. Only generated LF/LFLF
+separators fold to ASCII spaces; real controls remain rejected, with original
+raw anchors/hashes retained.
+
+Main's 174 related Host/Event/World/config/server/store/admission synthetic
+tests, compileall and diff checks PASS. The last full-suite result remains the
+previous 1,875-test run; this continuation does not repeat or reattribute it.
+No model/search/quote batch was acquired by BUILD.
+
+Independent Hypatia review PASS; three targeted synthetic tests PASS. Main
+released one fresh production GET with the reviewed corrections via
+`/private/tmp/sec-v2-c003838.jPz2OS/probe_sec_once.py`. That marker is spent:
+`config_ready=true`, HTTP 200, `request_count=1`,
+`admission_success=false`, `PARSER_UNSUPPORTED`, parser ID/version null and
+`trusted_admission_validated=false`. No raw body/contact was emitted or
+retained; zero reported anchors/body characters are absent-result fields, not
+proof that the HTTP body was empty. Actual format incompatibility remains
+unlocated; HTTP access alone does not prove an admitted filing, listing
+identity, EI acceptance or Core completion.
+
+One separately approved structural-only diagnostic GET at
+`/private/tmp/sec-v2diag-c003838.ROI2NS/probe_sec_once.py` is also spent:
+HTTP 200, one request, `PARSER_UNSUPPORTED`. Its old-normalization marker and
+cover-table match counts were zero, and no predefined denial phrase matched.
+Those aggregate checks do not establish an empty response or identify its
+format; no raw body was retained. A separate Codex read of the official public
+filing showed NBSP/wrapped headers and two blank physical spacer columns. That
+format reference is not a production transport or Tavily result.
+
+### SEC source-layout v3 continuation — 2026-10-09
+
+The [bounded source-only successor](local-event-delivery-v0.1.md#sec-cover-layout-source-text-v3--2026-10-09)
+has been implemented following its freeze: NBSP layout normalization and only
+proven-empty spacer columns in exact 3/5-cell, single-row cover tables. V1/v2
+metadata and prior accepted records remain unchanged. Raw provenance and
+visible narrative are retained; ambiguity, nonempty spacers and actual controls
+remain unsupported. Known v3 records cannot supply listing proof, even when
+their text resembles v1; no implicit supplements or EI rule changes are added.
+Independent Averroes review found two P2 issues: Unicode header case folding
+exceeded the ASCII-only grammar, and the v3 unsolicited-supplement fixture was
+missing. Both were corrected; delta review PASS with six targeted tests.
+Main's final 177 related synthetic tests, compileall and diff check passed;
+four-document checks passed (190 local links, balanced fences). The private
+one-shot runner passed three offline fixtures. No full suite was repeated;
+the earlier 1,875-test result remains historical.
+
+One new reviewed production-path attempt at
+`/private/tmp/sec-v3-c003838.I59bXF/probe_sec_once.py` is spent: readiness true,
+HTTP 200, one request, `PARSER_UNSUPPORTED`, no admission/parser metadata and
+revalidation false. Zero anchors/body characters are absent-result defaults,
+not evidence of an empty HTTP body. No raw payload/contact was retained or
+displayed, and no search/model/current-quote batch ran. This disproves neither
+the public filing's existence nor the synthetic layout coverage; it does not
+demonstrate real compatibility. Do not replay this marker or loosen the grammar
+to obtain a positive result.
+
+Remaining execution blocker: the production response shape has not been
+identified sufficiently to justify another parsing change. A future bounded
+diagnostic must explicitly identify that shape in memory without storing raw
+payload or contact information; an HTTP status or Codex-rendered page alone is
+insufficient. Listing identity also remains unsupported for the PLUG Common
+Stock / Nasdaq Capital Market combination under the unchanged composite.
+Source-only v3 must not be promoted to listing/EI authority. No EI acceptance,
+Core case or three-entry operational completion follows from this work unit.
+
 ### Integrated local MVP continuation — 2026-10-07 (code delivered; live blockers retained)
 
 The user has now authorized the bounded HTTPS admission described below,

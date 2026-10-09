@@ -436,7 +436,14 @@ def _source_fact_case(
     return ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash), receipt, context
 
 
-def _listing_source_material(run_id, symbol, *, locator_overrides=None, body_overrides=None):
+def _listing_source_material(
+    run_id,
+    symbol,
+    *,
+    locator_overrides=None,
+    body_overrides=None,
+    source_id_overrides=None,
+):
     source_ids = {
         "sec": "{}-trusted-sec".format(run_id),
         "nasdaq": "{}-trusted-nasdaq".format(run_id),
@@ -474,6 +481,8 @@ def _listing_source_material(run_id, symbol, *, locator_overrides=None, body_ove
         locators[role] = locator
     for role, body in (body_overrides or {}).items():
         bodies[role] = body
+    for role, source_id in (source_id_overrides or {}).items():
+        source_ids[role] = source_id
     source_order = tuple(
         (source_ids[role], locators[role]) for role in ("sec", "nasdaq", "yahoo")
     )
@@ -487,6 +496,7 @@ def _listing_identity_case(
     *,
     locator_overrides=None,
     body_overrides=None,
+    source_id_overrides=None,
     verified_hypothesis_ids=None,
     verified_binding_indices=(0,),
     duplicate_entity_binding=False,
@@ -496,6 +506,7 @@ def _listing_identity_case(
         symbol,
         locator_overrides=locator_overrides,
         body_overrides=body_overrides,
+        source_id_overrides=source_id_overrides,
     )
     run_input, context = _context_and_run_input(
         run_id,
@@ -942,6 +953,59 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         self.assertEqual(prepared.underlying_bindings, {})
 
+    def test_listing_preparer_excludes_v3_even_when_its_body_matches_v1(self):
+        raw_html = (
+            "<html><body><p>Example Holdings, Inc.</p>"
+            "<p>(Exact name of registrant as specified in its charter)</p>"
+            "<table><tr><th>Title of each class</th><th></th>"
+            "<th>Trading Symbol(s)</th><th></th>"
+            "<th>Name of each exchange on which registered</th></tr>"
+            "<tr><td>Ordinary shares, no par value</td><td></td>"
+            "<td>Z7QX</td><td></td>"
+            "<td>The Nasdaq Stock Market LLC</td></tr></table></body></html>"
+        ).encode("utf-8")
+        calls = []
+
+        def transport(locator, _address, _timeout, _max_bytes):
+            calls.append(locator)
+            return _Reply(200, {"Content-Type": "text/html; charset=UTF-8"}, raw_html)
+
+        admitted = _SourceAdmissionClient(
+            timeout_seconds=1.0,
+            max_response_bytes=100_000,
+            byte_budget=100_000,
+            _transport=transport,
+            _resolver=lambda _host, _port: ("93.184.216.34",),
+            _clock=lambda: _NOW,
+        ).admit_candidates((_SEC_LOCATOR,))
+        self.assertEqual(calls, [_SEC_LOCATOR])
+        self.assertEqual(admitted.request_count, 1)
+        self.assertEqual(len(admitted.admissions), 1)
+        sec_record = admitted.admissions[0]
+        self.assertEqual(sec_record.parser_id, "sec-edgar-cover-layout-v3")
+        self.assertEqual(sec_record.parsed_body.splitlines()[-1],
+                         "| Ordinary shares, no par value | Z7QX | The Nasdaq Stock Market LLC |")
+
+        case = _listing_identity_case(
+            run_id="listing-sec-layout-v3-run",
+            symbol="Z7QX",
+            locator_overrides={"sec": _SEC_LOCATOR},
+            body_overrides={"sec": sec_record.parsed_body},
+            source_id_overrides={"sec": sec_record.source_id},
+        )
+        snapshot, receipt, context, source_ids = case[:4]
+        legacy_prepared = _make_listing_source_preparer(tuple(source_ids.values()))(
+            snapshot, receipt, context
+        )
+        self.assertIn(
+            ("hypothesis-generated-listing-sec-layout-v3-run", "Z7QX"),
+            legacy_prepared.underlying_bindings,
+        )
+        guarded_prepared = _make_listing_source_preparer(
+            tuple(source_ids.values()), admission_records=(sec_record,)
+        )(snapshot, receipt, context)
+        self.assertEqual(guarded_prepared.underlying_bindings, {})
+
     def test_listing_preparer_accepts_ascii_tab_whitespace_but_rejects_other_controls(self):
         valid = _listing_source_material("listing-tab-run", "Z7QX")
         _source_ids, _order, bodies, _by_url = valid
@@ -1143,6 +1207,167 @@ class HostEventGrounderTests(unittest.TestCase):
                 self.assertEqual(excerpt["sha256"], _digest(excerpt["text"]))
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
+
+    def test_sec_v2_and_v3_supplement_authority_is_candidate_only(self):
+        nasdaq_url = "https://www.nasdaq.com/market-activity/stocks/acme"
+        yahoo_url = "https://finance.yahoo.com/quote/ACME/"
+        sec_html = (
+            b"<!doctype html><html><body>"
+            b"<p>ACME HOLDINGS, INC.</p>"
+            b"<p>(Exact name of registrant as specified in its charter)</p>"
+            b"<p>A synthetic event was reported.</p>"
+            b"<p>On October 3, 2026, ACME HOLDINGS, INC. completed its acquisition of Example Corp.</p>"
+            b"<table><tr><th>Title of each class</th><th>Trading Symbol(s)</th>"
+            b"<th>Name of each exchange on which registered</th></tr>"
+            b"<tr><td>Common Stock</td><td>ACME</td>"
+            b"<td>Nasdaq Capital Market</td></tr></table></body></html>"
+        )
+        nasdaq_html = (
+            b"<!doctype html><html><body>"
+            b"<h1>ACME HOLDINGS, INC. Ordinary Shares (ACME)</h1>"
+            b"</body></html>"
+        )
+        yahoo_html = (
+            b"<!doctype html><html><body><div>NasdaqGS - Delayed Quote&#8226;USD</div>"
+            b"<h1>ACME HOLDINGS, INC. (ACME)</h1></body></html>"
+        )
+        def make_batch(sec_body, candidate_urls=(_SEC_LOCATOR, nasdaq_url, yahoo_url)):
+            replies = {
+                _SEC_LOCATOR: _Reply(200, {"Content-Type": "text/html"}, sec_body),
+                nasdaq_url: _Reply(200, {"Content-Type": "text/html"}, nasdaq_html),
+                yahoo_url: _Reply(200, {"Content-Type": "text/html"}, yahoo_html),
+            }
+
+            class _AdmissionTransport:
+                def __call__(self, locator, _address, _timeout, _max_bytes):
+                    return replies[locator]
+
+            batch_client = _SourceAdmissionClient(
+                timeout_seconds=2.0,
+                max_response_bytes=100_000,
+                byte_budget=500_000,
+                _transport=_AdmissionTransport(),
+                _resolver=lambda _host, _port: ("93.184.216.34",),
+                _clock=lambda: _NOW,
+            )
+            return batch_client.admit_candidates(candidate_urls)
+
+        v2_batch = make_batch(sec_html)
+        self.assertEqual(
+            [record.parser_id for record in v2_batch.admissions],
+            [
+                "sec-edgar-cover-text-v2",
+                "nasdaq-instrument-v1",
+                "yahoo-quote-header-v1",
+            ],
+        )
+        class _PreloadedAdmissionClient:
+            def __init__(self, batch):
+                self.locators = None
+                self.batch = batch
+
+            def admit_candidates(self, locators):
+                self.locators = tuple(locators)
+                return self.batch
+
+        def run_case(run_id, candidate_urls, batch):
+            candidate_ids = {
+                _SEC_LOCATOR: "tavily-sec",
+                nasdaq_url: "tavily-nasdaq",
+                yahoo_url: "tavily-yahoo",
+            }
+            expected_records = tuple(
+                record
+                for record in batch.admissions
+                if record.initial_locator in candidate_urls
+            )
+            candidate_source_order = tuple(
+                (candidate_ids[url], url) for url in candidate_urls
+            )
+            source_order = candidate_source_order + tuple(
+                (record.source_id, record.initial_locator)
+                for record in expected_records
+            )
+            bodies_by_url = {
+                record.initial_locator: record.parsed_body
+                for record in batch.admissions
+            }
+            config = _config(source_order=candidate_source_order)
+            discovery, semantic, _normalized = _model_outputs(
+                run_id,
+                "Assess the reported ACME filing.",
+                source_order,
+                bodies_by_url,
+                config,
+            )
+            source_transport = _SyntheticSourceTransport(
+                search_order=tuple(
+                    (candidate_ids[url], url) for url in candidate_urls
+                ),
+                body_overrides=bodies_by_url,
+            )
+            model_transport = _SyntheticModelTransport(discovery, semantic)
+            admission_client = _PreloadedAdmissionClient(batch)
+            callback = create_event_grounder(
+                config,
+                repo_root=_ROOT,
+                source_transport=source_transport,
+                discovery_transport=model_transport,
+                semantic_transport=model_transport,
+            )
+            with patch(
+                "convexity_hunter.host_event._create_source_admission_client",
+                return_value=admission_client,
+            ):
+                result = callback(
+                    "Assess the reported ACME filing.",
+                    run_id=run_id,
+                    bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+                )
+            registered = set(result.build_result.context.source_bodies)
+            registered_admissions = {
+                record.source_id
+                for record in batch.admissions
+                if record.source_id in registered
+            }
+            expected_admissions = {record.source_id for record in expected_records}
+            self.assertEqual(admission_client.locators, candidate_urls)
+            self.assertEqual(registered_admissions, expected_admissions)
+
+        run_case("sec-v2-unsolicited-supplements", (_SEC_LOCATOR,), v2_batch)
+        run_case("sec-v2-explicit-nasdaq", (_SEC_LOCATOR, nasdaq_url), v2_batch)
+
+        v3_sec_html = (
+            b"<!doctype html><html><body>"
+            b"<p>ACME HOLDINGS, INC.</p>"
+            b"<p>(Exact name of registrant as specified in its charter)</p>"
+            b"<p>A synthetic event was reported.</p>"
+            b"<p>On October 3, 2026, ACME HOLDINGS, INC. completed its acquisition of Example Corp.</p>"
+            b"<table><tr><th>Title of each class</th><th>&nbsp;</th>"
+            b"<th>Trading Symbol(s)</th><th>&nbsp;</th>"
+            b"<th>Name of each exchange on which registered</th></tr>"
+            b"<tr><td>Common Stock</td><td>&nbsp;</td><td>ACME</td>"
+            b"<td>&nbsp;</td><td>Nasdaq Capital Market</td></tr></table></body></html>"
+        )
+        v3_single = make_batch(v3_sec_html, (_SEC_LOCATOR,))
+        self.assertEqual(v3_single.request_count, 1)
+        self.assertEqual(len(v3_single.admissions), 1)
+        self.assertEqual(v3_single.admissions[0].parser_id, "sec-edgar-cover-layout-v3")
+        v3_batch = make_batch(v3_sec_html)
+        self.assertEqual(
+            [record.parser_id for record in v3_batch.admissions],
+            [
+                "sec-edgar-cover-layout-v3",
+                "nasdaq-instrument-v1",
+                "yahoo-quote-header-v1",
+            ],
+        )
+        run_case("sec-v3-unsolicited-supplements", (_SEC_LOCATOR,), v3_batch)
+        run_case(
+            "sec-v3-explicit-nasdaq",
+            (_SEC_LOCATOR, nasdaq_url),
+            v3_batch,
+        )
 
     def test_default_event_path_admits_html_before_models_and_preserves_lineage(self):
         run_id = "default-admission-listing-run"

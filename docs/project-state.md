@@ -1,5 +1,20 @@
 # Project State
 
+2026-10-09 current continuation: source-only SEC layout v3 BUILD and independent
+review are complete; live-format compatibility remains unproven. It handles NBSP and
+proven-empty spacer columns, retains original raw provenance/narrative and
+rejects ambiguous tables. Known v3 admissions are excluded from listing proof;
+listing/EI/Core semantics remain unchanged. The earlier v2 supplement guard and
+generated-layout separator handling are corrected. Main's 177 related synthetic
+tests, compileall, documentation checks (190 local links/fences) and diff check
+pass. Independent review's two findings were fixed and re-reviewed (six targeted
+tests PASS). Three new production GETs returned HTTP 200 but
+`PARSER_UNSUPPORTED` (v2 validation, structural diagnostic, final v3 validation);
+all are spent. No raw response/contact was retained, and the production body
+format remains unidentified. Public-page format reference is not production
+admission evidence. PLUG listing identity and EI/Core remain unproven; no
+search/model/quote batch was replayed. See [checkpoint](current-checkpoint.md).
+
 2026-10-09 approved SEC text-admission successor is implemented: original v1
 behavior/metadata retained; safe non-v1 cover rows use `sec-edgar-cover-text-v2`
 / `2` with exact provenance and no automatic identity supplements. Listing

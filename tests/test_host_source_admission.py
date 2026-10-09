@@ -77,6 +77,51 @@ def _sec_html_with_cover_text(title, exchange):
     ).replace(b"The Nasdaq Stock Market LLC", exchange.encode("ascii"))
 
 
+def _sec_layout_v3_html(
+    width=5,
+    *,
+    header_cells=None,
+    data_rows=None,
+    duplicate_tables=1,
+    issuer="Example&nbsp;Holdings, Inc.",
+    marker="(Exact&nbsp;name of registrant as specified in its charter)",
+):
+    field_indices = (0, 1, 2) if width == 3 else (0, 2, 4) if width >= 5 else (0, 1, 2)
+    if header_cells is None:
+        header_cells = ["&nbsp;" if index not in field_indices else "" for index in range(width)]
+        labels = (
+            "Title&nbsp;of<br>each class",
+            "Trading Symbol(s)",
+            "Name of each exchange on which registered",
+        )
+        for index, label in zip(field_indices, labels):
+            header_cells[index] = label
+    if data_rows is None:
+        values = ["&nbsp;" if index not in field_indices else "" for index in range(width)]
+        for index, value in zip(
+            field_indices,
+            ("Common&nbsp;Stock", "ACME", "The&nbsp;Nasdaq Capital Market"),
+        ):
+            values[index] = value
+        data_rows = (values,)
+
+    def table_markup():
+        header = "<tr>{}</tr>".format(
+            "".join("<th>{}</th>".format(value) for value in header_cells)
+        )
+        rows = "".join(
+            "<tr>{}</tr>".format(
+                "".join("<td>{}</td>".format(value) for value in row)
+            )
+            for row in data_rows
+        )
+        return "<table>{}{}</table>".format(header, rows)
+
+    return (
+        "<html><body><p>{}</p><p>{}</p><p>An event\u00a0was reported.</p>{}</body></html>"
+    ).format(issuer, marker, table_markup() * duplicate_tables).encode("utf-8")
+
+
 def _client(transport, *, resolver=None, max_bytes=100_000, byte_budget=500_000):
     return _SourceAdmissionClient(
         timeout_seconds=2.5,
@@ -334,6 +379,35 @@ class HostSourceAdmissionTests(unittest.TestCase):
         for title, exchange in rejected:
             with self.subTest(title=title, exchange=exchange):
                 candidate = _sec_html_with_cover_text(title, exchange)
+                self.assertIsNone(_sec_html(candidate.decode("utf-8")))
+
+    def test_sec_cover_text_v2_folds_only_parser_generated_paragraph_boundaries(self):
+        candidate = _sec_html_with_cover_text(
+            "<p>Common<br>Stock</p>",
+            "<p>Nasdaq<br>Capital Market</p>",
+        ).replace(b"\n", b"")
+        self.assertFalse(any(byte < 0x20 or byte == 0x7F for byte in candidate))
+        parsed = _sec_html(candidate.decode("utf-8"))
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.parser_id, "sec-edgar-cover-text-v2")
+        self.assertIn(
+            "| Common Stock | ACME | Nasdaq Capital Market |", parsed.body
+        )
+        raw_text = candidate.decode("utf-8")
+        value_anchor = next(
+            anchor for anchor in parsed.anchors if anchor.field == "sec_cover.value.0"
+        )
+        raw_excerpt = raw_text[value_anchor.raw_start:value_anchor.raw_end]
+        self.assertIn("<p>Common<br>Stock", raw_excerpt)
+        self.assertEqual(
+            value_anchor.raw_sha256,
+            hashlib.sha256(raw_excerpt.encode("utf-8")).hexdigest(),
+        )
+
+    def test_sec_cover_text_v2_still_rejects_raw_and_entity_decoded_linefeeds(self):
+        for title in ("Common\nStock", "Common&#10;Stock"):
+            with self.subTest(title=title):
+                candidate = _sec_html_with_cover_text(title, "Nasdaq Capital Market")
                 self.assertIsNone(_sec_html(candidate.decode("utf-8")))
 
     def test_sec_cover_text_v2_keeps_single_visible_cover_row_grammar(self):
@@ -695,6 +769,111 @@ class HostSourceAdmissionTests(unittest.TestCase):
         self.assertEqual(
             [item.family for item in explicit.admissions], ["sec", "nasdaq", "yahoo"]
         )
+
+    def test_sec_layout_v3_normalizes_only_cover_layout_and_keeps_physical_anchors(self):
+        for width in (3, 5):
+            with self.subTest(width=width):
+                raw_body = _sec_layout_v3_html(width)
+                transport = _ResponseTransport({SEC_LOCATOR: [_ok(raw_body)]})
+                result = _client(transport).admit_candidates((SEC_LOCATOR,))
+                self.assertEqual(result.request_count, 1)
+                self.assertEqual([call[0] for call in transport.calls], [SEC_LOCATOR])
+                self.assertEqual(len(result.admissions), 1)
+                admitted = result.admissions[0]
+                self.assertEqual(admitted.parser_id, "sec-edgar-cover-layout-v3")
+                self.assertEqual(admitted.parser_version, "3")
+                self.assertEqual(admitted.parsed_symbol, "ACME")
+                self.assertIn("An event\u00a0was reported.", admitted.parsed_body)
+                self.assertIn("| Common Stock | ACME | The Nasdaq Capital Market |", admitted.parsed_body)
+                self.assertIsNotNone(
+                    _revalidate_source_admission(
+                        admitted, max_raw_bytes=100_000, max_parsed_bytes=100_000
+                    )
+                )
+
+                raw_text = raw_body.decode("utf-8")
+                anchors_by_field = {anchor.field: anchor for anchor in admitted.raw_anchors}
+                for field, raw_excerpt, parsed_excerpt in (
+                    ("sec_cover.header.0", "Title&nbsp;of<br>each class", "Title of each class"),
+                    ("sec_cover.value.0", "Common&nbsp;Stock", "Common Stock"),
+                    ("sec_cover.value.2", "The&nbsp;Nasdaq Capital Market", "The Nasdaq Capital Market"),
+                    ("sec_cover.registrant", "Example&nbsp;Holdings, Inc.", "Example\u00a0Holdings, Inc."),
+                    (
+                        "sec_cover.registrant_marker",
+                        "(Exact&nbsp;name of registrant as specified in its charter)",
+                        "(Exact\u00a0name of registrant as specified in its charter)",
+                    ),
+                ):
+                    anchor = anchors_by_field[field]
+                    self.assertEqual(raw_text[anchor.raw_start:anchor.raw_end], raw_excerpt)
+                    self.assertEqual(
+                        admitted.parsed_body[anchor.parsed_start:anchor.parsed_end],
+                        parsed_excerpt,
+                    )
+                for spoof in (
+                    replace(admitted, parser_version="2"),
+                    replace(admitted, parser_id="sec-edgar-cover-text-v2"),
+                    replace(admitted, parser_id="sec-edgar-cover-layout-v9"),
+                ):
+                    self.assertIsNone(
+                        _revalidate_source_admission(
+                            spoof, max_raw_bytes=100_000, max_parsed_bytes=100_000
+                        )
+                    )
+
+    def test_sec_layout_v3_rejects_unclosed_or_controlled_shapes(self):
+        default_row = [
+            "Common&nbsp;Stock",
+            "",
+            "ACME",
+            "",
+            "The&nbsp;Nasdaq Capital Market",
+        ]
+        nonempty_header_spacer = [
+            "Title&nbsp;of<br>each class",
+            "spacer",
+            "Trading Symbol(s)",
+            "",
+            "Name of each exchange on which registered",
+        ]
+        long_s_header = [
+            "Title&nbsp;of<br>each class",
+            "&nbsp;",
+            "Trading ſymbol(s)",
+            "&nbsp;",
+            "Name of each exchange on which registered",
+        ]
+        nonempty_data_spacer = list(default_row)
+        nonempty_data_spacer[3] = "spacer"
+        cases = (
+            ("width-4", _sec_layout_v3_html(4)),
+            ("width-6", _sec_layout_v3_html(6)),
+            ("nonempty-header-spacer", _sec_layout_v3_html(header_cells=nonempty_header_spacer)),
+            ("long-s-header", _sec_layout_v3_html(header_cells=long_s_header)),
+            ("nonempty-data-spacer", _sec_layout_v3_html(data_rows=(nonempty_data_spacer,))),
+            (
+                "multiple-data-rows",
+                _sec_layout_v3_html(data_rows=(default_row, default_row)),
+            ),
+            ("duplicate-cover-table", _sec_layout_v3_html(duplicate_tables=2)),
+            (
+                "raw-line-feed",
+                _sec_layout_v3_html(data_rows=(["Common\nStock", "", "ACME", "", "Nasdaq"],)),
+            ),
+            (
+                "entity-line-feed",
+                _sec_layout_v3_html(
+                    data_rows=(["Common&#10;Stock", "", "ACME", "", "Nasdaq"],)
+                ),
+            ),
+        )
+        for label, raw_body in cases:
+            with self.subTest(shape=label):
+                self.assertIsNone(
+                    admission._parse_page(
+                        "sec", raw_body.decode("utf-8"), None, "text/html"
+                    )
+                )
 
     def test_raw_html_envelope_cap_is_independent_of_parsed_body_cap(self):
         raw_html = SEC_HTML.replace(

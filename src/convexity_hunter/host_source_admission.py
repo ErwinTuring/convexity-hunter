@@ -33,6 +33,7 @@ MAX_SOURCE_ADMISSION_REDIRECTS = 2
 _PARSER_METADATA = {
     "sec-edgar-cover-v1": ("sec", "1"),
     "sec-edgar-cover-text-v2": ("sec", "2"),
+    "sec-edgar-cover-layout-v3": ("sec", "3"),
     "nasdaq-instrument-v1": ("nasdaq", "1"),
     "yahoo-quote-header-v1": ("yahoo", "1"),
 }
@@ -879,6 +880,13 @@ def _cell_text(cell: dict) -> str:
     return "".join(part[0] for part in cell["chunks"])
 
 
+def _sec_cover_cell_safety_text(cell: dict) -> str:
+    return "".join(
+        " " if raw_start == raw_end and text in ("\n", "\n\n") else text
+        for text, raw_start, raw_end in cell["chunks"]
+    )
+
+
 def _ascii_space(value: str) -> str:
     return re.sub(r"[ \t\r\n\f\v]+", " ", value).strip(" \t\r\n\f\v")
 
@@ -988,7 +996,9 @@ def _sec_html(source: str) -> Optional[_ParsedPage]:
     ):
         parser_id = "sec-edgar-cover-v1"
     else:
-        if not _sec_cover_text_safe(raw_row[0]) or not _sec_cover_text_safe(raw_row[2]):
+        if not _sec_cover_text_safe(_sec_cover_cell_safety_text(rows[1][0])) or not _sec_cover_text_safe(
+            _sec_cover_cell_safety_text(rows[1][2])
+        ):
             return None
         parser_id = "sec-edgar-cover-text-v2"
 
@@ -1049,6 +1059,167 @@ def _sec_html(source: str) -> Optional[_ParsedPage]:
     if len(anchors) > 2048:
         return None
     return _ParsedPage(body, parser_id, tuple(anchors), symbol.upper())
+
+
+def _sec_cover_layout_v3(source: str) -> Optional[_ParsedPage]:
+    """Parse the narrowly supported SEC cover layout with empty spacer cells."""
+    parser = _BoundedHTML(source).result()
+    rendered_all, _ = _render_chunks(source, _visible_chunks(parser))
+    lines = rendered_all.splitlines()
+    normalized_lines = [
+        _ascii_space(line.replace("\u00a0", " ")) for line in lines
+    ]
+    marker_matches = [
+        index for index, line in enumerate(normalized_lines) if line == _SEC_MARKER
+    ]
+    if len(marker_matches) != 1:
+        return None
+    marker_index = marker_matches[0]
+    issuer_index = marker_index - 1
+    while issuer_index >= 0 and not normalized_lines[issuer_index]:
+        issuer_index -= 1
+    if issuer_index < 0 or not _issuer_valid(normalized_lines[issuer_index]):
+        return None
+
+    expected = tuple(value.casefold() for value in (_SEC_TITLE, _SEC_TICKER, _SEC_EXCHANGE))
+    candidates = []
+    for table_id, table in enumerate(parser.tables):
+        rows = table["rows"]
+        if not rows:
+            continue
+        width = len(rows[0])
+        header = tuple(
+            _ascii_space(_sec_cover_cell_safety_text(cell).replace("\u00a0", " "))
+            for cell in rows[0]
+        )
+        projected = tuple(value.lower() if value.isascii() else value for value in header if value)
+        if projected == expected:
+            candidates.append((table_id, table, rows, width, header))
+    if len(candidates) != 1:
+        return None
+    table_id, table, rows, width, header = candidates[0]
+    if width not in (3, 5) or len(rows) != 2 or any(len(row) != width for row in rows):
+        return None
+
+    field_indices = (0, 1, 2) if width == 3 else (0, 2, 4)
+    spacer_indices = () if width == 3 else (1, 3)
+    if tuple(index for index, value in enumerate(header) if value) != field_indices:
+        return None
+    if any(
+        _ascii_space(
+            _sec_cover_cell_safety_text(row[index]).replace("\u00a0", " ")
+        )
+        for row in rows
+        for index in spacer_indices
+    ):
+        return None
+
+    raw_fields = tuple(
+        _sec_cover_cell_safety_text(rows[1][index]).replace("\u00a0", " ")
+        for index in field_indices
+    )
+    if not _sec_cover_text_safe(raw_fields[0]) or not _sec_cover_text_safe(raw_fields[2]):
+        return None
+    row = tuple(_ascii_space(value) for value in raw_fields)
+    title, symbol, exchange = row
+    if not _TICKER.fullmatch(symbol) or symbol != symbol.upper():
+        return None
+
+    visible_body, visible_anchors = _render_chunks(
+        source, _visible_chunks(parser, (table_id,))
+    )
+    visible_lines = visible_body.splitlines()
+    if sum(
+        _ascii_space(line.replace("\u00a0", " ")) == _SEC_MARKER
+        for line in visible_lines
+    ) != 1:
+        return None
+    table_text = "\n".join(
+        (
+            _SEC_HEADER,
+            "| --- | --- | --- |",
+            "| {} | {} | {} |".format(title, symbol, exchange),
+        )
+    )
+    body = visible_body.rstrip("\n") + "\n" + table_text + "\n"
+    anchors = list(visible_anchors)
+    table_start = len(visible_body.rstrip("\n")) + 1
+    for row_index, field_values in (
+        (0, (_SEC_TITLE, _SEC_TICKER, _SEC_EXCHANGE)),
+        (1, row),
+    ):
+        for column, (field, physical_index) in enumerate(zip(field_values, field_indices)):
+            span = _table_cell_span(rows[row_index][physical_index])
+            if span is None:
+                return None
+            if row_index == 0:
+                parsed_start = table_start + _SEC_HEADER.index(field)
+                parsed_end = parsed_start + len(field)
+                anchor_field = "sec_cover.header.{}".format(column)
+            else:
+                table_row_start = table_start + len(_SEC_HEADER) + 1 + len(
+                    "| --- | --- | --- |\n"
+                )
+                parsed_start = table_row_start + 2 + sum(
+                    len(value) + 3 for value in row[:column]
+                )
+                parsed_end = parsed_start + len(field)
+                anchor_field = "sec_cover.value.{}".format(column)
+            anchors.append(
+                _anchor(anchor_field, source, span[0], span[1], parsed_start, parsed_end)
+            )
+
+    visible_lines = visible_body.splitlines()
+    visible_offsets = []
+    visible_offset = 0
+    for rendered_line in visible_body.splitlines(keepends=True):
+        visible_offsets.append(visible_offset)
+        visible_offset += len(rendered_line)
+    visible_normalized_lines = [
+        _ascii_space(line.replace("\u00a0", " ")) for line in visible_lines
+    ]
+    visible_markers = [
+        index
+        for index, line in enumerate(visible_normalized_lines)
+        if line == _SEC_MARKER
+    ]
+    if len(visible_markers) != 1:
+        return None
+    visible_marker_index = visible_markers[0]
+    visible_issuer_index = visible_marker_index - 1
+    while visible_issuer_index >= 0 and not visible_normalized_lines[visible_issuer_index]:
+        visible_issuer_index -= 1
+    if visible_issuer_index < 0:
+        return None
+    for line_index, field in (
+        (visible_issuer_index, "sec_cover.registrant"),
+        (visible_marker_index, "sec_cover.registrant_marker"),
+    ):
+        line = visible_lines[line_index]
+        target = line.strip(" \t")
+        if not target:
+            continue
+        target_start = visible_offsets[line_index] + len(line) - len(line.lstrip(" \t"))
+        target_end = target_start + len(target)
+        matching = [
+            anchor
+            for anchor in visible_anchors
+            if anchor.parsed_start < target_end and anchor.parsed_end > target_start
+        ]
+        if matching:
+            anchors.append(
+                _anchor(
+                    field,
+                    source,
+                    min(anchor.raw_start for anchor in matching),
+                    max(anchor.raw_end for anchor in matching),
+                    target_start,
+                    target_end,
+                )
+            )
+    if len(anchors) > 2048:
+        return None
+    return _ParsedPage(body, "sec-edgar-cover-layout-v3", tuple(anchors), symbol)
 
 
 def _nasdaq_html(source: str, target_symbol: str) -> Optional[_ParsedPage]:
@@ -1155,7 +1326,8 @@ def _parse_page(
         if content_type != "text/html":
             return None
         if family == "sec":
-            return _sec_html(body)
+            parsed = _sec_html(body)
+            return parsed if parsed is not None else _sec_cover_layout_v3(body)
         if family == "nasdaq":
             return None if target_symbol is None else _nasdaq_html(body, target_symbol)
         if family == "yahoo":

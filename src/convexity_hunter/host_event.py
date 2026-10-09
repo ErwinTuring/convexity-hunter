@@ -877,12 +877,20 @@ def _make_listing_source_preparer(
         or any(source_id not in authorized_source_ids for source_id in admission_by_id)
     ):
         raise ValueError("admission records must match the exact authorized source IDs")
+    listing_source_ids = tuple(
+        source_id
+        for source_id in authorized_source_ids
+        if not (
+            source_id in admission_by_id
+            and admission_by_id[source_id].parser_id == "sec-edgar-cover-layout-v3"
+        )
+    )
 
     def prepare_listing_sources(
         snapshot: object, receipt: object, original_context: HostBuildContext
     ) -> HostBuildContext:
         prepared = _retain_unknown_context(snapshot, receipt, original_context)
-        if not authorized_source_ids:
+        if not listing_source_ids:
             return prepared
         validation = _preparation_evidence(snapshot, receipt, original_context)
         if validation is None or type(receipt) is not _RECEIPT_MAPPING_TYPE:
@@ -933,7 +941,7 @@ def _make_listing_source_preparer(
                 continue
             if symbol not in evidence_by_symbol:
                 evidence_by_symbol[symbol] = _listing_evidence_for_symbol(
-                    original_context, authorized_source_ids, symbol
+                    original_context, listing_source_ids, symbol
                 )
             evidence = evidence_by_symbol[symbol]
             if evidence is None:
@@ -1497,7 +1505,12 @@ def create_event_grounder(
                     admitted_ids.add(admission.source_id)
                     admitted_initials.add(admission.initial_locator)
                     registered_bytes += parsed_bytes
-                    if admission.family == "sec" and admission.initial_locator in candidate_set:
+                    if (
+                        admission.family == "sec"
+                        and admission.initial_locator in candidate_set
+                        and admission.parser_id == "sec-edgar-cover-v1"
+                        and admission.parser_version == "1"
+                    ):
                         symbol = admission.parsed_symbol
                         if symbol is not None:
                             authorized_supplements.add(
