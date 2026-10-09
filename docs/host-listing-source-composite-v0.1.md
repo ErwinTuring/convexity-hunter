@@ -1,7 +1,39 @@
 # Host Listing Source Composite v0.1
 
-Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS — OPT-IN ONLY.
-Production helper exists; the normal driver does not enable it automatically.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS.
+The historical helper was opt-in. The current Event Host invokes it only over
+its own admitted source IDs; that wiring does not expand the v0.1 grammar or
+make arbitrary search/model bodies eligible.
+
+## Approved successor preflight — 2026-10-10
+
+The user authorized a minimal Common Stock / Nasdaq Capital Market successor,
+only with explicit real fields, multiple-source agreement, no fuzzy identity
+inference and no SEC-single-source key. **Preflight is BLOCKED; no v0.2 runtime
+or frozen contract exists.** Do not remove the known v3/v4 listing exclusion.
+
+A trusted v4 SEC admission can technically supply exact registrant/marker/cover
+parsed spans and raw-anchor provenance to a separate reviewed composite. A
+proposed closed class grammar is `Common Stock`, optionally followed by
+`, par value $<ASCII decimal> per share`; that dollar sign is not currency
+authority. The official SEC format reference uses `The Nasdaq Capital Market`.
+Nasdaq Common Stock and Yahoo Capital Market/currency admission would need
+separately versioned, actually evidenced formats; current v1 parsers do not
+support those proposed successors. No unverified Yahoo label is frozen here.
+
+The [public Nasdaq page](https://www.nasdaq.com/market-activity/stocks/plug) shows
+`Plug Power, Inc. Common Stock (PLUG)`, whereas the prior
+[official SEC format reference](https://www.sec.gov/Archives/edgar/data/1093691/000110465926082854/tm2620282d1_8k.htm)
+shows `Plug Power Inc.`. Current
+ASCII-case/space comparison does not equate those names. This is a format
+reference, not a complete trusted three-source identity packet. Do not strip
+punctuation or silently invent aliases. A stable-identifier correlation rule
+would be a distinct authority decision requiring explicit provenance; a SEC
+CIK in its URL plus matching ticker strings alone is insufficient.
+
+The two-request production-access result and remaining decision are retained
+in [the current checkpoint](current-checkpoint.md#common-stock-listing-successor-preflight--2026-10-10).
+No production code, EI rule, denomination, MIC or listing-status claim changed.
 
 The user-approved [SEC cover-text parser successor](local-event-delivery-v0.1.md#sec-cover-text-parsing-successor--2026-10-09)
 may admit additional cover rows as source text. That does not expand this

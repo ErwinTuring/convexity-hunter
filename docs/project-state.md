@@ -1,5 +1,14 @@
 # Project State
 
+2026-10-10 latest: the approved Common Stock / Nasdaq Capital Market successor
+is blocked before BUILD. A bounded two-source production check found Nasdaq
+HTTP 200 / `PARSER_UNSUPPORTED` and Yahoo HTTP 200 / `BODY_LIMIT_EXCEEDED`
+(size vs encoding unlocated). Public issuer spellings differ by punctuation;
+case/space-only identity matching cannot bridge that difference. No production
+or EI rule changed. A separately authorized stable-identifier identity rule
+and real association evidence are recommended, not ticker/alias inference.
+See [the bounded checkpoint](current-checkpoint.md#common-stock-listing-successor-preflight--2026-10-10).
+
 2026-10-10 current continuation: SEC semantic-layout v4 is implemented and
 independently reviewed. One final production GET returned HTTP 200, admitted
 `sec-edgar-cover-layout-v4` / `4`, 13,957 parsed characters, 520 raw anchors and

@@ -9,6 +9,49 @@ Repository: `ErwinTuring/convexity-hunter`
   `git fetch origin main`, `git rev-parse HEAD`, and
   `git status --short --branch`; Git is the sole code-state authority.
 
+## Common-stock listing successor preflight — 2026-10-10
+
+Grounded HEAD/main/origin-main were equal at `46c2ee8` and the worktree/index
+were clean before this read-only unit. The user approved only a minimal
+Common Stock / Nasdaq Capital Market multi-source successor, not fuzzy issuer
+matching, new providers or SEC-single-source identity authority.
+
+Read-only preflight found a viable anchored-SEC mechanism but no lawful complete
+PLUG identity packet. Public-format references show `Plug Power Inc.` in SEC
+and `Plug Power, Inc.` on Nasdaq; current case/space-only issuer comparison
+does not erase the comma. Two Nasdaq Codex page reads were format-only. The
+Codex Yahoo read returned 429; it was not a product-path result or Tavily call.
+
+One fresh bounded production access check is spent:
+`/private/tmp/listing-access.wZTBb4/probe_once.py`, at most two GETs, once per
+target, 10 seconds/500,000 bytes each, no redirects/retries or implicit sources.
+Main's offline checks verified the two-call bound, closed output and spent
+guard before execution. Actual results:
+
+- Nasdaq: HTTP 200, one request, no admission, `PARSER_UNSUPPORTED`.
+- Yahoo: HTTP 200, one request, no admission, `BODY_LIMIT_EXCEEDED`.
+
+The latter does not prove the raw page exceeded 500,000 bytes: current transport
+also maps unsupported response encoding to the same rejection. Body shape,
+issuer, currency and precise cause remain unverified. This access check printed or persisted no raw payload, price,
+source excerpt, contact or account value. No SEC
+refetch, search/model, provider quote or Event/World run was performed.
+
+**BLOCKED at source/identity authority, before BUILD.** The narrow successor
+cannot be called ready merely from synthetic heading grammar. Recommend an
+explicit stable-identifier identity rule rather than punctuation/alias
+normalization, only with authoritative association and exact provenance.
+Whether that rule may replace pure name equality is a separate user decision;
+finding the required actual identifiers remains a capability requirement, not
+permission to infer them from matching tickers. Yahoo body access/field shape
+and versioned admission remain independent operational gaps.
+
+Production/tests are unchanged. Only this checkpoint, project state and the
+listing-contract preflight note changed. No full suite is warranted for this
+docs-only result. Active phase timings were not fully measured; no production
+coding occurred, and no 70% implementation-share claim is made. Preserve all
+old protocols and v0.1/v3/v4 authority boundaries while the decision is pending.
+
 ## Current executable boundary — 2026-10-08
 
 ### Local source-network correction — 2026-10-08
