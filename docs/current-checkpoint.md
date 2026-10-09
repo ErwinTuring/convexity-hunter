@@ -11,6 +11,59 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Common-stock listing successor preflight — 2026-10-10
 
+### Stable-identifier permission and bounded capability check
+
+The user has approved the proposed stable-identifier authority boundary.
+Read-only preflight and independent contract review (three wording/version
+findings corrected; targeted re-review PASS) froze
+[`host-listing-issuer-cik-bridge-v0.1`](host-listing-source-composite-v0.1.md#approved-stable-identifier-boundary--2026-10-10).
+SEC/Nasdaq must explicitly associate their issuers with the same CIK;
+Nasdaq/Yahoo still use the existing strict issuer comparison. CIK is not
+security class, venue, denomination, option-deliverable or standing authority.
+This resolves the permission question, not the source-capability blocker.
+
+One separate two-target diagnostic was preregistered and spent, not a replay
+of the old access check. The isolated script is
+`/private/tmp/source-format-diagnostic.TZVJkH/source_format_diagnostic.py`;
+its exclusive `.py.spent` marker prevents another live execution. Four focused
+offline response-classification fixtures passed, then Main executed one GET
+per target after inspecting the script. The worker did not execute live GETs.
+Limits stayed 10 seconds/500,000 bytes per target, pinned public DNS/TLS,
+identity encoding, no redirect/retry/credentials/cookies/JavaScript. No SEC,
+search/model, quote or Event/World operation was executed by this diagnostic.
+
+| Target | Actual result | Bounded interpretation |
+| --- | --- | --- |
+| Nasdaq PLUG `/sec-filings` | HTTP 200; identity encoding; complete body below read cap; content length header unknown | Visible-text diagnostic detected 0 labeled CIK/ISIN/CUSIP candidates and 0 instrument-scoped SEC archive link candidates. No issuer-ID association was proven. |
+| Yahoo PLUG quote | HTTP 200; identity encoding; declared content length 1,139,125 | Declared size exceeds 500,000; body was not read or parsed. Actual issuer/currency/ID field shape remains unknown. |
+
+The identifier/link counters are narrow diagnostic detections, not universal
+claims of provider absence or a trusted admission. Codex public-page checks
+also showed empty Nasdaq filing rows and inaccessible Yahoo pages; the Yahoo
+search-result filing URL was only a locator lead, not association proof.
+Public-page tool results are not production-admission results.
+
+No raw payload/excerpt, identifier value, price, private contact or account
+data was printed or retained by the live diagnostic. It does not retrospectively
+resolve whether the earlier Yahoo response failed from size or encoding;
+it precisely establishes declared oversize for this new response only.
+
+**Identity-rule target FROZEN; composite/source-parser BUILD BLOCKED.** There
+is no supported, demonstrated Nasdaq CIK association grammar, and the Yahoo
+response cannot enter the current bounded transport. Do not increase caps,
+decode new formats, invent hidden-field authority or use ticker equality to
+force a result. Any transport/parser successor would need its own evidence
+and bounded contract; it would not solve the absent demonstrated CIK bridge
+by itself. No further identity-rule approval is pending.
+
+Production/tests/EI/Core are unchanged. Three documentation files changed;
+document-link/fence/diff validation is proportional, not a full-suite claim.
+This phase added an external diagnostic script but zero production code;
+full activity timing was not measured and no 70% implementation-share claim
+is made. Existing spent runs and historical outcomes remain unchanged.
+
+### Prior preflight (before the stable-identifier permission)
+
 Grounded HEAD/main/origin-main were equal at `46c2ee8` and the worktree/index
 were clean before this read-only unit. The user approved only a minimal
 Common Stock / Nasdaq Capital Market multi-source successor, not fuzzy issuer

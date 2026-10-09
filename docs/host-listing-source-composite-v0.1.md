@@ -9,8 +9,10 @@ make arbitrary search/model bodies eligible.
 
 The user authorized a minimal Common Stock / Nasdaq Capital Market successor,
 only with explicit real fields, multiple-source agreement, no fuzzy identity
-inference and no SEC-single-source key. **Preflight is BLOCKED; no v0.2 runtime
-or frozen contract exists.** Do not remove the known v3/v4 listing exclusion.
+inference and no SEC-single-source key. **Composite BUILD is BLOCKED; no v0.2
+runtime or frozen source-parser/composite contract exists.** The separately
+approved identity-rule target is frozen below. Do not remove the known v3/v4
+listing exclusion.
 
 A trusted v4 SEC admission can technically supply exact registrant/marker/cover
 parsed spans and raw-anchor provenance to a separate reviewed composite. A
@@ -34,6 +36,61 @@ CIK in its URL plus matching ticker strings alone is insufficient.
 The two-request production-access result and remaining decision are retained
 in [the current checkpoint](current-checkpoint.md#common-stock-listing-successor-preflight--2026-10-10).
 No production code, EI rule, denomination, MIC or listing-status claim changed.
+
+## Approved stable-identifier boundary — 2026-10-10
+
+The user has now authorized a minimal, versioned stable-identifier association
+rule. Its target rule identifier is `host-listing-issuer-cik-bridge-v0.1`.
+Read-only Tier-A preflight supports the following fixed three-role
+successor boundary. **This is a frozen identity-rule target, not an implemented
+v0.2 composite or a frozen source-parser grammar. BUILD remains blocked until
+actual supported source fields and transport are demonstrated.** V0.1 runtime
+and historical results retain their existing meaning.
+
+- Keep exactly one eligible SEC, Nasdaq and Yahoo role. No general identity
+  graph, extra provider, lookup table, model-supplied ID or new EI contract.
+- For the SEC/Nasdaq issuer bridge, require the same explicitly labeled
+  issuer CIK in both trusted retained records. The supported identifier is
+  a nonzero, exact ten-ASCII-digit `SEC_CIK` string; compare literally, not via
+  numeric coercion, inferred zero-padding or Unicode normalization. A filing
+  locator may validate an explicit SEC header CIK under the existing exact
+  locator rules, but the locator alone does not supply the association.
+- SEC evidence must associate the explicit registrant and CIK with the actual
+  filing and its independently qualified cover row. Nasdaq evidence must
+  explicitly associate its instrument issuer with that same CIK. An isolated
+  number, generic SEC link, ticker path, page title, search snippet or hidden
+  script value is insufficient. A raw link is not an association simply
+  because its URL contains a CIK; do not manufacture visible evidence from it.
+- Nasdaq and Yahoo must still agree on issuer under existing ASCII case/space
+  comparison. Punctuation remains significant. Yahoo need not expose a CIK;
+  no ticker-only edge or transitive arbitrary-source association is permitted.
+- CIK establishes only issuer correlation. Independently require exact ticker,
+  eligible Common Stock class, explicit supported SEC exchange and Yahoo
+  denomination. Multiple classes/rows, duplicate eligible roles, conflicting
+  issuers within a single source's association, unequal CIKs or missing association proof fail
+  closed. An explicit successor contradiction cannot be hidden by falling back
+  to its name-only branch. Do not reinterpret old v0.1 records.
+  SEC/Nasdaq spelling differences are intentionally bridgeable by the complete
+  CIK proof; they are not a name conflict by themselves. Nasdaq/Yahoo spelling
+  disagreement still fails the required existing name comparison.
+- Every consumed association/field must retain the Host-authorized source ID,
+  locator, full parsed hash, exact unchanged parsed span/hash and validated
+  raw-to-parsed anchors under an explicitly supported parser ID/version.
+  A future `host-listing-source-composite-v0.2` proof must name this exact
+  issuer-bridge rule and its consumed evidence; that composite's remaining
+  source grammar is not frozen here. Version source admission separately. Reuse existing
+  fill-only binding, verified hypothesis/entity receipt and context-identity
+  guards. No source/model acquisition is performed by the composite itself.
+- The output remains the existing `UnderlyingKey` with MIC unknown and explicit
+  provider-reported currency basis. This proves no current standing, price,
+  option deliverable, freshness, session, NBBO or executability.
+
+Required future adversarial checks: positive explicit bridge with different
+SEC/Nasdaq punctuation; rejected missing/wrong/duplicate CIK; issuer-vs-security
+confusion; detached/footer/hidden/link-only IDs; ticker/class/venue/currency
+conflicts; stale or mismatched anchors/metadata; Yahoo name disagreement;
+fill-only identity and unchanged v0.1 results. Synthetic checks alone cannot
+prove that the real sources expose the required association.
 
 The user-approved [SEC cover-text parser successor](local-event-delivery-v0.1.md#sec-cover-text-parsing-successor--2026-10-09)
 may admit additional cover rows as source text. That does not expand this

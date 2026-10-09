@@ -1,12 +1,24 @@
 # Project State
 
-2026-10-10 latest: the approved Common Stock / Nasdaq Capital Market successor
+2026-10-10 latest continuation: the approved
+`host-listing-issuer-cik-bridge-v0.1` target passed independent contract review.
+A separate once-per-target diagnostic found no labeled issuer-ID or scoped
+SEC-link candidates in the complete Nasdaq PLUG filing response; Yahoo
+declared 1,139,125 bytes with identity encoding, over the unchanged 500,000-byte
+cap, so its body was not read. This is bounded capability evidence, not a
+provider-global absence claim or listing proof. Composite/source-parser BUILD
+remains blocked; production/EI/Core are unchanged. No further identity-rule
+approval is pending. See [the current result](current-checkpoint.md#stable-identifier-permission-and-bounded-capability-check).
+
+2026-10-10 preceding preflight: the approved Common Stock / Nasdaq Capital Market successor
 is blocked before BUILD. A bounded two-source production check found Nasdaq
 HTTP 200 / `PARSER_UNSUPPORTED` and Yahoo HTTP 200 / `BODY_LIMIT_EXCEEDED`
 (size vs encoding unlocated). Public issuer spellings differ by punctuation;
 case/space-only identity matching cannot bridge that difference. No production
-or EI rule changed. A separately authorized stable-identifier identity rule
-and real association evidence are recommended, not ticker/alias inference.
+or EI rule changed. The user has now authorized the bounded stable-identifier
+rule; `host-listing-issuer-cik-bridge-v0.1` is frozen as an identity-rule target,
+not an implemented composite. Actual association evidence and supported source
+grammar remain required; ticker/alias inference is still prohibited.
 See [the bounded checkpoint](current-checkpoint.md#common-stock-listing-successor-preflight--2026-10-10).
 
 2026-10-10 current continuation: SEC semantic-layout v4 is implemented and
