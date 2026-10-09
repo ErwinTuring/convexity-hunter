@@ -163,6 +163,47 @@ Tavily Basic Search/Extract and DeepSeek transports, catalog v0.5 runtime with
 v0.7 verifier, and the existing Event/Core application. No source summary is a
 verified body; a semantic receipt is not EI acceptance.
 
+### SEC semantic-layout source-text v4 — 2026-10-10
+
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS. One production GET
+parsed and revalidated as v4 on 2026-10-10. Source-only, not an extension of
+listing or Event Intelligence authority; see the sanitized checkpoint below.
+
+The separately approved production-format diagnosis is recorded in the
+[checkpoint](current-checkpoint.md#sec-production-format-diagnosis--2026-10-10).
+It identifies physical-line/cover-control blockers, but does not establish
+that all other admission conditions will pass. Do not change the old v3 policy
+or claim real compatibility from those aggregates.
+
+- Keep v1/v2/v3 behavior and metadata unchanged. A subsequent fallback may
+  emit exactly `sec-edgar-cover-layout-v4` / `4`, SEC only.
+- In v4 cover/registrant/marker comparison only, fold HT, LF and CR to ASCII
+  space, retaining the existing NBSP-to-space rule. Reject FF, VT and all
+  other controls; do not call a generic Unicode whitespace or case-folding
+  operation. Header comparison remains ASCII-only. Preserve unmodified visible
+  narrative, exact raw offsets/hashes and consumed-field anchors.
+- Identify the marker from visible HTML block/paragraph segments, not physical
+  pretty-print lines. One complete normalized segment must equal the literal
+  marker. Require exactly one such marker and its preceding distinct nonempty
+  issuer segment, passing the existing explicit issuer checks. A substring,
+  hidden marker, missing issuer or ambiguous segment is insufficient. Use a
+  narrow source-local segment collector, not a generic HTML/rendering framework.
+- Preserve the unique cover-table grammar: exactly one header and one data row,
+  equal physical widths of 3 or 5; only columns 2/4 in five-cell rows may be
+  removed, and both rows must prove them empty under the declared v4 fold.
+  Keep field-length/Markdown/ticker controls and reject competing tables,
+  nonempty spacers and different shapes.
+- V4 cannot authorize implicit supplements or listing proof. Exclude known v4
+  admission IDs from the listing preparer just like v3. Do not add an asset
+  type, denomination, venue, listing status, alias or EI acceptance rule.
+- Tests must cover literal/entity HT/LF/CR, unchanged narrative and original
+  field hashes/spans, v3 historical rejection, unsafe controls, hidden/duplicate/
+  substring markers, invalid or absent issuer, ambiguous tables and metadata,
+  plus Host supplement/listing exclusion.
+
+A successful v4 parse is only source-text admission. A fresh bounded live
+validation is required for actual compatibility; failure must remain failure.
+
 ## Trusted Host connection
 
 An additive, explicitly configured Event Grounder receives the original input,

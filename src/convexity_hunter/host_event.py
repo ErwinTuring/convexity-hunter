@@ -882,7 +882,8 @@ def _make_listing_source_preparer(
         for source_id in authorized_source_ids
         if not (
             source_id in admission_by_id
-            and admission_by_id[source_id].parser_id == "sec-edgar-cover-layout-v3"
+            and admission_by_id[source_id].parser_id
+            in ("sec-edgar-cover-layout-v3", "sec-edgar-cover-layout-v4")
         )
     )
 

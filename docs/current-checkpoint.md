@@ -284,6 +284,70 @@ Stock / Nasdaq Capital Market combination under the unchanged composite.
 Source-only v3 must not be promoted to listing/EI authority. No EI acceptance,
 Core case or three-entry operational completion follows from this work unit.
 
+### SEC production-format diagnosis — 2026-10-10
+
+A fresh separately approved one-fetch diagnosis at
+`/private/tmp/sec-format-diagnosis.Cdtk37/diagnose_sec_once.py` is spent.
+Its five synthetic fixture groups passed before execution. Main removed an
+experimental legacy-UA override before execution, retaining the actual
+production transport/contact resolution; no production code changed.
+HTTP 200, one GET, `PARSER_UNSUPPORTED`; no admitted record.
+In-memory fixed aggregates: 40,336 decoded characters, 13,993 visible characters,
+six tables/21 rows; one exact normalized cover header, in the first row of a
+five-cell table. The normalized registrant marker occurs once across the
+visible text, but zero times as a complete physical line. Cover data contains
+actual text controls. The Form 8-K/title-field signals are present and neither
+predefined SEC denial phrase matched. These findings identify layout/line
+recognition blockers; they are not proof of every source fact or the absence of
+all possible denial mechanisms. The false issuer-predecessor result follows
+from the missing exact marker line, not proof that the issuer is absent.
+No raw response, contact, source excerpts or account information was persisted
+or displayed. No model/search/quote batch ran, and listing/EI/Core rules remain
+unchanged. A versioned source-layout successor requires a bounded preflight;
+do not silently change the historically meaningful v3 control policy.
+
+### SEC source-layout v4 release — 2026-10-10
+
+The frozen [source-only v4](local-event-delivery-v0.1.md#sec-semantic-layout-source-text-v4--2026-10-10)
+is implemented. It retains old parser behavior and adds only declared
+HT/LF/CR/NBSP cover-field folding plus complete visible semantic marker/issuer
+segments. Unsafe controls, substrings, hidden-inline isolation, competing tables
+and missing issuer remain unsupported. Known v4 admissions cannot authorize
+listing proof or implicit supplements. The narrow shared cover renderer does
+not change v3 output/provenance.
+
+Independent Godel review PASS: nine focused tests; differential v3 outputs and
+anchors identical to HEAD across eleven valid/invalid cases, with v1/v2 results
+also unchanged. Main's 179 related tests, compileall and diff check passed;
+four-document checks passed (194 local links and balanced code fences);
+four private one-shot runner fixtures passed. No full suite was repeated.
+
+Main released exactly one final production validation via
+`/private/tmp/sec-v4-validation.4uJubo/probe_sec_once.py`: HTTP 200,
+`request_count=1`, `admission_success=true`, `sec-edgar-cover-layout-v4` / `4`,
+13,957 parsed characters, 520 raw anchors and source-record revalidation true.
+The marker is spent. No raw response/contact, account information or source
+excerpts were retained or displayed. This establishes compatibility only for
+that actual source response, not general SEC access or verified event facts.
+No new search, model, current-option quote or full Event/World run occurred.
+
+The production source-layout blocker is closed. The next independent boundary
+is listing identity: the current approved composite supports only its closed
+ordinary-share/Nasdaq grammar, excludes known source-only v3/v4 records and
+does not support PLUG Common Stock / Nasdaq Capital Market. Extending that
+authority requires a separately approved bounded successor; do not remove the
+exclusion or infer denomination/class from a source-only parse to force EI.
+
+Work accounting: Builder reported about 560 active seconds for editing/self-
+inspection and 0.255 seconds for focused test commands; read-only preflight
+reported about 91 seconds and independent review 274 seconds. Diagnostic/Main
+active work was not fully timed; approval/wait time is excluded. Even assigning
+all 560 seconds to implementation gives only about a 60% upper bound within
+those measured buckets, below the 70% target; do not claim a compliant overall
+split. No diagnostic script or checkpoint writing is counted as production
+implementation. This bounded unit closes a demonstrated blocker rather than
+manufacturing economic evidence or starting another research campaign.
+
 ### Integrated local MVP continuation — 2026-10-07 (code delivered; live blockers retained)
 
 The user has now authorized the bounded HTTPS admission described below,

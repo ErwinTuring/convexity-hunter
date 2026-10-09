@@ -34,6 +34,7 @@ _PARSER_METADATA = {
     "sec-edgar-cover-v1": ("sec", "1"),
     "sec-edgar-cover-text-v2": ("sec", "2"),
     "sec-edgar-cover-layout-v3": ("sec", "3"),
+    "sec-edgar-cover-layout-v4": ("sec", "4"),
     "nasdaq-instrument-v1": ("nasdaq", "1"),
     "yahoo-quote-header-v1": ("yahoo", "1"),
 }
@@ -906,11 +907,126 @@ def _sec_cover_text_safe(value: str) -> bool:
     )
 
 
+def _sec_cover_layout_v4_fold(value: str) -> Optional[str]:
+    """Fold only declared SEC v4 cover whitespace; preserve all other controls as rejection."""
+    if type(value) is not str:
+        return None
+    value = value.replace("\u00a0", " ")
+    if any(
+        (ord(char) < 0x20 and char not in "\t\r\n")
+        or 0x7F <= ord(char) <= 0x9F
+        for char in value
+    ):
+        return None
+    return re.sub(r"[ \t\r\n]+", " ", value).strip(" ")
+
+
+def _sec_cover_layout_v3_fold(value: str) -> str:
+    return _ascii_space(value.replace("\u00a0", " "))
+
+
+def _sec_cover_layout_table(parser, fold, *, safe_before_fold):
+    """Apply the shared, narrow v3/v4 SEC cover-table grammar."""
+    expected = tuple(value.casefold() for value in (_SEC_TITLE, _SEC_TICKER, _SEC_EXCHANGE))
+    candidates = []
+    for table_id, table in enumerate(parser.tables):
+        rows = table["rows"]
+        if not rows:
+            continue
+        width = len(rows[0])
+        header = tuple(
+            fold(_sec_cover_cell_safety_text(cell).replace("\u00a0", " "))
+            for cell in rows[0]
+        )
+        if any(value is None for value in header):
+            continue
+        projected = tuple(value.lower() if value.isascii() else value for value in header if value)
+        if projected == expected:
+            candidates.append((table_id, rows, width, header))
+    if len(candidates) != 1:
+        return None
+    table_id, rows, width, header = candidates[0]
+    if width not in (3, 5) or len(rows) != 2 or any(len(row) != width for row in rows):
+        return None
+
+    field_indices = (0, 1, 2) if width == 3 else (0, 2, 4)
+    spacer_indices = () if width == 3 else (1, 3)
+    if tuple(index for index, value in enumerate(header) if value) != field_indices:
+        return None
+    for row in rows:
+        for index in spacer_indices:
+            spacer = fold(_sec_cover_cell_safety_text(row[index]).replace("\u00a0", " "))
+            if spacer is None or spacer:
+                return None
+
+    raw_fields = tuple(
+        _sec_cover_cell_safety_text(rows[1][index]).replace("\u00a0", " ")
+        for index in field_indices
+    )
+    values = tuple(fold(value) for value in raw_fields)
+    if any(value is None for value in values):
+        return None
+    fields_to_check = raw_fields if safe_before_fold else values
+    if not _sec_cover_text_safe(fields_to_check[0]) or not _sec_cover_text_safe(fields_to_check[2]):
+        return None
+    if not _TICKER.fullmatch(values[1]) or values[1] != values[1].upper():
+        return None
+    return table_id, rows, field_indices, values
+
+
 def _table_cell_span(cell: dict):
     chunks = cell["chunks"]
     if not chunks:
         return None
     return min(item[1] for item in chunks), max(item[2] for item in chunks)
+
+
+def _sec_layout_render_cover(
+    source, parser, table_id, rows, field_indices, row, *, visible_parts=None
+):
+    """Shared v3/v4 cover projection; parsing policy remains version-specific."""
+    if visible_parts is None:
+        visible_parts = _render_chunks(
+            source, _visible_chunks(parser, (table_id,))
+        )
+    visible_body, visible_anchors = visible_parts
+    table_text = "\n".join(
+        (
+            _SEC_HEADER,
+            "| --- | --- | --- |",
+            "| {} | {} | {} |".format(*row),
+        )
+    )
+    body = visible_body.rstrip("\n") + "\n" + table_text + "\n"
+    anchors = list(visible_anchors)
+    table_start = len(visible_body.rstrip("\n")) + 1
+    for row_index, field_values in (
+        (0, (_SEC_TITLE, _SEC_TICKER, _SEC_EXCHANGE)),
+        (1, row),
+    ):
+        for column, (field, physical_index) in enumerate(zip(field_values, field_indices)):
+            span = _table_cell_span(rows[row_index][physical_index])
+            if span is None:
+                return None
+            if row_index == 0:
+                parsed_start = table_start + _SEC_HEADER.index(field)
+                parsed_end = parsed_start + len(field)
+                anchor_field = "sec_cover.header.{}".format(column)
+            else:
+                table_row_start = table_start + len(_SEC_HEADER) + 1 + len(
+                    "| --- | --- | --- |\n"
+                )
+                parsed_start = table_row_start + 2 + sum(
+                    len(value) + 3 for value in row[:column]
+                )
+                parsed_end = parsed_start + len(field)
+                anchor_field = "sec_cover.value.{}".format(column)
+            anchors.append(
+                _anchor(anchor_field, source, span[0], span[1], parsed_start, parsed_end)
+            )
+    if len(anchors) > 2048:
+        return None
+    return body, anchors, visible_body, visible_anchors
 
 
 def _visible_chunks(parser: _BoundedHTML, excluded_table_ids=()):
@@ -1081,93 +1197,30 @@ def _sec_cover_layout_v3(source: str) -> Optional[_ParsedPage]:
     if issuer_index < 0 or not _issuer_valid(normalized_lines[issuer_index]):
         return None
 
-    expected = tuple(value.casefold() for value in (_SEC_TITLE, _SEC_TICKER, _SEC_EXCHANGE))
-    candidates = []
-    for table_id, table in enumerate(parser.tables):
-        rows = table["rows"]
-        if not rows:
-            continue
-        width = len(rows[0])
-        header = tuple(
-            _ascii_space(_sec_cover_cell_safety_text(cell).replace("\u00a0", " "))
-            for cell in rows[0]
-        )
-        projected = tuple(value.lower() if value.isascii() else value for value in header if value)
-        if projected == expected:
-            candidates.append((table_id, table, rows, width, header))
-    if len(candidates) != 1:
-        return None
-    table_id, table, rows, width, header = candidates[0]
-    if width not in (3, 5) or len(rows) != 2 or any(len(row) != width for row in rows):
-        return None
-
-    field_indices = (0, 1, 2) if width == 3 else (0, 2, 4)
-    spacer_indices = () if width == 3 else (1, 3)
-    if tuple(index for index, value in enumerate(header) if value) != field_indices:
-        return None
-    if any(
-        _ascii_space(
-            _sec_cover_cell_safety_text(row[index]).replace("\u00a0", " ")
-        )
-        for row in rows
-        for index in spacer_indices
-    ):
-        return None
-
-    raw_fields = tuple(
-        _sec_cover_cell_safety_text(rows[1][index]).replace("\u00a0", " ")
-        for index in field_indices
+    cover_table = _sec_cover_layout_table(
+        parser, _sec_cover_layout_v3_fold, safe_before_fold=True
     )
-    if not _sec_cover_text_safe(raw_fields[0]) or not _sec_cover_text_safe(raw_fields[2]):
+    if cover_table is None:
         return None
-    row = tuple(_ascii_space(value) for value in raw_fields)
-    title, symbol, exchange = row
-    if not _TICKER.fullmatch(symbol) or symbol != symbol.upper():
-        return None
+    table_id, rows, field_indices, row = cover_table
+    _title, symbol, _exchange = row
 
-    visible_body, visible_anchors = _render_chunks(
+    visible_parts = _render_chunks(
         source, _visible_chunks(parser, (table_id,))
     )
+    visible_body, _visible_anchors = visible_parts
     visible_lines = visible_body.splitlines()
     if sum(
         _ascii_space(line.replace("\u00a0", " ")) == _SEC_MARKER
         for line in visible_lines
     ) != 1:
         return None
-    table_text = "\n".join(
-        (
-            _SEC_HEADER,
-            "| --- | --- | --- |",
-            "| {} | {} | {} |".format(title, symbol, exchange),
-        )
+    projection = _sec_layout_render_cover(
+        source, parser, table_id, rows, field_indices, row, visible_parts=visible_parts
     )
-    body = visible_body.rstrip("\n") + "\n" + table_text + "\n"
-    anchors = list(visible_anchors)
-    table_start = len(visible_body.rstrip("\n")) + 1
-    for row_index, field_values in (
-        (0, (_SEC_TITLE, _SEC_TICKER, _SEC_EXCHANGE)),
-        (1, row),
-    ):
-        for column, (field, physical_index) in enumerate(zip(field_values, field_indices)):
-            span = _table_cell_span(rows[row_index][physical_index])
-            if span is None:
-                return None
-            if row_index == 0:
-                parsed_start = table_start + _SEC_HEADER.index(field)
-                parsed_end = parsed_start + len(field)
-                anchor_field = "sec_cover.header.{}".format(column)
-            else:
-                table_row_start = table_start + len(_SEC_HEADER) + 1 + len(
-                    "| --- | --- | --- |\n"
-                )
-                parsed_start = table_row_start + 2 + sum(
-                    len(value) + 3 for value in row[:column]
-                )
-                parsed_end = parsed_start + len(field)
-                anchor_field = "sec_cover.value.{}".format(column)
-            anchors.append(
-                _anchor(anchor_field, source, span[0], span[1], parsed_start, parsed_end)
-            )
+    if projection is None:
+        return None
+    body, anchors, visible_body, visible_anchors = projection
 
     visible_lines = visible_body.splitlines()
     visible_offsets = []
@@ -1220,6 +1273,160 @@ def _sec_cover_layout_v3(source: str) -> Optional[_ParsedPage]:
     if len(anchors) > 2048:
         return None
     return _ParsedPage(body, "sec-edgar-cover-layout-v3", tuple(anchors), symbol)
+
+
+class _SecCoverSemanticHTML(_BoundedHTML):
+    """Collect visible SEC block text without treating pretty-print lines as blocks."""
+
+    _SEGMENT_BLOCKS = _BLOCK_TAGS - frozenset(("br",))
+
+    def __init__(self, source):
+        super().__init__(source)
+        self.semantic_segments = []
+        self._semantic_chunks = []
+        self._semantic_inline_break = False
+
+    def _finish_semantic_segment(self):
+        if self._semantic_chunks:
+            self.semantic_segments.append(
+                {
+                    "text": "".join(chunk[0] for chunk in self._semantic_chunks),
+                    "chunks": tuple(self._semantic_chunks),
+                    "outside_table": all(chunk[3] is None for chunk in self._semantic_chunks),
+                    "inline_break": self._semantic_inline_break,
+                }
+            )
+        self._semantic_chunks = []
+        self._semantic_inline_break = False
+
+    @staticmethod
+    def _hidden_start(tag, attrs):
+        return tag in _HIDDEN_TAGS or any(
+            name == "hidden"
+            or (name == "aria-hidden" and value is not None
+                and value.strip(_ASCII_WHITESPACE).lower() == "true")
+            or (name == "style" and value is not None
+                and any(_HIDDEN_STYLE.fullmatch(part) for part in value.split(";")))
+            for name, value in attrs
+        )
+
+    def _append_text(self, text, raw_start, raw_end):
+        super()._append_text(text, raw_start, raw_end)
+        if self._hidden_stack or not text:
+            return
+        if raw_start == raw_end:
+            if self._semantic_chunks and text in ("\n", "\n\n"):
+                self._semantic_inline_break = True
+            return
+        table_id = self._table_stack[-1] if self._table_stack else None
+        self._semantic_chunks.append((text, raw_start, raw_end, table_id))
+
+    def handle_starttag(self, tag, attrs):
+        normalized_tag = tag.casefold()
+        if (
+            not self._hidden_stack
+            and normalized_tag in self._SEGMENT_BLOCKS
+            and not self._hidden_start(normalized_tag, attrs)
+        ):
+            self._finish_semantic_segment()
+        super().handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        normalized_tag = tag.casefold()
+        if not self._hidden_stack and normalized_tag in self._SEGMENT_BLOCKS:
+            self._finish_semantic_segment()
+        super().handle_endtag(tag)
+
+    def result(self):
+        super().result()
+        self._finish_semantic_segment()
+        return self
+
+
+def _sec_semantic_segment_anchor(source, field, segment, visible_anchors):
+    mapped = []
+    for _text, raw_start, raw_end, table_id in segment["chunks"]:
+        if table_id is not None:
+            return None
+        matching = [
+            anchor for anchor in visible_anchors
+            if anchor.raw_start == raw_start and anchor.raw_end == raw_end
+        ]
+        if len(matching) != 1:
+            return None
+        mapped.append(matching[0])
+    if not mapped:
+        return None
+    return _anchor(
+        field,
+        source,
+        min(item.raw_start for item in mapped),
+        max(item.raw_end for item in mapped),
+        min(item.parsed_start for item in mapped),
+        max(item.parsed_end for item in mapped),
+    )
+
+
+def _sec_cover_layout_v4(source: str) -> Optional[_ParsedPage]:
+    """Parse v4's narrow cover grammar using complete visible semantic segments."""
+    parser = _SecCoverSemanticHTML(source).result()
+    marker_matches = [
+        index
+        for index, segment in enumerate(parser.semantic_segments)
+        if segment["outside_table"]
+        and not segment["inline_break"]
+        and _sec_cover_layout_v4_fold(segment["text"]) == _SEC_MARKER
+    ]
+    if len(marker_matches) != 1:
+        return None
+    marker_index = marker_matches[0]
+
+    issuer_index = marker_index - 1
+    while issuer_index >= 0:
+        issuer_segment = parser.semantic_segments[issuer_index]
+        issuer_value = _sec_cover_layout_v4_fold(issuer_segment["text"])
+        if issuer_value != "":
+            break
+        issuer_index -= 1
+    if issuer_index < 0:
+        return None
+    issuer_segment = parser.semantic_segments[issuer_index]
+    issuer_value = _sec_cover_layout_v4_fold(issuer_segment["text"])
+    if (
+        not issuer_segment["outside_table"]
+        or issuer_segment["inline_break"]
+        or issuer_value is None
+        or not _issuer_valid(issuer_value)
+    ):
+        return None
+
+    cover_table = _sec_cover_layout_table(
+        parser, _sec_cover_layout_v4_fold, safe_before_fold=False
+    )
+    if cover_table is None:
+        return None
+    table_id, rows, field_indices, row_values = cover_table
+    _title, symbol, _exchange = row_values
+
+    projection = _sec_layout_render_cover(
+        source, parser, table_id, rows, field_indices, row_values
+    )
+    if projection is None:
+        return None
+    body, anchors, _visible_body, visible_anchors = projection
+    for index, field in (
+        (issuer_index, "sec_cover.registrant"),
+        (marker_index, "sec_cover.registrant_marker"),
+    ):
+        anchor = _sec_semantic_segment_anchor(
+            source, field, parser.semantic_segments[index], visible_anchors
+        )
+        if anchor is None:
+            return None
+        anchors.append(anchor)
+    if len(anchors) > 2048:
+        return None
+    return _ParsedPage(body, "sec-edgar-cover-layout-v4", tuple(anchors), symbol)
 
 
 def _nasdaq_html(source: str, target_symbol: str) -> Optional[_ParsedPage]:
@@ -1327,7 +1534,10 @@ def _parse_page(
             return None
         if family == "sec":
             parsed = _sec_html(body)
-            return parsed if parsed is not None else _sec_cover_layout_v3(body)
+            if parsed is not None:
+                return parsed
+            parsed = _sec_cover_layout_v3(body)
+            return parsed if parsed is not None else _sec_cover_layout_v4(body)
         if family == "nasdaq":
             return None if target_symbol is None else _nasdaq_html(body, target_symbol)
         if family == "yahoo":

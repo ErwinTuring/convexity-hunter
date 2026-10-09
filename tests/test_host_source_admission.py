@@ -122,6 +122,32 @@ def _sec_layout_v3_html(
     ).format(issuer, marker, table_markup() * duplicate_tables).encode("utf-8")
 
 
+def _sec_layout_v4_html(
+    *,
+    issuer="Example Holdings, Inc.",
+    marker="(Exact name of registrant as specified in its charter)",
+    title="Common Stock",
+    exchange="Nasdaq Capital Market",
+    spacer="&nbsp;",
+    duplicate_tables=1,
+    trailing="",
+):
+    def table_markup():
+        return (
+            "<table><tr><th>Title of each class</th><th>{}</th>"
+            "<th>Trading Symbol(s)</th><th>{}</th>"
+            "<th>Name of each exchange on which registered</th></tr>"
+            "<tr><td>{}</td><td>{}</td><td>ACME</td><td>{}</td>"
+            "<td>{}</td></tr></table>"
+        ).format(spacer, spacer, title, spacer, spacer, exchange)
+
+    return (
+        "<html><body><p>{}</p><p>{}</p>"
+        "<p>A visible\t narrative\nstays&nbsp;literal.</p>{}{}"
+        "</body></html>"
+    ).format(issuer, marker, table_markup() * duplicate_tables, trailing).encode("utf-8")
+
+
 def _client(transport, *, resolver=None, max_bytes=100_000, byte_budget=500_000):
     return _SourceAdmissionClient(
         timeout_seconds=2.5,
@@ -866,6 +892,122 @@ class HostSourceAdmissionTests(unittest.TestCase):
                     data_rows=(["Common&#10;Stock", "", "ACME", "", "Nasdaq"],)
                 ),
             ),
+        )
+        for label, raw_body in cases:
+            with self.subTest(shape=label):
+                self.assertIsNone(
+                    admission._sec_cover_layout_v3(raw_body.decode("utf-8"))
+                )
+
+    def test_sec_layout_v4_folds_declared_controls_and_preserves_raw_anchors(self):
+        cases = (
+            (
+                "entities",
+                _sec_layout_v4_html(
+                    issuer="Example&#9;Holdings, Inc.",
+                    marker="(Exact&#10;name of registrant as specified in its charter)",
+                    title="Common&#13;Stock",
+                    exchange="Nasdaq&#13;Capital&#10;Market",
+                ),
+                (
+                    ("sec_cover.registrant", "Example&#9;Holdings, Inc.", "Example\tHoldings, Inc."),
+                    (
+                        "sec_cover.registrant_marker",
+                        "(Exact&#10;name of registrant as specified in its charter)",
+                        "(Exact\nname of registrant as specified in its charter)",
+                    ),
+                    ("sec_cover.value.0", "Common&#13;Stock", "Common Stock"),
+                    ("sec_cover.value.2", "Nasdaq&#13;Capital&#10;Market", "Nasdaq Capital Market"),
+                ),
+            ),
+            (
+                "literal-controls",
+                _sec_layout_v4_html(
+                    issuer="Example\tHoldings, Inc.",
+                    marker="(Exact\rname of registrant as specified in its charter)",
+                    title="Common\tStock",
+                    exchange="Nasdaq\rCapital\nMarket",
+                ),
+                (
+                    ("sec_cover.registrant", "Example\tHoldings, Inc.", "Example\tHoldings, Inc."),
+                    (
+                        "sec_cover.registrant_marker",
+                        "(Exact\rname of registrant as specified in its charter)",
+                        "(Exact\rname of registrant as specified in its charter)",
+                    ),
+                    ("sec_cover.value.0", "Common\tStock", "Common Stock"),
+                    ("sec_cover.value.2", "Nasdaq\rCapital\nMarket", "Nasdaq Capital Market"),
+                ),
+            ),
+        )
+        for label, raw_body, expected_anchors in cases:
+            with self.subTest(format=label):
+                transport = _ResponseTransport({SEC_LOCATOR: [_ok(raw_body)]})
+                result = _client(transport).admit_candidates((SEC_LOCATOR,))
+                self.assertEqual(result.request_count, 1)
+                self.assertEqual([call[0] for call in transport.calls], [SEC_LOCATOR])
+                self.assertEqual(len(result.admissions), 1)
+                admitted = result.admissions[0]
+                self.assertEqual(admitted.parser_id, "sec-edgar-cover-layout-v4")
+                self.assertEqual(admitted.parser_version, "4")
+                self.assertEqual(admitted.parsed_symbol, "ACME")
+                self.assertIn("A visible\t narrative\nstays\u00a0literal.", admitted.parsed_body)
+                self.assertIn(
+                    "| Common Stock | ACME | Nasdaq Capital Market |", admitted.parsed_body
+                )
+                self.assertEqual(admitted.raw_body_sha256, hashlib.sha256(raw_body).hexdigest())
+                self.assertIsNotNone(
+                    _revalidate_source_admission(
+                        admitted, max_raw_bytes=100_000, max_parsed_bytes=100_000
+                    )
+                )
+                raw_text = raw_body.decode("utf-8")
+                anchors_by_field = {anchor.field: anchor for anchor in admitted.raw_anchors}
+                for field, raw_excerpt, parsed_excerpt in expected_anchors:
+                    anchor = anchors_by_field[field]
+                    self.assertEqual(raw_text[anchor.raw_start:anchor.raw_end], raw_excerpt)
+                    self.assertEqual(
+                        anchor.raw_sha256, hashlib.sha256(raw_excerpt.encode("utf-8")).hexdigest()
+                    )
+                    self.assertEqual(
+                        admitted.parsed_body[anchor.parsed_start:anchor.parsed_end],
+                        parsed_excerpt,
+                    )
+                self.assertIsNone(admission._sec_cover_layout_v3(raw_text))
+                for spoof in (
+                    replace(admitted, parser_id="sec-edgar-cover-layout-v3"),
+                    replace(admitted, parser_version="3"),
+                ):
+                    self.assertIsNone(
+                        _revalidate_source_admission(
+                            spoof, max_raw_bytes=100_000, max_parsed_bytes=100_000
+                        )
+                    )
+
+    def test_sec_layout_v4_requires_complete_segments_and_safe_unique_shape(self):
+        marker = admission._SEC_MARKER
+        cases = (
+            ("form-feed-field", _sec_layout_v4_html(title="Common&#12;Stock")),
+            ("vertical-tab-marker", _sec_layout_v4_html(marker=marker.replace("name", "\vname"))),
+            ("c1-issuer", _sec_layout_v4_html(issuer="Example&#128; Holdings, Inc.")),
+            ("unsafe-spacer", _sec_layout_v4_html(spacer="not empty")),
+            ("hidden-marker", _sec_layout_v4_html(marker="<span hidden>{}</span>".format(marker))),
+            (
+                "hidden-inline-cannot-isolate-marker",
+                _sec_layout_v4_html(marker="prefix<script>hidden</script>{}".format(marker)),
+            ),
+            (
+                "hidden-inline-cannot-isolate-issuer",
+                _sec_layout_v4_html(
+                    issuer="Bad | <script>hidden</script>Example Holdings, Inc.",
+                    marker="(Exact&#10;name of registrant as specified in its charter)",
+                ),
+            ),
+            ("marker-substring", _sec_layout_v4_html(marker="prefix {} suffix".format(marker))),
+            ("duplicate-marker", _sec_layout_v4_html(trailing="<p>{}</p>".format(marker))),
+            ("missing-issuer", _sec_layout_v4_html(issuer="")),
+            ("invalid-issuer", _sec_layout_v4_html(issuer="Bad | Company")),
+            ("duplicate-table", _sec_layout_v4_html(duplicate_tables=2)),
         )
         for label, raw_body in cases:
             with self.subTest(shape=label):

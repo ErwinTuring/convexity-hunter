@@ -953,7 +953,7 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         self.assertEqual(prepared.underlying_bindings, {})
 
-    def test_listing_preparer_excludes_v3_even_when_its_body_matches_v1(self):
+    def test_listing_preparer_excludes_v3_and_v4_even_when_body_matches_v1(self):
         raw_html = (
             "<html><body><p>Example Holdings, Inc.</p>"
             "<p>(Exact name of registrant as specified in its charter)</p>"
@@ -1001,10 +1001,18 @@ class HostEventGrounderTests(unittest.TestCase):
             ("hypothesis-generated-listing-sec-layout-v3-run", "Z7QX"),
             legacy_prepared.underlying_bindings,
         )
-        guarded_prepared = _make_listing_source_preparer(
-            tuple(source_ids.values()), admission_records=(sec_record,)
-        )(snapshot, receipt, context)
-        self.assertEqual(guarded_prepared.underlying_bindings, {})
+        for parser_id, version in (
+            ("sec-edgar-cover-layout-v3", "3"),
+            ("sec-edgar-cover-layout-v4", "4"),
+        ):
+            with self.subTest(parser_id=parser_id):
+                guarded_record = replace(
+                    sec_record, parser_id=parser_id, parser_version=version
+                )
+                guarded_prepared = _make_listing_source_preparer(
+                    tuple(source_ids.values()), admission_records=(guarded_record,)
+                )(snapshot, receipt, context)
+                self.assertEqual(guarded_prepared.underlying_bindings, {})
 
     def test_listing_preparer_accepts_ascii_tab_whitespace_but_rejects_other_controls(self):
         valid = _listing_source_material("listing-tab-run", "Z7QX")
@@ -1208,7 +1216,7 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
 
-    def test_sec_v2_and_v3_supplement_authority_is_candidate_only(self):
+    def test_sec_v2_v3_and_v4_supplement_authority_is_candidate_only(self):
         nasdaq_url = "https://www.nasdaq.com/market-activity/stocks/acme"
         yahoo_url = "https://finance.yahoo.com/quote/ACME/"
         sec_html = (
@@ -1367,6 +1375,38 @@ class HostEventGrounderTests(unittest.TestCase):
             "sec-v3-explicit-nasdaq",
             (_SEC_LOCATOR, nasdaq_url),
             v3_batch,
+        )
+
+        v4_sec_html = (
+            b"<!doctype html><html><body>"
+            b"<p>ACME HOLDINGS, INC.</p>"
+            b"<p>(Exact&#10;name of registrant as specified in its charter)</p>"
+            b"<p>A synthetic event was reported.</p>"
+            b"<p>On October 3, 2026, ACME HOLDINGS, INC. completed its acquisition of Example Corp.</p>"
+            b"<table><tr><th>Title of each class</th><th>&nbsp;</th>"
+            b"<th>Trading Symbol(s)</th><th>&nbsp;</th>"
+            b"<th>Name of each exchange on which registered</th></tr>"
+            b"<tr><td>Common Stock</td><td>&nbsp;</td><td>ACME</td>"
+            b"<td>&nbsp;</td><td>Nasdaq Capital Market</td></tr></table></body></html>"
+        )
+        v4_single = make_batch(v4_sec_html, (_SEC_LOCATOR,))
+        self.assertEqual(v4_single.request_count, 1)
+        self.assertEqual(len(v4_single.admissions), 1)
+        self.assertEqual(v4_single.admissions[0].parser_id, "sec-edgar-cover-layout-v4")
+        v4_batch = make_batch(v4_sec_html)
+        self.assertEqual(
+            [record.parser_id for record in v4_batch.admissions],
+            [
+                "sec-edgar-cover-layout-v4",
+                "nasdaq-instrument-v1",
+                "yahoo-quote-header-v1",
+            ],
+        )
+        run_case("sec-v4-unsolicited-supplements", (_SEC_LOCATOR,), v4_batch)
+        run_case(
+            "sec-v4-explicit-nasdaq",
+            (_SEC_LOCATOR, nasdaq_url),
+            v4_batch,
         )
 
     def test_default_event_path_admits_html_before_models_and_preserves_lineage(self):

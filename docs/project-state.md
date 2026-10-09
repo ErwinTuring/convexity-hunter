@@ -1,5 +1,25 @@
 # Project State
 
+2026-10-10 current continuation: SEC semantic-layout v4 is implemented and
+independently reviewed. One final production GET returned HTTP 200, admitted
+`sec-edgar-cover-layout-v4` / `4`, 13,957 parsed characters, 520 raw anchors and
+successful source-record revalidation. The one-shot marker is spent; no raw
+body/contact was retained. This closes the observed SEC source-layout blocker,
+not PLUG listing identity, EI acceptance or Core completion. 179 related tests,
+nine independent focused tests, four private-runner fixtures, compileall and
+documentation/diff checks passed. No full suite or search/model/quote batch ran.
+
+A preceding fresh one-GET production-format diagnosis
+identified a unique five-column cover header, but no complete physical marker
+line and actual control characters in cover data. HTTP 200 remained
+`PARSER_UNSUPPORTED`; no raw/contact was retained. The diagnosis is spent, not
+an admitted filing or EI/Core result. A bounded read-only preflight passed and
+the [source-only semantic-layout v4](local-event-delivery-v0.1.md#sec-semantic-layout-source-text-v4--2026-10-10)
+contract is frozen and implemented. Only explicit HT/LF/CR/NBSP layout folding
+and whole semantic marker/issuer segments are authorized. Unsafe controls,
+ambiguous tables and listing/EI authority remain unchanged. See
+[checkpoint](current-checkpoint.md#sec-production-format-diagnosis--2026-10-10).
+
 2026-10-09 current continuation: source-only SEC layout v3 BUILD and independent
 review are complete; live-format compatibility remains unproven. It handles NBSP and
 proven-empty spacer columns, retains original raw provenance/narrative and
