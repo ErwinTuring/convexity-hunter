@@ -40,7 +40,9 @@ Freeze the narrow source-only parser `sec-issuer-reference-v1` / `1`:
 - Strict root schema/order and four-element row shape; duplicate JSON keys,
   nonfinite values, ambiguous/missing/duplicate selected tickers or malformed
   rows fail closed. CIK is an exact non-Boolean positive int below 10^10;
-  issuer/ticker/exchange are safe explicit strings. Preserve integer CIK in the
+  issuer/ticker are safe explicit strings. Exchange may be null in unrelated
+  rows (present in the official dataset); every selected row must instead have
+  a safe nonempty explicit exchange string. Preserve integer CIK in the
   source record. A later composite may compare that integer with an explicitly
   evidenced filing identifier under its own frozen rule; padding is not source
   evidence and URL alone is not issuer association proof.
