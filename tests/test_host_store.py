@@ -489,6 +489,47 @@ class HostStoreTests(unittest.TestCase):
             "SELECT 1 FROM batch_archives WHERE run_id=?", (run_id,)
         ).fetchone())
 
+    def test_grounder_archive_accepts_only_registered_producer_prompt_versions(self):
+        from convexity_hunter.host_store import (
+            _grounder_stage_outcome,
+            _validate_grounder_stage_outcome,
+        )
+
+        result = make_grounder_no_submission_result()
+        run_id = result.build_result.context.run_id
+        outcome = _grounder_stage_outcome(
+            result, run_id, "synthetic fixture event"
+        )
+        sidecar = json.loads(result.audit.sidecar_utf8.decode("utf-8"))
+        self.assertEqual(
+            outcome["provenance"]["producer_prompt_version"],
+            sidecar["producer_prompt_version"],
+        )
+
+        unsupported = dict(outcome)
+        unsupported["provenance"] = dict(outcome["provenance"])
+        unsupported["provenance"]["producer_prompt_version"] = (
+            "host-grounder-discovery-prompt-v0.8"
+        )
+        with self.assertRaisesRegex(ValueError, "producer prompt version is not registered"):
+            _validate_grounder_stage_outcome(unsupported)
+
+        sidecar["producer_prompt_version"] = "host-grounder-discovery-prompt-v0.8"
+        sidecar_wire = json.dumps(
+            sidecar, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        unsupported_audit = replace(
+            result.audit,
+            sidecar_utf8=sidecar_wire,
+            sidecar_sha256=hashlib.sha256(sidecar_wire).hexdigest(),
+        )
+        with self.assertRaisesRegex(ValueError, "audit versions do not identify"):
+            _grounder_stage_outcome(
+                replace(result, audit=unsupported_audit),
+                run_id,
+                "synthetic fixture event",
+            )
+
     def test_grounder_rejects_submission_and_wrong_mode_without_partial_events(self):
         run_id = self.create_run("event", "synthetic fixture event")
         stage_id = self.store.start_stage(run_id, "grounder")

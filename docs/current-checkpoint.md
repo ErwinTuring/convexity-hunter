@@ -2,6 +2,42 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Event Grounder / Store compatibility — 2026-10-11
+
+Two narrow fixes are in the current diff. Grounder preserves only an exact
+trusted `ModelTransportError` closed code as a fixed
+`MODEL_CALL_FAILURE_CHECK_*` run diagnostic; unknown, subclass, spoofed, or
+missing codes remain generic. Store audit/provenance accepts only the already
+registered producer prompt v0.6 and v0.7, preserving historical v0.6 records
+and rejecting unregistered versions. No schema, evidence, EI, Core, budget, or
+retry policy changed.
+
+Offline tests exercise the real `create_event_grounder` runtime with fixture
+transports through Store positive and negative archive, close, and reopen for
+v0.7; v0.6 compatibility and rejection of v0.8 are covered. This proves
+runtime-to-Store behavior, not HTTP full-path writes; the HTTP archive route
+has separate existing coverage.
+
+Two real attempts are spent. `/private/tmp/ch-event-mvp-2026-10-11-f0xMSD/`
+ended `FAILED / AUDIT_RETENTION_FAILED`. Its exact validation path and root
+cause were not retained. Offline checks independently reproduce the v0.6-only
+Store compatibility defect, but do not prove that it was this attempt's exact
+failure path. `/private/tmp/ch-event-mvp-2026-10-11-vS5X6T/` reached Host
+`READY`, POST 201, then `BLOCKED / PRODUCER_ENVELOPE_INVALID`; the retained
+closed check is `PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA`.
+`model_failure_check_counts` is empty. Source admission was one request / 14,308
+bytes; other source counters are unknown. EI is `UNKNOWN`; Core cases are null.
+SQLite/restart and Chinese HTTP readback passed. This run stopped before EI/Core
+and does not prove live positive or negative Store writes; those are covered
+only by the offline runtime-to-Store test.
+
+Main's full suite completed with 1,919 passing tests in 298.799s;
+`compileall` passed earlier. Implementation and non-suite validation time were
+not separately captured. The remaining issue is producer schema adherence; no
+automatic retry is allowed. A possible one-request format correction conflicts
+with the current one-request/no-retry policy and remains pending explicit user
+authorization. No further live call is authorized by this checkpoint.
+
 ## Event Grounder task clarification — 2026-10-10
 
 Current normal Host wiring uses runtime v0.6 / producer prompt v0.7 and the

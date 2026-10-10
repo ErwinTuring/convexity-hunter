@@ -6,6 +6,32 @@ implementation and independent review complete. Historical validation passed
 integrated continuation and actual real result are recorded below; no real
 Event acceptance is claimed.
 
+## Current Host compatibility checkpoint — 2026-10-11
+
+The current diff preserves exact trusted `ModelTransportError` closed codes
+through the existing fixed run-diagnostic path, while unknown or untrusted
+error shapes remain generic. Store audit/provenance accepts registered
+producer prompt versions v0.6 and v0.7, rejects unregistered versions, and
+retains v0.6 history. No persisted schema, acceptance threshold, evidence rule,
+budget, or retry behavior changes.
+
+Offline fixture transports exercise `create_event_grounder` v0.7 through
+positive and negative Store archive/reopen. This is runtime-to-Store coverage,
+not HTTP full-path proof; separate existing tests cover the HTTP archive route.
+The real `f0xMSD` attempt ended `FAILED / AUDIT_RETENTION_FAILED`, but its exact
+path/root cause is unavailable. Offline validation proves a v0.6-only Store
+validator defect independently, not that it was the exact historical path.
+The later spent `vS5X6T` POST returned 201 and persisted
+`BLOCKED / PRODUCER_ENVELOPE_INVALID` with closed check
+`PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA`; it stopped before EI/Core.
+Neither live attempt establishes positive and negative Store writes.
+
+The full suite passed 1,919 tests (298.799s); compileall passed earlier.
+Producer schema adherence remains the live blocker. Automatic retries remain
+disabled. A proposed single bounded format-correction request conflicts with
+the existing one-request/no-retry policy and is not approved; further live work
+is paused pending explicit user authorization.
+
 ## Approved integrated MVP continuation — 2026-10-07
 
 The user authorizes bounded Host-owned HTTPS source admission and normal Event

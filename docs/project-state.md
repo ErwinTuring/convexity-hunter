@@ -1,5 +1,25 @@
 # Project State
 
+2026-10-11 Event status: two narrow fixes are present—exact trusted
+`ModelTransportError` codes can reach the existing closed run-diagnostic path,
+and Store audit/provenance accepts registered producer prompts v0.6/v0.7 while
+rejecting unregistered versions. Offline fixture transports drove the actual
+v0.7 `create_event_grounder` runtime through positive and negative Store
+archive/reopen; this is runtime-to-Store proof, not HTTP full-path proof.
+
+Two real attempts are spent. `f0xMSD` ended `FAILED / AUDIT_RETENTION_FAILED`;
+its exact path/root cause is unrecoverable, although offline tests prove the
+independent v0.6-only Store validator defect. `vS5X6T` reached Host READY / POST
+201 then `BLOCKED / PRODUCER_ENVELOPE_INVALID`, with closed check
+`PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA`; source was 1 request /
+14,308 bytes, other counters unknown, EI UNKNOWN, Core cases null, and SQLite,
+restart, and Chinese HTTP readback passed. Neither live attempt proves both
+Store archive polarities. The latest full suite passed 1,919 tests in 298.799s;
+compileall passed earlier. Mainline is paused at producer schema adherence:
+automatic retry remains off, and a proposed single format-correction request
+needs explicit user authorization because it conflicts with the current
+one-request/no-retry policy. No further live call is authorized.
+
 2026-10-10 Event Grounder task clarification: the normal Host route now uses
 runtime v0.6 / producer prompt v0.7, preserving the previous runtime v0.5 /
 prompt v0.6 route. The new prompt separates reported facts from interpretations

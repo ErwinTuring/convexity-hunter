@@ -363,7 +363,12 @@ def _grounder_failure_status(error: Exception) -> Tuple[str, str]:
 def _semantic_failure_diagnostic_codes(error: Exception) -> Tuple[str, ...]:
     """Project closed semantic and producer subcauses onto fixed run codes."""
 
-    from .host_grounder_runtime import HostGrounderRuntimeError
+    from .host_grounder_runtime import (
+        HostGrounderRuntimeError,
+        _SEMANTIC_TRANSPORT_FAILURE_CHECKS,
+        _SEMANTIC_TRANSPORT_FAILURE_CHECK_PREFIX,
+        _SEMANTIC_TRANSPORT_FAILURE_STAGE,
+    )
 
     if (
         type(error) is not HostGrounderRuntimeError
@@ -379,6 +384,18 @@ def _semantic_failure_diagnostic_codes(error: Exception) -> Tuple[str, ...]:
             return ()
         check_code = _PRODUCER_FAILURE_CHECK_DIAGNOSTICS.get(check)
         return () if check_code is None else (check_code,)
+    if error.code == "SEMANTIC_CALL_FAILED":
+        stage = getattr(error, "failure_stage", None)
+        check = getattr(error, "failure_check", None)
+        if (
+            type(stage) is str
+            and stage == _SEMANTIC_TRANSPORT_FAILURE_STAGE
+            and type(check) is str
+            and check in _SEMANTIC_TRANSPORT_FAILURE_CHECKS
+        ):
+            transport_code = check[len(_SEMANTIC_TRANSPORT_FAILURE_CHECK_PREFIX):]
+            return ("MODEL_CALL_FAILURE_CHECK_" + transport_code.upper(),)
+        return ()
     if error.code != "SEMANTIC_VERDICT_REJECTED":
         return ()
     stage = getattr(error, "failure_stage", None)

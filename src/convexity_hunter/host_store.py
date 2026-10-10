@@ -24,6 +24,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from .core_application import CoreOperationalBounds
 from .host_profile import STANDARD_RESEARCH_PROFILE, StandardResearchProfile
+from .host_model import _MODEL_TRANSPORT_ERROR_CODES
 
 
 SCHEMA_VERSION = 3
@@ -163,9 +164,15 @@ _GROUNDER_FAILURE_DIAGNOSTIC_CODES = frozenset((
     "SEMANTIC_VERDICT_REJECTED",
     "SOURCE_BODY_LIMIT_EXCEEDED",
     "SOURCE_REGISTRY_INVALID",
-))
+)) | frozenset(
+    "MODEL_CALL_FAILURE_CHECK_" + code for code in _MODEL_TRANSPORT_ERROR_CODES
+)
 _GROUNDER_STAGE_MAX_ITEMS = 10_000
 _GROUNDER_STAGE_MAX_BYTES = 1_000_000
+_GROUNDER_PRODUCER_PROMPT_VERSIONS = frozenset((
+    "host-grounder-discovery-prompt-v0.6",
+    "host-grounder-discovery-prompt-v0.7",
+))
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _EVENT_MODEL_SNAPSHOT_FIELDS = frozenset((
     "schema_version", "provider", "model", "base_endpoint", "role", "capabilities",
@@ -603,7 +610,6 @@ def _grounder_stage_outcome(
     expected_versions = {
         "schema_version": "host-grounder-quote-localization-audit-v0.3",
         "producer_wire_version": "grounder-output-v0.3",
-        "producer_prompt_version": "host-grounder-discovery-prompt-v0.6",
         "verifier_wire_version": "semantic-verdict-v0.3",
         "validator_version": "host-grounder-semantic-verifier-prompt-v0.7",
         "localizer_version": "host-evidence-catalog-resolver-v0.1",
@@ -624,6 +630,8 @@ def _grounder_stage_outcome(
             "catalog_sha256",
         }
         or any(sidecar.get(name) != value for name, value in expected_versions.items())
+        or type(sidecar.get("producer_prompt_version")) is not str
+        or sidecar["producer_prompt_version"] not in _GROUNDER_PRODUCER_PROMPT_VERSIONS
     ):
         raise ValueError("Grounder audit versions do not identify the v0.7 stage")
     if (
@@ -904,9 +912,14 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
     provenance = value["provenance"]
     if type(provenance) is not dict or set(provenance) != provenance_fields:
         raise ValueError("Grounder provenance has an invalid closed field set")
-    expected_versions = {"receipt_schema_version": "semantic-validation-v0.2", "audit_schema_version": "host-grounder-quote-localization-audit-v0.3", "producer_wire_version": "grounder-output-v0.3", "producer_prompt_version": "host-grounder-discovery-prompt-v0.6", "verifier_wire_version": "semantic-verdict-v0.3", "validator_version": "host-grounder-semantic-verifier-prompt-v0.7", "localizer_version": "host-evidence-catalog-resolver-v0.1", "catalog_schema_version": "host-grounder-evidence-catalog-v0.1", "catalog_generator_version": "host-evidence-paragraph-generator-v0.1"}
+    expected_versions = {"receipt_schema_version": "semantic-validation-v0.2", "audit_schema_version": "host-grounder-quote-localization-audit-v0.3", "producer_wire_version": "grounder-output-v0.3", "verifier_wire_version": "semantic-verdict-v0.3", "validator_version": "host-grounder-semantic-verifier-prompt-v0.7", "localizer_version": "host-evidence-catalog-resolver-v0.1", "catalog_schema_version": "host-grounder-evidence-catalog-v0.1", "catalog_generator_version": "host-evidence-paragraph-generator-v0.1"}
     if any(provenance.get(name) != expected for name, expected in expected_versions.items()):
         raise ValueError("Grounder provenance version is not the v0.7 contract")
+    if (
+        type(provenance.get("producer_prompt_version")) is not str
+        or provenance["producer_prompt_version"] not in _GROUNDER_PRODUCER_PROMPT_VERSIONS
+    ):
+        raise ValueError("Grounder provenance producer prompt version is not registered")
     for name in (
         "canonical_input_sha256", "host_raw_input_sha256", "audit_sha256", "catalog_sha256",
         "producer_content_sha256", "normalized_envelope_sha256",

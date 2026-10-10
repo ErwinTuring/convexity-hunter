@@ -33,7 +33,10 @@ from convexity_hunter.host_grounder_quote_localization import (
     parse_semantic_verdict_v0_2,
 )
 from convexity_hunter.host_grounder_schema import parse_model_output_envelope
-from convexity_hunter.host_model import ModelRuntimeConfig, ModelTransportReceipt
+from convexity_hunter.host_model import (
+    ModelRuntimeConfig,
+    ModelTransportReceipt,
+)
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
 
 

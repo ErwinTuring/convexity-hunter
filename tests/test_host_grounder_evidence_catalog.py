@@ -47,7 +47,11 @@ from convexity_hunter.host_grounder_runtime import (
     run_host_grounder_same_run_evidence_catalog_v0_5,
     run_host_grounder_same_run_evidence_catalog_v0_6,
 )
-from convexity_hunter.host_model import ModelRuntimeConfig, ModelTransportReceipt
+from convexity_hunter.host_model import (
+    ModelRuntimeConfig,
+    ModelTransportError,
+    ModelTransportReceipt,
+)
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
 
 
@@ -1244,6 +1248,77 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             json.loads(result.audit.sidecar_utf8)["producer_prompt_version"],
             "host-grounder-discovery-prompt-v0.7",
         )
+
+    def test_v06_catalog_route_retains_only_exact_closed_transport_code(self):
+        class DerivedTransportError(ModelTransportError):
+            pass
+
+        spoof = RuntimeError("PRIVATE_MODEL_TRANSPORT_SENTINEL")
+        spoof.code = "HTTP_ERROR"
+        spoof.status = 503
+        malformed_code = ModelTransportError("HTTP_ERROR", status=503)
+        malformed_code.code = type("CodeString", (str,), {})("HTTP_ERROR")
+        missing_code = ModelTransportError("HTTP_ERROR", status=503)
+        del missing_code.code
+        cases = (
+            (ModelTransportError("HTTP_ERROR", status=503), "model_transport_http_error"),
+            (ModelTransportError("PRIVATE_TRANSPORT_SENTINEL", status=503), None),
+            (DerivedTransportError("HTTP_ERROR", status=503), None),
+            (spoof, None),
+            (malformed_code, None),
+            (missing_code, None),
+        )
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+        for transport_error, expected_check in cases:
+            with self.subTest(error_type=type(transport_error).__name__):
+                calls = []
+                discovery = _FakeClient("discovery", _canonical(producer), calls)
+                semantic = _FakeClient("semantic", _canonical(verdict), calls)
+                holder = HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                )
+
+                def fail_semantic(system_prompt, source_prompt):
+                    calls.append(("semantic", system_prompt, source_prompt))
+                    raise transport_error
+
+                semantic.complete = fail_semantic
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    run_host_grounder_same_run_evidence_catalog_v0_6(
+                        run_input,
+                        context,
+                        discovery_client=discovery,
+                        semantic_client=semantic,
+                        audit_holder=holder,
+                        max_json_bytes=100_000,
+                        max_source_body_bytes=20_000,
+                        max_catalog_entries=64,
+                        max_catalog_bytes=32_768,
+                        max_catalog_paragraphs=128,
+                        host_context_preparer=lambda _snapshot, _receipt, original: original,
+                    )
+
+                self.assertEqual(raised.exception.code, "SEMANTIC_CALL_FAILED")
+                self.assertEqual(str(raised.exception), "SEMANTIC_CALL_FAILED")
+                self.assertNotIn("PRIVATE", repr(raised.exception))
+                self.assertNotIn("503", repr(raised.exception))
+                if expected_check is None:
+                    self.assertIsNone(raised.exception.failure_stage)
+                    self.assertIsNone(raised.exception.failure_check)
+                else:
+                    self.assertEqual(
+                        raised.exception.failure_stage, "semantic_model_transport"
+                    )
+                    self.assertEqual(raised.exception.failure_check, expected_check)
+                self.assertEqual(
+                    [call[0] for call in calls], ["discovery", "semantic"]
+                )
+                self.assertTrue(holder.finalized)
+                self.assertIsNotNone(holder.audit)
 
     def test_v05_map_preserves_empty_repeated_and_reordered_binding_ids(self):
         run_input, context = _fixture()

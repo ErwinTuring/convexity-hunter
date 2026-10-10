@@ -1434,6 +1434,168 @@ class HostServerBatchTests(unittest.TestCase):
             store.close()
             temporary_directory.cleanup()
 
+    def test_normal_event_runtime_v07_negative_and_positive_archives_survive_restart(self):
+        from convexity_hunter.host_event import create_event_grounder
+        from convexity_hunter.host_store import HostStore
+        from tests.test_host_event import (
+            _NoNetworkAdmissionClient,
+            _SEARCH_ORDER,
+            _SyntheticModelTransport,
+            _SyntheticSourceTransport,
+            _config,
+            _listing_runtime_wires,
+            _model_outputs,
+        )
+
+        raw_input = "Assess a synthetic listing event."
+        config = _config()
+        bodies_by_url = {
+            _SEARCH_ORDER[0][1]: (
+                "ACME is the reported symbol.\n\n"
+                "A synthetic event was reported.\n"
+            ),
+            _SEARCH_ORDER[1][1]: "A separate source records a possible change.\n",
+        }
+
+        for label, has_submission in (("negative", False), ("positive", True)):
+            with self.subTest(result=label):
+                temporary_directory = tempfile.TemporaryDirectory(
+                    dir=pathlib.Path(tempfile.gettempdir()).resolve()
+                )
+                database_path = pathlib.Path(temporary_directory.name) / "event.sqlite3"
+                store = HostStore(database_path)
+                source_transport = _SyntheticSourceTransport(
+                    search_order=_SEARCH_ORDER, body_overrides=bodies_by_url
+                )
+                model_transport = _SyntheticModelTransport("", "")
+                actual_grounder = create_event_grounder(
+                    config,
+                    repo_root=ROOT,
+                    source_transport=source_transport,
+                    discovery_transport=model_transport,
+                    semantic_transport=model_transport,
+                )
+                bounds = CoreOperationalBounds(2, 3, 20, 8, 2.5)
+                run_id = store.create_run(
+                    "event",
+                    raw_input,
+                    bounds,
+                    STANDARD_RESEARCH_PROFILE.snapshot(),
+                    {
+                        "configuration_snapshot": actual_grounder.configuration_snapshot(),
+                        "execution_snapshot": {},
+                        "contract_versions": {
+                            "architecture": "standalone-mvp-architecture-v0.1",
+                            "host_shell": "host-server-v0.1",
+                            "standard_research_profile": "standard-research-profile:v0.1",
+                        },
+                    },
+                )
+                stage_id = store.start_stage(run_id, "grounder")
+                try:
+                    with patch.dict(
+                        "os.environ",
+                        {
+                            "SYNTHETIC_TAVILY_KEY": "synthetic-only-key",
+                            "SYNTHETIC_DISCOVERY_KEY": "synthetic-only-key",
+                            "SYNTHETIC_SEMANTIC_KEY": "synthetic-only-key",
+                        },
+                    ), patch(
+                        "convexity_hunter.host_event._create_source_admission_client",
+                        return_value=_NoNetworkAdmissionClient(),
+                    ):
+                        if has_submission:
+                            wires = _listing_runtime_wires(
+                                run_id, "ACME", _SEARCH_ORDER, bodies_by_url, config
+                            )
+                        else:
+                            wires = _model_outputs(
+                                run_id,
+                                raw_input,
+                                _SEARCH_ORDER,
+                                bodies_by_url,
+                                config,
+                            )
+                        model_transport.contents.update({
+                            "fixture-discovery": wires[0],
+                            "fixture-semantic": wires[1],
+                        })
+                        runtime_result = actual_grounder(
+                            raw_input, run_id=run_id, bounds=bounds
+                        )
+
+                    self.assertEqual(
+                        runtime_result.build_result.submission is None,
+                        not has_submission,
+                    )
+                    self.assertEqual(
+                        json.loads(runtime_result.audit.sidecar_utf8.decode("utf-8"))[
+                            "producer_prompt_version"
+                        ],
+                        "host-grounder-discovery-prompt-v0.7",
+                    )
+                    if has_submission:
+                        store.save_grounder_submission_stage_result(
+                            run_id, stage_id, runtime_result
+                        )
+                    else:
+                        store.save_grounder_stage_result(
+                            run_id, stage_id, runtime_result
+                        )
+
+                    run = store.get_run(run_id)
+                    outcome = run["events"][1]["outcome"]
+                    self.assertEqual(run["events"][1]["status"], "COMPLETED")
+                    self.assertEqual(
+                        outcome["provenance"]["producer_prompt_version"],
+                        "host-grounder-discovery-prompt-v0.7",
+                    )
+                    self.assertEqual(
+                        outcome["schema_version"],
+                        "host-grounder-submission-stage-outcome-v0.1"
+                        if has_submission
+                        else "host-grounder-stage-outcome-v0.1",
+                    )
+                    if has_submission:
+                        self.assertEqual(outcome["submission_status"], "PRESENT")
+                        self.assertEqual(outcome["ei_status"], "ASSESSED")
+                    else:
+                        self.assertEqual(run["status"], "BLOCKED")
+
+                    prior_stage_event = run["events"][1]
+                    call_counts = (
+                        len(source_transport.calls), len(model_transport.calls)
+                    )
+                    store.close()
+                    store = None
+
+                    recovered = HostStore(database_path)
+                    try:
+                        recovered_run = recovered.get_run(run_id)
+                        self.assertEqual(
+                            recovered_run["status"],
+                            "INTERRUPTED" if has_submission else "BLOCKED",
+                        )
+                        self.assertEqual(
+                            recovered_run["events"][1], prior_stage_event
+                        )
+                        self.assertEqual(
+                            (len(source_transport.calls), len(model_transport.calls)),
+                            call_counts,
+                        )
+                        self.assertEqual(
+                            recovered_run["events"][1]["outcome"]["provenance"][
+                                "producer_prompt_version"
+                            ],
+                            "host-grounder-discovery-prompt-v0.7",
+                        )
+                    finally:
+                        recovered.close()
+                finally:
+                    if store is not None:
+                        store.close()
+                    temporary_directory.cleanup()
+
     def test_staged_event_failures_use_closed_truthful_codes(self):
         from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
 
@@ -1698,6 +1860,132 @@ class HostServerBatchTests(unittest.TestCase):
         unrelated.failure_stage = "semantic_wire_parse"
         unrelated.failure_check = "wire_decode"
         self.assertEqual(project(unrelated), ())
+
+    def test_model_call_failure_check_projection_is_closed_and_type_bound(self):
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+        from convexity_hunter.host_model import _MODEL_TRANSPORT_ERROR_CODES
+
+        project = host_server_module._semantic_failure_diagnostic_codes
+        for transport_code in _MODEL_TRANSPORT_ERROR_CODES:
+            with self.subTest(transport_code=transport_code):
+                error = HostGrounderRuntimeError(
+                    "SEMANTIC_CALL_FAILED",
+                    failure_stage="semantic_model_transport",
+                    failure_check="model_transport_" + transport_code.lower(),
+                )
+                error.args = ("PRIVATE_EXCEPTION_SENTINEL",)
+                error.private_detail = "PRIVATE_DETAIL_SENTINEL"
+                self.assertEqual(
+                    project(error),
+                    ("MODEL_CALL_FAILURE_CHECK_" + transport_code,),
+                )
+                self.assertNotIn("PRIVATE", " ".join(project(error)))
+
+        unknown_check = HostGrounderRuntimeError("SEMANTIC_CALL_FAILED")
+        unknown_check.failure_stage = "semantic_model_transport"
+        unknown_check.failure_check = "model_transport_private_sentinel"
+        self.assertEqual(project(unknown_check), ())
+
+        mismatched_stage = HostGrounderRuntimeError(
+            "SEMANTIC_CALL_FAILED",
+            failure_stage="semantic_model_transport",
+            failure_check="model_transport_http_error",
+        )
+        mismatched_stage.failure_stage = "semantic_wire_parse"
+        self.assertEqual(project(mismatched_stage), ())
+
+        wrong_code = HostGrounderRuntimeError(
+            "SEMANTIC_VERDICT_REJECTED",
+            failure_stage="semantic_wire_parse",
+            failure_check="wire_decode",
+        )
+        wrong_code.code = "PRIVATE_CODE_SENTINEL"
+        wrong_code.failure_stage = "semantic_model_transport"
+        wrong_code.failure_check = "model_transport_http_error"
+        self.assertEqual(project(wrong_code), ())
+
+        class ForgedGrounderError(HostGrounderRuntimeError):
+            pass
+
+        forged = ForgedGrounderError(
+            "SEMANTIC_CALL_FAILED",
+            failure_stage="semantic_model_transport",
+            failure_check="model_transport_http_error",
+        )
+        self.assertEqual(project(forged), ())
+
+        spoof = type("SpoofedGrounderError", (), {})()
+        spoof.code = "SEMANTIC_CALL_FAILED"
+        spoof.failure_stage = "semantic_model_transport"
+        spoof.failure_check = "model_transport_http_error"
+        self.assertEqual(project(spoof), ())
+
+    def test_model_call_failure_check_is_run_level_only_and_survives_reload(self):
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+        from convexity_hunter.host_store import HostStore
+
+        temporary_directory, store = self._new_grounder_store(
+            "semantic-transport-failure.sqlite3"
+        )
+        db_path = pathlib.Path(temporary_directory.name) / "semantic-transport-failure.sqlite3"
+
+        def grounder(_raw_input, *, run_id, bounds):
+            del run_id, bounds
+            error = HostGrounderRuntimeError(
+                "SEMANTIC_CALL_FAILED",
+                failure_stage="semantic_model_transport",
+                failure_check="model_transport_http_error",
+            )
+            error.args = ("PRIVATE_EXCEPTION_SENTINEL",)
+            error.private_detail = "PRIVATE_DETAIL_SENTINEL"
+            raise error
+
+        grounder.configuration_snapshot = self._event_configuration_snapshot_accessor()
+
+        def core_executor(*_args, **_kwargs):
+            self.fail("Core must not run after semantic model-call failure")
+
+        try:
+            self._start_server(
+                event_grounder=grounder,
+                event_core_executor=core_executor,
+            )
+            response = self._post("synthetic semantic transport failure", mode="event")
+            self.assertEqual(response[0], 201)
+            body = self._decoded(response)
+            self.assertEqual(body["status"], "BLOCKED")
+            self.assertEqual(body["reason"], "SEMANTIC_CALL_FAILED")
+            run = store.get_run(body["run_id"])
+            expected = [
+                "SEMANTIC_CALL_FAILED",
+                "MODEL_CALL_FAILURE_CHECK_HTTP_ERROR",
+            ]
+            self.assertEqual(run["diagnostics"], expected)
+            self.assertEqual(
+                run["events"][1]["diagnostics"], ["SEMANTIC_CALL_FAILED"]
+            )
+            for secret in (
+                "PRIVATE_EXCEPTION_SENTINEL",
+                "PRIVATE_DETAIL_SENTINEL",
+            ):
+                self.assertNotIn(secret, response[2].decode("utf-8"))
+                self.assertNotIn(secret, json.dumps(run, ensure_ascii=False))
+
+            self._stop_server()
+            store.close()
+            store = HostStore(db_path)
+            self.journal = store
+            self._start_server()
+            history = self._request("GET", "/api/runs/{}".format(body["run_id"]))
+            self.assertEqual(history[0], 200)
+            self.assertEqual(self._decoded(history)["diagnostics"], expected)
+            serialized = history[2].decode("utf-8")
+            self.assertNotIn("PRIVATE_EXCEPTION_SENTINEL", serialized)
+            self.assertNotIn("PRIVATE_DETAIL_SENTINEL", serialized)
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
 
     def test_semantic_failure_subcauses_survive_store_reload_and_http_history(self):
         from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError

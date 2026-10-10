@@ -79,6 +79,40 @@ class ModelTransportError(RuntimeError):
         )
 
 
+_MODEL_TRANSPORT_ERROR_CODES = frozenset((
+    "AUTHENTICATION_FAILED",
+    "DUPLICATE_JSON_KEY",
+    "EMPTY_RESPONSE",
+    "HTTP_ERROR",
+    "INVALID_CONTENT_LENGTH",
+    "INVALID_RESPONSE_BODY",
+    "INVALID_RESPONSE_HEADER",
+    "INVALID_RESPONSE_STATUS",
+    "INVALID_SOURCE_PROMPT",
+    "INVALID_SYSTEM_PROMPT",
+    "INVALID_USAGE",
+    "MALFORMED_JSON",
+    "MALFORMED_RESPONSE",
+    "NETWORK_ERROR",
+    "NONFINITE_JSON",
+    "REDIRECT_REJECTED",
+    "REFUSAL_REJECTED",
+    "REQUEST_BUDGET_EXHAUSTED",
+    "REQUEST_SERIALIZATION_FAILED",
+    "REQUEST_TOO_LARGE",
+    "RESPONSE_READ_FAILED",
+    "RESPONSE_TOO_LARGE",
+    "TIMEOUT",
+    "TOKEN_BUDGET_EXCEEDED",
+    "TOOL_CALLS_REJECTED",
+    "TRANSPORT_FAILED",
+    "TRANSPORT_ROOT_NOT_OBJECT",
+    "TRUNCATED_RESPONSE",
+    "UNKNOWN_TRANSPORT_FIELD",
+    "UNSUPPORTED_FINISH_REASON",
+))
+
+
 def _require_text(name: str, value: object) -> str:
     if type(value) is not str or not value or value.strip() != value:
         raise ModelConfigurationError(f"INVALID_{name.upper()}")
