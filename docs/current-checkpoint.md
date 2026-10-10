@@ -69,6 +69,17 @@ raw table. This establishes bounded reference-source compatibility, not
 complete listing identity, EI acceptance or Core readiness. Independent
 class/venue/denomination corroboration remains a separate composite boundary.
 
+The next read-only composite preflight is BLOCKED under the approved independent
+class-corroboration rule. SEC reference CIK can bind to the exact filing path
+CIK; Nasdaq need not repeat CIK. However, the observed Nasdaq body has no usable
+instrument class heading and Yahoo H1/venue/USD does not state security class.
+The exact observed Yahoo header could justify a narrow versioned parser, but
+that implementation alone cannot supply independent Common Stock evidence.
+Do not implement a composite merely to fill this gap. It needs either actual
+independent class evidence or an explicit authority decision permitting SEC
+cover alone to establish class. No new requests or rule relaxation occurred
+in this follow-on preflight.
+
 ## Yahoo format-only continuation — 2026-10-10
 
 Status: preregistered allowance executed once; spent. Production, EI, Core,

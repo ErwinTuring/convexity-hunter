@@ -10,6 +10,10 @@ exactly one PLUG row with an anchor and successful client receipt revalidation;
 47 focused and 125 source/Host tests passed. This closes reference-source
 compatibility only. Full composite remains blocked by independent source
 grammar; no full securities identity or EI/Core success is claimed.
+Follow-on read-only preflight located the remaining authority gap: independent
+Common Stock corroboration, not Nasdaq CIK. A precise Yahoo header successor
+would address format only; it cannot establish security class. SEC cover alone
+is not silently promoted to sufficient class proof under the approved boundary.
 Nasdaq CIK repetition is no longer required by the successor target. No EI/Core
 identity or economic rule is loosened. See [current checkpoint](current-checkpoint.md#sec-primary-issuer-reference--2026-10-10).
 
