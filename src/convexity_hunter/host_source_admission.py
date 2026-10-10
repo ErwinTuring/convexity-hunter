@@ -42,6 +42,7 @@ _PARSER_METADATA = {
     "sec-issuer-reference-v2": ("sec", "2"),
     "nasdaq-instrument-v1": ("nasdaq", "1"),
     "yahoo-quote-header-v1": ("yahoo", "1"),
+    "yahoo-quote-header-v2": ("yahoo", "2"),
 }
 _SEC_HOSTS = frozenset(("sec.gov", "www.sec.gov"))
 _ALLOWED_HOSTS = _SEC_HOSTS | frozenset(("www.nasdaq.com", "finance.yahoo.com"))
@@ -78,6 +79,9 @@ _NASDAQ_HEADING = re.compile(
 )
 _YAHOO_HEADING = re.compile(r"(?P<issuer>[^\r\n]+) \((?P<symbol>[^()]*)\)\Z")
 _YAHOO_QUOTE = "NasdaqGS - Delayed Quote•USD"
+_YAHOO_V2_MARKET_LABEL = re.compile(
+    r"Nasdaq(?:GS|GM|CM) - (?:Delayed Quote•?|Nasdaq Real Time Price) [A-Z]{3}\Z"
+)
 _BLOCK_TAGS = frozenset(
     ("article", "blockquote", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "p", "section", "tr")
 )
@@ -1923,6 +1927,76 @@ def _yahoo_html(source: str, target_symbol: str) -> Optional[_ParsedPage]:
     return _ParsedPage(body, "yahoo-quote-header-v1", anchors, symbol.upper())
 
 
+def _yahoo_html_v2(source: str, target_symbol: str) -> Optional[_ParsedPage]:
+    parser = _BoundedHTML(source).result()
+    visible, _anchors = _render_chunks(source, _visible_chunks(parser))
+    lines = list(_line_spans(visible))
+    labels = []
+    categorical_labels = []
+    for index, (line, start, end) in enumerate(lines):
+        normalized = re.sub(r"[ \t]+", " ", line).strip(" \t")
+        if _YAHOO_V2_MARKET_LABEL.fullmatch(normalized):
+            categorical_labels.append(normalized)
+        if normalized == "NasdaqCM - Nasdaq Real Time Price USD":
+            labels.append((index, normalized, line, start, end))
+    headings = []
+    for heading in parser.headings:
+        text = _ascii_space(heading.text)
+        match = _YAHOO_HEADING.fullmatch(text)
+        if match is not None and _TICKER.fullmatch(match.group("symbol")):
+            headings.append((heading, text, match))
+    if len(labels) != 1 or len(categorical_labels) != 1 or len(headings) != 1:
+        return None
+    label_index, label, raw_label, label_start, label_end = labels[0]
+    heading, text, match = headings[0]
+    issuer = _ascii_space(match.group("issuer"))
+    symbol = match.group("symbol")
+    if (
+        not _issuer_valid(issuer)
+        or symbol != target_symbol
+        or not _TICKER.fullmatch(target_symbol)
+    ):
+        return None
+    matching_heading_lines = [
+        index
+        for index, (line, _start, _end) in enumerate(lines)
+        if re.sub(r"[ \t]+", " ", line).strip(" \t") == text
+    ]
+    if len(matching_heading_lines) != 1:
+        return None
+    heading_line = matching_heading_lines[0]
+    lower, upper = sorted((label_index, heading_line))
+    if any(lines[index][0].strip(" \t") for index in range(lower + 1, upper)):
+        return None
+    if heading_line == label_index:
+        return None
+    body = label + "\n\n# " + text + "\n"
+    label_pos = body.find(label)
+    heading_pos = body.rfind("# " + text) + 2
+    label_raw = _visible_text_raw_span(parser, raw_label)
+    if label_raw is None:
+        return None
+    anchors = (
+        _anchor(
+            "yahoo.instrument_label",
+            source,
+            label_raw[0],
+            label_raw[1],
+            label_pos,
+            label_pos + len(label),
+        ),
+        _anchor(
+            "yahoo.instrument_heading",
+            source,
+            heading.raw_start,
+            heading.raw_end,
+            heading_pos,
+            heading_pos + len(text),
+        ),
+    )
+    return _ParsedPage(body, "yahoo-quote-header-v2", anchors, symbol)
+
+
 def _line_spans(body: str):
     offset = 0
     for line in body.splitlines(keepends=True):
@@ -1957,6 +2031,7 @@ def _parse_page(
     content_type: str,
     *,
     sec_reference_symbols: Optional[Tuple[str, ...]] = None,
+    yahoo_v2: bool = False,
 ) -> Optional[_ParsedPage]:
     try:
         if sec_reference_symbols is not None:
@@ -1974,7 +2049,9 @@ def _parse_page(
         if family == "nasdaq":
             return None if target_symbol is None else _nasdaq_html(body, target_symbol)
         if family == "yahoo":
-            return None if target_symbol is None else _yahoo_html(body, target_symbol)
+            if target_symbol is None:
+                return None
+            return _yahoo_html_v2(body, target_symbol) if yahoo_v2 else _yahoo_html(body, target_symbol)
     except (ValueError, RecursionError):
         return None
     return None
@@ -2019,11 +2096,17 @@ class _SourceAdmissionClient:
         self._dns_count = 0
         self._response_bytes = 0
         self._sec_reference_issuance_receipt = None
+        self._candidate_issuance_receipt = None
+        self._candidate_deadline = None
+        self._sec_composite_spent = False
+        self._sec_composite_issuance_receipt = None
+        self._attempted_locators = set()
 
     def admit_candidates(self, locators: Sequence[str]) -> AdmissionBatch:
         if not isinstance(locators, (tuple, list)):
             raise TypeError("candidate locators must be a sequence")
         deadline = self._monotonic() + self._timeout * MAX_SOURCE_ADMISSION_REQUESTS
+        self._candidate_deadline = deadline
         candidates = []
         seen = set()
         failures = []
@@ -2043,12 +2126,15 @@ class _SourceAdmissionClient:
         attempted = set()
         admitted_symbols = set()
         for locator, target in candidates:
+            if locator in self._attempted_locators:
+                continue
             if self._request_count >= MAX_SOURCE_ADMISSION_REQUESTS:
                 failures.append(AdmissionFailure("REQUEST_LIMIT_REACHED"))
                 break
             if locator in attempted:
                 continue
             attempted.add(locator)
+            self._attempted_locators.add(locator)
             result, failure = self._admit_one(locator, target, deadline)
             if failure is not None:
                 failures.append(failure)
@@ -2079,6 +2165,7 @@ class _SourceAdmissionClient:
                     if supplement in attempted:
                         continue
                     attempted.add(supplement)
+                    self._attempted_locators.add(supplement)
                     supplemental, supplement_failure = self._admit_one(
                         supplement, supplement_target, deadline
                     )
@@ -2086,9 +2173,142 @@ class _SourceAdmissionClient:
                         failures.append(supplement_failure)
                     else:
                         admissions.append(supplemental)
+        self._candidate_issuance_receipt = tuple(
+            _sec_reference_record_snapshot(item) for item in admissions
+        )
         return AdmissionBatch(
             tuple(admissions), tuple(failures), self._request_count, self._response_bytes
         )
+
+    def _admit_sec_reference_and_yahoo(
+        self, symbols: Tuple[str, ...], cover_records: Tuple[SourceAdmission, ...]
+    ) -> AdmissionBatch:
+        """Perform one selected SEC reference read and exact Yahoo v2 reads."""
+        if self._sec_composite_spent:
+            return AdmissionBatch(
+                (), (AdmissionFailure("REQUEST_LIMIT_REACHED"),),
+                self._request_count, self._response_bytes,
+            )
+        self._sec_composite_spent = True
+        if (
+            type(symbols) is not tuple
+            or not symbols
+            or any(
+                type(symbol) is not str
+                or symbol != symbol.upper()
+                or _TICKER.fullmatch(symbol) is None
+                for symbol in symbols
+            )
+            or len(set(symbols)) != len(symbols)
+            or type(cover_records) is not tuple
+            or len(cover_records) != len(symbols)
+            or any(
+                type(record) is not SourceAdmission
+                or record.family != "sec"
+                or record.parser_id != "sec-edgar-cover-layout-v4"
+                or record.parser_version != "4"
+                or record.parsed_symbol != symbol
+                for record, symbol in zip(cover_records, symbols)
+            )
+            or type(self._candidate_issuance_receipt) is not tuple
+            or any(
+                _sec_reference_record_snapshot(record)
+                not in self._candidate_issuance_receipt
+                for record in cover_records
+            )
+            or type(self._candidate_deadline) not in (int, float)
+        ):
+            return AdmissionBatch(
+                (), (AdmissionFailure("PARSER_UNSUPPORTED"),),
+                self._request_count, self._response_bytes,
+            )
+        yahoo_locators = tuple(
+            "https://finance.yahoo.com/quote/{}/".format(symbol)
+            for symbol in symbols
+        )
+        if (
+            _SEC_REFERENCE_LOCATOR in self._attempted_locators
+            or any(locator in self._attempted_locators for locator in yahoo_locators)
+        ):
+            return AdmissionBatch(
+                (), (AdmissionFailure("REQUEST_LIMIT_REACHED"),),
+                self._request_count, self._response_bytes,
+            )
+        if self._request_count + 1 + len(symbols) > MAX_SOURCE_ADMISSION_REQUESTS:
+            return AdmissionBatch(
+                (), (AdmissionFailure("REQUEST_LIMIT_REACHED"),),
+                self._request_count, self._response_bytes,
+            )
+        records = list(cover_records)
+        failures = []
+        self._attempted_locators.add(_SEC_REFERENCE_LOCATOR)
+        reference, failure = self._admit_one(
+            _SEC_REFERENCE_LOCATOR,
+            _sec_reference_target(_SEC_REFERENCE_LOCATOR),
+            self._candidate_deadline,
+            sec_reference_symbols=symbols,
+        )
+        if failure is not None:
+            failures.append(failure)
+        else:
+            records.append(reference)
+            for locator in yahoo_locators:
+                symbol = _family_target(locator)[2][0]
+                self._attempted_locators.add(locator)
+                yahoo, yahoo_failure = self._admit_one(
+                    locator, _family_target(locator), self._candidate_deadline,
+                    yahoo_v2=True,
+                )
+                if yahoo_failure is not None:
+                    failures.append(yahoo_failure)
+                else:
+                    records.append(yahoo)
+        expected_count = len(symbols) * 2 + 1
+        if not failures and len(records) == expected_count:
+            snapshots = tuple(_sec_reference_record_snapshot(item) for item in records)
+            if all(snapshot is not None for snapshot in snapshots):
+                self._sec_composite_issuance_receipt = (symbols, snapshots)
+        return AdmissionBatch(
+            tuple(records), tuple(failures), self._request_count, self._response_bytes
+        )
+
+    def _revalidate_sec_composite(
+        self,
+        records: Tuple[SourceAdmission, ...],
+        symbols: Tuple[str, ...],
+        *,
+        max_raw_bytes: int,
+        max_parsed_bytes: int,
+    ) -> Optional[Tuple[SourceAdmission, ...]]:
+        receipt = self._sec_composite_issuance_receipt
+        if (
+            type(receipt) is not tuple
+            or len(receipt) != 2
+            or type(receipt[0]) is not tuple
+            or type(receipt[1]) is not tuple
+            or type(symbols) is not tuple
+            or symbols != receipt[0]
+            or type(records) is not tuple
+            or len(records) != len(symbols) * 2 + 1
+            or tuple(_sec_reference_record_snapshot(item) for item in records)
+            != receipt[1]
+        ):
+            return None
+        checked = []
+        for index, record in enumerate(records):
+            is_reference = index == len(symbols)
+            item = _revalidate_source_admission(
+                record,
+                max_raw_bytes=max_raw_bytes,
+                max_parsed_bytes=max_parsed_bytes,
+                _sec_reference_issuance_receipt=(
+                    self._sec_reference_issuance_receipt if is_reference else None
+                ),
+            )
+            if item is None:
+                return None
+            checked.append(item)
+        return tuple(checked)
 
     def admit_sec_reference(self, symbols: Tuple[str, ...]) -> AdmissionBatch:
         """Admit only explicitly selected rows from the SEC issuer reference."""
@@ -2163,6 +2383,7 @@ class _SourceAdmissionClient:
         deadline: float,
         *,
         sec_reference_symbols: Optional[Tuple[str, ...]] = None,
+        yahoo_v2: bool = False,
     ):
         is_sec_reference = sec_reference_symbols is not None
         if is_sec_reference and initial_target[0] != "sec-reference":
@@ -2257,6 +2478,7 @@ class _SourceAdmissionClient:
                 else None,
                 content_type,
                 sec_reference_symbols=sec_reference_symbols,
+                yahoo_v2=yahoo_v2,
             )
             if parsed is None:
                 raise _AdmissionProblem("PARSER_UNSUPPORTED")
@@ -2270,6 +2492,7 @@ class _SourceAdmissionClient:
         deadline: float,
         *,
         sec_reference_symbols: Optional[Tuple[str, ...]] = None,
+        yahoo_v2: bool = False,
     ):
         try:
             final_locator, _target, content_type, raw_body, parsed = self._request(
@@ -2277,6 +2500,7 @@ class _SourceAdmissionClient:
                 target,
                 deadline,
                 sec_reference_symbols=sec_reference_symbols,
+                yahoo_v2=yahoo_v2,
             )
             self._remaining(deadline)
             now = self._clock()

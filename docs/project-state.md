@@ -1,6 +1,15 @@
 # Project State
 
-Latest 2026-10-10 authority correction: the user approved SEC cover alone for
+Current 2026-10-10: SEC-primary listing composite v0.2 and scoped Yahoo header
+v2 are implemented and independently reviewed. A separately registered real
+three-source PLUG operation admitted all roles, validated the issuing receipt
+and composed identity successfully. Final 1,909-test regression and 218-test
+source/Host integration passed. Old failed attempts remain historical; no
+new real EI acceptance/Core case or three-entry operational success is claimed.
+No provider, default budget, Kernel or economic rule changed. See the
+[current checkpoint](current-checkpoint.md#sec-primary-issuer-reference--2026-10-10).
+
+Preceding 2026-10-10 authority correction: the user approved SEC cover alone for
 explicit security class, with independent market/denomination corroboration.
 The preceding class-corroboration blocker is superseded; versioned composite
 implementation still needs the ordinary preflight/freeze/review gates. No

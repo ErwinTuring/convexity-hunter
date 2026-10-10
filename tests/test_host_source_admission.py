@@ -26,6 +26,7 @@ from convexity_hunter.host_source_admission import (
     _sec_html,
     _source_id_for_locator,
     _yahoo_html,
+    _yahoo_html_v2,
 )
 
 
@@ -504,6 +505,201 @@ class HostSourceAdmissionTests(unittest.TestCase):
                 self.assertIsNone(_yahoo_html(raw.replace("USD", "<span " + attrs + "><b>USD</b></span>"), "ACME"))
         visible = raw.replace("USD", '<span aria-hidden="false" style="visibility:visible">USD</span>')
         self.assertEqual(_yahoo_html(visible, "ACME").body, _yahoo_html(raw, "ACME").body)
+
+    def test_yahoo_v2_requires_unique_adjacent_visible_label_and_heading(self):
+        label = "NasdaqCM - Nasdaq Real Time Price USD"
+        heading = "ACME HOLDINGS, INC. (ACME)"
+        raw = (
+            "<html><body><div>" + label + "</div>\n\n"
+            "<h1>" + heading + "</h1></body></html>"
+        )
+        parsed = _yahoo_html_v2(raw, "ACME")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.parser_id, "yahoo-quote-header-v2")
+        self.assertEqual(parsed.symbol, "ACME")
+        self.assertEqual(parsed.body, label + "\n\n# " + heading + "\n")
+        anchors = {anchor.field: anchor for anchor in parsed.anchors}
+        label_anchor = anchors["yahoo.instrument_label"]
+        heading_anchor = anchors["yahoo.instrument_heading"]
+        self.assertEqual(
+            (label_anchor.raw_start, label_anchor.raw_end),
+            (raw.index(label), raw.index(label) + len(label)),
+        )
+        self.assertEqual(
+            (heading_anchor.raw_start, heading_anchor.raw_end),
+            (raw.index(heading), raw.index(heading) + len(heading)),
+        )
+        self.assertEqual(
+            (parsed.body[label_anchor.parsed_start:label_anchor.parsed_end],
+             parsed.body[heading_anchor.parsed_start:heading_anchor.parsed_end]),
+            (label, heading),
+        )
+        reverse = _yahoo_html_v2(
+            "<html><body><h1>" + heading + "</h1>\n\n<div>" + label + "</div></body></html>",
+            "ACME",
+        )
+        self.assertIsNotNone(reverse)
+        self.assertEqual(reverse.parser_id, "yahoo-quote-header-v2")
+
+    def test_yahoo_v2_rejects_unscoped_or_ambiguous_visible_evidence(self):
+        label = "NasdaqCM - Nasdaq Real Time Price USD"
+        heading = "ACME HOLDINGS, INC. (ACME)"
+        invalid = (
+            "<div>" + label + "</div><p>intervening visible text</p><h1>" + heading + "</h1>",
+            "<div>" + heading + "</div><div>" + label + "</div>"
+            "<p>intervening visible text</p><h1>" + heading + "</h1>",
+            "<div>" + label + "</div><div>" + label + "</div><h1>" + heading + "</h1>",
+            "<div>" + label + "</div><div>NasdaqGS - Delayed Quote EUR</div>"
+            "<h1>" + heading + "</h1>",
+            "<div>" + label + "</div><h1>" + heading + "</h1><h2>" + heading + "</h2>",
+            "<div>NasdaqGS - Delayed Quote USD</div><h1>" + heading + "</h1>",
+            "<div>" + label + " EUR</div><h1>" + heading + "</h1>",
+        )
+        for body in invalid:
+            with self.subTest(body=body):
+                self.assertIsNone(_yahoo_html_v2("<html><body>" + body + "</body></html>", "ACME"))
+
+    def test_yahoo_v2_does_not_globally_reject_unrelated_quote_wording(self):
+        parsed = _yahoo_html_v2(
+            "<html><body><p>quote coverage and company overview</p>"
+            "<div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+            "<h1>ACME HOLDINGS, INC. (ACME)</h1></body></html>",
+            "ACME",
+        )
+        self.assertIsNotNone(parsed)
+
+    def test_yahoo_v2_collapses_only_ascii_space_and_tab_in_the_label(self):
+        parsed = _yahoo_html_v2(
+            "<html><body><div>NasdaqCM\t-  Nasdaq Real Time Price USD</div>"
+            "<h1>ACME HOLDINGS, INC. (ACME)</h1></body></html>",
+            "ACME",
+        )
+        self.assertIsNotNone(parsed)
+        self.assertTrue(parsed.body.startswith("NasdaqCM - Nasdaq Real Time Price USD\n"))
+
+    def test_sec_composite_reader_uses_one_reference_and_selected_yahoo_v2_receipt(self):
+        cover_html = _sec_layout_v4_html(exchange="The Nasdaq&#13;Capital Market")
+        yahoo_html = (
+            "<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+            "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
+        ).encode("utf-8")
+        transport = _ResponseTransport(
+            {
+                SEC_LOCATOR: [_ok(cover_html)],
+                SEC_REFERENCE_LOCATOR: [_reference_ok(SEC_REFERENCE_BODY)],
+                YAHOO_LOCATOR: [_ok(yahoo_html)],
+            }
+        )
+        client = _client(transport)
+        cover_batch = client.admit_candidates((SEC_LOCATOR,))
+        self.assertEqual(cover_batch.admissions[0].parser_id, "sec-edgar-cover-layout-v4")
+        batch = client._admit_sec_reference_and_yahoo(
+            ("ACME",), cover_batch.admissions
+        )
+        self.assertEqual(
+            [item.parser_id for item in batch.admissions],
+            [
+                "sec-edgar-cover-layout-v4",
+                "sec-issuer-reference-v2",
+                "yahoo-quote-header-v2",
+            ],
+        )
+        self.assertEqual(
+            [call[0] for call in transport.calls],
+            [SEC_LOCATOR, SEC_REFERENCE_LOCATOR, YAHOO_LOCATOR],
+        )
+        records = batch.admissions
+        self.assertIsNotNone(
+            client._revalidate_sec_composite(
+                records,
+                ("ACME",),
+                max_raw_bytes=100_000,
+                max_parsed_bytes=100_000,
+            )
+        )
+        self.assertIsNone(
+            client._revalidate_sec_composite(
+                records,
+                ("WRONG",),
+                max_raw_bytes=100_000,
+                max_parsed_bytes=100_000,
+            )
+        )
+        replaced_yahoo = replace(
+            records[-1], raw_body_sha256="0" * 64
+        )
+        self.assertIsNone(
+            client._revalidate_sec_composite(
+                records[:-1] + (replaced_yahoo,),
+                ("ACME",),
+                max_raw_bytes=100_000,
+                max_parsed_bytes=100_000,
+            )
+        )
+        foreign = _client(_ResponseTransport({}))
+        self.assertIsNone(
+            foreign._revalidate_sec_composite(
+                records,
+                ("ACME",),
+                max_raw_bytes=100_000,
+                max_parsed_bytes=100_000,
+            )
+        )
+        spent = client._admit_sec_reference_and_yahoo(("ACME",), cover_batch.admissions)
+        self.assertEqual(spent.failures[0].code, "REQUEST_LIMIT_REACHED")
+        self.assertEqual(len(transport.calls), 3)
+
+    def test_sec_composite_reader_keeps_existing_byte_budget_and_does_not_retry(self):
+        cover_html = _sec_layout_v4_html(exchange="The Nasdaq&#13;Capital Market")
+        yahoo_html = (
+            "<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+            "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
+        ).encode("utf-8")
+        reference = SEC_REFERENCE_BODY.encode("utf-8")
+        transport = _ResponseTransport(
+            {
+                SEC_LOCATOR: [_ok(cover_html)],
+                SEC_REFERENCE_LOCATOR: [_reference_ok(reference)],
+                YAHOO_LOCATOR: [_ok(yahoo_html)],
+            }
+        )
+        client = _SourceAdmissionClient(
+            timeout_seconds=2.5,
+            max_response_bytes=100_000,
+            byte_budget=len(cover_html) + len(reference),
+            _transport=transport,
+            _resolver=lambda _host, _port: ("93.184.216.34",),
+            _clock=lambda: NOW,
+        )
+        cover_batch = client.admit_candidates((SEC_LOCATOR,))
+        batch = client._admit_sec_reference_and_yahoo(("ACME",), cover_batch.admissions)
+        self.assertEqual(len(transport.calls), 2)
+        self.assertEqual(batch.failures[0].code, "BODY_LIMIT_EXCEEDED")
+        self.assertIsNone(
+            client._revalidate_sec_composite(
+                batch.admissions,
+                ("ACME",),
+                max_raw_bytes=100_000,
+                max_parsed_bytes=100_000,
+            )
+        )
+
+    def test_sec_composite_reader_never_retries_a_yahoo_path_already_tried_as_v1(self):
+        cover_html = _sec_layout_v4_html(exchange="The Nasdaq&#13;Capital Market")
+        transport = _ResponseTransport(
+            {
+                SEC_LOCATOR: [_ok(cover_html)],
+                YAHOO_LOCATOR: [_ok(YAHOO_HTML)],
+                SEC_REFERENCE_LOCATOR: [_reference_ok(SEC_REFERENCE_BODY)],
+            }
+        )
+        client = _client(transport)
+        yahoo_v1 = client.admit_candidates((YAHOO_LOCATOR,))
+        self.assertEqual(yahoo_v1.admissions[0].parser_id, "yahoo-quote-header-v1")
+        cover = client.admit_candidates((SEC_LOCATOR,)).admissions
+        batch = client._admit_sec_reference_and_yahoo(("ACME",), cover)
+        self.assertEqual(batch.failures[0].code, "REQUEST_LIMIT_REACHED")
+        self.assertEqual([call[0] for call in transport.calls], [YAHOO_LOCATOR, SEC_LOCATOR])
 
     def test_hidden_void_elements_leave_following_visible_evidence_intact(self):
         raw = SEC_HTML.decode("utf-8")

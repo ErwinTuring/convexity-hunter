@@ -34,7 +34,10 @@ failure records remain unchanged.
 ### SEC-primary Common Stock composite v0.2 — frozen BUILD boundary
 
 Formal read-only preflight READY. Freeze the narrow successor
-`host-listing-source-composite-v0.2`; production implementation is pending.
+`host-listing-source-composite-v0.2`; production is now implemented and
+independently reviewed. Corrected once-only PLUG source composition passed;
+this is not a real EI/Core result or a general-format guarantee. The original
+failed operation and all legacy rules remain historical evidence.
 Keep the existing ordinary-share v0.1 helper/path unchanged.
 
 - Exactly three authorized source roles: SEC `sec-issuer-reference-v2` selected
@@ -49,7 +52,10 @@ Keep the existing ordinary-share v0.1 helper/path unchanged.
 - The cover has one explicit registrant marker and one unambiguous three-column
   cover row: `Common Stock`, optionally `, par value $<ASCII decimal> per share`,
   exact ticker and `The Nasdaq Capital Market`. The cover alone supports
-  `EQUITY`. Class-dollar notation is not currency proof. Exact cover issuer
+  `EQUITY`. Consume v4's issued registrant/marker parsed-span anchors with the
+  already-approved v4 whitespace fold; do not require those complete semantic
+  segments to occupy single physical lines. Keep original excerpts/offsets
+  and all signed-record checks. Class-dollar notation is not currency proof. Exact cover issuer
   and Yahoo issuer agree using ASCII case and space/tab collapsing only;
   the conformed SEC reference name is preserved, not treated as an alias.
 - Yahoo v2 reads visible HTML only, one exact instrument heading

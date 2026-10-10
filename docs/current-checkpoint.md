@@ -4,6 +4,27 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## SEC-primary issuer reference — 2026-10-10
 
+Current runtime: `host-listing-source-composite-v0.2` and
+`yahoo-quote-header-v2` are implemented with Host automatic registration and
+consumption. Independent review PASS after closing two Yahoo scoping findings,
+fake-validator bypass and the independently reproduced v4 multiline-anchor
+compatibility bug. Final full regression: 1,909 tests PASS; final source/Host
+integration: 218 tests PASS; compileall/diff/documentation checks PASS.
+
+The separately registered corrected validation is spent: three requests /
+1,653,990 raw bytes; cover v4, reference v2 and Yahoo v2 all admitted. Issuing
+receipt, reference/cover/Yahoo parsers, issuer agreement and source composition
+all passed. Cover and reference raw/parsed hashes match the first operation;
+Yahoo raw hash changed but its parsed header hash stayed identical. Raw bodies,
+contact and credential data were not retained. This proves this PLUG source
+identity composition, not provider-global coverage or current standing.
+The live operation did not run Tavily, DeepSeek, Event Intelligence or Core;
+Host/EI wiring remains synthetic regression evidence, not a new real accepted
+event or a three-entry operational success. Normal Host limits/defaults and
+economic/temporal/evidence rules remain unchanged. Next substantive work is
+the existing retained Event path, with explicit caller budgets/policy and
+its own bounded authorization, not another blind source or quote repeat.
+
 Latest user authority: SEC cover may alone prove the explicit security class;
 market and denomination still need independent corroboration. This supersedes
 the independent class blocker below, not historical experiment results. A
@@ -12,7 +33,8 @@ identity or EI/Core success is implied by the decision alone.
 
 Formal follow-on preflight is READY; Main froze the narrow
 [composite v0.2 BUILD boundary](host-listing-source-composite-v0.1.md#sec-primary-common-stock-composite-v02--frozen-build-boundary).
-BUILD is in progress, not yet a validated runtime. After independent review,
+The following is the historical pre-execution registration, not an additional
+allowance. After independent review,
 one source-only validation is preregistered at
 `/private/tmp/sec-primary-composite-validation.r8OKaV/`: exact existing PLUG
 SEC filing, selected official reference row and exact Yahoo PLUG quote page,
@@ -23,6 +45,23 @@ these are explicit standalone validation inputs, not changed Host defaults.
 Retain only sanitized counts, parser versions, source hashes/anchors and
 composition outcome; no raw bodies or SEC contact value. Any synthetic gate
 fixture used to exercise wiring must be identified as such, not real EI proof.
+
+That first operation is now spent: three requests / 1,657,906 raw bytes;
+SEC cover v4, SEC reference v2 and Yahoo header v2 all admitted, and client
+receipt revalidation passed, but source composition returned false. The
+failure stage was not retained, so the actual rejecting condition is unknown.
+No EI/Core result is claimed. A separate offline fixture proved a specific
+implementation defect: v4 admits complete semantic registrant/marker segments
+containing LF, while the new composite required literal single-line fields.
+The correction consumes v4's issued parsed-span anchors and existing fold,
+not inferred text or new issuer aliases. Preserve the first live failure.
+
+After targeted independent review, a distinct correction validation is
+preregistered at `/private/tmp/sec-primary-composite-fixed.mfZc5B/`, with the
+same exact three sources, caps and one-shot/no-retry rules. It additionally
+emits only Boolean reference/cover/Yahoo/issuer-agreement stage outcomes from
+that same acquired snapshot, preventing another unlocated failure without
+retaining bodies. It is not a reset or replay of any spent marker.
 
 The user approved SEC official issuer/security reference as primary association,
 with separate security-class/venue/denomination corroboration. Nasdaq CIK

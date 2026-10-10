@@ -571,6 +571,102 @@ def _listing_identity_case(
     )
 
 
+def _sec_primary_raw_cover_html(symbol="ACME", share_class="Common Stock"):
+    return (
+        "<html><body><p>Example Holdings, Inc.</p>"
+        "<p>(Exact name of registrant as specified in its charter)</p>"
+        "<table><tr><th>Title of each class</th><th></th>"
+        "<th>Trading Symbol(s)</th><th></th>"
+        "<th>Name of each exchange on which registered</th></tr>"
+        "<tr><td>" + share_class + "</td><td></td><td>" + symbol + "</td><td></td>"
+        "<td>The Nasdaq&#13;Capital Market</td></tr></table></body></html>"
+    ).encode("utf-8")
+
+
+def _sec_primary_composite_records(
+    symbol="ACME", *, yahoo_override=None, share_class="Common Stock",
+    cover_html_override=None,
+):
+    cover_html = cover_html_override or _sec_primary_raw_cover_html(symbol, share_class)
+    reference_locator = "https://www.sec.gov/files/company_tickers_exchange.json"
+    reference_body = json.dumps(
+        {
+            "fields": ["cik", "name", "ticker", "exchange"],
+            "data": [[320193, "Reference Unicode — Name", symbol, "Nasdaq"]],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    yahoo_locator = "https://finance.yahoo.com/quote/{}/".format(symbol)
+    yahoo_body = (yahoo_override or (
+        "<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+        "<h1>Example Holdings, Inc. (" + symbol + ")</h1></body></html>"
+    )).encode("utf-8")
+    responses = {
+        _SEC_LOCATOR: _Reply(200, {"Content-Type": "text/html; charset=UTF-8"}, cover_html),
+        reference_locator: _Reply(200, {"Content-Type": "application/json"}, reference_body),
+        yahoo_locator: _Reply(200, {"Content-Type": "text/html; charset=UTF-8"}, yahoo_body),
+    }
+    calls = []
+
+    def transport(locator, _address, _timeout, _max_bytes):
+        calls.append(locator)
+        return responses[locator]
+
+    client = _SourceAdmissionClient(
+        timeout_seconds=2.0,
+        max_response_bytes=1_500_000,
+        byte_budget=2_500_000,
+        _transport=transport,
+        _resolver=lambda _host, _port: ("93.184.216.34",),
+        _clock=lambda: _NOW,
+    )
+    initial = client.admit_candidates((_SEC_LOCATOR,))
+    composite = client._admit_sec_reference_and_yahoo((symbol,), initial.admissions)
+    checked = client._revalidate_sec_composite(
+        composite.admissions,
+        (symbol,),
+        max_raw_bytes=1_500_000,
+        max_parsed_bytes=1_500_000,
+    )
+    return client, checked, calls
+
+
+def _sec_primary_listing_case(
+    run_id="sec-primary-listing-run",
+    *,
+    yahoo_override=None,
+    share_class="Common Stock",
+    cover_html_override=None,
+    **identity_options
+):
+    base = _listing_identity_case(run_id=run_id, symbol="ACME", **identity_options)
+    snapshot, receipt, context, _ids, _order, _bodies, _by_url, hypothesis_id, run_input = base
+    client, records, calls = _sec_primary_composite_records(
+        "ACME", yahoo_override=yahoo_override, share_class=share_class,
+        cover_html_override=cover_html_override,
+    )
+    if records is None:
+        raise AssertionError("synthetic SEC-primary composite did not issue")
+    source_bodies = {
+        record.source_id: HostSourceBody(
+            body=record.parsed_body,
+            body_sha256=record.parsed_body_sha256,
+            final_locator=record.final_locator,
+            retrieved_at=record.retrieved_at,
+        )
+        for record in records
+    }
+    context = replace(context, source_bodies=source_bodies)
+    receipt_values = dict(receipt)
+    receipt_values["source_body_hashes"] = tuple(
+        (source_id, source_bodies[source_id].body_sha256)
+        for source_id in sorted(source_bodies)
+    )
+    receipt = MappingProxyType(receipt_values)
+    return snapshot, receipt, context, client, records, calls, hypothesis_id, run_input
+
+
 def _listing_runtime_wires(run_id, symbol, source_order, bodies_by_url, config):
     run_input, context = _context_and_run_input(
         run_id,
@@ -887,6 +983,181 @@ class HostEventGrounderTests(unittest.TestCase):
                     snapshot, receipt, context
                 )
                 self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_sec_primary_composite_binds_only_from_same_client_receipt(self):
+        snapshot, receipt, context, client, records, calls, hypothesis_id, _run_input = (
+            _sec_primary_listing_case()
+        )
+        source_ids = tuple(record.source_id for record in records)
+        preparer = _make_listing_source_preparer(
+            source_ids,
+            admission_records=records,
+            sec_composite=(client, ("ACME",), records, 1_500_000, 1_500_000),
+        )
+        prepared = preparer(snapshot, receipt, context)
+        pair = (hypothesis_id, "ACME")
+        self.assertIn(pair, prepared.underlying_bindings)
+        key, reference_text = prepared.underlying_bindings[pair]
+        self.assertEqual(
+            key,
+            UnderlyingKey("ACME", None, UnderlyingSecurityType.EQUITY, "USD"),
+        )
+        reference = json.loads(reference_text)
+        self.assertEqual(
+            reference["rule_version"], "host-listing-source-composite-v0.2"
+        )
+        self.assertEqual(
+            [source["role"] for source in reference["sources"]],
+            ["sec_issuer_reference", "sec_cover_security_class", "yahoo_quote_denomination"],
+        )
+        self.assertEqual(reference["sources"][0]["issuer_name"], "Reference Unicode — Name")
+        self.assertEqual(reference["sources"][1]["share_class"], "Common Stock")
+        self.assertEqual(
+            reference["sources"][1]["registered_exchange"],
+            "The Nasdaq Capital Market",
+        )
+        self.assertEqual(reference["sources"][2]["currency_basis"],
+                         "yahoo_provider_reported_quote_denomination")
+        for item in reference["sources"]:
+            self.assertIn("source_admission", item)
+            self.assertTrue(item["excerpts"])
+        self.assertEqual(len(calls), 3)
+
+    def test_sec_primary_cover_uses_v4_marker_span_for_wrapped_marker(self):
+        raw_cover = _sec_primary_raw_cover_html().replace(
+            b"(Exact name of registrant as specified in its charter)",
+            b"(Exact name of registrant as \nspecified in its charter)",
+        )
+        snapshot, receipt, context, client, records, _calls, hypothesis_id, _run_input = (
+            _sec_primary_listing_case(
+                run_id="sec-primary-wrapped-marker-run",
+                cover_html_override=raw_cover,
+            )
+        )
+        cover_record = records[0]
+        self.assertEqual(cover_record.parser_id, "sec-edgar-cover-layout-v4")
+        marker_anchors = tuple(
+            anchor for anchor in cover_record.raw_anchors
+            if anchor.field == "sec_cover.registrant_marker"
+        )
+        self.assertEqual(len(marker_anchors), 1)
+        marker_anchor = marker_anchors[0]
+        self.assertIn(
+            "\n",
+            cover_record.parsed_body[marker_anchor.parsed_start:marker_anchor.parsed_end],
+        )
+        preparer = _make_listing_source_preparer(
+            tuple(record.source_id for record in records),
+            admission_records=records,
+            sec_composite=(client, ("ACME",), records, 1_500_000, 1_500_000),
+        )
+        prepared = preparer(snapshot, receipt, context)
+        self.assertIn((hypothesis_id, "ACME"), prepared.underlying_bindings)
+
+    def test_sec_primary_composite_fails_closed_on_unissued_tamper_and_unverified_hypothesis(self):
+        snapshot, receipt, context, client, records, _calls, hypothesis_id, _run_input = (
+            _sec_primary_listing_case()
+        )
+        source_ids = tuple(record.source_id for record in records)
+        tampered = replace(
+            records[-1],
+            parsed_body=records[-1].parsed_body + "tamper",
+            parsed_body_sha256=_digest(records[-1].parsed_body + "tamper"),
+        )
+        for label, selected_records, selected_client in (
+            ("record-tamper", records[:-1] + (tampered,), client),
+            ("wrong-order", tuple(reversed(records)), client),
+            ("foreign-client", records, _SourceAdmissionClient(
+                timeout_seconds=1.0,
+                max_response_bytes=100_000,
+                byte_budget=100_000,
+            )),
+        ):
+            with self.subTest(case=label):
+                preparer = _make_listing_source_preparer(
+                    source_ids,
+                    admission_records=records,
+                    sec_composite=(
+                        selected_client, ("ACME",), selected_records,
+                        1_500_000, 1_500_000,
+                    ),
+                )
+                prepared = preparer(snapshot, receipt, context)
+                self.assertEqual(prepared.underlying_bindings, {})
+
+        unverified = _sec_primary_listing_case(
+            run_id="sec-primary-unverified-run", verified_hypothesis_ids=()
+        )
+        snap, rec, ctx, source_client, source_records, _calls, _hypothesis_id, _ri = unverified
+        preparer = _make_listing_source_preparer(
+            tuple(record.source_id for record in source_records),
+            admission_records=source_records,
+            sec_composite=(source_client, ("ACME",), source_records, 1_500_000, 1_500_000),
+        )
+        self.assertEqual(preparer(snap, rec, ctx).underlying_bindings, {})
+
+    def test_sec_primary_composite_requires_issued_exact_client_validator(self):
+        snapshot, receipt, context, client, records, _calls, _hypothesis_id, _run_input = (
+            _sec_primary_listing_case()
+        )
+        source_ids = tuple(record.source_id for record in records)
+
+        class _FakeAdmissionClient:
+            def _revalidate_sec_composite(self, *_args, **_kwargs):
+                return records
+
+        with self.assertRaises(ValueError):
+            _make_listing_source_preparer(
+                source_ids,
+                admission_records=records,
+                sec_composite=(
+                    _FakeAdmissionClient(), ("ACME",), records,
+                    1_500_000, 1_500_000,
+                ),
+            )
+
+        tampered = records[:-1] + (
+            replace(records[-1], raw_body_sha256="0" * 64),
+        )
+        for shadow_validator in (False, True):
+            with self.subTest(shadow_validator=shadow_validator):
+                if shadow_validator:
+                    client._revalidate_sec_composite = (
+                        lambda *_args, **_kwargs: records
+                    )
+                preparer = _make_listing_source_preparer(
+                    source_ids,
+                    admission_records=records,
+                    sec_composite=(
+                        client, ("ACME",), tampered, 1_500_000, 1_500_000,
+                    ),
+                )
+                prepared = preparer(snapshot, receipt, context)
+                self.assertEqual(prepared.underlying_bindings, {})
+
+    def test_sec_primary_composite_rejects_nonmatching_issuer_and_wrong_cover_class(self):
+        cases = (
+            ("different issuer", "<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+             "<h1>Different Holdings, Inc. (ACME)</h1></body></html>", "Common Stock"),
+            ("wrong class", None, "Preferred Stock"),
+        )
+        for label, yahoo_override, share_class in cases:
+            with self.subTest(case=label):
+                snapshot, receipt, context, client, records, _calls, _hypothesis_id, _ri = (
+                    _sec_primary_listing_case(
+                        run_id="sec-primary-reject-{}".format(label.replace(" ", "-")),
+                        yahoo_override=yahoo_override,
+                        share_class=share_class,
+                    )
+                )
+                preparer = _make_listing_source_preparer(
+                    tuple(record.source_id for record in records),
+                    admission_records=records,
+                    sec_composite=(client, ("ACME",), records, 1_500_000, 1_500_000),
+                )
+                self.assertEqual(
+                    preparer(snapshot, receipt, context).underlying_bindings, {}
+                )
 
     def test_listing_preparer_fails_closed_on_url_ambiguity(self):
         cases = (
@@ -1215,6 +1486,113 @@ class HostEventGrounderTests(unittest.TestCase):
                 self.assertEqual(excerpt["sha256"], _digest(excerpt["text"]))
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
+
+    def test_default_host_route_registers_sec_primary_three_source_composite(self):
+        run_id = "default-sec-primary-composite-run"
+        note_locator = "https://source.example/a"
+        candidate_order = (
+            ("source-sec", _SEC_LOCATOR),
+            ("source-note", note_locator),
+        )
+        cover_html = _sec_primary_raw_cover_html().replace(
+            b"</p><table>", b"</p><p>A synthetic event was reported.</p><table>"
+        )
+        reference_locator = "https://www.sec.gov/files/company_tickers_exchange.json"
+        yahoo_locator = "https://finance.yahoo.com/quote/ACME/"
+        reference_body = json.dumps(
+            {
+                "fields": ["cik", "name", "ticker", "exchange"],
+                "data": [[320193, "Reference Unicode — Name", "ACME", "Nasdaq"]],
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        yahoo_body = (
+            b"<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+            b"<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
+        )
+        replies = {
+            _SEC_LOCATOR: _Reply(
+                200, {"Content-Type": "text/html; charset=UTF-8"}, cover_html
+            ),
+            reference_locator: _Reply(
+                200, {"Content-Type": "application/json"}, reference_body
+            ),
+            yahoo_locator: _Reply(
+                200, {"Content-Type": "text/html; charset=UTF-8"}, yahoo_body
+            ),
+        }
+
+        def make_client(calls):
+            def transport(locator, _address, _timeout, _max_bytes):
+                calls.append(locator)
+                return replies[locator]
+
+            return _SourceAdmissionClient(
+                timeout_seconds=2.0,
+                max_response_bytes=1_500_000,
+                byte_budget=2_500_000,
+                _transport=transport,
+                _resolver=lambda _host, _port: ("93.184.216.34",),
+                _clock=lambda: _NOW,
+            )
+
+        fixture_client = make_client([])
+        fixture_candidates = fixture_client.admit_candidates((_SEC_LOCATOR,))
+        fixture_composite = fixture_client._admit_sec_reference_and_yahoo(
+            ("ACME",), fixture_candidates.admissions
+        )
+        self.assertEqual(len(fixture_composite.admissions), 3)
+        source_order = candidate_order + tuple(
+            (record.source_id, record.initial_locator)
+            for record in fixture_composite.admissions
+        )
+        bodies_by_url = {
+            record.initial_locator: record.parsed_body
+            for record in fixture_composite.admissions
+        }
+        bodies_by_url[note_locator] = "A synthetic event was reported.\n"
+        config = _config(source_order=candidate_order)
+        discovery, semantic, _normalized = _listing_runtime_wires(
+            run_id, "ACME", source_order, bodies_by_url, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=candidate_order, body_overrides=bodies_by_url
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        admission_calls = []
+        admission_client = make_client(admission_calls)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+        with patch(
+            "convexity_hunter.host_event._create_source_admission_client",
+            return_value=admission_client,
+        ):
+            result = callback(
+                "Assess a synthetic listing event.",
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        prepared = result.build_result.context
+        pair = ("hypothesis-generated-{}".format(run_id), "ACME")
+        self.assertIn(pair, prepared.underlying_bindings)
+        provenance = json.loads(prepared.underlying_bindings[pair][1])
+        self.assertEqual(
+            provenance["rule_version"], "host-listing-source-composite-v0.2"
+        )
+        self.assertEqual(
+            [item["role"] for item in provenance["sources"]],
+            ["sec_issuer_reference", "sec_cover_security_class", "yahoo_quote_denomination"],
+        )
+        self.assertEqual(
+            admission_calls, [_SEC_LOCATOR, reference_locator, yahoo_locator]
+        )
 
     def test_sec_v2_v3_and_v4_supplement_authority_is_candidate_only(self):
         nasdaq_url = "https://www.nasdaq.com/market-activity/stocks/acme"

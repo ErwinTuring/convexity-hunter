@@ -54,9 +54,11 @@ from .host_sources import (
 from .host_source_admission import (
     AdmissionBatch,
     MAX_SOURCE_ADMISSION_REQUESTS,
+    _SourceAdmissionClient,
     SourceAdmission,
     _create_source_admission_client,
     _revalidate_source_admission,
+    _sec_cover_layout_v4_fold,
 )
 
 
@@ -488,6 +490,14 @@ _LISTING_YAHOO_HEADING = re.compile(
     r"# (?P<issuer>.+) \((?P<symbol>[^()]*)\)(?P<suffix>.*)\Z"
 )
 _LISTING_YAHOO_QUOTE = "NasdaqGS - Delayed Quote•USD"
+_LISTING_SEC_PRIMARY_SHARE_CLASS = re.compile(
+    r"Common Stock(?:, par value \$[0-9]+(?:\.[0-9]+)? per share)?\Z"
+)
+_LISTING_SEC_PRIMARY_EXCHANGE = "The Nasdaq Capital Market"
+_LISTING_SEC_REFERENCE_LOCATOR = (
+    "https://www.sec.gov/files/company_tickers_exchange.json"
+)
+_LISTING_YAHOO_V2_LABEL = "NasdaqCM - Nasdaq Real Time Price USD"
 _LISTING_CURRENCY_BASIS = "yahoo_provider_reported_quote_denomination"
 
 
@@ -791,6 +801,312 @@ def _parse_yahoo_listing_body(source_id: str, source: HostSourceBody, symbol: st
     }
 
 
+def _parse_sec_primary_cover(
+    source_id: str,
+    source: HostSourceBody,
+    symbol: str,
+    cik: int,
+    admission: SourceAdmission,
+):
+    if (
+        type(admission) is not SourceAdmission
+        or admission.source_id != source_id
+        or admission.parser_id != "sec-edgar-cover-layout-v4"
+        or admission.parser_version != "4"
+        or admission.parsed_body != source.body
+        or admission.parsed_body_sha256 != source.body_sha256
+    ):
+        return None
+    info = _listing_url_info(source.final_locator)
+    parts = _sec_locator_parts(source.final_locator)
+    if (
+        info is None
+        or not info["valid"]
+        or info["host"] not in ("sec.gov", "www.sec.gov")
+        or parts is None
+        or int(parts[0]) != cik
+    ):
+        return None
+    lines = _listing_lines(source.body)
+    issuer_anchors = tuple(
+        anchor for anchor in admission.raw_anchors
+        if anchor.field == "sec_cover.registrant"
+    )
+    marker_anchors = tuple(
+        anchor for anchor in admission.raw_anchors
+        if anchor.field == "sec_cover.registrant_marker"
+    )
+    if len(issuer_anchors) != 1 or len(marker_anchors) != 1:
+        return None
+    issuer_anchor, marker_anchor = issuer_anchors[0], marker_anchors[0]
+    if any(
+        not 0 <= anchor.parsed_start < anchor.parsed_end <= len(source.body)
+        for anchor in (issuer_anchor, marker_anchor)
+    ):
+        return None
+    issuer_text = _sec_cover_layout_v4_fold(
+        source.body[issuer_anchor.parsed_start:issuer_anchor.parsed_end]
+    )
+    marker_text = _sec_cover_layout_v4_fold(
+        source.body[marker_anchor.parsed_start:marker_anchor.parsed_end]
+    )
+    issuer = _listing_issuer(issuer_text)
+    if issuer is None or marker_text != _LISTING_SEC_MARKER:
+        return None
+    expected_labels = tuple(_listing_ascii_field(label).translate(
+        _LISTING_ASCII_CASEFOLD
+    ) for label in _LISTING_SEC_LABELS)
+    headers = []
+    for index, (line, _start, _end) in enumerate(lines):
+        cells = _listing_markdown_cells(line)
+        if cells is not None and tuple(
+            _listing_ascii_field(cell).translate(_LISTING_ASCII_CASEFOLD)
+            if _listing_ascii_field(cell) is not None else None
+            for cell in cells
+        ) == expected_labels:
+            headers.append(index)
+    if len(headers) != 1:
+        return None
+    header_index = headers[0]
+    separator_index = header_index + 1
+    if separator_index >= len(lines):
+        return None
+    separator = _listing_markdown_cells(lines[separator_index][0])
+    if separator is None or not all(
+        _LISTING_MD_SEPARATOR.fullmatch(cell) for cell in separator
+    ):
+        return None
+    rows = []
+    cursor = separator_index + 1
+    while cursor < len(lines) and lines[cursor][0].strip(" \t") and "|" in lines[cursor][0]:
+        row = _listing_markdown_cells(lines[cursor][0])
+        if row is None:
+            return None
+        rows.append((cursor, row))
+        cursor += 1
+    if len(rows) != 1:
+        return None
+    row_index, row = rows[0]
+    share_class, row_symbol, exchange = row
+    if (
+        issuer is None
+        or row_symbol != symbol
+        or not _LISTING_SEC_PRIMARY_SHARE_CLASS.fullmatch(share_class)
+        or exchange != _LISTING_SEC_PRIMARY_EXCHANGE
+    ):
+        return None
+    excerpts = [
+        _listing_excerpt(
+            source_id, source, issuer_anchor.parsed_start, issuer_anchor.parsed_end
+        ),
+        _listing_excerpt(
+            source_id, source, marker_anchor.parsed_start, marker_anchor.parsed_end
+        ),
+        *(
+            _listing_excerpt(source_id, source, lines[index][1], lines[index][2])
+            for index in (header_index, separator_index, row_index)
+        ),
+    ]
+    return {
+        "role": "sec_cover_security_class",
+        "source_id": source_id,
+        "locator": source.final_locator,
+        "origin": info["origin"],
+        "body_sha256": hashlib.sha256(source.body.encode("utf-8", errors="strict")).hexdigest(),
+        "issuer": issuer,
+        "share_class": share_class,
+        "symbol": row_symbol,
+        "registered_exchange": exchange,
+        "security_class_authority": "SEC cover row",
+        "excerpts": excerpts,
+    }
+
+
+def _parse_sec_reference_selected(
+    source_id: str, source: HostSourceBody, admission: SourceAdmission, symbols: tuple
+):
+    if source.final_locator != _LISTING_SEC_REFERENCE_LOCATOR:
+        return None
+    try:
+        document = json.loads(source.body)
+    except (TypeError, ValueError, RecursionError):
+        return None
+    if (
+        type(document) is not dict
+        or set(document) != {"fields", "data"}
+        or document.get("fields") != ["cik", "name", "ticker", "exchange"]
+        or type(document.get("data")) is not list
+        or len(document["data"]) != len(symbols)
+    ):
+        return None
+    parsed_rows = []
+    for row in document["data"]:
+        if (
+            type(row) is not list
+            or len(row) != 4
+            or type(row[0]) is not int
+            or not 0 < row[0] < 10**10
+            or type(row[1]) is not str
+            or type(row[2]) is not str
+            or type(row[3]) is not str
+        ):
+            return None
+        parsed_rows.append(row)
+    if tuple(row[2] for row in parsed_rows) != symbols:
+        return None
+    anchor_by_symbol = {
+        anchor.field.removeprefix("sec_issuer_reference.data."): anchor
+        for anchor in admission.raw_anchors
+        if anchor.field.startswith("sec_issuer_reference.data.")
+    }
+    if len(anchor_by_symbol) != len(symbols):
+        return None
+    result = {}
+    for row in parsed_rows:
+        symbol = row[2]
+        anchor = anchor_by_symbol.get(symbol)
+        try:
+            anchored_row = json.loads(
+                source.body[anchor.parsed_start:anchor.parsed_end]
+            ) if anchor is not None else None
+        except (TypeError, ValueError, RecursionError):
+            return None
+        if anchor is None or anchored_row != row:
+            return None
+        result[symbol] = (
+            row,
+            _listing_excerpt(
+                source_id, source, anchor.parsed_start, anchor.parsed_end
+            ),
+        )
+    return result
+
+
+def _parse_yahoo_listing_body_v2(source_id: str, source: HostSourceBody, symbol: str):
+    lines = _listing_lines(source.body)
+    labels = [(index, start, end) for index, (line, start, end) in enumerate(lines)
+              if re.sub(r"[ \t]+", " ", line).strip(" \t") == _LISTING_YAHOO_V2_LABEL]
+    headings = []
+    for index, (line, start, end) in enumerate(lines):
+        match = re.fullmatch(r"# (?P<issuer>.+) \((?P<symbol>[^()]*)\)", line)
+        if match is not None and match.group("symbol") == symbol:
+            headings.append((index, match, start, end))
+    if len(labels) != 1 or len(headings) != 1:
+        return None
+    label_index, label_start, label_end = labels[0]
+    heading_index, match, heading_start, heading_end = headings[0]
+    low, high = sorted((label_index, heading_index))
+    if label_index == heading_index or any(
+        lines[index][0].strip(" \t") for index in range(low + 1, high)
+    ):
+        return None
+    issuer = _listing_issuer(match.group("issuer"))
+    if issuer is None or not _LISTING_TICKER.fullmatch(match.group("symbol")):
+        return None
+    return {
+        "role": "yahoo_quote_denomination",
+        "source_id": source_id,
+        "locator": source.final_locator,
+        "origin": "https://{}".format(urlsplit(source.final_locator).netloc),
+        "body_sha256": hashlib.sha256(source.body.encode("utf-8", errors="strict")).hexdigest(),
+        "issuer": issuer,
+        "symbol": symbol,
+        "currency": "USD",
+        "currency_basis": _LISTING_CURRENCY_BASIS,
+        "excerpts": [
+            _listing_excerpt(source_id, source, label_start, label_end),
+            _listing_excerpt(source_id, source, heading_start, heading_end),
+        ],
+    }
+
+
+def _listing_sec_primary_evidence(
+    context: HostBuildContext,
+    records: tuple,
+    symbols: tuple,
+    symbol: str,
+):
+    if type(records) is not tuple or type(symbols) is not tuple or symbol not in symbols:
+        return None
+    count = len(symbols)
+    if len(records) != count * 2 + 1:
+        return None
+    cover_records = records[:count]
+    reference = records[count]
+    yahoo_records = records[count + 1:]
+    covers = [record for record in cover_records if record.parsed_symbol == symbol]
+    yahoos = [record for record in yahoo_records if record.parsed_symbol == symbol]
+    if (
+        len(covers) != 1
+        or len(yahoos) != 1
+        or reference.parser_id != "sec-issuer-reference-v2"
+        or reference.parser_version != "2"
+        or reference.family != "sec"
+    ):
+        return None
+    cover_record = covers[0]
+    yahoo_record = yahoos[0]
+    if (
+        cover_record.parser_id != "sec-edgar-cover-layout-v4"
+        or cover_record.parser_version != "4"
+        or yahoo_record.parser_id != "yahoo-quote-header-v2"
+        or yahoo_record.parser_version != "2"
+    ):
+        return None
+    source_by_record = {}
+    for record in (reference, cover_record, yahoo_record):
+        source = context.source_bodies.get(record.source_id)
+        if (
+            type(source) is not HostSourceBody
+            or source.body != record.parsed_body
+            or source.body_sha256 != record.parsed_body_sha256
+            or source.final_locator != record.final_locator
+            or source.retrieved_at != record.retrieved_at
+        ):
+            return None
+        source_by_record[record.source_id] = source
+    reference_source = source_by_record[reference.source_id]
+    reference_rows = _parse_sec_reference_selected(
+        reference.source_id, reference_source, reference, symbols
+    )
+    if reference_rows is None:
+        return None
+    reference_row, reference_excerpt = reference_rows[symbol]
+    cik, reference_name, reference_symbol, reference_exchange = reference_row
+    if reference_symbol != symbol or reference_exchange != "Nasdaq":
+        return None
+    cover_source = source_by_record[cover_record.source_id]
+    cover = _parse_sec_primary_cover(
+        cover_record.source_id, cover_source, symbol, cik, cover_record
+    )
+    yahoo_source = source_by_record[yahoo_record.source_id]
+    yahoo = _parse_yahoo_listing_body_v2(yahoo_record.source_id, yahoo_source, symbol)
+    if cover is None or yahoo is None:
+        return None
+    cover_issuer = _listing_ascii_field(cover["issuer"])
+    yahoo_issuer = _listing_ascii_field(yahoo["issuer"])
+    if (
+        cover_issuer is None
+        or yahoo_issuer is None
+        or cover_issuer.translate(_LISTING_ASCII_CASEFOLD)
+        != yahoo_issuer.translate(_LISTING_ASCII_CASEFOLD)
+    ):
+        return None
+    reference_evidence = {
+        "role": "sec_issuer_reference",
+        "source_id": reference.source_id,
+        "locator": reference.final_locator,
+        "origin": reference.origin,
+        "body_sha256": reference.parsed_body_sha256,
+        "cik": cik,
+        "issuer_name": reference_name,
+        "symbol": symbol,
+        "exchange": reference_exchange,
+        "excerpts": [reference_excerpt],
+    }
+    return reference_evidence, cover, yahoo
+
+
 def _listing_evidence_for_symbol(
     context: HostBuildContext, authorized_source_ids: tuple, symbol: str
 ):
@@ -849,6 +1165,7 @@ def _make_listing_source_preparer(
     authorized_source_ids: tuple,
     *,
     admission_records: tuple = (),
+    sec_composite=None,
 ) -> Callable[[object, object, HostBuildContext], HostBuildContext]:
     """Create an opt-in preparer over an exact, trusted source-ID tuple."""
     if type(authorized_source_ids) is not tuple:
@@ -877,6 +1194,23 @@ def _make_listing_source_preparer(
         or any(source_id not in authorized_source_ids for source_id in admission_by_id)
     ):
         raise ValueError("admission records must match the exact authorized source IDs")
+    if sec_composite is not None and (
+        type(sec_composite) is not tuple
+        or len(sec_composite) != 5
+        or type(sec_composite[0]) is not _SourceAdmissionClient
+        or type(sec_composite[1]) is not tuple
+        or not sec_composite[1]
+        or type(sec_composite[2]) is not tuple
+        or type(sec_composite[3]) is not int
+        or type(sec_composite[4]) is not int
+        or any(record.source_id not in admission_by_id for record in sec_composite[2])
+    ):
+        raise ValueError("SEC composite must retain its issuing client receipt")
+    if sec_composite is not None and (
+        len(sec_composite[2]) != len(sec_composite[1]) * 2 + 1
+        or len(set(sec_composite[1])) != len(sec_composite[1])
+    ):
+        raise ValueError("SEC composite selection is incomplete")
     listing_source_ids = tuple(
         source_id
         for source_id in authorized_source_ids
@@ -893,6 +1227,19 @@ def _make_listing_source_preparer(
         prepared = _retain_unknown_context(snapshot, receipt, original_context)
         if not listing_source_ids:
             return prepared
+        composite_records = ()
+        composite_symbols = ()
+        if sec_composite is not None:
+            composite_client, composite_symbols, issued_records, max_raw, max_parsed = sec_composite
+            composite_records = _SourceAdmissionClient._revalidate_sec_composite(
+                composite_client,
+                issued_records,
+                composite_symbols,
+                max_raw_bytes=max_raw,
+                max_parsed_bytes=max_parsed,
+            )
+            if composite_records is None:
+                return prepared
         validation = _preparation_evidence(snapshot, receipt, original_context)
         if validation is None or type(receipt) is not _RECEIPT_MAPPING_TYPE:
             return prepared
@@ -940,16 +1287,30 @@ def _make_listing_source_preparer(
                 or matching[0][0] not in verified_binding_indices
             ):
                 continue
-            if symbol not in evidence_by_symbol:
-                evidence_by_symbol[symbol] = _listing_evidence_for_symbol(
-                    original_context, listing_source_ids, symbol
-                )
-            evidence = evidence_by_symbol[symbol]
-            if evidence is None:
-                continue
-            sec_evidence, nasdaq_evidence, yahoo_evidence = evidence
+            if sec_composite is not None and symbol in composite_symbols:
+                if symbol not in evidence_by_symbol:
+                    evidence_by_symbol[symbol] = _listing_sec_primary_evidence(
+                        original_context, composite_records, composite_symbols, symbol
+                    )
+                evidence = evidence_by_symbol[symbol]
+                if evidence is None:
+                    continue
+                reference_source, cover_evidence, yahoo_evidence = evidence
+                source_evidence_items = (reference_source, cover_evidence, yahoo_evidence)
+                rule_version = "host-listing-source-composite-v0.2"
+            else:
+                if symbol not in evidence_by_symbol:
+                    evidence_by_symbol[symbol] = _listing_evidence_for_symbol(
+                        original_context, listing_source_ids, symbol
+                    )
+                evidence = evidence_by_symbol[symbol]
+                if evidence is None:
+                    continue
+                sec_evidence, nasdaq_evidence, yahoo_evidence = evidence
+                source_evidence_items = (sec_evidence, nasdaq_evidence, yahoo_evidence)
+                rule_version = "host-listing-source-composite-v0.1"
             admission_mismatch = False
-            for source_evidence in evidence:
+            for source_evidence in source_evidence_items:
                 admission = admission_by_id.get(source_evidence["source_id"])
                 if admission is not None:
                     if (
@@ -963,13 +1324,13 @@ def _make_listing_source_preparer(
                 continue
             reference = json.dumps(
                 {
-                    "rule_version": "host-listing-source-composite-v0.1",
+                    "rule_version": rule_version,
                     "symbol": symbol,
                     "security_type": "EQUITY",
                     "listing_mic": None,
                     "currency": "USD",
                     "currency_basis": _LISTING_CURRENCY_BASIS,
-                    "sources": [sec_evidence, nasdaq_evidence, yahoo_evidence],
+                    "sources": list(source_evidence_items),
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -1451,6 +1812,9 @@ def create_event_grounder(
         )
         pending_source_bodies = {}
         admitted_source_list = []
+        admission_client = None
+        sec_composite_records = ()
+        sec_composite_symbols = ()
         try:
             admission_client = _create_source_admission_client(
                 timeout_seconds=active_config.source.timeout_seconds,
@@ -1522,6 +1886,85 @@ def create_event_grounder(
                             authorized_supplements.add(
                                 "https://finance.yahoo.com/quote/{}/".format(symbol)
                             )
+                cover_candidates = {}
+                for admission in admitted_source_list:
+                    if (
+                        admission.parser_id != "sec-edgar-cover-layout-v4"
+                        or admission.parser_version != "4"
+                        or admission.source_id not in pending_source_bodies
+                        or admission.parsed_symbol is None
+                    ):
+                        continue
+                    path_parts = _sec_locator_parts(admission.final_locator)
+                    if path_parts is None:
+                        continue
+                    cover = _parse_sec_primary_cover(
+                        admission.source_id,
+                        pending_source_bodies[admission.source_id],
+                        admission.parsed_symbol,
+                        int(path_parts[0]),
+                        admission,
+                    )
+                    if cover is not None:
+                        cover_candidates.setdefault(admission.parsed_symbol, []).append(admission)
+                selected_cover_map = {
+                    symbol: items[0]
+                    for symbol, items in cover_candidates.items()
+                    if len(items) == 1
+                }
+                selected_symbols = tuple(sorted(selected_cover_map))
+                if selected_symbols:
+                    selected_covers = tuple(
+                        selected_cover_map[symbol] for symbol in selected_symbols
+                    )
+                    try:
+                        composite_batch = admission_client._admit_sec_reference_and_yahoo(
+                            selected_symbols, selected_covers
+                        )
+                        composite = admission_client._revalidate_sec_composite(
+                            composite_batch.admissions,
+                            selected_symbols,
+                            max_raw_bytes=admission_raw_response_limit,
+                            max_parsed_bytes=active_config.max_source_body_bytes,
+                        )
+                        if composite is not None:
+                            additions = tuple(
+                                item for item in composite
+                                if item.source_id not in admitted_ids
+                            )
+                            addition_ids = {item.source_id for item in additions}
+                            parsed_total = sum(
+                                len(item.parsed_body.encode("utf-8", errors="strict"))
+                                for item in additions
+                            )
+                            if (
+                                len(addition_ids) == len(additions)
+                                and all(
+                                    item.source_id not in source_bodies
+                                    and item.initial_locator not in admitted_initials
+                                    for item in additions
+                                )
+                                and len(source_bodies) + len(pending_source_bodies)
+                                + len(additions) <= run_input.bounds.max_array_items
+                                and registered_bytes + parsed_total
+                                <= active_config.max_source_body_bytes
+                            ):
+                                for item in additions:
+                                    pending_source_bodies[item.source_id] = HostSourceBody(
+                                        body=item.parsed_body,
+                                        body_sha256=item.parsed_body_sha256,
+                                        final_locator=item.final_locator,
+                                        retrieved_at=item.retrieved_at,
+                                    )
+                                    admitted_source_list.append(item)
+                                    admitted_ids.add(item.source_id)
+                                    admitted_initials.add(item.initial_locator)
+                                registered_bytes += parsed_total
+                                sec_composite_records = composite
+                                sec_composite_symbols = selected_symbols
+                    except Exception:
+                        sec_composite_records = ()
+                        sec_composite_symbols = ()
             source_bodies.update(pending_source_bodies)
             admitted_sources = tuple(admitted_source_list)
         except Exception:
@@ -1536,6 +1979,17 @@ def create_event_grounder(
             run_context_preparer = _make_listing_source_preparer(
                 tuple(source.source_id for source in admitted_sources),
                 admission_records=admitted_sources,
+                sec_composite=(
+                    (
+                        admission_client,
+                        sec_composite_symbols,
+                        sec_composite_records,
+                        admission_raw_response_limit,
+                        active_config.max_source_body_bytes,
+                    )
+                    if sec_composite_records and admission_client is not None
+                    else None
+                ),
             )
 
         context = HostBuildContext(
