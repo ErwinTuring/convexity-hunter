@@ -32,6 +32,7 @@ from convexity_hunter.host_source_admission import (
 SEC_PATH = "/Archives/edgar/data/320193/000032019326000123/example.htm"
 SEC_LOCATOR = "https://www.sec.gov" + SEC_PATH
 SEC_REDIRECT_LOCATOR = "https://sec.gov" + SEC_PATH
+SEC_REFERENCE_LOCATOR = "https://www.sec.gov/files/company_tickers_exchange.json"
 NASDAQ_LOCATOR = "https://www.nasdaq.com/market-activity/stocks/acme"
 YAHOO_LOCATOR = "https://finance.yahoo.com/quote/ACME/"
 NOW = datetime.datetime(2026, 10, 7, 8, 30, tzinfo=datetime.timezone.utc)
@@ -52,6 +53,13 @@ YAHOO_HTML = (
     "<!doctype html><html><body><div>NasdaqGS - Delayed Quote&#8226;USD</div>"
     "<h1>ACME HOLDINGS, INC. (ACME)</h1></body></html>"
 ).encode("utf-8")
+SEC_REFERENCE_BODY = (
+    '{ "fields" : ["cik","name","ticker","exchange"], "data" : [\n'
+    ' [1093691, "Plug Power\\u0020Inc.", "PLUG", "Nasdaq"],\n'
+    ' [123456, "Götv Holdings", "GOTV", null],\n'
+    ' [77, "A & <Éxample>", "ACME", "Nasdaq"]\n'
+    '] }\n'
+)
 
 
 class _ResponseTransport:
@@ -68,6 +76,12 @@ class _ResponseTransport:
 
 
 def _ok(body, content_type="text/html; charset=UTF-8"):
+    return _Reply(200, {"Content-Type": content_type}, body)
+
+
+def _reference_ok(body, content_type="application/json"):
+    if type(body) is str:
+        body = body.encode("utf-8")
     return _Reply(200, {"Content-Type": content_type}, body)
 
 
@@ -795,6 +809,398 @@ class HostSourceAdmissionTests(unittest.TestCase):
         self.assertEqual(
             [item.family for item in explicit.admissions], ["sec", "nasdaq", "yahoo"]
         )
+
+    def test_sec_reference_selects_only_requested_original_rows_in_caller_order(self):
+        raw_body = SEC_REFERENCE_BODY.encode("utf-8")
+        transport = _ResponseTransport(
+            {SEC_REFERENCE_LOCATOR: [_reference_ok(raw_body)]}
+        )
+        client = _client(transport)
+        result = client.admit_sec_reference(("ACME", "PLUG"))
+
+        self.assertEqual(len(result.admissions), 1)
+        self.assertEqual(result.failures, ())
+        self.assertEqual([call[0] for call in transport.calls], [SEC_REFERENCE_LOCATOR])
+        self.assertEqual(result.request_count, 1)
+        self.assertEqual(result.response_bytes, len(raw_body))
+        admitted = result.admissions[0]
+        expected_body = (
+            '{"fields":["cik","name","ticker","exchange"],"data":['
+            '[77, "A & <Éxample>", "ACME", "Nasdaq"],'
+            '[1093691, "Plug Power\\u0020Inc.", "PLUG", "Nasdaq"]]}'
+        )
+        self.assertEqual(admitted.family, "sec")
+        self.assertEqual(admitted.content_type, "application/json")
+        self.assertEqual(admitted.parser_id, "sec-issuer-reference-v1")
+        self.assertEqual(admitted.parser_version, "1")
+        self.assertIsNone(admitted.parsed_symbol)
+        self.assertEqual(admitted.parsed_body, expected_body)
+        self.assertEqual(admitted.parsed_body_sha256, hashlib.sha256(expected_body.encode("utf-8")).hexdigest())
+        self.assertEqual(admitted.raw_body_sha256, hashlib.sha256(raw_body).hexdigest())
+        self.assertEqual(admitted.raw_body_bytes, len(raw_body))
+        self.assertEqual(
+            [anchor.field for anchor in admitted.raw_anchors],
+            ["sec_issuer_reference.data.ACME", "sec_issuer_reference.data.PLUG"],
+        )
+        self.assertEqual(
+            [
+                (
+                    anchor.field,
+                    anchor.raw_start,
+                    anchor.raw_end,
+                    anchor.raw_sha256,
+                    anchor.parsed_start,
+                    anchor.parsed_end,
+                )
+                for anchor in admitted.raw_anchors
+            ],
+            [
+                (
+                    "sec_issuer_reference.data.ACME",
+                    158,
+                    198,
+                    "b4d0407c85ebb92cebec0c7731e7107b64e6d71f0e232e70a5756ae827af6b74",
+                    53,
+                    92,
+                ),
+                (
+                    "sec_issuer_reference.data.PLUG",
+                    61,
+                    112,
+                    "418fe022df71dd21f24d4796a1cf50369b3ec496259a3d5413c12e3e0894c197",
+                    93,
+                    144,
+                ),
+            ],
+        )
+        self.assertIsNone(
+            _revalidate_source_admission(
+                admitted, max_raw_bytes=len(raw_body), max_parsed_bytes=len(expected_body.encode("utf-8"))
+            )
+        )
+        self.assertIsNotNone(
+            client._revalidate_sec_reference(
+                admitted, ("ACME", "PLUG"), max_parsed_bytes=len(expected_body.encode("utf-8"))
+            )
+        )
+
+    def test_sec_reference_rejects_duplicate_missing_and_unselected_null_exchange(self):
+        cases = (
+            (
+                '{"fields":["cik","name","ticker","exchange"],"data":'
+                '[[1,"First","ACME","Nasdaq"],[2,"Second","ACME","NYSE"]]}',
+                ("ACME",),
+            ),
+            (
+                '{"fields":["cik","name","ticker","exchange"],"data":'
+                '[[1,"Other","OTHER","Nasdaq"]]}',
+                ("ACME",),
+            ),
+            (SEC_REFERENCE_BODY, ("GOTV",)),
+        )
+        for body, symbols in cases:
+            with self.subTest(symbols=symbols, body=body[:70]):
+                transport = _ResponseTransport(
+                    {SEC_REFERENCE_LOCATOR: [_reference_ok(body)]}
+                )
+                result = _client(transport).admit_sec_reference(symbols)
+                self.assertEqual(result.admissions, ())
+                self.assertEqual(result.failures[0].code, "PARSER_UNSUPPORTED")
+                self.assertEqual(result.request_count, 1)
+
+    def test_sec_reference_validates_exact_positive_cik_on_every_row(self):
+        invalid_ciks = ("true", "1.0", "1e400", "-1", "10000000000", "0")
+        for cik in invalid_ciks:
+            body = (
+                '{"fields":["cik","name","ticker","exchange"],"data":['
+                '[1,"Issuer","ACME","Nasdaq"],'
+                '[CIK,"Unselected","OTHER",null]]}'
+            ).replace("CIK", cik)
+            with self.subTest(cik=cik):
+                transport = _ResponseTransport(
+                    {SEC_REFERENCE_LOCATOR: [_reference_ok(body)]}
+                )
+                result = _client(transport).admit_sec_reference(("ACME",))
+                self.assertEqual(result.admissions, ())
+                self.assertEqual(result.failures[0].code, "PARSER_UNSUPPORTED")
+
+    def test_sec_reference_strict_json_and_root_schema_fail_closed(self):
+        cases = (
+            (
+                '{"fields":["cik","name","ticker","exchange"],'
+                '"fields":["cik","name","ticker","exchange"],"data":[]}'
+            ),
+            (
+                '{"fields":["cik","name","ticker","exchange"],"data":'
+                '[[1,"Issuer","ACME",NaN]]}'
+            ),
+            (
+                '{"data":[],"fields":["cik","name","ticker","exchange"]}'
+            ),
+            (
+                '{"fields":["cik","name","ticker","exchange"],"data":[],'
+                '"extra":true}'
+            ),
+            (
+                '{"fields":["cik","name","ticker","exchange"],"data":'
+                '[[1,"Issuer","ACME"]]}'
+            ),
+        )
+        for body in cases:
+            with self.subTest(body=body):
+                transport = _ResponseTransport(
+                    {SEC_REFERENCE_LOCATOR: [_reference_ok(body)]}
+                )
+                result = _client(transport).admit_sec_reference(("ACME",))
+                self.assertEqual(result.admissions, ())
+                self.assertEqual(result.failures[0].code, "PARSER_UNSUPPORTED")
+
+    def test_sec_reference_safe_strings_preserve_unicode_and_reject_controls_or_surrogates(self):
+        bad_rows = (
+            '[1,"Issuer\\u0000Name","ACME","Nasdaq"]',
+            '[1,"Issuer\\ud800","ACME","Nasdaq"]',
+            '[1,"Issuer","ACME","Nasdaq\\u007f"]',
+            '[1,"Issuer","GÖTV","Nasdaq"]',
+        )
+        for row in bad_rows:
+            body = (
+                '{"fields":["cik","name","ticker","exchange"],"data":['
+                + row
+                + ']}'
+            )
+            with self.subTest(row=row):
+                transport = _ResponseTransport(
+                    {SEC_REFERENCE_LOCATOR: [_reference_ok(body)]}
+                )
+                result = _client(transport).admit_sec_reference(("ACME",))
+                self.assertEqual(result.admissions, ())
+                self.assertEqual(result.failures[0].code, "PARSER_UNSUPPORTED")
+
+    def test_sec_reference_selection_arguments_are_exact_and_never_fetch_on_invalid_input(self):
+        for symbols, error in (
+            ([], TypeError),
+            ((), ValueError),
+            (("acme",), ValueError),
+            (("ACME", "ACME"), ValueError),
+            (("A B",), ValueError),
+        ):
+            transport = _ResponseTransport({})
+            with self.subTest(symbols=symbols):
+                with self.assertRaises(error):
+                    _client(transport).admit_sec_reference(symbols)
+                self.assertEqual(transport.calls, [])
+
+    def test_sec_reference_revalidator_rejects_constructor_bypassed_metadata_body_symbol_and_anchors(self):
+        raw_body = SEC_REFERENCE_BODY.encode("utf-8")
+        client = _client(
+            _ResponseTransport({SEC_REFERENCE_LOCATOR: [_reference_ok(raw_body)]})
+        )
+        admitted = client.admit_sec_reference(("ACME", "PLUG")).admissions[0]
+
+        self.assertIsNotNone(
+            client._revalidate_sec_reference(
+                admitted, ("ACME", "PLUG"), max_parsed_bytes=100_000
+            )
+        )
+        self.assertIsNone(
+            _revalidate_source_admission(
+                admitted, max_raw_bytes=100_000, max_parsed_bytes=100_000
+            )
+        )
+        self.assertIsNone(
+            client._revalidate_sec_reference(
+                admitted, ("PLUG", "ACME"), max_parsed_bytes=100_000
+            )
+        )
+        self.assertIsNone(
+            _client(_ResponseTransport({}))._revalidate_sec_reference(
+                admitted, ("ACME", "PLUG"), max_parsed_bytes=100_000
+            )
+        )
+
+        def bypass(**changes):
+            clone = object.__new__(type(admitted))
+            for name, value in vars(admitted).items():
+                object.__setattr__(clone, name, changes.get(name, value))
+            return clone
+
+        body_without_acme = admitted.parsed_body.replace('"ACME"', '"FAKE"')
+        bad_anchor = replace(
+            admitted.raw_anchors[0], parsed_start=admitted.raw_anchors[0].parsed_start + 1
+        )
+        shifted_raw_anchor = replace(
+            admitted.raw_anchors[0],
+            raw_start=admitted.raw_anchors[0].raw_start + 1,
+            raw_end=admitted.raw_anchors[0].raw_end + 1,
+        )
+        fake_token = body_without_acme[
+            admitted.raw_anchors[0].parsed_start : admitted.raw_anchors[0].parsed_end
+        ]
+        changed_selection_anchor = replace(
+            admitted.raw_anchors[0],
+            field="sec_issuer_reference.data.FAKE",
+            raw_sha256=hashlib.sha256(fake_token.encode("utf-8")).hexdigest(),
+        )
+        bad_records = (
+            bypass(parser_id="sec-edgar-cover-v1"),
+            bypass(content_type="text/html"),
+            bypass(initial_locator=SEC_LOCATOR),
+            bypass(parsed_symbol="ACME"),
+            bypass(raw_body_sha256="0" * 64),
+            bypass(raw_anchors=(shifted_raw_anchor,) + admitted.raw_anchors[1:]),
+            bypass(
+                parsed_body=body_without_acme,
+                parsed_body_sha256=hashlib.sha256(body_without_acme.encode("utf-8")).hexdigest(),
+                raw_body_sha256="1" * 64,
+                raw_anchors=(changed_selection_anchor,) + admitted.raw_anchors[1:],
+            ),
+            bypass(raw_anchors=(bad_anchor,) + admitted.raw_anchors[1:]),
+        )
+        for record in bad_records:
+            with self.subTest(parser=record.parser_id, content_type=record.content_type):
+                self.assertIsNone(
+                    client._revalidate_sec_reference(
+                        record, ("ACME", "PLUG"), max_parsed_bytes=100_000
+                    )
+                )
+                self.assertIsNone(
+                    _revalidate_source_admission(
+                        record, max_raw_bytes=100_000, max_parsed_bytes=100_000
+                    )
+                )
+
+    def test_sec_reference_content_type_encoding_and_existing_candidate_boundary(self):
+        accepted = (
+            "application/json; charset=utf-8",
+            "application/json; charset=UTF-8",
+        )
+        for content_type in accepted:
+            with self.subTest(content_type=content_type):
+                transport = _ResponseTransport(
+                    {SEC_REFERENCE_LOCATOR: [_reference_ok(SEC_REFERENCE_BODY, content_type)]}
+                )
+                result = _client(transport).admit_sec_reference(("ACME",))
+                self.assertEqual(len(result.admissions), 1)
+
+        for content_type in ("text/html", "application/json; charset=latin-1"):
+            with self.subTest(rejected_content_type=content_type):
+                transport = _ResponseTransport(
+                    {SEC_REFERENCE_LOCATOR: [_reference_ok(SEC_REFERENCE_BODY, content_type)]}
+                )
+                result = _client(transport).admit_sec_reference(("ACME",))
+                self.assertEqual(result.admissions, ())
+                self.assertEqual(result.failures[0].code, "CONTENT_TYPE_UNSUPPORTED")
+
+        for encoding in (None, "", "identity"):
+            headers = {"Content-Type": "application/json; charset=UTF-8"}
+            if encoding is not None:
+                headers["Content-Encoding"] = encoding
+            transport = _ResponseTransport(
+                {SEC_REFERENCE_LOCATOR: [_Reply(200, headers, SEC_REFERENCE_BODY.encode("utf-8"))]}
+            )
+            self.assertEqual(
+                len(_client(transport).admit_sec_reference(("ACME",)).admissions), 1
+            )
+
+        for headers, body, expected in (
+            ({"Content-Type": "application/json; charset=utf-8; charset=utf-8"}, SEC_REFERENCE_BODY.encode("utf-8"), "CONTENT_TYPE_UNSUPPORTED"),
+            ({"Content-Type": "application/json", "Content-Encoding": "gzip"}, SEC_REFERENCE_BODY.encode("utf-8"), "CONTENT_TYPE_UNSUPPORTED"),
+            ({"Content-Type": "application/json"}, b"\xff", "UTF8_DECODE_FAILED"),
+        ):
+            transport = _ResponseTransport(
+                {SEC_REFERENCE_LOCATOR: [_Reply(200, headers, body)]}
+            )
+            result = _client(transport).admit_sec_reference(("ACME",))
+            self.assertEqual(result.admissions, ())
+            self.assertEqual(result.failures[0].code, expected)
+
+        transport = _ResponseTransport(
+            {SEC_REFERENCE_LOCATOR: [_reference_ok(SEC_REFERENCE_BODY)]}
+        )
+        generic = _client(transport).admit_candidates((SEC_REFERENCE_LOCATOR,))
+        self.assertEqual(generic.admissions, ())
+        self.assertEqual(generic.request_count, 0)
+        self.assertEqual(transport.calls, [])
+
+    def test_sec_reference_uses_existing_body_byte_and_deadline_budgets(self):
+        raw_body = SEC_REFERENCE_BODY.encode("utf-8")
+        cases = (
+            (len(raw_body) - 1, 100_000),
+            (100_000, len(raw_body) - 1),
+        )
+        for max_bytes, byte_budget in cases:
+            transport = _ResponseTransport(
+                {SEC_REFERENCE_LOCATOR: [_reference_ok(raw_body)]}
+            )
+            result = _client(
+                transport, max_bytes=max_bytes, byte_budget=byte_budget
+            ).admit_sec_reference(("ACME",))
+            self.assertEqual(result.admissions, ())
+            self.assertEqual(result.failures[0].code, "BODY_LIMIT_EXCEEDED")
+            self.assertEqual(result.request_count, 1)
+
+        now = [0.0]
+
+        def late_transport(locator, address, timeout, max_bytes):
+            now[0] = 100.0
+            return _reference_ok(raw_body)
+
+        late_client = _SourceAdmissionClient(
+            timeout_seconds=2.5,
+            max_response_bytes=100_000,
+            byte_budget=500_000,
+            _transport=late_transport,
+            _resolver=lambda _host, _port: ("93.184.216.34",),
+            _clock=lambda: NOW,
+            _monotonic=lambda: now[0],
+        )
+        late = late_client.admit_sec_reference(("ACME",))
+        self.assertEqual(late.admissions, ())
+        self.assertEqual(late.failures[0].code, "ADMISSION_DEADLINE_EXCEEDED")
+        self.assertEqual(late.request_count, 1)
+
+        locators = tuple(
+            "https://www.sec.gov/Archives/edgar/data/320193/000032019326000123/file{}.htm".format(index)
+            for index in range(MAX_SOURCE_ADMISSION_REQUESTS)
+        )
+        exhausted_transport = _ResponseTransport(
+            {locator: [_Reply(404, {}, b"")] for locator in locators}
+        )
+        exhausted_client = _client(exhausted_transport)
+        exhausted = exhausted_client.admit_candidates(locators)
+        self.assertEqual(exhausted.request_count, MAX_SOURCE_ADMISSION_REQUESTS)
+        reference = exhausted_client.admit_sec_reference(("ACME",))
+        self.assertEqual(reference.admissions, ())
+        self.assertEqual(reference.failures[0].code, "REQUEST_LIMIT_REACHED")
+        self.assertEqual(reference.request_count, MAX_SOURCE_ADMISSION_REQUESTS)
+        self.assertEqual(len(exhausted_transport.calls), MAX_SOURCE_ADMISSION_REQUESTS)
+
+    def test_sec_reference_redirect_remains_same_endpoint_and_counts_each_get(self):
+        redirect = _Reply(302, {"Location": SEC_REFERENCE_LOCATOR}, b"")
+        transport = _ResponseTransport(
+            {
+                SEC_REFERENCE_LOCATOR: [
+                    redirect,
+                    _reference_ok(SEC_REFERENCE_BODY),
+                ]
+            }
+        )
+        result = _client(transport).admit_sec_reference(("ACME",))
+        self.assertEqual(len(result.admissions), 1)
+        self.assertEqual(result.request_count, 2)
+        self.assertEqual([call[0] for call in transport.calls], [SEC_REFERENCE_LOCATOR] * 2)
+
+        rejected_transport = _ResponseTransport(
+            {
+                SEC_REFERENCE_LOCATOR: [
+                    _Reply(302, {"Location": "https://sec.gov/files/company_tickers_exchange.json"}, b"")
+                ]
+            }
+        )
+        rejected = _client(rejected_transport).admit_sec_reference(("ACME",))
+        self.assertEqual(rejected.admissions, ())
+        self.assertEqual(rejected.failures[0].code, "REDIRECT_INVALID")
+        self.assertEqual(rejected.request_count, 1)
 
     def test_sec_layout_v3_normalizes_only_cover_layout_and_keeps_physical_anchors(self):
         for width in (3, 5):

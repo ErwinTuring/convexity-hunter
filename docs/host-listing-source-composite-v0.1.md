@@ -34,6 +34,10 @@ Freeze the narrow source-only parser `sec-issuer-reference-v1` / `1`:
 - Only the exact HTTPS endpoint; retain existing DNS/TLS, timeout, redirect,
   byte-budget, secret handling and Host origin protections. JSON media type is
   permitted only for this reference parser/path, never for EDGAR HTML parsers.
+  Decode strict UTF-8; charset must be absent or one UTF-8/UTF8 declaration
+  under the existing media-type rules. Content-Encoding must be absent, empty
+  or identity; never decompress. Raw spans/hashes refer to original UTF-8 bytes,
+  parsed spans to unchanged selected-token character positions.
 - Selection is an explicit nonempty unique tuple of existing canonical uppercase
   ticker grammar, never supplied from model-created identity authority. One GET
   yields one source ID and only requested rows enter parsed/model context.
@@ -50,6 +54,13 @@ Freeze the narrow source-only parser `sec-issuer-reference-v1` / `1`:
   metadata, selected-row raw byte spans/hashes and parsed spans/hash. Revalidate
   constructor-bypassed records, exact parsed grammar, role/path/media metadata,
   ticker selection and selected-row anchor linkage before consumption.
+  Because raw bytes are discarded, a reference record alone cannot authenticate
+  its claimed raw positions or full-body hash. The same source client retains a
+  private in-memory issuance receipt: the exact requested tuple plus an immutable
+  snapshot of all issued record/anchor fields, captured while raw bytes are
+  available. Reference consumption requires that client-bound receipt and the
+  expected tuple; detached/global revalidation without it rejects references.
+  No raw table, key, persistent registry or general receipt framework is added.
 - Existing filing/HTML admission and composite v0.1 remain unchanged; no
   automatic reference supplements, v3/v4 listing unlock, new composite proof,
   budget increase, source fallback or EI/Core identity is part of this increment.
@@ -60,6 +71,15 @@ Nasdaq response had no supported instrument heading; Yahoo's visible label was
 `NasdaqCM - Nasdaq Real Time Price  USD`, not a current supported v1 label.
 These observations do not justify a permissive parser or source-global absence
 claim. No further user authority decision is needed for the SEC source increment.
+
+V1 implementation subsequently passed independent review (two issuance/selection
+findings corrected), 44 focused and 122 final related tests. Real validation
+returned `PARSER_UNSUPPORTED`; a distinct once-only cause read identified one
+unrequested ticker row failing global v1 semantic validation. The same raw
+snapshot hash confirmed that this is not missing PLUG association. V1 therefore
+has no proven real-format admission; it is retained as a historical implemented
+boundary, not a success claim. A selected-row v2 correction requires separate
+preflight/freeze; no selected-record evidence standard is relaxed by this finding.
 
 The user authorized a minimal Common Stock / Nasdaq Capital Market successor,
 only with explicit real fields, multiple-source agreement, no fuzzy identity

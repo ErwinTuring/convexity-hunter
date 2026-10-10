@@ -13,6 +13,8 @@ import hashlib
 import html
 import http.client
 import ipaddress
+import json
+import math
 import os
 import queue
 import re
@@ -21,6 +23,7 @@ import stat
 import ssl
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -35,6 +38,7 @@ _PARSER_METADATA = {
     "sec-edgar-cover-text-v2": ("sec", "2"),
     "sec-edgar-cover-layout-v3": ("sec", "3"),
     "sec-edgar-cover-layout-v4": ("sec", "4"),
+    "sec-issuer-reference-v1": ("sec", "1"),
     "nasdaq-instrument-v1": ("nasdaq", "1"),
     "yahoo-quote-header-v1": ("yahoo", "1"),
 }
@@ -53,6 +57,9 @@ _SEC_CONTACT_EMAIL = re.compile(
 )
 _SOURCE_ADMISSION_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _TICKER = re.compile(r"[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*\Z")
+_SEC_REFERENCE_LOCATOR = "https://www.sec.gov/files/company_tickers_exchange.json"
+_SEC_REFERENCE_PATH = "/files/company_tickers_exchange.json"
+_SEC_REFERENCE_FIELDS = ("cik", "name", "ticker", "exchange")
 _SEC_PATH = re.compile(
     r"/Archives/edgar/data/(?P<cik>[0-9]{1,10})/"
     r"(?P<accession>(?:[0-9]{18}|[0-9]{10}-[0-9]{2}-[0-9]{6}))/"
@@ -425,6 +432,213 @@ def _source_offset_hash(raw: str, start: int, end: int) -> str:
     return hashlib.sha256(raw[start:end].encode("utf-8", errors="strict")).hexdigest()
 
 
+def _json_object_without_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(_value):
+    raise ValueError("non-finite JSON number")
+
+
+def _strict_json_float(value):
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("non-finite JSON number")
+    return parsed
+
+
+def _json_skip_whitespace(source: str, offset: int) -> int:
+    while offset < len(source) and source[offset] in " \t\r\n":
+        offset += 1
+    return offset
+
+
+def _json_array_item_spans(source: str, array_start: int):
+    """Locate exact JSON array-item tokens after strict decoding has succeeded."""
+    decoder = json.JSONDecoder()
+    if array_start >= len(source) or source[array_start] != "[":
+        raise ValueError("JSON data member is not an array")
+    offset = _json_skip_whitespace(source, array_start + 1)
+    spans = []
+    if offset < len(source) and source[offset] == "]":
+        return tuple(spans)
+    while offset < len(source):
+        start = offset
+        _value, end = decoder.raw_decode(source, start)
+        spans.append((start, end))
+        offset = _json_skip_whitespace(source, end)
+        if offset < len(source) and source[offset] == ",":
+            offset = _json_skip_whitespace(source, offset + 1)
+            continue
+        if offset < len(source) and source[offset] == "]":
+            return tuple(spans)
+        raise ValueError("malformed JSON array")
+    raise ValueError("unterminated JSON array")
+
+
+def _sec_reference_data_spans(source: str):
+    """Return data-row token spans from a strictly decoded root object."""
+    decoder = json.JSONDecoder()
+    offset = _json_skip_whitespace(source, 0)
+    if offset >= len(source) or source[offset] != "{":
+        raise ValueError("JSON root is not an object")
+    offset = _json_skip_whitespace(source, offset + 1)
+    while offset < len(source):
+        key, key_end = decoder.raw_decode(source, offset)
+        if type(key) is not str:
+            raise ValueError("JSON object key is not a string")
+        offset = _json_skip_whitespace(source, key_end)
+        if offset >= len(source) or source[offset] != ":":
+            raise ValueError("malformed JSON object")
+        value_start = _json_skip_whitespace(source, offset + 1)
+        _value, value_end = decoder.raw_decode(source, value_start)
+        if key == "data":
+            return _json_array_item_spans(source, value_start)
+        offset = _json_skip_whitespace(source, value_end)
+        if offset < len(source) and source[offset] == ",":
+            offset = _json_skip_whitespace(source, offset + 1)
+            continue
+        if offset < len(source) and source[offset] == "}":
+            break
+        raise ValueError("malformed JSON object")
+    raise ValueError("JSON data member is missing")
+
+
+def _sec_reference_string_is_safe(value: object, *, nonempty: bool = False) -> bool:
+    if type(value) is not str or (nonempty and not value):
+        return False
+    offset = 0
+    while offset < len(value):
+        character = value[offset]
+        codepoint = ord(character)
+        if unicodedata.category(character) == "Cc":
+            return False
+        if 0xD800 <= codepoint <= 0xDBFF:
+            if offset + 1 >= len(value) or not 0xDC00 <= ord(value[offset + 1]) <= 0xDFFF:
+                return False
+            offset += 2
+            continue
+        if 0xDC00 <= codepoint <= 0xDFFF:
+            return False
+        offset += 1
+    return True
+
+
+def _decode_sec_reference_document(source: str):
+    """Strictly decode and structurally validate every SEC reference row."""
+    root = json.loads(
+        source,
+        object_pairs_hook=_json_object_without_duplicate_keys,
+        parse_constant=_reject_json_constant,
+        parse_float=_strict_json_float,
+    )
+    if (
+        type(root) is not dict
+        or tuple(root.keys()) != ("fields", "data")
+        or type(root["fields"]) is not list
+        or tuple(root["fields"]) != _SEC_REFERENCE_FIELDS
+        or type(root["data"]) is not list
+    ):
+        raise ValueError("SEC reference root schema is unsupported")
+    row_spans = _sec_reference_data_spans(source)
+    if len(row_spans) != len(root["data"]):
+        raise ValueError("SEC reference row spans do not match data")
+    for row in root["data"]:
+        if (
+            type(row) is not list
+            or len(row) != 4
+            or type(row[0]) is not int
+            or not 0 < row[0] < 10**10
+            or not _sec_reference_string_is_safe(row[1], nonempty=True)
+            or not _sec_reference_string_is_safe(row[2], nonempty=True)
+            or _TICKER.fullmatch(row[2]) is None
+            or (
+                row[3] is not None
+                and not _sec_reference_string_is_safe(row[3])
+            )
+        ):
+            raise ValueError("SEC reference row is unsupported")
+    return root["data"], row_spans
+
+
+def _sec_reference_byte_offsets(source: str, character_offsets):
+    wanted = set(character_offsets)
+    offsets = {}
+    byte_offset = 0
+    for character_offset, character in enumerate(source):
+        if character_offset in wanted:
+            offsets[character_offset] = byte_offset
+        byte_offset += len(character.encode("utf-8"))
+    if len(source) in wanted:
+        offsets[len(source)] = byte_offset
+    if len(offsets) != len(wanted):
+        raise ValueError("SEC reference row span is out of bounds")
+    return offsets
+
+
+def _sec_issuer_reference_json(source: str, selected_symbols: Tuple[str, ...]) -> Optional["_ParsedPage"]:
+    try:
+        rows, row_spans = _decode_sec_reference_document(source)
+        requested = set(selected_symbols)
+        selected = {}
+        for index, row in enumerate(rows):
+            ticker = row[2]
+            if ticker not in requested:
+                continue
+            if ticker in selected or type(row[3]) is not str or not row[3]:
+                return None
+            selected[ticker] = (row_spans[index], row)
+        if set(selected) != requested:
+            return None
+
+        byte_offsets = _sec_reference_byte_offsets(
+            source,
+            (
+                offset
+                for ticker in selected_symbols
+                for offset in selected[ticker][0]
+            ),
+        )
+        wrapper_prefix = '{"fields":["cik","name","ticker","exchange"],"data":['
+        row_tokens = []
+        anchors = []
+        parsed_offset = len(wrapper_prefix)
+        for symbol in selected_symbols:
+            (raw_start, raw_end), _row = selected[symbol]
+            token = source[raw_start:raw_end]
+            token_bytes = token.encode("utf-8")
+            if row_tokens:
+                parsed_offset += 1
+            parsed_start = parsed_offset
+            parsed_end = parsed_start + len(token)
+            anchors.append(
+                AdmissionAnchor(
+                    "sec_issuer_reference.data." + symbol,
+                    byte_offsets[raw_start],
+                    byte_offsets[raw_end],
+                    hashlib.sha256(token_bytes).hexdigest(),
+                    parsed_start,
+                    parsed_end,
+                )
+            )
+            row_tokens.append(token)
+            parsed_offset = parsed_end
+        body = wrapper_prefix + ",".join(row_tokens) + "]}"
+        return _ParsedPage(
+            body,
+            "sec-issuer-reference-v1",
+            tuple(anchors),
+            None,
+        )
+    except (ValueError, TypeError, RecursionError, UnicodeEncodeError):
+        return None
+
+
 def _anchor(field: str, raw: str, raw_start: int, raw_end: int, parsed_start: int, parsed_end: int) -> AdmissionAnchor:
     return AdmissionAnchor(
         field,
@@ -492,9 +706,37 @@ def _family_target(locator: object):
     return None
 
 
+def _sec_reference_target(locator: object):
+    """Recognize only the explicitly selected SEC issuer-reference endpoint."""
+    if (
+        type(locator) is not str
+        or locator != _SEC_REFERENCE_LOCATOR
+        or not locator.isascii()
+    ):
+        return None
+    try:
+        parsed = urlsplit(locator)
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "www.sec.gov"
+        or parsed.hostname != "www.sec.gov"
+        or parsed.path != _SEC_REFERENCE_PATH
+        or parsed.query
+        or parsed.fragment
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    return ("sec-reference", parsed, (_SEC_REFERENCE_PATH,))
+
+
 def _same_target(initial, current) -> bool:
     if initial[0] != current[0]:
         return False
+    if initial[0] == "sec-reference":
+        return initial[1].netloc == current[1].netloc and initial[1].path == current[1].path
     if initial[0] == "sec":
         # Host aliases may differ, but a redirect may not switch filing.
         return initial[2] == current[2] and initial[1].path == current[1].path
@@ -505,8 +747,99 @@ def _source_id_for_locator(locator: str) -> str:
     return "host-admission-" + hashlib.sha256(locator.encode("ascii")).hexdigest()[:24]
 
 
+def _sec_reference_record_is_consistent(
+    value: SourceAdmission, expected_symbols: Optional[Tuple[str, ...]] = None
+) -> bool:
+    try:
+        rows, row_spans = _decode_sec_reference_document(value.parsed_body)
+        if not rows or any(type(row[3]) is not str or not row[3] for row in rows):
+            return False
+        tickers = [row[2] for row in rows]
+        if any(ticker != ticker.upper() for ticker in tickers) or len(set(tickers)) != len(tickers):
+            return False
+        if expected_symbols is not None and tuple(tickers) != expected_symbols:
+            return False
+        row_tokens = [value.parsed_body[start:end] for start, end in row_spans]
+        expected_body = (
+            '{"fields":["cik","name","ticker","exchange"],"data":['
+            + ",".join(row_tokens)
+            + "]}"
+        )
+        if value.parsed_body != expected_body or len(value.raw_anchors) != len(rows):
+            return False
+        raw_spans = []
+        for row, (parsed_start, parsed_end), token, anchor in zip(
+            rows, row_spans, row_tokens, value.raw_anchors
+        ):
+            token_bytes = token.encode("utf-8")
+            if (
+                anchor.field != "sec_issuer_reference.data." + row[2]
+                or anchor.parsed_start != parsed_start
+                or anchor.parsed_end != parsed_end
+                or anchor.raw_end - anchor.raw_start != len(token_bytes)
+                or anchor.raw_sha256 != hashlib.sha256(token_bytes).hexdigest()
+            ):
+                return False
+            raw_spans.append((anchor.raw_start, anchor.raw_end))
+        ordered_raw_spans = sorted(raw_spans)
+        if any(
+            start < previous_end
+            for (_previous_start, previous_end), (start, _end) in zip(
+                ordered_raw_spans, ordered_raw_spans[1:]
+            )
+        ):
+            return False
+        return True
+    except (AttributeError, TypeError, ValueError, RecursionError, UnicodeEncodeError):
+        return False
+
+
+def _sec_reference_record_snapshot(value: object):
+    if type(value) is not SourceAdmission or type(value.raw_anchors) is not tuple:
+        return None
+    record_strings = (
+        value.source_id, value.family, value.initial_locator, value.final_locator,
+        value.origin, value.content_type, value.raw_body_sha256, value.parser_id,
+        value.parser_version, value.parsed_body_sha256, value.parsed_body,
+    )
+    if any(type(item) is not str for item in record_strings):
+        return None
+    if type(value.retrieved_at) is not datetime.datetime or type(value.raw_body_bytes) is not int:
+        return None
+    if value.parsed_symbol is not None and type(value.parsed_symbol) is not str:
+        return None
+    anchors = []
+    for anchor in value.raw_anchors:
+        if type(anchor) is not AdmissionAnchor:
+            return None
+        fields = (
+            anchor.field, anchor.raw_start, anchor.raw_end, anchor.raw_sha256,
+            anchor.parsed_start, anchor.parsed_end,
+        )
+        if (
+            type(anchor.field) is not str
+            or type(anchor.raw_start) is not int
+            or type(anchor.raw_end) is not int
+            or type(anchor.raw_sha256) is not str
+            or type(anchor.parsed_start) is not int
+            or type(anchor.parsed_end) is not int
+        ):
+            return None
+        anchors.append(fields)
+    return record_strings[:5] + (
+        value.retrieved_at, value.content_type, value.raw_body_sha256,
+        value.raw_body_bytes, value.parser_id, value.parser_version,
+        value.parsed_body_sha256, value.parsed_body, tuple(anchors),
+        value.parsed_symbol,
+    )
+
+
 def _revalidate_source_admission(
-    value: object, *, max_raw_bytes: int, max_parsed_bytes: int
+    value: object,
+    *,
+    max_raw_bytes: int,
+    max_parsed_bytes: int,
+    _sec_reference_issuance_receipt=None,
 ) -> Optional[SourceAdmission]:
     """Recheck a client result before the immutable source registry is built."""
     if type(value) is not SourceAdmission:
@@ -540,17 +873,39 @@ def _revalidate_source_admission(
             raw_anchors=anchors,
             parsed_symbol=value.parsed_symbol,
         )
-        initial = _family_target(checked.initial_locator)
-        final = _family_target(checked.final_locator)
+        is_sec_reference = checked.parser_id == "sec-issuer-reference-v1"
+        receipt_symbols = None
+        if is_sec_reference:
+            if (
+                type(_sec_reference_issuance_receipt) is not tuple
+                or len(_sec_reference_issuance_receipt) != 2
+                or type(_sec_reference_issuance_receipt[0]) is not tuple
+                or type(_sec_reference_issuance_receipt[1]) is not tuple
+                or _sec_reference_record_snapshot(checked) != _sec_reference_issuance_receipt[1]
+            ):
+                return None
+            receipt_symbols = _sec_reference_issuance_receipt[0]
+        initial = (
+            _sec_reference_target(checked.initial_locator)
+            if is_sec_reference
+            else _family_target(checked.initial_locator)
+        )
+        final = (
+            _sec_reference_target(checked.final_locator)
+            if is_sec_reference
+            else _family_target(checked.final_locator)
+        )
         parser_metadata = _PARSER_METADATA.get(checked.parser_id)
+        expected_family = "sec" if is_sec_reference else (initial[0] if initial is not None else None)
+        expected_content_type = "application/json" if is_sec_reference else "text/html"
         if (
             initial is None
             or final is None
             or not _same_target(initial, final)
-            or checked.family != initial[0]
+            or checked.family != expected_family
             or checked.source_id != _source_id_for_locator(checked.initial_locator)
             or checked.origin != "https://{}".format(final[1].hostname)
-            or checked.content_type != "text/html"
+            or checked.content_type != expected_content_type
             or parser_metadata != (checked.family, checked.parser_version)
             or checked.raw_body_bytes > max_raw_bytes
             or len(checked.parsed_body.encode("utf-8")) > max_parsed_bytes
@@ -560,11 +915,23 @@ def _revalidate_source_admission(
                 for anchor in anchors
             )
             or (
-                checked.family == "sec"
-                and (checked.parsed_symbol is None or checked.parsed_symbol != checked.parsed_symbol.upper())
+                is_sec_reference
+                and (
+                    checked.parsed_symbol is not None
+                    or not _sec_reference_record_is_consistent(checked, receipt_symbols)
+                )
             )
             or (
-                checked.family != "sec"
+                not is_sec_reference
+                and checked.family == "sec"
+                and (
+                    checked.parsed_symbol is None
+                    or checked.parsed_symbol != checked.parsed_symbol.upper()
+                )
+            )
+            or (
+                not is_sec_reference
+                and checked.family != "sec"
                 and (
                     checked.parsed_symbol != initial[2][0]
                     or checked.parsed_symbol != checked.parsed_symbol.upper()
@@ -708,13 +1075,14 @@ def _default_resolver(host: str, port: int) -> Tuple[str, ...]:
     return tuple(record[4][0] for record in records)
 
 
-def _content_type(headers: Mapping[str, str]) -> Optional[str]:
+def _content_type(headers: Mapping[str, str], *, allow_json: bool = False) -> Optional[str]:
     values = [value for key, value in headers.items() if key.casefold() == "content-type"]
     if len(values) != 1 or type(values[0]) is not str:
         return None
     pieces = [part.strip() for part in values[0].split(";")]
     media_type = pieces[0].casefold()
-    if media_type not in ("text/html", "text/plain"):
+    allowed_media_types = ("text/html", "text/plain", "application/json") if allow_json else ("text/html", "text/plain")
+    if media_type not in allowed_media_types:
         return None
     charsets = []
     for piece in pieces[1:]:
@@ -1528,8 +1896,14 @@ def _parse_page(
     body: str,
     target_symbol: Optional[str],
     content_type: str,
+    *,
+    sec_reference_symbols: Optional[Tuple[str, ...]] = None,
 ) -> Optional[_ParsedPage]:
     try:
+        if sec_reference_symbols is not None:
+            if family != "sec" or content_type != "application/json":
+                return None
+            return _sec_issuer_reference_json(body, sec_reference_symbols)
         if content_type != "text/html":
             return None
         if family == "sec":
@@ -1585,6 +1959,7 @@ class _SourceAdmissionClient:
         self._request_count = 0
         self._dns_count = 0
         self._response_bytes = 0
+        self._sec_reference_issuance_receipt = None
 
     def admit_candidates(self, locators: Sequence[str]) -> AdmissionBatch:
         if not isinstance(locators, (tuple, list)):
@@ -1656,6 +2031,56 @@ class _SourceAdmissionClient:
             tuple(admissions), tuple(failures), self._request_count, self._response_bytes
         )
 
+    def admit_sec_reference(self, symbols: Tuple[str, ...]) -> AdmissionBatch:
+        """Admit only explicitly selected rows from the SEC issuer reference."""
+        self._sec_reference_issuance_receipt = None
+        if type(symbols) is not tuple:
+            raise TypeError("SEC reference symbols must be an exact tuple")
+        if not symbols or any(
+            type(symbol) is not str
+            or _TICKER.fullmatch(symbol) is None
+            or symbol != symbol.upper()
+            for symbol in symbols
+        ):
+            raise ValueError("SEC reference symbols must be nonempty canonical uppercase tickers")
+        if len(set(symbols)) != len(symbols):
+            raise ValueError("SEC reference symbols must be unique")
+        target = _sec_reference_target(_SEC_REFERENCE_LOCATOR)
+        deadline = self._monotonic() + self._timeout * MAX_SOURCE_ADMISSION_REQUESTS
+        admission, failure = self._admit_one(
+            _SEC_REFERENCE_LOCATOR,
+            target,
+            deadline,
+            sec_reference_symbols=symbols,
+        )
+        return AdmissionBatch(
+            (admission,) if admission is not None else (),
+            (failure,) if failure is not None else (),
+            self._request_count,
+            self._response_bytes,
+        )
+
+    def _revalidate_sec_reference(
+        self, record: object, symbols: Tuple[str, ...], *, max_parsed_bytes: int
+    ) -> Optional[SourceAdmission]:
+        receipt = self._sec_reference_issuance_receipt
+        if (
+            type(receipt) is not tuple
+            or len(receipt) != 2
+            or type(receipt[0]) is not tuple
+            or type(receipt[1]) is not tuple
+            or type(symbols) is not tuple
+            or symbols != receipt[0]
+            or _sec_reference_record_snapshot(record) != receipt[1]
+        ):
+            return None
+        return _revalidate_source_admission(
+            record,
+            max_raw_bytes=record.raw_body_bytes,
+            max_parsed_bytes=max_parsed_bytes,
+            _sec_reference_issuance_receipt=receipt,
+        )
+
     def _one_get(
         self, locator: str, address: str, timeout: float, max_bytes: int
     ) -> _Reply:
@@ -1672,14 +2097,32 @@ class _SourceAdmissionClient:
             raise _AdmissionProblem("ADMISSION_DEADLINE_EXCEEDED")
         return remaining
 
-    def _request(self, locator: str, initial_target, deadline: float):
+    def _request(
+        self,
+        locator: str,
+        initial_target,
+        deadline: float,
+        *,
+        sec_reference_symbols: Optional[Tuple[str, ...]] = None,
+    ):
+        is_sec_reference = sec_reference_symbols is not None
+        if is_sec_reference and initial_target[0] != "sec-reference":
+            raise _AdmissionProblem("URL_NOT_ADMISSIBLE")
+
+        def target_for(current_locator):
+            return (
+                _sec_reference_target(current_locator)
+                if is_sec_reference
+                else _family_target(current_locator)
+            )
+
         current = locator
         redirects = 0
         while True:
             remaining = self._remaining(deadline)
             if self._request_count >= MAX_SOURCE_ADMISSION_REQUESTS:
                 raise _AdmissionProblem("REQUEST_LIMIT_REACHED")
-            current_target = _family_target(current)
+            current_target = target_for(current)
             if current_target is None or not _same_target(initial_target, current_target):
                 raise _AdmissionProblem("REDIRECT_INVALID")
             if self._dns_count >= MAX_SOURCE_ADMISSION_REQUESTS:
@@ -1723,7 +2166,7 @@ class _SourceAdmissionClient:
                 if not location:
                     raise _AdmissionProblem("REDIRECT_INVALID")
                 next_locator = urljoin(current, location)
-                next_target = _family_target(next_locator)
+                next_target = target_for(next_locator)
                 if next_target is None or not _same_target(initial_target, next_target):
                     raise _AdmissionProblem("REDIRECT_INVALID")
                 current = next_locator
@@ -1735,8 +2178,10 @@ class _SourceAdmissionClient:
                 self._response_bytes += cap + 1
                 raise _AdmissionProblem("BODY_LIMIT_EXCEEDED")
             self._response_bytes += len(reply.body)
-            content_type = _content_type(reply.headers)
+            content_type = _content_type(reply.headers, allow_json=is_sec_reference)
             if content_type is None:
+                raise _AdmissionProblem("CONTENT_TYPE_UNSUPPORTED")
+            if is_sec_reference and content_type != "application/json":
                 raise _AdmissionProblem("CONTENT_TYPE_UNSUPPORTED")
             content_encoding = _header(reply.headers, "Content-Encoding")
             if content_encoding not in (None, "", "identity"):
@@ -1746,26 +2191,45 @@ class _SourceAdmissionClient:
             except UnicodeDecodeError:
                 raise _AdmissionProblem("UTF8_DECODE_FAILED") from None
             parsed = _parse_page(
-                initial_target[0],
+                "sec" if is_sec_reference else initial_target[0],
                 decoded,
-                initial_target[2][0] if initial_target[0] != "sec" else None,
+                initial_target[2][0]
+                if not is_sec_reference and initial_target[0] != "sec"
+                else None,
                 content_type,
+                sec_reference_symbols=sec_reference_symbols,
             )
             if parsed is None:
                 raise _AdmissionProblem("PARSER_UNSUPPORTED")
             self._remaining(deadline)
             return current, initial_target, content_type, reply.body, parsed
 
-    def _admit_one(self, initial_locator: str, target, deadline: float):
+    def _admit_one(
+        self,
+        initial_locator: str,
+        target,
+        deadline: float,
+        *,
+        sec_reference_symbols: Optional[Tuple[str, ...]] = None,
+    ):
         try:
             final_locator, _target, content_type, raw_body, parsed = self._request(
-                initial_locator, target, deadline
+                initial_locator,
+                target,
+                deadline,
+                sec_reference_symbols=sec_reference_symbols,
             )
             self._remaining(deadline)
             now = self._clock()
             if type(now) is not datetime.datetime or now.tzinfo is None or now.utcoffset() is None:
                 raise _AdmissionProblem("TRANSPORT_FAILED")
-            family, final_url, _identity = _family_target(final_locator)
+            final_target = (
+                _sec_reference_target(final_locator)
+                if sec_reference_symbols is not None
+                else _family_target(final_locator)
+            )
+            family = "sec" if sec_reference_symbols is not None else final_target[0]
+            final_url = final_target[1]
             parser_metadata = _PARSER_METADATA.get(parsed.parser_id)
             if parser_metadata is None or parser_metadata[0] != family:
                 raise _AdmissionProblem("PARSER_UNSUPPORTED")
@@ -1787,6 +2251,14 @@ class _SourceAdmissionClient:
                 raw_anchors=parsed.anchors,
                 parsed_symbol=parsed.symbol,
             )
+            if sec_reference_symbols is not None:
+                snapshot = _sec_reference_record_snapshot(admission)
+                if snapshot is None:
+                    raise _AdmissionProblem("PARSER_UNSUPPORTED")
+                self._sec_reference_issuance_receipt = (
+                    sec_reference_symbols,
+                    snapshot,
+                )
             return admission, None
         except _AdmissionProblem as error:
             return None, AdmissionFailure(error.code)

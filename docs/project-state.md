@@ -1,5 +1,15 @@
 # Project State
 
+2026-10-10 current: SEC-primary issuer association is user-approved. Formal
+preflight and a new bounded packet verified the official SEC reference schema
+and unique PLUG/CIK association. Source-only `sec-issuer-reference-v1` BUILD and
+review passed, but its real validation failed: one unrelated ticker row failed
+global field validation. Exact bounded attribution is retained; selected-row
+v2 preflight follows, not a source-readiness claim. Full composite also remains
+blocked by independent source grammar.
+Nasdaq CIK repetition is no longer required by the successor target. No EI/Core
+identity or economic rule is loosened. See [current checkpoint](current-checkpoint.md#sec-primary-issuer-reference--2026-10-10).
+
 2026-10-10 latest: one separately frozen Yahoo-only 1,500,000-byte diagnostic
 read a complete 1,106,446-byte HTTP-200 identity response. Visible PLUG H1 was
 detected, but the current parser and closed candidate-label grammar did not
@@ -8,7 +18,8 @@ listing identity or EI/Core state changed. Before further formatting work,
 a user-owned identity-authority decision is proposed: use explicit SEC
 official issuer/security reference association with separate existing-source
 corroboration, rather than mandatory Nasdaq CIK repetition. This is not yet
-approved or implemented. See [the current decision](current-checkpoint.md#actual-result-and-next-decision).
+approved or implemented at that earlier point; the approval above supersedes
+the pending decision. See [the historical diagnostic](current-checkpoint.md#actual-result-and-next-decision).
 
 2026-10-10 latest continuation: the approved
 `host-listing-issuer-cik-bridge-v0.1` target passed independent contract review.

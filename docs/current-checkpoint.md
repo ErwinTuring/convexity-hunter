@@ -2,6 +2,59 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## SEC-primary issuer reference — 2026-10-10
+
+The user approved SEC official issuer/security reference as primary association,
+with separate security-class/venue/denomination corroboration. Nasdaq CIK
+repetition is no longer the target. The older bridge and experiments below
+remain historical, not retroactively revised successes.
+
+Formal read-only preflight and official SEC documentation support the
+[frozen source-only increment](host-listing-source-composite-v0.1.md#sec-primary-association-correction-and-source-only-build-boundary).
+SEC explicitly does not guarantee mapping accuracy/scope; reference association
+must not become complete security identity or current-standing proof.
+
+One new preregistered packet made one GET per source (no retry, redirect or raw
+retention). SEC: HTTP 200/application-json, 523,544 bytes under 750,000;
+10,435 rows with exactly one PLUG row, CIK 1093691/name `PLUG POWER INC`/
+exchange `Nasdaq`. Nasdaq: HTTP 200, 196,176 bytes under 500,000, no supported
+PLUG instrument heading in production visible-text projection. Yahoo: HTTP
+200, 1,139,705 bytes under 1,500,000, visible instrument heading
+`Plug Power Inc. (PLUG)` and categorical label
+`NasdaqCM - Nasdaq Real Time Price  USD`. These metadata are not admitted
+composite evidence. The private packet `/private/tmp/sec-reference-packet.SCGMKm/probe.py`
+is spent. Existing Host raw/parsed/model budgets are unchanged.
+
+Source-only `sec-issuer-reference-v1` BUILD and independent review passed. Its explicit private
+operation retains requested rows only, with full raw hash/size and exact row
+anchors; it does not fetch automatically, resolve UnderlyingKey or unlock v4
+listing. Full composite remains blocked by unsupported/missing corroborating
+source grammar, not user authorization. No search/model/option-quote repeat,
+EI acceptance or Core result is claimed.
+
+Review's two findings (mutable claimed raw positions/hash and unbound requested
+tuple) were corrected with a client-held immutable issuance snapshot. Detached
+reference revalidation is rejected; the issuing client requires the original
+request tuple and unchanged record/anchor snapshot. Raw table bytes are not
+retained. Targeted independent re-review PASS; 44 focused tests and final 122
+source/Host integration tests passed. The preceding full suite passed 1,893
+tests before the receipt fix; compileall and local-link/fence/diff checks passed.
+
+One production validation at `/private/tmp/sec-reference-validation.ksx7ro/run_once.py`
+returned one request / zero admissions / `PARSER_UNSUPPORTED`. Its marker is
+spent and was not replayed. A separately bounded one-GET cause reader at
+`/private/tmp/sec-reference-cause-once.py` (also spent) located `rowValidation`:
+one unsupported ticker field at zero-based row 6976, with zero row-shape,
+CIK/name/exchange failures. Its 523,544-byte response hash matches the initial
+packet (`d981e6f99ecf09c53163932671bab9aa6e3184e4cdecdd89ac0fd06805c21f88`).
+The unsupported row is not literal PLUG; global field validation, not absent
+PLUG association, blocked v1. No raw table, offending value or contact was
+retained. V1 real-format compatibility therefore FAILED, not source readiness.
+
+The next bounded preflight is a versioned selected-row validation correction,
+not more blind requests or weakened selected-record evidence. Preserve the v1
+failed result and all downstream listing/EI/Core boundaries.
+
 ## Yahoo format-only continuation — 2026-10-10
 
 Status: preregistered allowance executed once; spent. Production, EI, Core,
@@ -59,7 +112,7 @@ work: the current bridge requires a demonstrated Nasdaq issuer-CIK
 association, which has not been obtained. More bytes or a Yahoo parser alone
 cannot satisfy it.
 
-**User decision required; proposal only, not frozen:** allow SEC official
+**Historical proposal; now approved and superseded by the section above:** allow SEC official
 issuer/security reference records to supply the explicit issuer-ID-to-security
 association, while other already-authorized sources independently corroborate
 security class/venue and quote denomination, rather than requiring Nasdaq to
@@ -68,7 +121,7 @@ not merely formatting. It needs a separately reviewed exact input/provenance
 contract and actual authoritative association evidence; a SEC filing URL or
 ticker alone remains insufficient. No new provider, lookup inference, fuzzy
 name matching, market claim or EI/Core relaxation is proposed. Existing rules
-stay in force unless the user approves this authority change.
+stay in force until a separately reviewed successor is implemented.
 
 This phase contains private diagnostic implementation, no production coding;
 complete activity timings were not measured, so no 70% work-share claim is
