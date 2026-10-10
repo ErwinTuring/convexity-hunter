@@ -1,5 +1,12 @@
 # Project State
 
+Latest 2026-10-10 authority correction: the user approved SEC cover alone for
+explicit security class, with independent market/denomination corroboration.
+The preceding class-corroboration blocker is superseded; versioned composite
+implementation still needs the ordinary preflight/freeze/review gates. No
+economic, EI or Core evidence standard changes. See the
+[approved boundary](host-listing-source-composite-v0.1.md#sec-cover-security-class-authority--approved-correction).
+
 2026-10-10 current: SEC-primary issuer association is user-approved. Formal
 preflight and a new bounded packet verified the official SEC reference schema
 and unique PLUG/CIK association. V1's real validation failed on an unrelated

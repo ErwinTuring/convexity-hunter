@@ -7,6 +7,89 @@ make arbitrary search/model bodies eligible.
 
 ## Approved successor preflight — 2026-10-10
 
+### SEC cover security-class authority — approved correction
+
+The user explicitly approved SEC cover alone as security-class evidence.
+Independent corroboration remains required for market and denomination, not
+for repetition of class or CIK by Nasdaq. This supersedes the preceding
+independent Common Stock corroboration blocker; it is an authority decision,
+not evidence that a successor composite has already been implemented.
+
+The successor must still bind the exact selected SEC reference CIK to the
+filing's exact archive CIK and require an explicit single cover row with the
+exact ticker, supported Common Stock class and registered exchange. The SEC
+reference is association only, not class, currency or standing proof. An
+independent Yahoo instrument heading must match the cover issuer using only
+ASCII case/space comparison and literal ticker, with an explicitly supported
+matching venue and USD label. No issuer alias or punctuation stripping, model
+assertion, dollar-sign inference, inferred current standing or quote semantics
+is authorized. Nasdaq is not a required source for this successor.
+
+Preserve source-client issuance receipt, Host authorization, raw/parsed
+hash/anchor linkage, existing budgets, deterministic EI checks and all Core
+rules. Any successor needs formal preflight, exact versioned grammar freeze,
+implementation and independent review. Existing composite v0.1 and historical
+failure records remain unchanged.
+
+### SEC-primary Common Stock composite v0.2 — frozen BUILD boundary
+
+Formal read-only preflight READY. Freeze the narrow successor
+`host-listing-source-composite-v0.2`; production implementation is pending.
+Keep the existing ordinary-share v0.1 helper/path unchanged.
+
+- Exactly three authorized source roles: SEC `sec-issuer-reference-v2` selected
+  row, SEC `sec-edgar-cover-layout-v4` cover, and Yahoo
+  `yahoo-quote-header-v2` instrument header. No Nasdaq request is required by
+  this path. Require exactly one applicable source for each role; ambiguous,
+  contradictory, absent or unsupported evidence leaves identity unknown.
+- Require an exact positive integer reference CIK equal to the filing archive
+  path CIK, and exact reference/cover/Yahoo ticker. The path does not alone
+  prove association: the selected SEC reference row must supply it. Reference
+  exchange must be literal `Nasdaq`. No alias or ticker-only issuer bridge.
+- The cover has one explicit registrant marker and one unambiguous three-column
+  cover row: `Common Stock`, optionally `, par value $<ASCII decimal> per share`,
+  exact ticker and `The Nasdaq Capital Market`. The cover alone supports
+  `EQUITY`. Class-dollar notation is not currency proof. Exact cover issuer
+  and Yahoo issuer agree using ASCII case and space/tab collapsing only;
+  the conformed SEC reference name is preserved, not treated as an alias.
+- Yahoo v2 reads visible HTML only, one exact instrument heading
+  `<issuer> (<ticker>)` and one complete categorical label whose ASCII
+  space/tab-collapsed form is `NasdaqCM - Nasdaq Real Time Price USD`.
+  They must be unambiguous and scoped to the target instrument; ambiguous
+  headings/labels, extra denominations or unsupported formats reject. No
+  JavaScript, hidden JSON or price values. Preserve original visible tokens
+  and raw anchors; v1 `NasdaqGS - Delayed Quote•USD` behavior stays unchanged.
+  The label proves provider-reported market/denomination only, not live-price,
+  timestamp, session, NBBO, freshness or executability semantics.
+- Host may request the fixed reference endpoint once, with one deterministic
+  tuple of exact tickers from already admitted eligible v4 covers, and each
+  matching exact Yahoo path once. No source/model-authored reference selection,
+  speculative endpoint, alternate host or retry. All operations share existing
+  five-request, DNS, timeout, raw-response/aggregate byte, parsed-registry and
+  model-context bounds; no default budget increase. Legacy v1 supplements
+  remain unchanged. Deduplicate and account every operation.
+- Validate reference records through the issuing client's exact-tuple receipt
+  at registration and consumption. Pass only a private trusted-client closure
+  to the successor preparer, never receipt material to model/HTTP/persistence.
+  Recompute current retained-body/metadata hashes and exact excerpt linkage;
+  reject replaced, detached or constructor-bypassed records and contexts.
+  A reference URL/body alone cannot authorize a key.
+- Fill only missing bindings for receipt-verified hypotheses with the existing
+  unique verified entity field binding. Preserve supplied keys/references,
+  caller policy, all hypothesis branches, snapshot/receipt identity and all EI
+  checks. Return `UnderlyingKey(symbol, None, EQUITY, "USD")`; no MIC or standing
+  inference. Versioned canonical provenance names every source role, parser,
+  locator, CIK linkage, raw/parsed hashes, original excerpt offsets/hashes,
+  SEC-cover class authority and Yahoo denomination basis.
+
+Required tests: valid three-role case; missing/duplicate/conflicting roles;
+wrong CIK/ticker/class/venue/USD; punctuation mismatch; source hash/anchor and
+receipt tampering; detached reference; unchanged v1 grammar; Host request and
+byte limits; no arbitrary Tavily/model body unlock. Independent review and
+focused/Host/full regression precede commit and any success claim. Real-format
+validation is one separately registered bounded source-only operation, not
+a replay of spent probes or a market/model experiment.
+
 ### SEC-primary association correction and source-only BUILD boundary
 
 The user approved replacing the dual SEC/Nasdaq CIK target with

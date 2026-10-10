@@ -4,6 +4,12 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## SEC-primary issuer reference — 2026-10-10
 
+Latest user authority: SEC cover may alone prove the explicit security class;
+market and denomination still need independent corroboration. This supersedes
+the independent class blocker below, not historical experiment results. A
+versioned minimal composite/source-format successor is in preflight; no runtime
+identity or EI/Core success is implied by the decision alone.
+
 The user approved SEC official issuer/security reference as primary association,
 with separate security-class/venue/denomination corroboration. Nasdaq CIK
 repetition is no longer the target. The older bridge and experiments below
