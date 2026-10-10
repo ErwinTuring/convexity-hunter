@@ -1,5 +1,20 @@
 # Project State
 
+A separate diagnostic-preserving Event continuation on 2026-10-10 completed:
+Host READY / POST 201 / `BLOCKED` at
+`PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA`. SQLite restart and Chinese
+HTTP readback passed; EI/Core were not reached. This identifies the rejecting
+schema layer, not the precise bad field or a proven implementation defect.
+A separate passive-observer run then passed strict schema validation and
+completed Grounder evidence assembly (4 claims / 1 binding / 0 hypotheses),
+but correctly returned `GROUNDING_NO_SUBMISSION` with EI `NOT_RUN`.
+No parser/prompt change or fabricated hypothesis follows from either result.
+Existing workbench display already distinguishes typed Grounder evidence counts
+and EI NOT_RUN from upstream failures; its focused zero-hypothesis rendering
+test passed. No production implementation defect was proved in this continuation.
+Real Event/EI completion still needs a sufficiently source-supported hypothesis;
+valid structured claims alone are not acceptance or a completed Core case.
+
 Normal Event acceptance on 2026-10-10 completed as `BLOCKED` before EI with
 `PRODUCER_ENVELOPE_INVALID`. The persisted SQLite run reopens successfully;
 no new EI acceptance/Core case is claimed and this spent operation is not retried.

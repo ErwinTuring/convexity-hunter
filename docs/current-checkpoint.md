@@ -4,6 +4,64 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## SEC-primary issuer reference — 2026-10-10
 
+### Diagnostic-preserving Event continuation — completed
+
+Following the user's continuation authorization, one separate normal Event
+attempt is registered at `/private/tmp/ch-event-mvp-2026-10-10-Ul4mWs/`.
+It uses the implemented closed failure-check projection, the same PLUG clue,
+explicit 2026-10-10 evaluation, approved research profile and unchanged
+source/model/operational bounds from the completed attempt below. A new
+exclusive marker and database isolate it from all spent runs. The private
+wrapper adds only closed producer-check counts to the sanitized summary.
+Offline check READY; Main inspected the thin wrapper. No parser, fact, evidence
+threshold or policy is changed to obtain acceptance. Exactly one run is allowed.
+
+The attempt is now spent: Host READY, one POST HTTP 201, run `BLOCKED`.
+The exact preserved subcheck is
+`PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA` (count one), alongside
+`PRODUCER_ENVELOPE_INVALID`. This locates rejection at expanded internal v0.1
+schema validation, not a verified specific field defect. EI submission/Core
+were not reached. Native direct-source counters report one request / 14,308
+response bytes; admission/failure counts remain unknown. SQLite restart and
+Chinese HTTP workbench readback passed. No raw model/source payload is archived
+here and no retry was made. A bounded prompt/parser compatibility check is the
+next action; no evidence threshold is relaxed.
+
+Current normal Host wiring already selects runtime v0.5 / producer prompt v0.6;
+the historical v0.3/v0.5-prompt omission is not a demonstrated defect in this
+run. No historical route is modified. One separate passive schema-observer
+attempt is registered at `/private/tmp/ch-event-schema-observer-2026-10-10-U5QkXL/`
+under the same budgets/policy and fresh marker. It invokes the original strict
+parser unchanged and re-raises its original error; only a static schema-path /
+closed check label or null is emitted. Model/source values and unknown field
+names are discarded. Main wrapper inspection and two synthetic non-leakage /
+known-label assertions passed. This identifies a new attempt's failure only;
+it cannot reconstruct any previous missing payload.
+
+The passive-observer attempt is now spent. Host READY / POST 201; Grounder
+completed with five source bodies, four claims, one coverage entry, one field
+binding and zero hypotheses. No producer failure check was emitted and the
+schema label is null: strict schema validation passed in this attempt.
+The run correctly remains `BLOCKED / GROUNDING_NO_SUBMISSION`, EI `NOT_RUN`,
+Core not reached. SQLite restart and Chinese HTTP readback passed. Direct-source
+counters are one request / 14,308 bytes; other admission counters remain unknown.
+This is not evidence that the earlier model output was valid, that its exact
+field failure was recovered, or that the event supports a hypothesis. No
+production parser/prompt was changed, and no more live repeats are authorized
+by this observer registration. A check command without required credential-path
+arguments failed locally before execution; it created no run or request.
+
+The existing Chinese workbench already renders typed Grounder/builder statuses,
+all five counts, diagnostics, coverage and EI MISSING/NOT_RUN separately from
+failure-stage outcomes. Its focused zero-hypothesis rendering test passed
+(one test). No renderer gap or current prompt/parser implementation defect was
+proved, so no production change is made in this continuation. Search success,
+schema-valid evidence assembly and EI acceptance remain separate checkpoints.
+The remaining real Event gap is a source-supported hypothesis plus complete
+EI-required provenance/temporal/identity inputs, not historical option data.
+This evidence does not identify which additional source fact would suffice;
+no date, entity mapping or hypothesis is generated merely to force submission.
+
 ### Normal Event acceptance continuation — completed, blocked before EI
 
 The fresh normal Event attempt below is spent. Its retained SQLite run is
