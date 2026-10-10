@@ -81,6 +81,32 @@ has no proven real-format admission; it is retained as a historical implemented
 boundary, not a success claim. A selected-row v2 correction requires separate
 preflight/freeze; no selected-record evidence standard is relaxed by this finding.
 
+### Selected-row source validation v2 — frozen successor
+
+Formal read-only preflight PASS / source-only BUILD READY. Freeze
+`sec-issuer-reference-v2` / `2`, used by the explicit reference reader.
+V1 helper behavior and its real failure remain unchanged historical evidence.
+
+- Validate the entire JSON for duplicate keys, nonfinite numbers, exact ordered
+  root fields/schema and four-element array rows. Do not claim completeness or
+  semantic validity of the unrequested issuer/security universe.
+- Before membership testing, require a row's ticker to be an exact string;
+  otherwise it cannot be a selected literal. Unrequested fields are opaque,
+  never retained in parsed/model context or used as association proof.
+- Every requested literal must occur exactly once. Strictly validate all four
+  fields of each selected row: exact non-Boolean positive integer CIK below
+  10^10; safe nonempty issuer and canonical uppercase ticker; safe nonempty
+  explicit exchange. Missing, duplicate or malformed selected records fail
+  closed. No alias, normalization, fallback value or nearest match.
+- Preserve unchanged selected row tokens/anchors, full raw hash/size and all
+  transport, budget and client-bound issuance/expected-tuple guards from v1.
+  Revalidation of v2 parsed bodies again strictly checks every retained row;
+  they are all selected evidence, not opaque background data.
+- This corrects the scope of validation, not authority: no global reference
+  data platform, new provider, automatic supplement, listing unlock or EI/Core
+  change. A further real-format validation is a separate once-only protocol,
+  not a replay or a revision of either spent v1 operation.
+
 The user authorized a minimal Common Stock / Nasdaq Capital Market successor,
 only with explicit real fields, multiple-source agreement, no fuzzy identity
 inference and no SEC-single-source key. **Composite BUILD is BLOCKED; no v0.2
