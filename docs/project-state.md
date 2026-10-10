@@ -1,5 +1,28 @@
 # Project State
 
+2026-10-10 Event Grounder task clarification: the normal Host route now uses
+runtime v0.6 / producer prompt v0.7, preserving the previous runtime v0.5 /
+prompt v0.6 route. The new prompt separates reported facts from interpretations
+and requests source-supported provisional impact analysis without requiring
+identity or time completeness; zero hypotheses remains valid. DTO, source
+evidence, Builder, semantic validation, EI acceptance, and Core gates are
+unchanged. This does not attribute prior zero-hypothesis output to the old task
+wording.
+
+2026-10-11 current code/live result: normal Host uses runtime v0.6 / producer
+prompt v0.7. One fresh PLUG Event run is spent at
+`/private/tmp/ch-event-mvp-2026-10-10-kPmoB2/`: attempt FINISHED, Host READY,
+POST 201, run BLOCKED; Grounder emitted `SEMANTIC_CALL_FAILED` once. The
+semantic call's underlying cause is unknown. Source admission was 1 request /
+14,308 bytes; other admission counters and Grounder counts are null. Producer
+failure-check counts are empty; EI is UNKNOWN / issue counts null; Core cases
+and unavailable are null, with an empty classification-count map. SQLite
+creation/restart and Chinese HTTP readback passed. This is not evidence of
+semantic rejection, zero hypotheses, EI INCOMPLETE, or three-entry real
+acceptance; no retry is planned. Main reports
+1,914 tests PASS (302.397s), compileall and independent review PASS, and 199
+documentation links PASS.
+
 A separate diagnostic-preserving Event continuation on 2026-10-10 completed:
 Host READY / POST 201 / `BLOCKED` at
 `PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA`. SQLite restart and Chinese
@@ -8,7 +31,9 @@ schema layer, not the precise bad field or a proven implementation defect.
 A separate passive-observer run then passed strict schema validation and
 completed Grounder evidence assembly (4 claims / 1 binding / 0 hypotheses),
 but correctly returned `GROUNDING_NO_SUBMISSION` with EI `NOT_RUN`.
-No parser/prompt change or fabricated hypothesis follows from either result.
+At that point neither result established a parser defect or cause for the empty
+hypothesis set; no hypothesis was fabricated. The later versioned task
+clarification above does not attribute either outcome to the earlier wording.
 Existing workbench display already distinguishes typed Grounder evidence counts
 and EI NOT_RUN from upstream failures; its focused zero-hypothesis rendering
 test passed. No production implementation defect was proved in this continuation.
@@ -16,8 +41,9 @@ Real Event/EI completion still needs a sufficiently source-supported hypothesis;
 valid structured claims alone are not acceptance or a completed Core case.
 The fresh World continuation is also completed/spent with
 `world_last30days_empty` / `world_grounder_no_submission`, zero submissions or
-Core cases, and successful SQLite/Chinese HTTP readback. No production change
-was justified and no identical-query refresh is used to force a positive result.
+Core cases, and successful SQLite/Chinese HTTP readback. That outcome justified
+no World-path change; no identical-query refresh is used to force a positive
+result.
 
 Normal Event acceptance on 2026-10-10 completed as `BLOCKED` before EI with
 `PRODUCER_ENVELOPE_INVALID`. The persisted SQLite run reopens successfully;

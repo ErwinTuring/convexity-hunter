@@ -2,6 +2,56 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Event Grounder task clarification — 2026-10-10
+
+Current normal Host wiring uses runtime v0.6 / producer prompt v0.7 and the
+existing semantic verifier prompt v0.7. Runtime v0.5 / producer prompt v0.6
+remains available unchanged. The new task asks for source-supported observed
+facts and separately labeled interpretations, including a provisional impact
+hypothesis only where evidence supports it. Missing identity/time may remain
+null; an empty hypothesis set remains a legal no-submission outcome. No schema,
+receipt, Builder, EI acceptance, or Core gate changed. Focused behavior coverage
+confirms both empty-hypothesis no-submission and a time-incomplete supported
+hypothesis reaching existing EI as `INCOMPLETE` after strict receipt validation.
+
+The earlier passive observer retained four claims and zero hypotheses after
+strict schema validation. Why that output contained zero hypotheses remains
+unknown; this clarification does not attribute that result to prior wording and
+does not replay the spent run.
+
+### Pre-run plan — superseded by the completed attempt below
+
+One fresh normal Event POST will use the v0.6 / producer-prompt-v0.7 route, the
+existing PLUG input/source configuration, and the same approved model/source
+and operational budgets. Use an isolated fresh run store and spent marker, with
+evaluation date resolved from the execution-time UTC date; this is caller
+evaluation policy, not an event date. No retries or second POST. If acquired
+source evidence does not explicitly
+support time, leave temporal fields null; a supported partial hypothesis may
+reach EI as `INCOMPLETE`. If no supported hypothesis is produced, retain the
+existing no-submission outcome. Do not replay any marker or run an identical-
+topic World query. This plan authorizes no execution by itself.
+
+### Fresh normal Event validation — spent, blocked at semantic call
+
+One fresh normal run using the v0.6 / producer-prompt-v0.7 route and existing
+PLUG configuration is spent at
+`/private/tmp/ch-event-mvp-2026-10-10-kPmoB2/`, with evaluation date
+`2026-10-10` (UTC), not the originally proposed next-day date. Sanitized result: attempt
+`FINISHED`, Host `READY`, POST 201, run `BLOCKED`; Grounder started/finished
+once with `SEMANTIC_CALL_FAILED` count one. Producer failure-check counts are
+empty. Source admission reports one request / 14,308 response bytes; invocation,
+admitted and failure counters are null. Grounder counts are null; EI is
+`UNKNOWN` with null issue counts; Core cases and unavailable are null, with an
+empty classification-count map. SQLite creation, restart read and Chinese HTTP
+readback passed.
+
+This records a semantic call failure only. Its underlying cause is unknown; it
+does not establish semantic-output rejection, a hypothesis count (including
+zero), or EI `INCOMPLETE`. No retry was made, and three-entry real acceptance is
+not established. Main reports 1,914 tests PASS (302.397s), compileall PASS,
+independent review PASS and 199 documentation links PASS.
+
 ## SEC-primary issuer reference — 2026-10-10
 
 ### Diagnostic-preserving Event continuation — completed
@@ -24,13 +74,15 @@ schema validation, not a verified specific field defect. EI submission/Core
 were not reached. Native direct-source counters report one request / 14,308
 response bytes; admission/failure counts remain unknown. SQLite restart and
 Chinese HTTP workbench readback passed. No raw model/source payload is archived
-here and no retry was made. A bounded prompt/parser compatibility check is the
-next action; no evidence threshold is relaxed.
+here and no retry was made. At that historical point, a bounded prompt/task
+compatibility check was the next action; the later versioned clarification is
+recorded above and does not change this run's outcome or evidence threshold.
 
-Current normal Host wiring already selects runtime v0.5 / producer prompt v0.6;
-the historical v0.3/v0.5-prompt omission is not a demonstrated defect in this
-run. No historical route is modified. One separate passive schema-observer
-attempt is registered at `/private/tmp/ch-event-schema-observer-2026-10-10-U5QkXL/`
+At the time of this run, normal Host wiring selected runtime v0.5 / producer
+prompt v0.6; the historical v0.3/v0.5-prompt omission is not a demonstrated
+defect in this run. The earlier route remains unchanged. One separate passive
+schema-observer attempt is registered at
+`/private/tmp/ch-event-schema-observer-2026-10-10-U5QkXL/`
 under the same budgets/policy and fresh marker. It invokes the original strict
 parser unchanged and re-raises its original error; only a static schema-path /
 closed check label or null is emitted. Model/source values and unknown field
@@ -54,9 +106,9 @@ arguments failed locally before execution; it created no run or request.
 The existing Chinese workbench already renders typed Grounder/builder statuses,
 all five counts, diagnostics, coverage and EI MISSING/NOT_RUN separately from
 failure-stage outcomes. Its focused zero-hypothesis rendering test passed
-(one test). No renderer gap or current prompt/parser implementation defect was
-proved, so no production change is made in this continuation. Search success,
-schema-valid evidence assembly and EI acceptance remain separate checkpoints.
+(one test). That review found no renderer gap and did not establish why this run
+had zero hypotheses. Search success, schema-valid evidence assembly and EI
+acceptance remain separate checkpoints.
 The remaining real Event gap is a source-supported hypothesis plus complete
 EI-required provenance/temporal/identity inputs, not historical option data.
 This evidence does not identify which additional source fact would suffice;

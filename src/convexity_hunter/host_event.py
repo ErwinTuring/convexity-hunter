@@ -36,7 +36,7 @@ from .host_grounder_run_input import (
 from .host_grounder_runtime import (
     HostGrounderEvidenceCatalogRuntimeResult,
     HostGrounderRuntimeError,
-    run_host_grounder_same_run_evidence_catalog_v0_5,
+    run_host_grounder_same_run_evidence_catalog_v0_6,
 )
 from .market_data import UnderlyingKey, UnderlyingSecurityType
 from .host_model import (
@@ -2009,7 +2009,7 @@ def create_event_grounder(
             run_id=run_id,
             canonical_input_hash=run_input.canonical_input_hash,
         )
-        return run_host_grounder_same_run_evidence_catalog_v0_5(
+        return run_host_grounder_same_run_evidence_catalog_v0_6(
             run_input,
             context,
             discovery_client=discovery_client,

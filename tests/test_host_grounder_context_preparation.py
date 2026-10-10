@@ -134,6 +134,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
                 "run_host_grounder_same_run_evidence_catalog_v0_3",
                 "run_host_grounder_same_run_evidence_catalog_v0_4",
                 "run_host_grounder_same_run_evidence_catalog_v0_5",
+                "run_host_grounder_same_run_evidence_catalog_v0_6",
             },
         )
         self.assertFalse(hasattr(runtime_module, "__all__"))
@@ -145,6 +146,9 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
         v03_signature = inspect.signature(run_host_grounder_same_run_evidence_catalog_v0_3)
         v04_signature = inspect.signature(run_host_grounder_same_run_evidence_catalog_v0_4)
         v05_signature = inspect.signature(run_host_grounder_same_run_evidence_catalog_v0_5)
+        v06_signature = inspect.signature(
+            runtime_module.run_host_grounder_same_run_evidence_catalog_v0_6
+        )
         expected_v01_names = (
             "run_input", "context", "discovery_client", "semantic_client", "audit_holder",
             "max_json_bytes", "max_source_body_bytes", "max_catalog_entries",
@@ -157,7 +161,8 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
         self.assertEqual(len(v03_signature.parameters), 11)
         self.assertEqual(v04_signature, v03_signature)
         self.assertEqual(v05_signature, v04_signature)
-        self.assertEqual(len(v05_signature.parameters), 11)
+        self.assertEqual(v06_signature, v05_signature)
+        self.assertEqual(len(v06_signature.parameters), 11)
         for parameter in v01_parameters[:2]:
             self.assertIs(parameter.kind, inspect.Parameter.POSITIONAL_OR_KEYWORD)
         for parameter in v01_parameters[2:]:
@@ -563,7 +568,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
                 max_catalog_entries=100,
                 max_catalog_bytes=100_000,
                 max_catalog_paragraphs=100,
-                producer_prompt_version="host-grounder-discovery-prompt-v0.7",
+                producer_prompt_version="host-grounder-discovery-prompt-v0.8",
             )
         self.assertEqual(raised.exception.code, "DISCOVERY_PROMPT_VERSION_INVALID")
         self.assertEqual(calls, [])

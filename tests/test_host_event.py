@@ -2508,7 +2508,7 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertTrue(any("ACME filed a report." in content for content in model_user_content))
         system_prompts = [call["messages"][0]["content"] for call in model_transport.calls]
         self.assertTrue(
-            any("host-grounder-discovery-prompt-v0.6" in prompt for prompt in system_prompts)
+            any("host-grounder-discovery-prompt-v0.7" in prompt for prompt in system_prompts)
         )
         self.assertTrue(
             any("host-grounder-semantic-verifier-prompt-v0.7" in prompt for prompt in system_prompts)

@@ -33,6 +33,7 @@ from .host_grounder_evidence_catalog import (
     _PRODUCER_PROMPT_VERSION_V0_4,
     _PRODUCER_PROMPT_VERSION_V0_5,
     _PRODUCER_PROMPT_VERSION_V0_6,
+    _PRODUCER_PROMPT_VERSION_V0_7,
     _VERIFIER_PROMPT_VERSION as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
     _VERIFIER_PROMPT_VERSION_V0_6 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
     _VERIFIER_PROMPT_VERSION_V0_7 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
@@ -298,6 +299,28 @@ DISCOVERY_SYSTEM_PROMPT_V0_6 = _replace_prompt_fragment(
     "FORMAT-ONLY entity_refs shape example (not a fact; do not copy the "
     "placeholder): {\"entity_refs\":[\"FORMAT_ONLY_ENTITY_REF_DO_NOT_COPY\"]}. "
     "The placeholder supplies no entity or source fact and must never be emitted."
+)
+
+DISCOVERY_SYSTEM_PROMPT_V0_7 = _replace_prompt_fragment(
+    DISCOVERY_SYSTEM_PROMPT_V0_6,
+    "Prompt version: host-grounder-discovery-prompt-v0.6.",
+    "Prompt version: host-grounder-discovery-prompt-v0.7.",
+) + (
+    "\n\nEvent research objective (v0.7): Treat each supplied event lead as a request "
+    "to report both source-supported observations and any source-supported provisional "
+    "explanation of possible event impact; do not stop at fact extraction alone. Keep "
+    "directly reported facts as observed_fact claims and label explanatory inferences "
+    "as interpretation claims, not facts. Where registered evidence supports a possible "
+    "event-to-underlying or distribution-impact relationship, represent it as a "
+    "provisional hypothesis with its supporting claim closure. This is candidate research "
+    "structure, not asserted causation or EI acceptance. Missing identity or time does "
+    "not prevent representing a supported provisional hypothesis: leave unsupported "
+    "nullable identity/impact fields, expected_window, or reassessment null, and state "
+    "the evidence gap. Never invent identity, dates, timing, causal certainty, or links. "
+    "If sources do not support an interpretation or impact relation, an empty hypotheses "
+    "array remains valid and the unresolved gap should be stated. This clarification "
+    "does not change the DTO, evidence, Builder, semantic-validation, or EI acceptance "
+    "rules."
 )
 
 SEMANTIC_SYSTEM_PROMPT_V0_5 = _replace_prompt_fragment(
@@ -1283,6 +1306,8 @@ def _run_host_grounder_same_run_evidence_catalog(
         discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_5
     elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_6:
         discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_6
+    elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_7:
+        discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_7
     else:
         raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
     if type(semantic_prompt_version) is not str:
@@ -1805,6 +1830,46 @@ def run_host_grounder_same_run_evidence_catalog_v0_5(
         max_catalog_bytes=max_catalog_bytes,
         max_catalog_paragraphs=max_catalog_paragraphs,
         producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_6,
+        semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
+        context_preparer=host_context_preparer,
+        producer_diagnostics_v0_3=True,
+    )
+
+
+def run_host_grounder_same_run_evidence_catalog_v0_6(
+    run_input: HostGrounderRunInput,
+    context: HostBuildContext,
+    *,
+    discovery_client: ChatCompletionsClient,
+    semantic_client: ChatCompletionsClient,
+    audit_holder: HostEvidenceCatalogAuditHolder,
+    max_json_bytes: int,
+    max_source_body_bytes: int,
+    max_catalog_entries: int,
+    max_catalog_bytes: int,
+    max_catalog_paragraphs: int,
+    host_context_preparer: Optional[
+        Callable[
+            [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
+            HostBuildContext,
+        ]
+    ] = None,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Run catalog semantics v0.7 with the event-research producer prompt v0.7."""
+    if not callable(host_context_preparer):
+        raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
+    return _run_host_grounder_same_run_evidence_catalog(
+        run_input,
+        context,
+        discovery_client=discovery_client,
+        semantic_client=semantic_client,
+        audit_holder=audit_holder,
+        max_json_bytes=max_json_bytes,
+        max_source_body_bytes=max_source_body_bytes,
+        max_catalog_entries=max_catalog_entries,
+        max_catalog_bytes=max_catalog_bytes,
+        max_catalog_paragraphs=max_catalog_paragraphs,
+        producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_7,
         semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
         context_preparer=host_context_preparer,
         producer_diagnostics_v0_3=True,

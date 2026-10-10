@@ -206,6 +206,16 @@ validation is required for actual compatibility; failure must remain failure.
 
 ## Trusted Host connection
 
+Current normal Host Event wiring (2026-10-10) uses catalog runtime v0.6,
+producer task prompt v0.7, and the existing semantic verifier prompt v0.7;
+runtime v0.5 / producer prompt v0.6 remains available unchanged. The new task
+separates reported facts from interpretations and requests source-supported
+provisional impact analysis without requiring complete identity or time.
+Hypotheses may remain empty, and time-incomplete supported submissions continue
+through the strict receipt/Builder path to the existing EI assessor as
+`INCOMPLETE`; no acceptance gate is relaxed. The prior four-claim/zero-hypothesis
+observer result remains unexplained, not attributed to prompt wording.
+
 An additive, explicitly configured Event Grounder receives the original input,
 Host-owned run ID and explicit operational bounds. Existing callbacks returning
 `CoreRunResult` retain their old signature and admission rules. Configuration

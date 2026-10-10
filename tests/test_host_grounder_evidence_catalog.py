@@ -11,6 +11,11 @@ from unittest.mock import patch
 from convexity_hunter import host_grounder_evidence_catalog as catalog_module
 from convexity_hunter import host_grounder_runtime as runtime_module
 from convexity_hunter.event_entry import UserEventInput
+from convexity_hunter.event_intelligence import (
+    EventIntelligenceAcceptanceStatus,
+    EventIntelligenceIssueCode,
+    assess_event_intelligence_submission,
+)
 from convexity_hunter.host_grounder_builder import HostBuildContext, HostSourceBody
 from convexity_hunter.host_grounder_evidence_catalog import (
     EVIDENCE_CATALOG_GENERATOR_VERSION,
@@ -30,6 +35,7 @@ from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT_V0_4,
     DISCOVERY_SYSTEM_PROMPT_V0_5,
     DISCOVERY_SYSTEM_PROMPT_V0_6,
+    DISCOVERY_SYSTEM_PROMPT_V0_7,
     SEMANTIC_SYSTEM_PROMPT_V0_5,
     SEMANTIC_SYSTEM_PROMPT_V0_6,
     SEMANTIC_SYSTEM_PROMPT_V0_7,
@@ -39,6 +45,7 @@ from convexity_hunter.host_grounder_runtime import (
     run_host_grounder_same_run_evidence_catalog_v0_3,
     run_host_grounder_same_run_evidence_catalog_v0_4,
     run_host_grounder_same_run_evidence_catalog_v0_5,
+    run_host_grounder_same_run_evidence_catalog_v0_6,
 )
 from convexity_hunter.host_model import ModelRuntimeConfig, ModelTransportReceipt
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
@@ -746,6 +753,26 @@ class EvidenceCatalogWireTests(unittest.TestCase):
 
 
 class EvidenceCatalogRuntimeTests(unittest.TestCase):
+    def _run_v06(self, run_input, context, producer, verdict):
+        calls = []
+        result = run_host_grounder_same_run_evidence_catalog_v0_6(
+            run_input,
+            context,
+            discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+            semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+            audit_holder=HostEvidenceCatalogAuditHolder(
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+            ),
+            max_json_bytes=100_000,
+            max_source_body_bytes=20_000,
+            max_catalog_entries=64,
+            max_catalog_bytes=32_768,
+            max_catalog_paragraphs=128,
+            host_context_preparer=lambda _snapshot, _receipt, original: original,
+        )
+        return result, calls
+
     def _run_v05(
         self, run_input, context, producer, verdict, *, semantic_max_input_bytes=500_000
     ):
@@ -821,6 +848,24 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         )
         self.assertNotIn("nonempty strings, never objects", DISCOVERY_SYSTEM_PROMPT_V0_5)
 
+    def test_v07_prompt_adds_event_research_goal_without_changing_v06(self):
+        v06_header = "Prompt version: host-grounder-discovery-prompt-v0.6."
+        v07_header = "Prompt version: host-grounder-discovery-prompt-v0.7."
+        self.assertIn(v07_header, DISCOVERY_SYSTEM_PROMPT_V0_7)
+        self.assertNotIn(v06_header, DISCOVERY_SYSTEM_PROMPT_V0_7)
+        v06_as_v07 = DISCOVERY_SYSTEM_PROMPT_V0_6.replace(v06_header, v07_header, 1)
+        self.assertTrue(DISCOVERY_SYSTEM_PROMPT_V0_7.startswith(v06_as_v07))
+        clarification = DISCOVERY_SYSTEM_PROMPT_V0_7[len(v06_as_v07):]
+        self.assertIn("do not stop at fact extraction alone", clarification)
+        self.assertIn("observed_fact claims", clarification)
+        self.assertIn("interpretation claims, not facts", clarification)
+        self.assertIn("provisional hypothesis", clarification)
+        self.assertIn("expected_window, or reassessment null", clarification)
+        self.assertIn("an empty hypotheses array remains valid", clarification)
+        self.assertIn("does not change the DTO, evidence, Builder", clarification)
+        self.assertNotIn("must produce", clarification)
+        self.assertNotIn("nonempty hypotheses", clarification)
+
     def test_semantic_v06_has_literal_version_header_and_format_only_map_rule(self):
         self.assertEqual(
             hashlib.sha256(SEMANTIC_SYSTEM_PROMPT_V0_6.encode("utf-8")).hexdigest(),
@@ -886,6 +931,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             "host-grounder-discovery-prompt-v0.4",
             "host-grounder-discovery-prompt-v0.5",
             "host-grounder-discovery-prompt-v0.6",
+            "host-grounder-discovery-prompt-v0.7",
         ):
             with self.subTest(version=version):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -941,7 +987,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertEqual(holder._semantic_prompt_version, version)
 
         for invalid in (
-            "host-grounder-discovery-prompt-v0.7", "", True, 1, [], {}, object()
+            "host-grounder-discovery-prompt-v0.8", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1042,6 +1088,11 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 DISCOVERY_SYSTEM_PROMPT_V0_6,
                 "host-grounder-discovery-prompt-v0.6",
             ),
+            (
+                run_host_grounder_same_run_evidence_catalog_v0_6,
+                DISCOVERY_SYSTEM_PROMPT_V0_7,
+                "host-grounder-discovery-prompt-v0.7",
+            ),
         )
         result_type = None
         for route, expected_prompt, expected_version in cases:
@@ -1068,12 +1119,19 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertEqual(calls[0][1], expected_prompt)
                 expected_semantic_prompt = (
                     SEMANTIC_SYSTEM_PROMPT_V0_7
-                    if route is run_host_grounder_same_run_evidence_catalog_v0_5
+                    if route
+                    in (
+                        run_host_grounder_same_run_evidence_catalog_v0_5,
+                        run_host_grounder_same_run_evidence_catalog_v0_6,
+                    )
                     else SEMANTIC_SYSTEM_PROMPT_V0_5
                 )
                 self.assertEqual(calls[1][1], expected_semantic_prompt)
                 verifier_payload = json.loads(calls[1][2])
-                if route is run_host_grounder_same_run_evidence_catalog_v0_5:
+                if route in (
+                    run_host_grounder_same_run_evidence_catalog_v0_5,
+                    run_host_grounder_same_run_evidence_catalog_v0_6,
+                ):
                     evidence_id = _catalog.entries[0].evidence_id
                     self.assertEqual(
                         verifier_payload["producer_binding_evidence_map"],
@@ -1099,7 +1157,11 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertEqual(
                     json.loads(result.audit.sidecar_utf8)["validator_version"],
                     "host-grounder-semantic-verifier-prompt-v0.7"
-                    if route is run_host_grounder_same_run_evidence_catalog_v0_5
+                    if route
+                    in (
+                        run_host_grounder_same_run_evidence_catalog_v0_5,
+                        run_host_grounder_same_run_evidence_catalog_v0_6,
+                    )
                     else "host-grounder-semantic-verifier-prompt-v0.5",
                 )
                 if route is run_host_grounder_same_run_evidence_catalog_v0_4:
@@ -1116,6 +1178,72 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 if result_type is None:
                     result_type = type(result)
                 self.assertIs(type(result), result_type)
+
+    def test_v06_valid_empty_hypotheses_remains_no_submission(self):
+        run_input, context = _fixture()
+        catalog, producer, _envelope, _envelope_bytes, _verdict = _wire_bundle(
+            run_input, context
+        )
+        producer = json.loads(_canonical(producer))
+        producer["hypotheses"] = []
+        producer["field_bindings"] = []
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
+        verdict["hypotheses"] = []
+
+        result, calls = self._run_v06(run_input, context, producer, verdict)
+
+        receipt = result.build_result.semantic_validation.receipt
+        self.assertEqual(receipt["verified_hypothesis_ids"], ())
+        self.assertIsNone(result.build_result.submission)
+        self.assertTrue(
+            any(
+                item.code == "NO_PROJECTABLE_HYPOTHESIS"
+                for item in result.build_result.diagnostics
+            )
+        )
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertEqual(
+            json.loads(result.audit.sidecar_utf8)["producer_prompt_version"],
+            "host-grounder-discovery-prompt-v0.7",
+        )
+
+    def test_v06_supported_hypothesis_without_time_reaches_ei_incomplete(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+
+        result, calls = self._run_v06(run_input, context, producer, verdict)
+
+        receipt = result.build_result.semantic_validation.receipt
+        self.assertEqual(receipt["verified_hypothesis_ids"], ("hyp-1",))
+        self.assertIsNotNone(result.build_result.submission)
+        hypothesis = result.build_result.submission.hypotheses[0]
+        self.assertIsNone(hypothesis.expected_window)
+        self.assertIsNone(hypothesis.reassessment)
+        assessment = assess_event_intelligence_submission(
+            result.build_result.submission
+        )
+        self.assertIs(assessment.status, EventIntelligenceAcceptanceStatus.INCOMPLETE)
+        self.assertIn(
+            EventIntelligenceIssueCode.MISSING_TEMPORAL_APPLICABILITY,
+            assessment.issue_codes,
+        )
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertEqual(
+            json.loads(result.audit.sidecar_utf8)["producer_prompt_version"],
+            "host-grounder-discovery-prompt-v0.7",
+        )
 
     def test_v05_map_preserves_empty_repeated_and_reordered_binding_ids(self):
         run_input, context = _fixture()
@@ -1305,6 +1433,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             (run_host_grounder_same_run_evidence_catalog_v0_3, DISCOVERY_SYSTEM_PROMPT_V0_5),
             (run_host_grounder_same_run_evidence_catalog_v0_4, DISCOVERY_SYSTEM_PROMPT_V0_6),
             (run_host_grounder_same_run_evidence_catalog_v0_5, DISCOVERY_SYSTEM_PROMPT_V0_6),
+            (run_host_grounder_same_run_evidence_catalog_v0_6, DISCOVERY_SYSTEM_PROMPT_V0_7),
         )
         calls = []
         with self.assertRaises(HostGrounderRuntimeError) as missing_preparer:
