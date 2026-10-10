@@ -4,6 +4,76 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## SEC-primary issuer reference — 2026-10-10
 
+### Normal Event acceptance continuation — completed, blocked before EI
+
+The fresh normal Event attempt below is spent. Its retained SQLite run is
+`BLOCKED`: the Grounder finished once with `PRODUCER_ENVELOPE_INVALID`.
+No Event Intelligence submission or Core case was established. Offline reopening
+successfully recovered the persisted run/stage result. The original terminal
+summary was not retained after context truncation; source counters and Chinese
+HTTP readback are therefore unknown, not zero or successful. The operation will
+not be replayed to recover those counters. The precise envelope failure check
+was not persisted and cannot be recovered from this journal. No parser defect
+is proved by the generic code; no missing facts are fabricated.
+
+The following records its pre-execution bounds, not another run allowance.
+
+The subsequent narrow Host fix projects the runtime's existing closed producer
+failure checks into fixed run-level diagnostic codes, like the existing semantic
+subcause path. Exact error/stage/check types and closed mappings are required;
+unknown or spoofed fields are rejected. Stage outcomes keep the generic code;
+no raw exception/model/source content is archived, and Store schema, parser,
+EI acceptance, Core economics and request budgets are unchanged. This makes
+future failures actionable; it cannot reconstruct this spent attempt's cause.
+Host/Store regression: 82 tests PASS; compileall and diff checks PASS. The
+1,909-test full regression below predates this diagnostic-only fix and was not
+rerun for it.
+
+The standing MVP mission authorizes one new normal Event attempt after source
+integration. The fresh wrapper is
+`/private/tmp/ch-event-mvp-2026-10-10-jtdAH0/run_event_once.py`, reusing the old
+PLUG clue and approved Standard Research Profile without altering old scripts,
+configs or spent records. Evaluation is explicitly 2026-10-10 UTC with a date
+guard and a fresh exclusive marker. No evidence is backdated.
+
+Caller-only raw source caps are 1,500,000 bytes per response / 3,000,000 total
+(an increase from the old private config's 100,000-byte limits, not a default
+change). Parsed/model bounds remain unchanged. Tavily remains two requests /
+three free credits, PAYGO-off; DeepSeek discovery and semantic each remain
+one request, 8,000/6,000 tokens and 45 seconds. Existing operational bounds
+remain one submission/four hypotheses/400 Browser rows/200 cases; no ranking
+or hidden shortlist. Private credentials stay outside the repository.
+
+The wrapper returns the real admission client unchanged; unknown counter
+fields remain null. Offline checks and narrow independent wrapper review PASS.
+One normal run is allowed, not refresh/retry for better evidence. EI acceptance
+is not a target to force, and missing cost ledger/sensitivity remain legitimate
+Core gaps. Persistence/Chinese HTTP readback are checked through the existing
+Host; browser interaction is not implicitly proven by HTTP readback.
+
+### Completed source-identity increment
+
+One fresh normal World attempt was separately registered and is now spent at
+`/private/tmp/ch-world-mvp-2026-10-10-fDxjDY/run_world_once.py`, with evaluation
+2026-10-10 UTC and a fresh exclusive marker. It preserves the existing topic,
+pinned last30days version, Reddit/X/Hacker News/Digg allowlist, source/model
+budgets and approved research profile. Caller-only raw source caps are
+1,500,000 / 3,000,000 bytes; parsed/model caps are unchanged. Operational bounds
+remain one submission/ten hypotheses/400 Browser rows/200 cases/ten-second
+quote timeout. Partial/empty native output still proceeds to the existing
+Tavily-backed shared Grounder. This is one normal product attempt, not another
+Skill tuning/comparison campaign or a retry of the spent Event attempt.
+
+World completed with preparation `READY`, one POST returning HTTP 201 and a
+persisted `BLOCKED` run. Closed reasons are `world_grounder_no_submission` and
+`world_last30days_empty`. Submission/hypothesis/accepted/incomplete/Core-case/
+unavailable/source-reference counts are all zero. SQLite reopening and Chinese
+HTTP workbench readback passed; actual browser interaction was not tested.
+`provider_request_counts` and `skill_stage_count` remain null (unknown), not
+zero. Configured source credentials do not prove source coverage. Native empty
+output and no submission do not establish an absence of market events or an
+absence of Skill discovery capability. No repeat/refresh was performed.
+
 Current runtime: `host-listing-source-composite-v0.2` and
 `yahoo-quote-header-v2` are implemented with Host automatic registration and
 consumption. Independent review PASS after closing two Yahoo scoping findings,
@@ -28,8 +98,8 @@ its own bounded authorization, not another blind source or quote repeat.
 Latest user authority: SEC cover may alone prove the explicit security class;
 market and denomination still need independent corroboration. This supersedes
 the independent class blocker below, not historical experiment results. A
-versioned minimal composite/source-format successor is in preflight; no runtime
-identity or EI/Core success is implied by the decision alone.
+versioned minimal composite/source-format successor is now implemented as
+recorded above; no EI/Core success is implied by the authority decision alone.
 
 Formal follow-on preflight is READY; Main froze the narrow
 [composite v0.2 BUILD boundary](host-listing-source-composite-v0.1.md#sec-primary-common-stock-composite-v02--frozen-build-boundary).

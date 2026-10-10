@@ -1477,6 +1477,151 @@ class HostServerBatchTests(unittest.TestCase):
             store.close()
             temporary_directory.cleanup()
 
+    def test_producer_failure_subcause_projection_is_closed_and_stage_bound(self):
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+
+        check_codes = {
+            "producer_wire_normalization": "PRODUCER_FAILURE_CHECK_WIRE_NORMALIZATION",
+            "producer_run_stage_binding": "PRODUCER_FAILURE_CHECK_RUN_STAGE_BINDING",
+            "producer_coverage_order": "PRODUCER_FAILURE_CHECK_COVERAGE_ORDER",
+            "producer_binding_extraction": "PRODUCER_FAILURE_CHECK_BINDING_EXTRACTION",
+            "producer_v0_3_wire_decode": "PRODUCER_FAILURE_CHECK_V0_3_WIRE_DECODE",
+            "producer_v0_3_root_shape": "PRODUCER_FAILURE_CHECK_V0_3_ROOT_SHAPE",
+            "producer_v0_3_catalog_source_validation": "PRODUCER_FAILURE_CHECK_V0_3_CATALOG_SOURCE_VALIDATION",
+            "producer_v0_3_claims_catalog_expansion": "PRODUCER_FAILURE_CHECK_V0_3_CLAIMS_CATALOG_EXPANSION",
+            "producer_v0_3_bindings_catalog_expansion": "PRODUCER_FAILURE_CHECK_V0_3_BINDINGS_CATALOG_EXPANSION",
+            "producer_v0_3_canonical_size": "PRODUCER_FAILURE_CHECK_V0_3_CANONICAL_SIZE",
+            "producer_v0_3_internal_v0_1_schema": "PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA",
+            "producer_v0_3_recanonicalization": "PRODUCER_FAILURE_CHECK_V0_3_RECANONICALIZATION",
+        }
+        project = host_server_module._semantic_failure_diagnostic_codes
+
+        for check, expected in check_codes.items():
+            with self.subTest(check=check):
+                error = HostGrounderRuntimeError(
+                    "PRODUCER_ENVELOPE_INVALID",
+                    failure_stage="producer_envelope_normalization",
+                    failure_check=check,
+                )
+                error.args = ("PRIVATE_EXCEPTION_SENTINEL",)
+                error.private_detail = "PRIVATE_DETAIL_SENTINEL"
+                self.assertEqual(project(error), (expected,))
+                self.assertNotIn("PRIVATE", " ".join(project(error)))
+
+        unknown_check = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage="producer_envelope_normalization",
+            failure_check="producer_wire_normalization",
+        )
+        unknown_check.failure_check = "PRIVATE_CHECK_SENTINEL"
+        self.assertEqual(project(unknown_check), ())
+
+        mismatched_stage = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage="producer_envelope_normalization",
+            failure_check="producer_wire_normalization",
+        )
+        mismatched_stage.failure_stage = "semantic_wire_parse"
+        self.assertEqual(project(mismatched_stage), ())
+
+        class StageString(str):
+            pass
+
+        non_exact_stage = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage="producer_envelope_normalization",
+            failure_check="producer_wire_normalization",
+        )
+        non_exact_stage.failure_stage = StageString(
+            "producer_envelope_normalization"
+        )
+        self.assertEqual(project(non_exact_stage), ())
+
+        wrong_code = HostGrounderRuntimeError("NO_SEARCH_RESULTS")
+        wrong_code.failure_stage = "producer_envelope_normalization"
+        wrong_code.failure_check = "producer_wire_normalization"
+        self.assertEqual(project(wrong_code), ())
+
+        spoof = type("SpoofedGrounderError", (), {})()
+        spoof.code = "PRODUCER_ENVELOPE_INVALID"
+        spoof.failure_stage = "producer_envelope_normalization"
+        spoof.failure_check = "producer_wire_normalization"
+        self.assertEqual(project(spoof), ())
+
+        class ForgedGrounderError(HostGrounderRuntimeError):
+            pass
+
+        forged = ForgedGrounderError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage="producer_envelope_normalization",
+            failure_check="producer_wire_normalization",
+        )
+        self.assertEqual(project(forged), ())
+
+    def test_producer_failure_subcause_is_run_level_only(self):
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+
+        temporary_directory, store = self._new_grounder_store(
+            "producer-failure.sqlite3"
+        )
+        core_calls = []
+
+        def grounder(_raw_input, *, run_id, bounds):
+            del run_id, bounds
+            error = HostGrounderRuntimeError(
+                "PRODUCER_ENVELOPE_INVALID",
+                failure_stage="producer_envelope_normalization",
+                failure_check="producer_v0_3_wire_decode",
+            )
+            error.args = ("PRIVATE_EXCEPTION_SENTINEL",)
+            error.private_detail = "PRIVATE_DETAIL_SENTINEL"
+            raise error
+
+        grounder.configuration_snapshot = self._event_configuration_snapshot_accessor()
+
+        def core_executor(*_args, **_kwargs):
+            core_calls.append("called")
+            self.fail("Core must not run after producer envelope failure")
+
+        try:
+            self._start_server(
+                event_grounder=grounder,
+                event_core_executor=core_executor,
+            )
+            response = self._post("synthetic producer failure", mode="event")
+            self.assertEqual(response[0], 201)
+            body = self._decoded(response)
+            self.assertEqual(
+                set(body), {"run_id", "status", "reason"}
+            )
+            self.assertEqual(body["status"], "BLOCKED")
+            self.assertEqual(body["reason"], "PRODUCER_ENVELOPE_INVALID")
+
+            run = store.get_run(body["run_id"])
+            self.assertEqual(run["status"], "BLOCKED")
+            self.assertEqual(
+                run["diagnostics"],
+                [
+                    "PRODUCER_ENVELOPE_INVALID",
+                    "PRODUCER_FAILURE_CHECK_V0_3_WIRE_DECODE",
+                ],
+            )
+            self.assertEqual(
+                run["events"][1]["diagnostics"], ["PRODUCER_ENVELOPE_INVALID"]
+            )
+            self.assertIsNone(store.get_batch_summary(body["run_id"]))
+            self.assertEqual(core_calls, [])
+            for private_value in (
+                "PRIVATE_EXCEPTION_SENTINEL",
+                "PRIVATE_DETAIL_SENTINEL",
+            ):
+                self.assertNotIn(private_value, response[2].decode("utf-8"))
+                self.assertNotIn(private_value, json.dumps(run, ensure_ascii=False))
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
     def test_semantic_failure_subcause_projection_is_closed_and_stage_bound(self):
         from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
 

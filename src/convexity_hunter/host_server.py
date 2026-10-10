@@ -109,6 +109,20 @@ _SEMANTIC_FAILURE_CHECK_DIAGNOSTICS = {
     "evidence_ref_expansion": "SEMANTIC_FAILURE_CHECK_EVIDENCE_REF_EXPANSION",
     "internal_verdict_validation": "SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_VALIDATION",
 }
+_PRODUCER_FAILURE_CHECK_DIAGNOSTICS = {
+    "producer_wire_normalization": "PRODUCER_FAILURE_CHECK_WIRE_NORMALIZATION",
+    "producer_run_stage_binding": "PRODUCER_FAILURE_CHECK_RUN_STAGE_BINDING",
+    "producer_coverage_order": "PRODUCER_FAILURE_CHECK_COVERAGE_ORDER",
+    "producer_binding_extraction": "PRODUCER_FAILURE_CHECK_BINDING_EXTRACTION",
+    "producer_v0_3_wire_decode": "PRODUCER_FAILURE_CHECK_V0_3_WIRE_DECODE",
+    "producer_v0_3_root_shape": "PRODUCER_FAILURE_CHECK_V0_3_ROOT_SHAPE",
+    "producer_v0_3_catalog_source_validation": "PRODUCER_FAILURE_CHECK_V0_3_CATALOG_SOURCE_VALIDATION",
+    "producer_v0_3_claims_catalog_expansion": "PRODUCER_FAILURE_CHECK_V0_3_CLAIMS_CATALOG_EXPANSION",
+    "producer_v0_3_bindings_catalog_expansion": "PRODUCER_FAILURE_CHECK_V0_3_BINDINGS_CATALOG_EXPANSION",
+    "producer_v0_3_canonical_size": "PRODUCER_FAILURE_CHECK_V0_3_CANONICAL_SIZE",
+    "producer_v0_3_internal_v0_1_schema": "PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA",
+    "producer_v0_3_recanonicalization": "PRODUCER_FAILURE_CHECK_V0_3_RECANONICALIZATION",
+}
 
 
 class _DiscardingTextStream:
@@ -347,15 +361,25 @@ def _grounder_failure_status(error: Exception) -> Tuple[str, str]:
 
 
 def _semantic_failure_diagnostic_codes(error: Exception) -> Tuple[str, ...]:
-    """Project only the closed semantic subcause fields onto fixed codes."""
+    """Project closed semantic and producer subcauses onto fixed run codes."""
 
     from .host_grounder_runtime import HostGrounderRuntimeError
 
     if (
         type(error) is not HostGrounderRuntimeError
         or type(error.code) is not str
-        or error.code != "SEMANTIC_VERDICT_REJECTED"
     ):
+        return ()
+    if error.code == "PRODUCER_ENVELOPE_INVALID":
+        stage = getattr(error, "failure_stage", None)
+        if type(stage) is not str or stage != "producer_envelope_normalization":
+            return ()
+        check = getattr(error, "failure_check", None)
+        if type(check) is not str:
+            return ()
+        check_code = _PRODUCER_FAILURE_CHECK_DIAGNOSTICS.get(check)
+        return () if check_code is None else (check_code,)
+    if error.code != "SEMANTIC_VERDICT_REJECTED":
         return ()
     stage = getattr(error, "failure_stage", None)
     if type(stage) is not str:

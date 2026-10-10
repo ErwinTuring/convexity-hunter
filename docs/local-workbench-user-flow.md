@@ -13,6 +13,13 @@
 
 ## 启动与输入
 
+2026-10-10 的两次独立正常运行已完成并存档：Event 在 producer envelope
+校验处 `BLOCKED / PRODUCER_ENVELOPE_INVALID`；World 为
+`BLOCKED / world_last30days_empty / world_grounder_no_submission`。两者均未
+进入 EI/Core，不把失败解释为没有机会。World 的中文 HTTP 与 SQLite 重启
+读回通过，Event 仅恢复了 SQLite 状态；缺失的计数不补造。来源 identity
+composite 的单独验证成功不代替入口验收，详见当前检查点。
+
 另有显式实验入口 `examples/local_event_host.py`，接入 Tavily Basic Search/Extract、
 DeepSeek 两角色核验及同一 Event Core。它可脱离 Codex 启动，但尚未证明真实
 Event Intelligence 接受：只按受支持格式解析来源，未知主体与日期证据不补造。

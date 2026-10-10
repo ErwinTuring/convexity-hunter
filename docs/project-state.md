@@ -1,5 +1,18 @@
 # Project State
 
+Normal Event acceptance on 2026-10-10 completed as `BLOCKED` before EI with
+`PRODUCER_ENVELOPE_INVALID`. The persisted SQLite run reopens successfully;
+no new EI acceptance/Core case is claimed and this spent operation is not retried.
+The completed listing composite below remains source-level evidence.
+The separate normal World attempt is also spent: HTTP 201, persisted `BLOCKED`,
+`world_last30days_empty` / `world_grounder_no_submission`, zero submissions and
+Core cases. SQLite restart and Chinese HTTP readback passed. These completed
+operational attempts do not prove three-entry real research completion.
+A narrow Host correction now preserves existing closed producer failure
+subchecks in run diagnostics without raw output or schema/evidence changes;
+82 Host/Store regression tests passed. It does not recover old missing details
+or resolve the real Grounder input failure.
+
 Current 2026-10-10: SEC-primary listing composite v0.2 and scoped Yahoo header
 v2 are implemented and independently reviewed. A separately registered real
 three-source PLUG operation admitted all roles, validated the issuing receipt
