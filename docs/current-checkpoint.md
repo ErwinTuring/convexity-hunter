@@ -62,6 +62,30 @@ EI-required provenance/temporal/identity inputs, not historical option data.
 This evidence does not identify which additional source fact would suffice;
 no date, entity mapping or hypothesis is generated merely to force submission.
 
+One fresh normal World continuation is registered at
+`/private/tmp/ch-world-mvp-2026-10-10-fresh-u6jOPn/` under the user's standing
+MVP continuation. It preserves the previous topic, pin, source allowlist,
+explicit evaluation date, credential references and all caller limits/policy.
+Offline check READY and Main inspected the unchanged execution wiring. The
+check's default credential-ready flag is not a live authentication result;
+credential values are loaded only for execution. Fresh marker/database; one
+operation, no tuning or retries to produce candidates.
+
+This fresh World operation is now spent: READY / one POST HTTP 201 / persisted
+`BLOCKED`, with `world_last30days_empty` and `world_grounder_no_submission`.
+Submission/hypothesis/EI accepted/EI incomplete/Core/unavailable/source-reference
+counts are zero; request/stage counts remain unknown. Credential configuration
+was ready at execution, not proof of each native source's authentication.
+SQLite restart and Chinese HTTP readback passed. No further identical-query
+refresh follows. This does not establish that no market events exist.
+
+Continuation outcome: no current production defect was independently proved,
+so production code is unchanged. Event schema-valid evidence assembly and
+World source execution were exercised, but neither established an EI-ready
+source-supported hypothesis. Three-entry real research acceptance remains
+unproven; the retained Direct completion is historical, not rerun here.
+Missing fees/sensitivity and optional valuation gaps are not altered or filled.
+
 ### Normal Event acceptance continuation — completed, blocked before EI
 
 The fresh normal Event attempt below is spent. Its retained SQLite run is

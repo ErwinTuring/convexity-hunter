@@ -14,6 +14,10 @@ and EI NOT_RUN from upstream failures; its focused zero-hypothesis rendering
 test passed. No production implementation defect was proved in this continuation.
 Real Event/EI completion still needs a sufficiently source-supported hypothesis;
 valid structured claims alone are not acceptance or a completed Core case.
+The fresh World continuation is also completed/spent with
+`world_last30days_empty` / `world_grounder_no_submission`, zero submissions or
+Core cases, and successful SQLite/Chinese HTTP readback. No production change
+was justified and no identical-query refresh is used to force a positive result.
 
 Normal Event acceptance on 2026-10-10 completed as `BLOCKED` before EI with
 `PRODUCER_ENVELOPE_INVALID`. The persisted SQLite run reopens successfully;
