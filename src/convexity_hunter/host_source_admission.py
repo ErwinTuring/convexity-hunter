@@ -39,6 +39,7 @@ _PARSER_METADATA = {
     "sec-edgar-cover-layout-v3": ("sec", "3"),
     "sec-edgar-cover-layout-v4": ("sec", "4"),
     "sec-issuer-reference-v1": ("sec", "1"),
+    "sec-issuer-reference-v2": ("sec", "2"),
     "nasdaq-instrument-v1": ("nasdaq", "1"),
     "yahoo-quote-header-v1": ("yahoo", "1"),
 }
@@ -566,6 +567,30 @@ def _decode_sec_reference_document(source: str):
     return root["data"], row_spans
 
 
+def _decode_sec_reference_document_v2(source: str):
+    """Strictly decode the reference envelope and row shapes, not background semantics."""
+    root = json.loads(
+        source,
+        object_pairs_hook=_json_object_without_duplicate_keys,
+        parse_constant=_reject_json_constant,
+        parse_float=_strict_json_float,
+    )
+    if (
+        type(root) is not dict
+        or tuple(root.keys()) != ("fields", "data")
+        or type(root["fields"]) is not list
+        or tuple(root["fields"]) != _SEC_REFERENCE_FIELDS
+        or type(root["data"]) is not list
+    ):
+        raise ValueError("SEC reference root schema is unsupported")
+    row_spans = _sec_reference_data_spans(source)
+    if len(row_spans) != len(root["data"]) or any(
+        type(row) is not list or len(row) != 4 for row in root["data"]
+    ):
+        raise ValueError("SEC reference row structure is unsupported")
+    return root["data"], row_spans
+
+
 def _sec_reference_byte_offsets(source: str, character_offsets):
     wanted = set(character_offsets)
     offsets = {}
@@ -579,6 +604,43 @@ def _sec_reference_byte_offsets(source: str, character_offsets):
     if len(offsets) != len(wanted):
         raise ValueError("SEC reference row span is out of bounds")
     return offsets
+
+
+def _sec_reference_selected_page(source, selected_symbols, selected, parser_id):
+    byte_offsets = _sec_reference_byte_offsets(
+        source,
+        (
+            offset
+            for ticker in selected_symbols
+            for offset in selected[ticker][0]
+        ),
+    )
+    wrapper_prefix = '{"fields":["cik","name","ticker","exchange"],"data":['
+    row_tokens = []
+    anchors = []
+    parsed_offset = len(wrapper_prefix)
+    for symbol in selected_symbols:
+        (raw_start, raw_end), _row = selected[symbol]
+        token = source[raw_start:raw_end]
+        token_bytes = token.encode("utf-8")
+        if row_tokens:
+            parsed_offset += 1
+        parsed_start = parsed_offset
+        parsed_end = parsed_start + len(token)
+        anchors.append(
+            AdmissionAnchor(
+                "sec_issuer_reference.data." + symbol,
+                byte_offsets[raw_start],
+                byte_offsets[raw_end],
+                hashlib.sha256(token_bytes).hexdigest(),
+                parsed_start,
+                parsed_end,
+            )
+        )
+        row_tokens.append(token)
+        parsed_offset = parsed_end
+    body = wrapper_prefix + ",".join(row_tokens) + "]}"
+    return _ParsedPage(body, parser_id, tuple(anchors), None)
 
 
 def _sec_issuer_reference_json(source: str, selected_symbols: Tuple[str, ...]) -> Optional["_ParsedPage"]:
@@ -595,45 +657,39 @@ def _sec_issuer_reference_json(source: str, selected_symbols: Tuple[str, ...]) -
             selected[ticker] = (row_spans[index], row)
         if set(selected) != requested:
             return None
-
-        byte_offsets = _sec_reference_byte_offsets(
-            source,
-            (
-                offset
-                for ticker in selected_symbols
-                for offset in selected[ticker][0]
-            ),
+        return _sec_reference_selected_page(
+            source, selected_symbols, selected, "sec-issuer-reference-v1"
         )
-        wrapper_prefix = '{"fields":["cik","name","ticker","exchange"],"data":['
-        row_tokens = []
-        anchors = []
-        parsed_offset = len(wrapper_prefix)
-        for symbol in selected_symbols:
-            (raw_start, raw_end), _row = selected[symbol]
-            token = source[raw_start:raw_end]
-            token_bytes = token.encode("utf-8")
-            if row_tokens:
-                parsed_offset += 1
-            parsed_start = parsed_offset
-            parsed_end = parsed_start + len(token)
-            anchors.append(
-                AdmissionAnchor(
-                    "sec_issuer_reference.data." + symbol,
-                    byte_offsets[raw_start],
-                    byte_offsets[raw_end],
-                    hashlib.sha256(token_bytes).hexdigest(),
-                    parsed_start,
-                    parsed_end,
-                )
-            )
-            row_tokens.append(token)
-            parsed_offset = parsed_end
-        body = wrapper_prefix + ",".join(row_tokens) + "]}"
-        return _ParsedPage(
-            body,
-            "sec-issuer-reference-v1",
-            tuple(anchors),
-            None,
+    except (ValueError, TypeError, RecursionError, UnicodeEncodeError):
+        return None
+
+
+def _sec_issuer_reference_json_v2(
+    source: str, selected_symbols: Tuple[str, ...]
+) -> Optional["_ParsedPage"]:
+    try:
+        rows, row_spans = _decode_sec_reference_document_v2(source)
+        requested = set(selected_symbols)
+        selected = {}
+        for index, row in enumerate(rows):
+            ticker = row[2]
+            if type(ticker) is not str or ticker not in requested:
+                continue
+            if (
+                ticker in selected
+                or type(row[0]) is not int
+                or not 0 < row[0] < 10**10
+                or not _sec_reference_string_is_safe(row[1], nonempty=True)
+                or ticker != ticker.upper()
+                or _TICKER.fullmatch(ticker) is None
+                or not _sec_reference_string_is_safe(row[3], nonempty=True)
+            ):
+                return None
+            selected[ticker] = (row_spans[index], row)
+        if set(selected) != requested:
+            return None
+        return _sec_reference_selected_page(
+            source, selected_symbols, selected, "sec-issuer-reference-v2"
         )
     except (ValueError, TypeError, RecursionError, UnicodeEncodeError):
         return None
@@ -873,7 +929,10 @@ def _revalidate_source_admission(
             raw_anchors=anchors,
             parsed_symbol=value.parsed_symbol,
         )
-        is_sec_reference = checked.parser_id == "sec-issuer-reference-v1"
+        is_sec_reference = checked.parser_id in (
+            "sec-issuer-reference-v1",
+            "sec-issuer-reference-v2",
+        )
         receipt_symbols = None
         if is_sec_reference:
             if (
@@ -1903,7 +1962,7 @@ def _parse_page(
         if sec_reference_symbols is not None:
             if family != "sec" or content_type != "application/json":
                 return None
-            return _sec_issuer_reference_json(body, sec_reference_symbols)
+            return _sec_issuer_reference_json_v2(body, sec_reference_symbols)
         if content_type != "text/html":
             return None
         if family == "sec":

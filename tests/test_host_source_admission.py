@@ -831,8 +831,8 @@ class HostSourceAdmissionTests(unittest.TestCase):
         )
         self.assertEqual(admitted.family, "sec")
         self.assertEqual(admitted.content_type, "application/json")
-        self.assertEqual(admitted.parser_id, "sec-issuer-reference-v1")
-        self.assertEqual(admitted.parser_version, "1")
+        self.assertEqual(admitted.parser_id, "sec-issuer-reference-v2")
+        self.assertEqual(admitted.parser_version, "2")
         self.assertIsNone(admitted.parsed_symbol)
         self.assertEqual(admitted.parsed_body, expected_body)
         self.assertEqual(admitted.parsed_body_sha256, hashlib.sha256(expected_body.encode("utf-8")).hexdigest())
@@ -873,6 +873,12 @@ class HostSourceAdmissionTests(unittest.TestCase):
                 ),
             ],
         )
+        legacy = admission._sec_issuer_reference_json(
+            SEC_REFERENCE_BODY, ("ACME", "PLUG")
+        )
+        self.assertEqual(legacy.parser_id, "sec-issuer-reference-v1")
+        self.assertEqual(legacy.body, expected_body)
+        self.assertEqual(legacy.anchors, admitted.raw_anchors)
         self.assertIsNone(
             _revalidate_source_admission(
                 admitted, max_raw_bytes=len(raw_body), max_parsed_bytes=len(expected_body.encode("utf-8"))
@@ -884,7 +890,7 @@ class HostSourceAdmissionTests(unittest.TestCase):
             )
         )
 
-    def test_sec_reference_rejects_duplicate_missing_and_unselected_null_exchange(self):
+    def test_sec_reference_rejects_duplicate_missing_and_selected_null_exchange(self):
         cases = (
             (
                 '{"fields":["cik","name","ticker","exchange"],"data":'
@@ -908,19 +914,64 @@ class HostSourceAdmissionTests(unittest.TestCase):
                 self.assertEqual(result.failures[0].code, "PARSER_UNSUPPORTED")
                 self.assertEqual(result.request_count, 1)
 
-    def test_sec_reference_validates_exact_positive_cik_on_every_row(self):
+    def test_sec_reference_validates_exact_positive_cik_on_selected_rows(self):
         invalid_ciks = ("true", "1.0", "1e400", "-1", "10000000000", "0")
         for cik in invalid_ciks:
             body = (
                 '{"fields":["cik","name","ticker","exchange"],"data":['
-                '[1,"Issuer","ACME","Nasdaq"],'
-                '[CIK,"Unselected","OTHER",null]]}'
+                '[CIK,"Issuer","ACME","Nasdaq"]]}'
             ).replace("CIK", cik)
             with self.subTest(cik=cik):
                 transport = _ResponseTransport(
                     {SEC_REFERENCE_LOCATOR: [_reference_ok(body)]}
                 )
                 result = _client(transport).admit_sec_reference(("ACME",))
+                self.assertEqual(result.admissions, ())
+                self.assertEqual(result.failures[0].code, "PARSER_UNSUPPORTED")
+
+    def test_sec_reference_v2_ignores_opaque_background_fields_and_ticker_types(self):
+        body = (
+            '{"fields":["cik","name","ticker","exchange"],"data":['
+            '[77,"Selected","ACME","Nasdaq"],'
+            '["not-a-cik","Bad\\u0000name","OTHER!",{"opaque":true}],'
+            '[false,[],["NOT-A-TICKER"],null]]}'
+        )
+        result = _client(
+            _ResponseTransport({SEC_REFERENCE_LOCATOR: [_reference_ok(body)]})
+        ).admit_sec_reference(("ACME",))
+        self.assertEqual(len(result.admissions), 1)
+        self.assertEqual(
+            result.admissions[0].parsed_body,
+            '{"fields":["cik","name","ticker","exchange"],"data":['
+            '[77,"Selected","ACME","Nasdaq"]]}',
+        )
+
+    def test_sec_reference_v1_still_rejects_foreign_invalid_ticker(self):
+        body = (
+            '{"fields":["cik","name","ticker","exchange"],"data":['
+            '[77,"Selected","ACME","Nasdaq"],'
+            '[8,"Foreign","GÖTV",null]]}'
+        )
+        self.assertIsNone(admission._sec_issuer_reference_json(body, ("ACME",)))
+
+    def test_sec_reference_rejects_malformed_selected_name_or_exchange(self):
+        bad_rows = (
+            '[1,"","ACME","Nasdaq"]',
+            '[1,"Issuer\\u0000Name","ACME","Nasdaq"]',
+            '[1,"Issuer","ACME",null]',
+            '[1,"Issuer","ACME",""]',
+            '[1,"Issuer","ACME",{"exchange":"Nasdaq"}]',
+        )
+        for row in bad_rows:
+            body = (
+                '{"fields":["cik","name","ticker","exchange"],"data":['
+                + row
+                + ']}'
+            )
+            with self.subTest(row=row):
+                result = _client(
+                    _ResponseTransport({SEC_REFERENCE_LOCATOR: [_reference_ok(body)]})
+                ).admit_sec_reference(("ACME",))
                 self.assertEqual(result.admissions, ())
                 self.assertEqual(result.failures[0].code, "PARSER_UNSUPPORTED")
 
@@ -944,6 +995,14 @@ class HostSourceAdmissionTests(unittest.TestCase):
             (
                 '{"fields":["cik","name","ticker","exchange"],"data":'
                 '[[1,"Issuer","ACME"]]}'
+            ),
+            (
+                '{"fields":["cik","name","ticker","exchange"],"data":'
+                '["not a row"]}'
+            ),
+            (
+                '{"fields":["cik","name","ticker","exchange"],"data":'
+                '[[1,"Issuer","ACME","Nasdaq","extra"]]}'
             ),
         )
         for body in cases:

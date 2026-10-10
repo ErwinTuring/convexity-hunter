@@ -2,11 +2,14 @@
 
 2026-10-10 current: SEC-primary issuer association is user-approved. Formal
 preflight and a new bounded packet verified the official SEC reference schema
-and unique PLUG/CIK association. Source-only `sec-issuer-reference-v1` BUILD and
-review passed, but its real validation failed: one unrelated ticker row failed
-global field validation. Exact bounded attribution is retained; selected-row
-v2 preflight follows, not a source-readiness claim. Full composite also remains
-blocked by independent source grammar.
+and unique PLUG/CIK association. V1's real validation failed on an unrelated
+ticker row; that result and helper remain unchanged. The reviewed versioned
+`sec-issuer-reference-v2` now validates requested row semantics only, while
+globally enforcing JSON/schema/row-shape integrity. One production read admitted
+exactly one PLUG row with an anchor and successful client receipt revalidation;
+47 focused and 125 source/Host tests passed. This closes reference-source
+compatibility only. Full composite remains blocked by independent source
+grammar; no full securities identity or EI/Core success is claimed.
 Nasdaq CIK repetition is no longer required by the successor target. No EI/Core
 identity or economic rule is loosened. See [current checkpoint](current-checkpoint.md#sec-primary-issuer-reference--2026-10-10).
 

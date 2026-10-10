@@ -107,6 +107,8 @@ V1 helper behavior and its real failure remain unchanged historical evidence.
   change. A further real-format validation is a separate once-only protocol,
   not a replay or a revision of either spent v1 operation.
 
+### Historical Common Stock preflight
+
 The user authorized a minimal Common Stock / Nasdaq Capital Market successor,
 only with explicit real fields, multiple-source agreement, no fuzzy identity
 inference and no SEC-single-source key. **Composite BUILD is BLOCKED; no v0.2
@@ -138,6 +140,8 @@ in [the current checkpoint](current-checkpoint.md#common-stock-listing-successor
 No production code, EI rule, denomination, MIC or listing-status claim changed.
 
 ## Approved stable-identifier boundary — 2026-10-10
+
+Historical superseded target, not the currently approved SEC-primary rule.
 
 The user has now authorized a minimal, versioned stable-identifier association
 rule. Its target rule identifier is `host-listing-issuer-cik-bridge-v0.1`.

@@ -51,9 +51,23 @@ The unsupported row is not literal PLUG; global field validation, not absent
 PLUG association, blocked v1. No raw table, offending value or contact was
 retained. V1 real-format compatibility therefore FAILED, not source readiness.
 
-The next bounded preflight is a versioned selected-row validation correction,
-not more blind requests or weakened selected-record evidence. Preserve the v1
-failed result and all downstream listing/EI/Core boundaries.
+The versioned selected-row correction is now implemented as
+`sec-issuer-reference-v2` / `2`. Global JSON syntax, duplicate/nonfinite checks,
+root schema/order and four-element row shapes remain strict. Unrequested field
+semantics are opaque, while every requested literal must have exactly one
+complete valid row. The v1 helper and failed live result remain unchanged.
+Independent v2 review PASS; 47 focused and 125 combined source/Host tests PASS.
+Final full regression PASS: 1,896 tests; compileall PASS. The existing
+urllib3/LibreSSL warning remains unrelated and was not changed.
+
+One separately preregistered production v2 read at
+`/private/tmp/sec-v2-validation.QDItS7/run_once.py` returned one request, one
+admission, no failure, one selected PLUG row, one anchor and successful
+issuing-client revalidation. Its marker is spent. The 523,544-byte response
+hash matches the earlier packet; only 97 parsed bytes were retained, not the
+raw table. This establishes bounded reference-source compatibility, not
+complete listing identity, EI acceptance or Core readiness. Independent
+class/venue/denomination corroboration remains a separate composite boundary.
 
 ## Yahoo format-only continuation — 2026-10-10
 
