@@ -10,6 +10,20 @@ the independent class blocker below, not historical experiment results. A
 versioned minimal composite/source-format successor is in preflight; no runtime
 identity or EI/Core success is implied by the decision alone.
 
+Formal follow-on preflight is READY; Main froze the narrow
+[composite v0.2 BUILD boundary](host-listing-source-composite-v0.1.md#sec-primary-common-stock-composite-v02--frozen-build-boundary).
+BUILD is in progress, not yet a validated runtime. After independent review,
+one source-only validation is preregistered at
+`/private/tmp/sec-primary-composite-validation.r8OKaV/`: exact existing PLUG
+SEC filing, selected official reference row and exact Yahoo PLUG quote page,
+one bounded production admission operation, no retry, no model/search or
+option acquisition. Caller cap is 1,500,000 bytes per response, aggregate
+2,500,000 bytes and the existing five-request/ten-second-per-request limits;
+these are explicit standalone validation inputs, not changed Host defaults.
+Retain only sanitized counts, parser versions, source hashes/anchors and
+composition outcome; no raw bodies or SEC contact value. Any synthetic gate
+fixture used to exercise wiring must be identified as such, not real EI proof.
+
 The user approved SEC official issuer/security reference as primary association,
 with separate security-class/venue/denomination corroboration. Nasdaq CIK
 repetition is no longer the target. The older bridge and experiments below

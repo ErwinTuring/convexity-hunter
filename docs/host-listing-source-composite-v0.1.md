@@ -55,7 +55,9 @@ Keep the existing ordinary-share v0.1 helper/path unchanged.
 - Yahoo v2 reads visible HTML only, one exact instrument heading
   `<issuer> (<ticker>)` and one complete categorical label whose ASCII
   space/tab-collapsed form is `NasdaqCM - Nasdaq Real Time Price USD`.
-  They must be unambiguous and scoped to the target instrument; ambiguous
+  Scope requires the heading and label to be adjacent nonblank visible lines
+  (either order), with no intervening nonblank text. A label elsewhere in the
+  page is not target-instrument evidence. They must be unambiguous; ambiguous
   headings/labels, extra denominations or unsupported formats reject. No
   JavaScript, hidden JSON or price values. Preserve original visible tokens
   and raw anchors; v1 `NasdaqGS - Delayed Quote•USD` behavior stays unchanged.
