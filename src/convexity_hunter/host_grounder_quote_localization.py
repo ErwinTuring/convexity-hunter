@@ -8,7 +8,11 @@ import threading
 from dataclasses import dataclass, field
 from typing import Mapping, Tuple
 
-from .host_grounder_schema import parse_model_output_envelope
+from .host_grounder_schema import (
+    ProducerClosedShapeError,
+    ProducerJsonFormatError,
+    parse_model_output_envelope,
+)
 from .host_grounder_semantic import parse_semantic_verdict
 
 
@@ -33,7 +37,7 @@ def _limit(value: object, name: str) -> int:
 
 def _decode(raw: str, max_input_bytes: int) -> dict:
     if type(raw) is not str:
-        raise ValueError("wire content must be text")
+        raise ProducerJsonFormatError("producer JSON text is invalid")
     try:
         if len(raw.encode("utf-8", errors="strict")) > max_input_bytes:
             raise ValueError("wire content exceeds max_input_bytes")
@@ -42,18 +46,18 @@ def _decode(raw: str, max_input_bytes: int) -> dict:
             result = {}
             for key, value in items:
                 if key in result:
-                    raise ValueError("duplicate JSON key")
+                    raise ProducerJsonFormatError("producer JSON has duplicate keys")
                 result[key] = value
             return result
 
         def reject_constant(token: str) -> None:
-            raise ValueError("non-finite JSON number is not permitted")
+            raise ProducerJsonFormatError("producer JSON constant is invalid")
 
         value = json.loads(raw, object_pairs_hook=pairs, parse_constant=reject_constant)
     except (UnicodeEncodeError, json.JSONDecodeError, RecursionError) as exc:
-        raise ValueError("wire content is not bounded UTF-8 JSON") from exc
+        raise ProducerJsonFormatError("producer JSON syntax is invalid") from exc
     if type(value) is not dict:
-        raise ValueError("wire content must be one JSON object")
+        raise ProducerClosedShapeError("producer JSON root shape is invalid")
     return value
 
 

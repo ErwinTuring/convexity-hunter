@@ -824,6 +824,10 @@ class _SyntheticModelTransport:
         self.calls.append(payload)
         model = payload["model"]
         content = self.contents[model]
+        if type(content) is list:
+            if not content:
+                raise AssertionError("synthetic model output sequence was exhausted")
+            content = content.pop(0)
         return _SyntheticResponse(
             {
                 "id": "synthetic-" + model,
@@ -2512,6 +2516,74 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         self.assertTrue(
             any("host-grounder-semantic-verifier-prompt-v0.7" in prompt for prompt in system_prompts)
+        )
+
+    def test_event_v06_explicit_budget_two_repairs_format_on_same_source_snapshot(self):
+        config = _config()
+        config = replace(
+            config,
+            discovery_model=replace(config.discovery_model, request_budget=2),
+        )
+        discovery_content, semantic_content, _normalized = _model_outputs(
+            _RUN_ID, _RAW_INPUT, _SEARCH_ORDER, _BODY_BY_URL, config
+        )
+        malformed = "EVENT_REPAIR_SENTINEL_MUST_NOT_BE_ECHOED"
+        source_transport = _SyntheticSourceTransport()
+        model_transport = _SyntheticModelTransport(
+            [malformed, discovery_content], semantic_content
+        )
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+            host_context_preparer=lambda _snapshot, _receipt, context: context,
+        )
+
+        result = callback(
+            _RAW_INPUT,
+            run_id=_RUN_ID,
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        self.assertIs(type(result), HostGrounderEvidenceCatalogRuntimeResult)
+        self.assertEqual(
+            [call["model"] for call in model_transport.calls],
+            ["fixture-discovery", "fixture-discovery", "fixture-semantic"],
+        )
+        self.assertEqual(len(source_transport.calls), 2)
+        self.assertEqual(
+            source_transport.extract_url_orders,
+            [tuple(url for _source_id, url in _SEARCH_ORDER)],
+        )
+        user_prompts = [
+            message["content"]
+            for request in model_transport.calls
+            for message in request["messages"]
+            if message["role"] == "user"
+        ]
+        self.assertNotIn(malformed, user_prompts[1])
+        notice = "\n\nOne bounded format correction"
+        self.assertTrue(user_prompts[1].startswith(user_prompts[0] + notice))
+        self.assertEqual(
+            json.loads(user_prompts[0])["evidence_catalog_json"],
+            json.loads(user_prompts[1].split(notice, 1)[0])["evidence_catalog_json"],
+        )
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        self.assertEqual(
+            [item["status"] for item in sidecar["producer_attempts"]],
+            ["format_rejected", "accepted"],
+        )
+        self.assertEqual(
+            sidecar["producer_attempts"][1]["output_sha256"],
+            result.audit.producer_content_sha256,
+        )
+        self.assertEqual(
+            result.audit.producer_content_utf8, discovery_content.encode("utf-8")
+        )
+        self.assertEqual(
+            json.loads(result.audit.normalized_envelope_utf8)["request_id"], _RUN_ID
         )
 
     def test_partial_extract_is_explicit_failure_and_never_runs_models(self):

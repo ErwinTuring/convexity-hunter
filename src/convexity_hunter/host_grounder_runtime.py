@@ -30,6 +30,9 @@ from .host_grounder_evidence_catalog import (
     HostEvidenceCatalog,
     HostEvidenceCatalogAudit,
     HostEvidenceCatalogAuditHolder,
+    HostEvidenceCatalogCallAudit,
+    HostEvidenceCatalogProducerAttempt,
+    _REPAIR_PROMPT_VERSION,
     _PRODUCER_PROMPT_VERSION_V0_4,
     _PRODUCER_PROMPT_VERSION_V0_5,
     _PRODUCER_PROMPT_VERSION_V0_6,
@@ -50,7 +53,11 @@ from .host_grounder_quote_localization import (
     parse_grounder_output_v0_2,
     parse_semantic_verdict_v0_2,
 )
-from .host_grounder_schema import parse_model_output_envelope
+from .host_grounder_schema import (
+    ProducerClosedShapeError,
+    ProducerJsonFormatError,
+    parse_model_output_envelope,
+)
 from .host_grounder_receipt import (
     ValidatedEnvelopeSnapshot,
     validate_semantic_validation_receipt,
@@ -80,7 +87,13 @@ _PRODUCER_V0_3_FAILURE_CHECKS = (
     "producer_v0_3_canonical_size",
     "producer_v0_3_internal_v0_1_schema",
     "producer_v0_3_recanonicalization",
+    "producer_v0_3_json_format",
+    "producer_v0_3_closed_shape",
 )
+_REPAIRABLE_PRODUCER_FORMAT_CHECKS = frozenset((
+    "producer_v0_3_json_format",
+    "producer_v0_3_closed_shape",
+))
 _SEMANTIC_TRANSPORT_FAILURE_STAGE = "semantic_model_transport"
 _SEMANTIC_TRANSPORT_FAILURE_CHECK_PREFIX = "model_transport_"
 _SEMANTIC_TRANSPORT_FAILURE_CHECKS = frozenset(
@@ -334,6 +347,15 @@ DISCOVERY_SYSTEM_PROMPT_V0_7 = _replace_prompt_fragment(
     "does not change the DTO, evidence, Builder, semantic-validation, or EI acceptance "
     "rules."
 )
+_PRODUCER_FORMAT_REPAIR_NOTICE = (
+    "\n\nOne bounded format correction ({}): the previous response failed a closed "
+    "JSON/DTO shape check. Its text is not included. Regenerate one JSON object "
+    "for the unchanged request and evidence catalog above, following the exact "
+    "schema. Use no new sources, facts, identifiers, or evidence references; "
+    "do not infer, coerce, or fill missing values. Preserve unsupported points "
+    "as unresolved and keep valid empty arrays when evidence does not support "
+    "a claim or hypothesis."
+).format(_REPAIR_PROMPT_VERSION)
 
 SEMANTIC_SYSTEM_PROMPT_V0_5 = _replace_prompt_fragment(
     SEMANTIC_SYSTEM_PROMPT_V0_4,
@@ -417,6 +439,7 @@ class HostGrounderRuntimeError(RuntimeError):
     def __init__(
         self, code: str, *, failure_stage: Optional[str] = None,
         failure_check: Optional[str] = None,
+        producer_attempts: Optional[tuple] = None,
     ) -> None:
         producer_failure_checks = (
             "producer_wire_normalization",
@@ -426,6 +449,15 @@ class HostGrounderRuntimeError(RuntimeError):
             *_PRODUCER_V0_3_FAILURE_CHECKS,
         )
         semantic_transport_failure_checks = _SEMANTIC_TRANSPORT_FAILURE_CHECKS
+        attempts = () if producer_attempts is None else producer_attempts
+        if (
+            type(attempts) is not tuple
+            or len(attempts) > 2
+            or any(type(item) is not HostEvidenceCatalogProducerAttempt for item in attempts)
+            or tuple(item.index for item in attempts) != tuple(range(1, len(attempts) + 1))
+            or (len(attempts) == 2 and attempts[0].status != "format_rejected")
+        ):
+            raise ValueError("invalid producer attempt audit")
         if failure_stage is not None and (
             type(failure_stage) is not str
             or failure_stage not in (
@@ -481,7 +513,18 @@ class HostGrounderRuntimeError(RuntimeError):
         self.code = code
         self.failure_stage = failure_stage
         self.failure_check = failure_check
+        self.producer_attempts = attempts
         super().__init__(code)
+
+    def with_producer_attempts(
+        self, attempts: tuple
+    ) -> "HostGrounderRuntimeError":
+        return HostGrounderRuntimeError(
+            self.code,
+            failure_stage=self.failure_stage,
+            failure_check=self.failure_check,
+            producer_attempts=attempts,
+        )
 
     def __repr__(self) -> str:
         return "HostGrounderRuntimeError(code={!r})".format(self.code)
@@ -656,6 +699,69 @@ def _call_summary(receipt: ModelTransportReceipt, role: str) -> HostGrounderCall
         bytes_sent=receipt.bytes_sent,
         bytes_received=receipt.bytes_received,
     )
+
+
+def _producer_call_audit(receipt: ModelTransportReceipt) -> HostEvidenceCatalogCallAudit:
+    summary = _call_summary(receipt, "discovery")
+    return HostEvidenceCatalogCallAudit(
+        provider=summary.provider,
+        requested_model=summary.requested_model,
+        returned_model=summary.returned_model,
+        finish_reason=summary.finish_reason,
+        bytes_sent=summary.bytes_sent,
+        bytes_received=summary.bytes_received,
+    )
+
+
+def _producer_shape_authority_failure(
+    content: str,
+    *,
+    run_id: str,
+    max_string_bytes: int,
+    catalog: HostEvidenceCatalog,
+) -> Optional[str]:
+    """Return a non-repairable identity/reference check hidden by a shape error."""
+    try:
+        wire = json.loads(content)
+    except (TypeError, ValueError, RecursionError):
+        return None
+    if type(wire) is not dict:
+        return None
+    if "request_id" in wire and (
+        type(wire["request_id"]) is not str or wire["request_id"] != run_id
+    ):
+        return "producer_run_stage_binding"
+    if "stage" in wire and (
+        type(wire["stage"]) is not str or wire["stage"] != "semantic"
+    ):
+        return "producer_run_stage_binding"
+    if "schema_version" in wire and (
+        type(wire["schema_version"]) is not str
+        or wire["schema_version"] != "grounder-output-v0.3"
+    ):
+        return "producer_v0_3_root_shape"
+
+    for name, failure_check in (
+        ("claims", "producer_v0_3_claims_catalog_expansion"),
+        ("field_bindings", "producer_v0_3_bindings_catalog_expansion"),
+    ):
+        rows = wire.get(name)
+        if type(rows) is not list:
+            continue
+        for row in rows:
+            if type(row) is not dict or "evidence_id" not in row:
+                continue
+            evidence_id = row["evidence_id"]
+            if type(evidence_id) is not str or not evidence_id:
+                return failure_check
+            try:
+                if len(evidence_id.encode("utf-8", errors="strict")) > max_string_bytes:
+                    return failure_check
+            except UnicodeEncodeError:
+                return failure_check
+            if evidence_id not in catalog._entries_by_id:
+                return failure_check
+    return None
 
 
 def _validate_run_and_sources(
@@ -1339,6 +1445,7 @@ def _run_host_grounder_same_run_evidence_catalog(
         ]
     ] = None,
     producer_diagnostics_v0_3: bool = False,
+    producer_format_repair_enabled: bool = False,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Run the explicit paragraph-catalog v0.3 wire path exactly once per role."""
     max_json_bytes = _positive_int(max_json_bytes, "JSON_LIMIT_INVALID")
@@ -1356,6 +1463,10 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
     if type(semantic_prompt_version) is not str:
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
+    if type(producer_format_repair_enabled) is not bool:
+        raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_FLAG_INVALID")
+    if producer_format_repair_enabled and producer_prompt_version != _PRODUCER_PROMPT_VERSION_V0_7:
+        raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_ROUTE_INVALID")
     if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION:
         semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_5
     elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6:
@@ -1412,19 +1523,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     except Exception:
         raise HostGrounderRuntimeError("AUDIT_HOLDER_INVALID") from None
 
-    discovery_call = _call_once(
-        discovery_client,
-        discovery_config,
-        discovery_system_prompt,
-        discovery_prompt,
-        role="DISCOVERY",
-    )
-    try:
-        producer_content_utf8 = discovery_call.content.encode("utf-8", errors="strict")
-        audit_holder._capture_producer_content(producer_content_utf8)
-    except Exception:
-        raise HostGrounderRuntimeError("AUDIT_RETENTION_FAILED") from None
-
+    producer_attempts = []
     _producer_failure_check = (
         _PRODUCER_V0_3_FAILURE_CHECKS[0]
         if producer_diagnostics_v0_3 else "producer_wire_normalization"
@@ -1432,6 +1531,11 @@ def _run_host_grounder_same_run_evidence_catalog(
     if producer_diagnostics_v0_3:
         def _record_producer_progress(check: str) -> None:
             nonlocal _producer_failure_check
+            if (
+                not producer_format_repair_enabled
+                and check in _REPAIRABLE_PRODUCER_FORMAT_CHECKS
+            ):
+                return
             _producer_failure_check = check
 
         producer_parser = _parse_grounder_output_v0_3_with_progress
@@ -1439,43 +1543,191 @@ def _run_host_grounder_same_run_evidence_catalog(
     else:
         producer_parser = parse_grounder_output_v0_3
         producer_parser_options = {}
-    try:
-        envelope, normalized_envelope_bytes = producer_parser(
-            discovery_call.content,
-            max_json_bytes,
-            max_string_bytes=run_input.bounds.max_string_bytes,
-            max_array_items=run_input.bounds.max_array_items,
-            run_id=run_input.run_id,
-            canonical_input_hash=run_input.canonical_input_hash,
-            source_bodies=frozen_context.source_bodies,
-            catalog=catalog,
-            **producer_parser_options,
+
+    def with_producer_attempts(error: HostGrounderRuntimeError) -> HostGrounderRuntimeError:
+        if producer_format_repair_enabled and not error.producer_attempts:
+            return error.with_producer_attempts(tuple(producer_attempts))
+        return error
+
+    def retain_attempt(attempt: HostEvidenceCatalogProducerAttempt) -> None:
+        if not producer_format_repair_enabled:
+            return
+        try:
+            audit_holder._record_producer_attempt(attempt)
+        except Exception:
+            raise HostGrounderRuntimeError(
+                "AUDIT_RETENTION_FAILED",
+                producer_attempts=tuple(producer_attempts) + (attempt,),
+            ) from None
+        producer_attempts.append(attempt)
+
+    def failed_call_attempt(index: int, error: Exception) -> HostGrounderRuntimeError:
+        raw_code = getattr(error, "code", None) if type(error) is HostGrounderRuntimeError else None
+        failure_code = raw_code if type(raw_code) is str and raw_code in (
+            "DISCOVERY_CALL_FAILED", "DISCOVERY_RESPONSE_INVALID",
+            "DISCOVERY_RESPONSE_TOO_LARGE", "MODEL_REQUEST_TOO_LARGE",
+        ) else "DISCOVERY_CALL_FAILED"
+        attempt = HostEvidenceCatalogProducerAttempt(
+            index=index,
+            status="call_failed",
+            output_sha256=None,
+            failure_check=None,
+            failure_code=failure_code,
+            call=None,
         )
-        _producer_failure_check = "producer_run_stage_binding"
-        if envelope["request_id"] != run_input.run_id or envelope["stage"] != "semantic":
-            raise ValueError("producer run/stage mismatch")
-        _producer_failure_check = "producer_coverage_order"
-        coverage_ids = tuple(item["subquestion_id"] for item in envelope["coverage"])
-        validate_ordered_coverage_ids(run_input, coverage_ids)
-        _producer_failure_check = "producer_wire_normalization"
-        envelope_json = normalized_envelope_bytes.decode("utf-8", errors="strict")
-        _producer_failure_check = "producer_binding_extraction"
-        producer_wire = json.loads(discovery_call.content)
-        producer_binding_evidence_ids = tuple(
-            item["evidence_id"] for item in producer_wire["field_bindings"]
+        retain_attempt(attempt)
+        if type(error) is HostGrounderRuntimeError:
+            return error.with_producer_attempts(tuple(producer_attempts))
+        return HostGrounderRuntimeError(
+            "DISCOVERY_CALL_FAILED", producer_attempts=tuple(producer_attempts)
         )
-    except Exception:
+
+    if not producer_format_repair_enabled:
+        try:
+            discovery_call = _call_once(
+                discovery_client, discovery_config, discovery_system_prompt,
+                discovery_prompt, role="DISCOVERY",
+            )
+            audit_holder._capture_producer_content(
+                discovery_call.content.encode("utf-8", errors="strict")
+            )
+        except HostGrounderRuntimeError as error:
+            raise error from None
+        except Exception:
+            raise HostGrounderRuntimeError("AUDIT_RETENTION_FAILED") from None
+    else:
+        try:
+            discovery_call = _call_once(
+                discovery_client, discovery_config, discovery_system_prompt,
+                discovery_prompt, role="DISCOVERY",
+            )
+        except Exception as error:
+            raise failed_call_attempt(1, error) from None
+
+    def parse_discovery_call(call: ModelTransportReceipt, index: int):
+        nonlocal _producer_failure_check
+        try:
+            content_utf8 = call.content.encode("utf-8", errors="strict")
+            envelope, normalized_bytes = producer_parser(
+                call.content,
+                max_json_bytes,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                source_bodies=frozen_context.source_bodies,
+                catalog=catalog,
+                **producer_parser_options,
+            )
+            _producer_failure_check = "producer_run_stage_binding"
+            if envelope["request_id"] != run_input.run_id or envelope["stage"] != "semantic":
+                raise ValueError("producer run/stage mismatch")
+            _producer_failure_check = "producer_coverage_order"
+            coverage_ids = tuple(item["subquestion_id"] for item in envelope["coverage"])
+            validate_ordered_coverage_ids(run_input, coverage_ids)
+            _producer_failure_check = "producer_wire_normalization"
+            envelope_text = normalized_bytes.decode("utf-8", errors="strict")
+            _producer_failure_check = "producer_binding_extraction"
+            producer_wire = json.loads(call.content)
+            binding_ids = tuple(
+                item["evidence_id"] for item in producer_wire["field_bindings"]
+            )
+        except Exception as error:
+            failure_check = _producer_failure_check
+            if producer_format_repair_enabled and type(error) is ProducerJsonFormatError:
+                failure_check = "producer_v0_3_json_format"
+            elif (
+                producer_format_repair_enabled
+                and type(error) is ProducerClosedShapeError
+                and _producer_failure_check in (
+                    "producer_v0_3_closed_shape",
+                    "producer_v0_3_claims_catalog_expansion",
+                    "producer_v0_3_bindings_catalog_expansion",
+                )
+            ):
+                authority_failure = _producer_shape_authority_failure(
+                    call.content,
+                    run_id=run_input.run_id,
+                    max_string_bytes=run_input.bounds.max_string_bytes,
+                    catalog=catalog,
+                )
+                failure_check = authority_failure or "producer_v0_3_closed_shape"
+            status = (
+                "format_rejected"
+                if failure_check in _REPAIRABLE_PRODUCER_FORMAT_CHECKS
+                else "rejected"
+            )
+            attempts = tuple(producer_attempts)
+            if producer_format_repair_enabled:
+                attempt = HostEvidenceCatalogProducerAttempt(
+                    index=index,
+                    status=status,
+                    output_sha256=hashlib.sha256(content_utf8).hexdigest(),
+                    failure_check=failure_check,
+                    failure_code=None,
+                    call=_producer_call_audit(call),
+                )
+                retain_attempt(attempt)
+                attempts = tuple(producer_attempts)
+            return None, HostGrounderRuntimeError(
+                "PRODUCER_ENVELOPE_INVALID",
+                failure_stage=(
+                    "producer_envelope_normalization"
+                    if context_preparer is not None else None
+                ),
+                failure_check=(
+                    failure_check if context_preparer is not None else None
+                ),
+                producer_attempts=attempts,
+            )
+
+        if producer_format_repair_enabled:
+            attempt = HostEvidenceCatalogProducerAttempt(
+                index=index,
+                status="accepted",
+                output_sha256=hashlib.sha256(content_utf8).hexdigest(),
+                failure_check=None,
+                failure_code=None,
+                call=_producer_call_audit(call),
+            )
+            retain_attempt(attempt)
+            try:
+                audit_holder._capture_producer_content(content_utf8)
+            except Exception:
+                return None, HostGrounderRuntimeError(
+                    "AUDIT_RETENTION_FAILED",
+                    producer_attempts=tuple(producer_attempts),
+                )
+        return (envelope, normalized_bytes, envelope_text, binding_ids), None
+
+    parsed, parse_error = parse_discovery_call(discovery_call, 1)
+    if parse_error is not None:
+        if (
+            producer_format_repair_enabled
+            and producer_diagnostics_v0_3
+            and parse_error.failure_check in _REPAIRABLE_PRODUCER_FORMAT_CHECKS
+            and discovery_client.remaining_request_budget >= 1
+        ):
+            repair_prompt = discovery_prompt + _PRODUCER_FORMAT_REPAIR_NOTICE
+            try:
+                repair_call = _call_once(
+                    discovery_client, discovery_config, discovery_system_prompt,
+                    repair_prompt, role="DISCOVERY",
+                )
+            except Exception as error:
+                raise failed_call_attempt(2, error) from None
+            parsed, parse_error = parse_discovery_call(repair_call, 2)
+            if parse_error is not None:
+                raise parse_error from None
+            discovery_call = repair_call
+        else:
+            raise parse_error from None
+    if parsed is None:
         raise HostGrounderRuntimeError(
             "PRODUCER_ENVELOPE_INVALID",
-            failure_stage=(
-                "producer_envelope_normalization"
-                if context_preparer is not None else None
-            ),
-            failure_check=(
-                _producer_failure_check if context_preparer is not None else None
-            ),
-        ) from None
-
+            producer_attempts=tuple(producer_attempts),
+        )
+    envelope, normalized_envelope_bytes, envelope_json, producer_binding_evidence_ids = parsed
     producer_binding_evidence_map = [
         {"index": index, "evidence_id": evidence_id}
         for index, evidence_id in enumerate(producer_binding_evidence_ids)
@@ -1489,7 +1741,9 @@ def _run_host_grounder_same_run_evidence_catalog(
             expected_semantic_prompt_version=semantic_prompt_version,
         )
     except Exception:
-        raise HostGrounderRuntimeError("AUDIT_RETENTION_FAILED") from None
+        raise HostGrounderRuntimeError(
+            "AUDIT_RETENTION_FAILED", producer_attempts=tuple(producer_attempts)
+        ) from None
 
     envelope_hash = hashlib.sha256(normalized_envelope_bytes).hexdigest()
     ordered_questions = [
@@ -1511,13 +1765,16 @@ def _run_host_grounder_same_run_evidence_catalog(
     ):
         verifier_input["producer_binding_evidence_map"] = producer_binding_evidence_map
     verifier_prompt = _canonical_json(verifier_input, "SEMANTIC_PROMPT_INVALID")
-    semantic_call = _call_once(
-        semantic_client,
-        semantic_config,
-        semantic_system_prompt,
-        verifier_prompt,
-        role="SEMANTIC",
-    )
+    try:
+        semantic_call = _call_once(
+            semantic_client,
+            semantic_config,
+            semantic_system_prompt,
+            verifier_prompt,
+            role="SEMANTIC",
+        )
+    except HostGrounderRuntimeError as error:
+        raise with_producer_attempts(error) from None
 
     progress = _SemanticVerdictProgress() if context_preparer is not None else None
     verdict_parser = (
@@ -1538,13 +1795,13 @@ def _run_host_grounder_same_run_evidence_catalog(
             **parser_options,
         )
     except Exception:
-        raise HostGrounderRuntimeError(
+        raise with_producer_attempts(HostGrounderRuntimeError(
             "SEMANTIC_VERDICT_REJECTED",
             failure_stage=(
                 "semantic_wire_parse" if context_preparer is not None else None
             ),
             failure_check=progress.failure_check if progress is not None else None,
-        ) from None
+        )) from None
 
     try:
         receipt = build_semantic_validation_receipt(
@@ -1563,12 +1820,12 @@ def _run_host_grounder_same_run_evidence_catalog(
             receipt_schema_version=_RECEIPT_SCHEMA_VERSION,
         )
     except Exception:
-        raise HostGrounderRuntimeError(
+        raise with_producer_attempts(HostGrounderRuntimeError(
             "SEMANTIC_VERDICT_REJECTED",
             failure_stage=(
                 "semantic_receipt_construction" if context_preparer is not None else None
             ),
-        ) from None
+        )) from None
 
     build_context = frozen_context
     build_envelope = envelope
@@ -1589,10 +1846,10 @@ def _run_host_grounder_same_run_evidence_catalog(
                 expected_schema_version=_RECEIPT_SCHEMA_VERSION,
             )
         except Exception:
-            raise HostGrounderRuntimeError(
+            raise with_producer_attempts(HostGrounderRuntimeError(
                 "SEMANTIC_VERDICT_REJECTED",
                 failure_stage="semantic_receipt_validation",
-            ) from None
+            )) from None
 
         try:
             captured_bytes = validated_snapshot.canonical_bytes
@@ -1612,14 +1869,18 @@ def _run_host_grounder_same_run_evidence_catalog(
                 max_array_items=run_input.bounds.max_array_items,
             )
         except Exception:
-            raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED") from None
+            raise with_producer_attempts(
+                HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED")
+            ) from None
 
         try:
             prepared_context = context_preparer(
                 validated_snapshot, readonly_receipt, frozen_context
             )
         except Exception:
-            raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED") from None
+            raise with_producer_attempts(
+                HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED")
+            ) from None
 
         try:
             if (
@@ -1687,7 +1948,9 @@ def _run_host_grounder_same_run_evidence_catalog(
             max_array_items=run_input.bounds.max_array_items,
         )
     except Exception:
-        raise HostGrounderRuntimeError("BUILDER_REJECTED") from None
+        raise with_producer_attempts(
+            HostGrounderRuntimeError("BUILDER_REJECTED")
+        ) from None
     return HostGrounderEvidenceCatalogRuntimeResult(
         result,
         _call_summary(discovery_call, "discovery"),
@@ -1917,4 +2180,5 @@ def run_host_grounder_same_run_evidence_catalog_v0_6(
         semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
         context_preparer=host_context_preparer,
         producer_diagnostics_v0_3=True,
+        producer_format_repair_enabled=True,
     )

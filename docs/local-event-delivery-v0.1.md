@@ -8,7 +8,63 @@ Event acceptance is claimed.
 
 ## Current Host compatibility checkpoint — 2026-10-11
 
-The current diff preserves exact trusted `ModelTransportError` closed codes
+### Approved producer format repair — frozen BUILD boundary
+
+The user approved one additional format-only producer request. The normal
+v0.6 runtime now implements this boundary; final review/regression and live
+verification remain separate gates. Only a positive,
+closed JSON/DTO shape-error classification may trigger it. Identity, catalog
+membership, evidence/field-binding resolution, coverage or dependency closure,
+semantic verification, EI rejection, transport/authentication/timeouts, and
+missing evidence never trigger repair. The earlier broad internal-schema
+failure is not sufficient to establish eligibility retrospectively.
+
+Reuse the immutable run input, sources, catalog and producer schema. Do not
+echo malformed output into the repair prompt, coerce fields, add defaults or
+invent evidence. The new output is untrusted and must pass the complete strict
+parser, independent semantic verifier, Builder and unchanged EI checks. Valid
+empty output is not retried. Any second failure ends the operation.
+
+Declare a maximum of two producer requests and one semantic request per
+Grounder run: completion allowance is at most
+`2 * discovery.max_tokens + semantic.max_tokens`. A declared producer budget
+of one retains the one-call path. World must separately budget its existing
+Skill calls; no implicit budget increase, source refresh, model fallback or
+quote repeat is allowed. Both attempt hashes and bounded non-payload call /
+failure metadata must survive success and failure retention. The final valid
+output is the canonical audit input; historical one-attempt archives remain
+readable. No raw malformed content or credentials enter diagnostics or Git.
+
+Preflight found the boundary build-ready. The implementation is default-off
+on historical routes and enabled only on normal v0.6 with explicit spare
+producer budget. Detectable run/stage or catalog-ID violations take precedence
+over mixed shape failures. Repaired archives use audit v0.4 and stage/submission
+outcome v0.2; historical v0.3 audit/v0.1 outcomes remain readable. Stopped
+attempts use `host-grounder-producer-failure-audit-v0.1`, with no fabricated
+receipt for a failed transport. Independent review found and prompted the
+mixed-failure precedence fix; targeted re-review passed. Initial full regression
+found error-message/context-suppression compatibility failures, then the narrow
+safe-message/context fix passed 99 focused tests and six integration checks.
+Final full regression passed 1,932 tests in 298.846s; compileall and
+`git diff --check` passed. Both targeted independent reviews passed.
+
+Caller opt-in uses the existing non-secret configuration field
+`discovery_model.request_budget`: one disables repair; two reserves one extra
+format-only request. No extra source requests or semantic retries are enabled.
+World reserves its Skill request separately, so its run-wide discovery budget
+must be three to leave two for Grounder; two retains a one-request Grounder.
+Budgets larger than these do not permit additional Grounder repair attempts.
+
+One fresh real operation under the declared two-producer ceiling completed
+one producer and one semantic call; no format repair was needed. It retained
+a validated semantic receipt but no projectable hypothesis, returning
+GROUNDING_NO_SUBMISSION / EI NOT_RUN. The source and structured-output success
+is not EI acceptance; see the [sanitized checkpoint](current-checkpoint.md#producer-format-repair--implemented-and-validated).
+No semantic retry or repeat batch is authorized by the format-repair policy.
+
+### Preceding compatibility checkpoint (historical)
+
+The preceding committed change preserves exact trusted `ModelTransportError` closed codes
 through the existing fixed run-diagnostic path, while unknown or untrusted
 error shapes remain generic. Store audit/provenance accepts registered
 producer prompt versions v0.6 and v0.7, rejects unregistered versions, and
@@ -30,7 +86,8 @@ The full suite passed 1,919 tests (298.799s); compileall passed earlier.
 Producer schema adherence remains the live blocker. Automatic retries remain
 disabled. A proposed single bounded format-correction request conflicts with
 the existing one-request/no-retry policy and is not approved; further live work
-is paused pending explicit user authorization.
+was paused pending explicit user authorization, now superseded by the approved
+format-only boundary above. The spent operations are not replayed.
 
 ## Approved integrated MVP continuation — 2026-10-07
 

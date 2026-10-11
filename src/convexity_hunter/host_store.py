@@ -114,11 +114,20 @@ _BATCH_SCHEMA_OBJECTS = _DIRECT_SCHEMA_OBJECTS | {
 }
 _DIRECT_REPORT_VERSION = "core-presentation-direct-v0.1"
 _GROUNDER_STAGE_OUTCOME_VERSION = "host-grounder-stage-outcome-v0.1"
+_GROUNDER_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-stage-outcome-v0.2"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION = "host-grounder-submission-stage-outcome-v0.1"
+_GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-submission-stage-outcome-v0.2"
+_GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION = "host-grounder-producer-failure-audit-v0.1"
 _GROUNDER_STAGE_DIAGNOSTIC = "GROUNDING_NO_SUBMISSION"
 _GROUNDER_STAGE_OUTCOME_VERSIONS = frozenset((
     _GROUNDER_STAGE_OUTCOME_VERSION,
+    _GROUNDER_STAGE_OUTCOME_VERSION_V0_2,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
+    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2,
+))
+_GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSIONS = frozenset((
+    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
+    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2,
 ))
 _GROUNDER_BUILD_DIAGNOSTIC_CODES = frozenset((
     "CALLER_POLICY_PROVENANCE_MISMATCH",
@@ -488,6 +497,106 @@ def _validated_diagnostics(value: Any) -> List[str]:
     return result
 
 
+def _validate_grounder_producer_attempts(value: Any, *, successful: bool) -> List[Dict[str, Any]]:
+    """Validate bounded, payload-free producer call receipts for Store audits."""
+
+    from .host_grounder_evidence_catalog import (
+        HostEvidenceCatalogCallAudit,
+        HostEvidenceCatalogProducerAttempt,
+    )
+
+    if type(value) is not list or not 1 <= len(value) <= 2:
+        raise ValueError("Grounder producer attempts are outside the archive bound")
+    normalized = []
+    for index, raw in enumerate(value, 1):
+        fields = {
+            "index", "status", "output_sha256", "failure_check", "failure_code", "call"
+        }
+        if type(raw) is not dict or set(raw) != fields or raw.get("index") != index:
+            raise ValueError("Grounder producer attempt has an invalid closed shape")
+        call_json = raw["call"]
+        call = None
+        if call_json is not None:
+            call_fields = {
+                "role", "provider", "requested_model", "returned_model",
+                "finish_reason", "bytes_sent", "bytes_received",
+            }
+            if (
+                type(call_json) is not dict or set(call_json) != call_fields
+                or call_json.get("role") != "discovery"
+                or any(
+                    type(call_json.get(name)) is not str
+                    or _SAFE_VERSION_RE.fullmatch(call_json[name]) is None
+                    for name in ("provider", "requested_model", "finish_reason")
+                )
+                or call_json["finish_reason"] != "stop"
+                or type(call_json.get("returned_model")) not in (str, type(None))
+                or (
+                    call_json["returned_model"] is not None
+                    and _SAFE_VERSION_RE.fullmatch(call_json["returned_model"]) is None
+                )
+                or type(call_json.get("bytes_sent")) is not int
+                or call_json["bytes_sent"] < 0
+                or type(call_json.get("bytes_received")) is not int
+                or call_json["bytes_received"] < 0
+            ):
+                raise ValueError("Grounder producer call summary is malformed")
+            call = HostEvidenceCatalogCallAudit(
+                provider=call_json["provider"],
+                requested_model=call_json["requested_model"],
+                returned_model=call_json["returned_model"],
+                finish_reason=call_json["finish_reason"],
+                bytes_sent=call_json["bytes_sent"],
+                bytes_received=call_json["bytes_received"],
+            )
+        attempt = HostEvidenceCatalogProducerAttempt(
+            index=raw["index"],
+            status=raw["status"],
+            output_sha256=raw["output_sha256"],
+            failure_check=raw["failure_check"],
+            failure_code=raw["failure_code"],
+            call=call,
+        )
+        canonical = attempt.to_json()
+        if canonical != raw:
+            raise ValueError("Grounder producer attempt is not a canonical closed record")
+        normalized.append(canonical)
+    if len(normalized) == 2 and normalized[0]["status"] != "format_rejected":
+        raise ValueError("Grounder second producer attempt lacks an eligible first format failure")
+    if successful and (
+        normalized[-1]["status"] != "accepted"
+        or (len(normalized) == 2 and normalized[0]["status"] != "format_rejected")
+        or any(item["call"] is None for item in normalized)
+    ):
+        raise ValueError("successful Grounder producer attempt sequence is invalid")
+    return normalized
+
+
+def _validate_grounder_producer_failure_audit(
+    value: Any, *, expected_status: Optional[str] = None
+) -> Dict[str, Any]:
+    fields = {"schema_version", "status", "producer_attempts"}
+    if (
+        type(value) is not dict or set(value) != fields
+        or value.get("schema_version") != _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION
+        or type(value.get("status")) is not str
+        or value["status"] not in ("FAILED", "BLOCKED")
+        or (expected_status is not None and value["status"] != expected_status)
+    ):
+        raise ValueError("Grounder producer failure audit has an invalid closed shape")
+    attempts = _validate_grounder_producer_attempts(
+        value["producer_attempts"], successful=False
+    )
+    result = {
+        "schema_version": _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION,
+        "status": value["status"],
+        "producer_attempts": attempts,
+    }
+    if len(_canonical_json(result, "Grounder producer failure audit").encode("utf-8")) > 100_000:
+        raise ValueError("Grounder producer failure audit exceeds its archive bound")
+    return result
+
+
 def _grounder_stage_outcome(
     result: Any,
     run_id: str,
@@ -526,6 +635,18 @@ def _grounder_stage_outcome(
         raise TypeError("Grounder result is missing its exact Host context or semantic receipt")
     if type(audit) is not HostEvidenceCatalogAudit:
         raise TypeError("Grounder result has no exact evidence-catalog audit")
+    attempts_json = None
+    single_attempt_json = None
+    if audit.producer_attempts:
+        if type(audit.producer_attempts) is not tuple:
+            raise ValueError("Grounder producer attempts must be an immutable tuple")
+        validated_attempts = _validate_grounder_producer_attempts(
+            [item.to_json() for item in audit.producer_attempts], successful=True
+        )
+        if len(validated_attempts) == 2:
+            attempts_json = validated_attempts
+        else:
+            single_attempt_json = validated_attempts
     if (
         type(run_id) is not str
         or context.run_id != run_id
@@ -608,7 +729,11 @@ def _grounder_stage_outcome(
     ):
         raise ValueError("Grounder semantic snapshot and audit provenance disagree")
     expected_versions = {
-        "schema_version": "host-grounder-quote-localization-audit-v0.3",
+        "schema_version": (
+            "host-grounder-quote-localization-audit-v0.4"
+            if attempts_json is not None
+            else "host-grounder-quote-localization-audit-v0.3"
+        ),
         "producer_wire_version": "grounder-output-v0.3",
         "verifier_wire_version": "semantic-verdict-v0.3",
         "validator_version": "host-grounder-semantic-verifier-prompt-v0.7",
@@ -620,18 +745,32 @@ def _grounder_stage_outcome(
         sidecar = _decode_canonical_json(audit.sidecar_utf8.decode("utf-8", "strict"))
     except (UnicodeError, StoreCorruptionError) as error:
         raise ValueError("Grounder audit sidecar is not canonical closed JSON") from error
-    if (
-        type(sidecar) is not dict
-        or set(sidecar) != {
+    sidecar_fields = {
             "schema_version", "run_id", "canonical_input_hash", "producer_wire_version",
             "producer_prompt_version", "producer_content_sha256", "normalized_envelope_sha256",
             "source_body_hashes", "verifier_wire_version", "validator_version",
             "localizer_version", "catalog_schema_version", "catalog_generator_version",
             "catalog_sha256",
-        }
+    }
+    if attempts_json is not None:
+        sidecar_fields |= {"producer_attempts", "producer_repair_prompt_version"}
+    if (
+        type(sidecar) is not dict
+        or set(sidecar) != sidecar_fields
         or any(sidecar.get(name) != value for name, value in expected_versions.items())
         or type(sidecar.get("producer_prompt_version")) is not str
         or sidecar["producer_prompt_version"] not in _GROUNDER_PRODUCER_PROMPT_VERSIONS
+        or (
+            attempts_json is not None
+            and (
+                sidecar.get("producer_attempts") != attempts_json
+                or sidecar.get("producer_repair_prompt_version")
+                != (
+                    "host-grounder-discovery-format-repair-v0.1"
+                    if len(attempts_json) == 2 else None
+                )
+            )
+        )
     ):
         raise ValueError("Grounder audit versions do not identify the v0.7 stage")
     if (
@@ -793,6 +932,11 @@ def _grounder_stage_outcome(
             "bytes_sent": call.bytes_sent,
             "bytes_received": call.bytes_received,
         })
+    if single_attempt_json is not None and (
+        single_attempt_json[0]["output_sha256"] != audit.producer_content_sha256
+        or single_attempt_json[0]["call"] != calls[0]
+    ):
+        raise ValueError("Grounder single producer attempt does not match retained content/call")
 
     provenance = {
         "receipt_schema_version": receipt["schema_version"],
@@ -813,8 +957,14 @@ def _grounder_stage_outcome(
         "source_body_hashes": source_hashes,
         "model_calls": calls,
     }
+    if attempts_json is not None:
+        provenance["producer_attempts"] = attempts_json
     outcome = {
-        "schema_version": _GROUNDER_STAGE_OUTCOME_VERSION,
+        "schema_version": (
+            _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
+            if attempts_json is not None
+            else _GROUNDER_STAGE_OUTCOME_VERSION
+        ),
         "grounder_status": "COMPLETED",
         "source_status": "UNKNOWN",
         "semantic_status": "RECEIPT_VALIDATED",
@@ -836,7 +986,11 @@ def _grounder_stage_outcome(
     }
     if require_submission:
         outcome.update({
-            "schema_version": _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
+            "schema_version": (
+                _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2
+                if attempts_json is not None
+                else _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION
+            ),
             "submission_status": "PRESENT",
             "ei_status": "ASSESSED",
             "submission": submission_projection,
@@ -853,8 +1007,12 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
     fields = {"schema_version", "grounder_status", "source_status", "semantic_status", "builder_status", "submission_status", "ei_status", "counts", "diagnostic_counts", "coverage", "provenance"}
     if type(value) is not dict or set(value) != fields:
         raise ValueError("Grounder stage outcome has an invalid closed field set")
+    version_v0_2 = value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
     fixed = {
-        "schema_version": _GROUNDER_STAGE_OUTCOME_VERSION,
+        "schema_version": (
+            _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
+            if version_v0_2 else _GROUNDER_STAGE_OUTCOME_VERSION
+        ),
         "grounder_status": "COMPLETED", "source_status": "UNKNOWN",
         "semantic_status": "RECEIPT_VALIDATED", "builder_status": "COMPLETED",
         "submission_status": "MISSING", "ei_status": "NOT_RUN",
@@ -909,10 +1067,12 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
         previous_code = item["code"]
 
     provenance_fields = {"receipt_schema_version", "audit_schema_version", "producer_wire_version", "producer_prompt_version", "verifier_wire_version", "validator_version", "localizer_version", "catalog_schema_version", "catalog_generator_version", "canonical_input_sha256", "host_raw_input_sha256", "audit_sha256", "catalog_sha256", "producer_content_sha256", "normalized_envelope_sha256", "source_body_hashes", "model_calls"}
+    if version_v0_2:
+        provenance_fields.add("producer_attempts")
     provenance = value["provenance"]
     if type(provenance) is not dict or set(provenance) != provenance_fields:
         raise ValueError("Grounder provenance has an invalid closed field set")
-    expected_versions = {"receipt_schema_version": "semantic-validation-v0.2", "audit_schema_version": "host-grounder-quote-localization-audit-v0.3", "producer_wire_version": "grounder-output-v0.3", "verifier_wire_version": "semantic-verdict-v0.3", "validator_version": "host-grounder-semantic-verifier-prompt-v0.7", "localizer_version": "host-evidence-catalog-resolver-v0.1", "catalog_schema_version": "host-grounder-evidence-catalog-v0.1", "catalog_generator_version": "host-evidence-paragraph-generator-v0.1"}
+    expected_versions = {"receipt_schema_version": "semantic-validation-v0.2", "audit_schema_version": ("host-grounder-quote-localization-audit-v0.4" if version_v0_2 else "host-grounder-quote-localization-audit-v0.3"), "producer_wire_version": "grounder-output-v0.3", "verifier_wire_version": "semantic-verdict-v0.3", "validator_version": "host-grounder-semantic-verifier-prompt-v0.7", "localizer_version": "host-evidence-catalog-resolver-v0.1", "catalog_schema_version": "host-grounder-evidence-catalog-v0.1", "catalog_generator_version": "host-evidence-paragraph-generator-v0.1"}
     if any(provenance.get(name) != expected for name, expected in expected_versions.items()):
         raise ValueError("Grounder provenance version is not the v0.7 contract")
     if (
@@ -960,6 +1120,14 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
             or type(call["bytes_received"]) is not int or call["bytes_received"] < 0
         ):
             raise ValueError("Grounder model-call summary is malformed")
+    if version_v0_2:
+        attempts = _validate_grounder_producer_attempts(
+            provenance["producer_attempts"], successful=True
+        )
+        if attempts[-1]["call"] != calls[0]:
+            raise ValueError("Grounder accepted producer attempt does not match its call summary")
+    elif "producer_attempts" in provenance:
+        raise ValueError("legacy Grounder provenance cannot contain producer attempts")
     if len(_canonical_json(value, "Grounder stage outcome").encode("utf-8")) > _GROUNDER_STAGE_MAX_BYTES:
         raise ValueError("Grounder stage outcome exceeds its archive byte bound")
     return dict(value)
@@ -973,8 +1141,9 @@ def _validate_grounder_submission_stage_outcome(value: Any) -> Dict[str, Any]:
     }
     if type(value) is not dict or set(value) != fields:
         raise ValueError("Grounder submission outcome has an invalid closed field set")
+    version_v0_2 = value["schema_version"] == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2
     if (
-        value["schema_version"] != _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION
+        value["schema_version"] not in _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSIONS
         or value["grounder_status"] != "COMPLETED"
         or value["source_status"] != "UNKNOWN"
         or value["semantic_status"] != "RECEIPT_VALIDATED"
@@ -996,7 +1165,10 @@ def _validate_grounder_submission_stage_outcome(value: Any) -> Dict[str, Any]:
         )
     }
     common.update({
-        "schema_version": _GROUNDER_STAGE_OUTCOME_VERSION,
+        "schema_version": (
+            _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
+            if version_v0_2 else _GROUNDER_STAGE_OUTCOME_VERSION
+        ),
         "submission_status": "MISSING",
         "ei_status": "NOT_RUN",
     })
@@ -1035,7 +1207,15 @@ def _validate_grounder_submission_stage_outcome(value: Any) -> Dict[str, Any]:
 def _grounder_public_stage_outcome(value: Any) -> Dict[str, Any]:
     """Return a closed, non-content-bearing view for Host history consumers."""
 
-    if type(value) is not dict or value.get("schema_version") != _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION:
+    if type(value) is not dict:
+        return value
+    if value.get("schema_version") in (
+        _GROUNDER_STAGE_OUTCOME_VERSION, _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
+    ):
+        return _validate_grounder_stage_outcome(value)
+    if value.get("schema_version") == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION:
+        return _validate_grounder_producer_failure_audit(value)
+    if value.get("schema_version") not in _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSIONS:
         return value
     outcome = _validate_grounder_submission_stage_outcome(value)
     assessment_status = outcome["submission"]["assessment"]["status"]
@@ -1060,8 +1240,14 @@ def _validate_shell_outcome(value: Any) -> Any:
         return value
     if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION:
         return _validate_grounder_stage_outcome(value)
+    if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_2:
+        return _validate_grounder_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION:
         return _validate_grounder_submission_stage_outcome(value)
+    if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2:
+        return _validate_grounder_submission_stage_outcome(value)
+    if type(value) is dict and value.get("schema_version") == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION:
+        return _validate_grounder_producer_failure_audit(value)
     batch_fields = {"schema_version", "case_count", "unavailable_count", "status"}
     if type(value) is dict and set(value) == batch_fields:
         if (
@@ -1574,7 +1760,7 @@ class HostStore:
                 is_grounder_submission_outcome = (
                     type(payload["outcome"]) is dict
                     and payload["outcome"].get("schema_version")
-                    == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION
+                    in _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSIONS
                 )
                 if event["stage_name"] == "grounder":
                     if event["status"] == "INTERRUPTED":
@@ -1607,7 +1793,15 @@ class HostStore:
                     elif (
                         event["status"] in ("FAILED", "BLOCKED")
                         and not is_grounder_outcome
-                        and payload["outcome"] == event["status"]
+                        and (
+                            payload["outcome"] == event["status"]
+                            or (
+                                type(payload["outcome"]) is dict
+                                and payload["outcome"].get("schema_version")
+                                == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION
+                                and payload["outcome"].get("status") == event["status"]
+                            )
+                        )
                         and stage_diagnostics
                         and all(code in _GROUNDER_FAILURE_DIAGNOSTIC_CODES for code in stage_diagnostics)
                     ):
@@ -1839,7 +2033,15 @@ class HostStore:
                 )
                 failed_or_blocked = (
                     status in ("FAILED", "BLOCKED")
-                    and normalized_outcome == status
+                    and (
+                        normalized_outcome == status
+                        or (
+                            type(normalized_outcome) is dict
+                            and normalized_outcome.get("schema_version")
+                            == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION
+                            and normalized_outcome.get("status") == status
+                        )
+                    )
                     and bool(normalized_diagnostics)
                     and all(code in _GROUNDER_FAILURE_DIAGNOSTIC_CODES for code in normalized_diagnostics)
                 )

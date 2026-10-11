@@ -8,6 +8,14 @@ from typing import Optional
 from .event_intelligence import DistributionChangeMode, ReassessmentBasisKind
 
 
+class ProducerJsonFormatError(ValueError):
+    """Malformed producer JSON; contains no model-provided detail."""
+
+
+class ProducerClosedShapeError(ValueError):
+    """Producer DTO violates a closed object/container shape."""
+
+
 # Source: https://data.iana.org/time-zones/tzdb/leap-seconds.list, updated
 # through IERS Bulletin C. Future unknowns fail closed; update this list explicitly.
 _KNOWN_LEAP_SECOND_UTC_DATES = frozenset(
@@ -121,19 +129,19 @@ def parse_model_output_envelope(
 
     def closed_object(value: object, keys: set[str], label: str) -> dict:
         if type(value) is not dict:
-            raise ValueError(f"{label} must be an object")
+            raise ProducerClosedShapeError("producer DTO must be an object")
         actual = set(value)
         missing = keys - actual
         unknown = actual - keys
         if missing:
-            raise ValueError(f"{label} is missing required fields: {sorted(missing)}")
+            raise ProducerClosedShapeError("producer DTO is missing required fields")
         if unknown:
-            raise ValueError(f"{label} contains unknown fields: {sorted(unknown)}")
+            raise ProducerClosedShapeError("producer DTO contains unknown fields")
         return value
 
     def bounded_array(value: object, label: str, *, nonempty: bool = False) -> list:
         if type(value) is not list:
-            raise ValueError(f"{label} must be an array")
+            raise ProducerClosedShapeError("producer DTO must be an array")
         if len(value) > max_array_items:
             raise ValueError(f"{label} exceeds max_array_items")
         if nonempty and not value:

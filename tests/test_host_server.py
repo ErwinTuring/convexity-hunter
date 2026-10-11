@@ -982,6 +982,26 @@ class HostServerGrounderProjectionTests(unittest.TestCase):
         self.assertNotIn("outcome", invalid_event)
         self.assertNotIn("raw_model_body", json.dumps(invalid_event))
 
+    def test_producer_failure_audit_is_public_only_through_closed_projection(self):
+        from tests.test_host_store import make_grounder_retry_result
+
+        result, _malformed = make_grounder_retry_result("grounder-failure-run")
+        first, accepted = result.audit.producer_attempts
+        second_rejected = replace(
+            accepted,
+            status="format_rejected",
+            failure_check="producer_v0_3_closed_shape",
+        )
+        outcome = {
+            "schema_version": "host-grounder-producer-failure-audit-v0.1",
+            "status": "FAILED",
+            "producer_attempts": [first.to_json(), second_rejected.to_json()],
+        }
+
+        self.assertEqual(host_server_module._public_outcome(outcome), outcome)
+        leaked = dict(outcome, raw_model_body="must-not-be-projected")
+        self.assertIsNone(host_server_module._public_outcome(leaked))
+
 
 class HostServerBatchTests(unittest.TestCase):
     def setUp(self):
@@ -1655,6 +1675,8 @@ class HostServerBatchTests(unittest.TestCase):
             "producer_v0_3_canonical_size": "PRODUCER_FAILURE_CHECK_V0_3_CANONICAL_SIZE",
             "producer_v0_3_internal_v0_1_schema": "PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA",
             "producer_v0_3_recanonicalization": "PRODUCER_FAILURE_CHECK_V0_3_RECANONICALIZATION",
+            "producer_v0_3_json_format": "PRODUCER_FAILURE_CHECK_V0_3_JSON_FORMAT",
+            "producer_v0_3_closed_shape": "PRODUCER_FAILURE_CHECK_V0_3_CLOSED_SHAPE",
         }
         project = host_server_module._semantic_failure_diagnostic_codes
 

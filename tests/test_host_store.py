@@ -280,6 +280,59 @@ def make_grounder_no_submission_result(run_id="grounder-run"):
     )
 
 
+def make_grounder_retry_result(run_id="grounder-run"):
+    from convexity_hunter.host_grounder_evidence_catalog import (
+        HostEvidenceCatalogCallAudit,
+        HostEvidenceCatalogProducerAttempt,
+    )
+
+    result = make_grounder_no_submission_result(run_id)
+    malformed = b"STORE_REPAIR_MALFORMED_SENTINEL"
+
+    def call_audit(bytes_received):
+        return HostEvidenceCatalogCallAudit(
+            provider=result.discovery_call.provider,
+            requested_model=result.discovery_call.requested_model,
+            returned_model=result.discovery_call.returned_model,
+            finish_reason=result.discovery_call.finish_reason,
+            bytes_sent=result.discovery_call.bytes_sent,
+            bytes_received=bytes_received,
+        )
+
+    attempts = (
+        HostEvidenceCatalogProducerAttempt(
+            index=1,
+            status="format_rejected",
+            output_sha256=hashlib.sha256(malformed).hexdigest(),
+            failure_check="producer_v0_3_json_format",
+            failure_code=None,
+            call=call_audit(len(malformed)),
+        ),
+        HostEvidenceCatalogProducerAttempt(
+            index=2,
+            status="accepted",
+            output_sha256=result.audit.producer_content_sha256,
+            failure_check=None,
+            failure_code=None,
+            call=call_audit(result.discovery_call.bytes_received),
+        ),
+    )
+    sidecar = json.loads(result.audit.sidecar_utf8)
+    sidecar["schema_version"] = "host-grounder-quote-localization-audit-v0.4"
+    sidecar["producer_attempts"] = [attempt.to_json() for attempt in attempts]
+    sidecar["producer_repair_prompt_version"] = "host-grounder-discovery-format-repair-v0.1"
+    sidecar_wire = json.dumps(
+        sidecar, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    audit = replace(
+        result.audit,
+        sidecar_utf8=sidecar_wire,
+        sidecar_sha256=hashlib.sha256(sidecar_wire).hexdigest(),
+        producer_attempts=attempts,
+    )
+    return replace(result, audit=audit), malformed
+
+
 def make_grounder_submission_result(run_id="grounder-run"):
     from convexity_hunter.core_application import SourceSubmissionBatch
     from convexity_hunter.event_intelligence import (
@@ -488,6 +541,92 @@ class HostStoreTests(unittest.TestCase):
         self.assertIsNone(self.store._conn().execute(
             "SELECT 1 FROM batch_archives WHERE run_id=?", (run_id,)
         ).fetchone())
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        reopened_run = reopened.get_run(run_id)
+        reopened_outcome = reopened_run["events"][1]["outcome"]
+        self.assertEqual(reopened_run["status"], "BLOCKED")
+        self.assertEqual(
+            reopened_outcome["schema_version"], "host-grounder-stage-outcome-v0.1"
+        )
+        self.assertNotIn("producer_attempts", reopened_outcome["provenance"])
+
+    def test_grounder_retry_success_archive_reopens_both_attempt_receipts(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result, malformed = make_grounder_retry_result(run_id)
+        malformed_hash = hashlib.sha256(malformed).hexdigest()
+        accepted_hash = result.audit.producer_content_sha256
+
+        self.store.save_grounder_stage_result(run_id, stage_id, result)
+        outcome = self.store.get_run(run_id)["events"][1]["outcome"]
+        self.assertEqual(
+            outcome["schema_version"], "host-grounder-stage-outcome-v0.2"
+        )
+        self.assertEqual(
+            [item["output_sha256"] for item in outcome["provenance"]["producer_attempts"]],
+            [malformed_hash, accepted_hash],
+        )
+        self.assertEqual(
+            outcome["provenance"]["producer_attempts"][1]["output_sha256"],
+            outcome["provenance"]["producer_content_sha256"],
+        )
+        self.store.close()
+
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        reopened_run = reopened.get_run(run_id)
+        reopened_outcome = reopened_run["events"][1]["outcome"]
+        self.assertEqual(reopened_run["status"], "BLOCKED")
+        self.assertEqual(
+            [item["output_sha256"] for item in reopened_outcome["provenance"]["producer_attempts"]],
+            [malformed_hash, accepted_hash],
+        )
+        self.assertTrue(
+            all(item["call"] is not None
+                for item in reopened_outcome["provenance"]["producer_attempts"])
+        )
+        self.assertNotIn(malformed.decode("utf-8"), json.dumps(reopened_run))
+
+    def test_grounder_retry_failure_archive_reopens_completed_attempts_without_raw_text(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result, malformed = make_grounder_retry_result(run_id)
+        first, accepted = result.audit.producer_attempts
+        second_rejected = replace(
+            accepted,
+            status="format_rejected",
+            failure_check="producer_v0_3_closed_shape",
+        )
+        failure_outcome = {
+            "schema_version": "host-grounder-producer-failure-audit-v0.1",
+            "status": "FAILED",
+            "producer_attempts": [first.to_json(), second_rejected.to_json()],
+        }
+
+        self.store.finish_stage(
+            run_id, stage_id, "FAILED", failure_outcome,
+            ("PRODUCER_ENVELOPE_INVALID",),
+        )
+        self.store.finish_run(run_id, "FAILED", ("PRODUCER_ENVELOPE_INVALID",))
+        expected_hashes = [
+            item["output_sha256"] for item in failure_outcome["producer_attempts"]
+        ]
+        self.store.close()
+
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        reopened_run = reopened.get_run(run_id)
+        audit = reopened_run["events"][1]["outcome"]
+        self.assertEqual(reopened_run["status"], "FAILED")
+        self.assertEqual(
+            [item["output_sha256"] for item in audit["producer_attempts"]],
+            expected_hashes,
+        )
+        self.assertTrue(all(item["call"] is not None for item in audit["producer_attempts"]))
+        self.assertNotIn(malformed.decode("utf-8"), json.dumps(reopened_run))
 
     def test_grounder_archive_accepts_only_registered_producer_prompt_versions(self):
         from convexity_hunter.host_store import (

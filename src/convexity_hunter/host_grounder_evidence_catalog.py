@@ -11,6 +11,10 @@ from typing import Callable, Mapping, Optional, Tuple
 from .host_grounder_builder import HostSourceBody
 from .host_grounder_quote_localization import _canonical_bytes, _decode, _limit, _wire_string
 from .host_grounder_schema import parse_model_output_envelope
+from .host_grounder_schema import (
+    ProducerClosedShapeError,
+    ProducerJsonFormatError,
+)
 from .host_grounder_semantic import parse_semantic_verdict
 
 
@@ -30,6 +34,8 @@ __all__ = (
 EVIDENCE_CATALOG_SCHEMA_VERSION = "host-grounder-evidence-catalog-v0.1"
 EVIDENCE_CATALOG_GENERATOR_VERSION = "host-evidence-paragraph-generator-v0.1"
 _AUDIT_SCHEMA_VERSION = "host-grounder-quote-localization-audit-v0.3"
+_AUDIT_SCHEMA_VERSION_V0_4 = "host-grounder-quote-localization-audit-v0.4"
+_REPAIR_PROMPT_VERSION = "host-grounder-discovery-format-repair-v0.1"
 _PRODUCER_WIRE_VERSION = "grounder-output-v0.3"
 _PRODUCER_PROMPT_VERSION_V0_4 = "host-grounder-discovery-prompt-v0.4"
 _PRODUCER_PROMPT_VERSION_V0_5 = "host-grounder-discovery-prompt-v0.5"
@@ -80,6 +86,22 @@ _VERDICT_ID_KEYS = {
     "field_bindings": "index",
     "coverage": "index",
 }
+_PRODUCER_ATTEMPT_FAILURE_CHECKS = frozenset((
+    "producer_wire_normalization", "producer_run_stage_binding",
+    "producer_coverage_order", "producer_binding_extraction",
+    "producer_v0_3_wire_decode", "producer_v0_3_root_shape",
+    "producer_v0_3_catalog_source_validation",
+    "producer_v0_3_claims_catalog_expansion",
+    "producer_v0_3_bindings_catalog_expansion",
+    "producer_v0_3_canonical_size", "producer_v0_3_internal_v0_1_schema",
+    "producer_v0_3_recanonicalization", "producer_v0_3_json_format",
+    "producer_v0_3_closed_shape",
+))
+_PRODUCER_ATTEMPT_FAILURE_CODES = frozenset((
+    "DISCOVERY_CALL_FAILED", "DISCOVERY_RESPONSE_INVALID",
+    "DISCOVERY_RESPONSE_TOO_LARGE", "MODEL_REQUEST_TOO_LARGE",
+    "PRODUCER_ENVELOPE_INVALID",
+))
 
 
 def _sha256_text(value: object, label: str, max_string_bytes: int) -> str:
@@ -408,11 +430,24 @@ def _parse_grounder_output_v0_3_with_progress(
     max_array_items = _limit(max_array_items, "max_array_items")
     if progress is not None:
         progress("producer_v0_3_wire_decode")
-    wire = _decode(raw_json, max_input_bytes)
+    try:
+        wire = _decode(raw_json, max_input_bytes)
+    except ProducerJsonFormatError:
+        if progress is not None:
+            progress("producer_v0_3_json_format")
+        raise
+    except ProducerClosedShapeError:
+        if progress is not None:
+            progress("producer_v0_3_closed_shape")
+        raise
     if progress is not None:
         progress("producer_v0_3_root_shape")
-    if set(wire) != _OUTPUT_TOP or wire.get("schema_version") != "grounder-output-v0.3":
-        raise ValueError("producer wire DTO has an invalid closed shape or version")
+    if set(wire) != _OUTPUT_TOP:
+        if progress is not None:
+            progress("producer_v0_3_closed_shape")
+        raise ProducerClosedShapeError("producer wire closed shape is invalid")
+    if wire.get("schema_version") != "grounder-output-v0.3":
+        raise ValueError("producer wire version is invalid")
     if progress is not None:
         progress("producer_v0_3_catalog_source_validation")
     catalog.validate_sources(
@@ -427,12 +462,14 @@ def _parse_grounder_output_v0_3_with_progress(
     if progress is not None:
         progress("producer_v0_3_claims_catalog_expansion")
     claims = wire.get("claims")
-    if type(claims) is not list or len(claims) > max_array_items:
+    if type(claims) is not list:
+        raise ProducerClosedShapeError("producer claims array shape is invalid")
+    if len(claims) > max_array_items:
         raise ValueError("claims must be a bounded array")
     expanded_claims = []
     for raw_claim in claims:
         if type(raw_claim) is not dict or set(raw_claim) != _CLAIM_KEYS:
-            raise ValueError("producer claim has an invalid closed wire shape")
+            raise ProducerClosedShapeError("producer claim closed shape is invalid")
         claim = dict(raw_claim)
         evidence_id = _wire_string(claim.pop("evidence_id"), "evidence_id", max_string_bytes)
         entry = catalog._entries_by_id.get(evidence_id)
@@ -448,12 +485,14 @@ def _parse_grounder_output_v0_3_with_progress(
     if progress is not None:
         progress("producer_v0_3_bindings_catalog_expansion")
     bindings = wire.get("field_bindings")
-    if type(bindings) is not list or len(bindings) > max_array_items:
+    if type(bindings) is not list:
+        raise ProducerClosedShapeError("producer field-binding array shape is invalid")
+    if len(bindings) > max_array_items:
         raise ValueError("field_bindings must be a bounded array")
     expanded_bindings = []
     for raw_binding in bindings:
         if type(raw_binding) is not dict or set(raw_binding) != _BINDING_KEYS:
-            raise ValueError("producer binding has an invalid closed wire shape")
+            raise ProducerClosedShapeError("producer field-binding closed shape is invalid")
         binding = dict(raw_binding)
         evidence_id = _wire_string(binding.pop("evidence_id"), "evidence_id", max_string_bytes)
         entry = catalog._entries_by_id.get(evidence_id)
@@ -629,6 +668,79 @@ def _parse_semantic_verdict_v0_3(
     return _normalized_bytes(parsed, max_input_bytes, "normalized verdict")
 
 
+@dataclass(frozen=True)
+class HostEvidenceCatalogCallAudit:
+    provider: str
+    requested_model: str
+    returned_model: Optional[str]
+    finish_reason: str
+    bytes_sent: int
+    bytes_received: int
+
+    def to_json(self) -> dict:
+        return {
+            "role": "discovery",
+            "provider": self.provider,
+            "requested_model": self.requested_model,
+            "returned_model": self.returned_model,
+            "finish_reason": self.finish_reason,
+            "bytes_sent": self.bytes_sent,
+            "bytes_received": self.bytes_received,
+        }
+
+
+@dataclass(frozen=True)
+class HostEvidenceCatalogProducerAttempt:
+    index: int
+    status: str
+    output_sha256: Optional[str]
+    failure_check: Optional[str]
+    failure_code: Optional[str]
+    call: Optional[HostEvidenceCatalogCallAudit]
+
+    def __post_init__(self) -> None:
+        if type(self.index) is not int or self.index not in (1, 2):
+            raise ValueError("producer attempt index is invalid")
+        if type(self.status) is not str or self.status not in (
+            "accepted", "format_rejected", "rejected", "call_failed"
+        ):
+            raise ValueError("producer attempt status is invalid")
+        if self.status == "call_failed":
+            if (
+                self.output_sha256 is not None or self.call is not None
+                or type(self.failure_code) is not str
+                or self.failure_code not in _PRODUCER_ATTEMPT_FAILURE_CODES
+                or self.failure_check is not None
+            ):
+                raise ValueError("failed producer attempt metadata is invalid")
+        else:
+            if (
+                type(self.output_sha256) is not str
+                or len(self.output_sha256) != 64
+                or any(char not in _SHA256 for char in self.output_sha256)
+                or type(self.call) is not HostEvidenceCatalogCallAudit
+                or self.failure_code is not None
+            ):
+                raise ValueError("completed producer attempt metadata is invalid")
+            if self.status == "accepted" and self.failure_check is not None:
+                raise ValueError("accepted producer attempt cannot have a failure check")
+            if self.status in ("format_rejected", "rejected") and (
+                type(self.failure_check) is not str
+                or self.failure_check not in _PRODUCER_ATTEMPT_FAILURE_CHECKS
+            ):
+                raise ValueError("rejected producer attempt check is invalid")
+
+    def to_json(self) -> dict:
+        return {
+            "index": self.index,
+            "status": self.status,
+            "output_sha256": self.output_sha256,
+            "failure_check": self.failure_check,
+            "failure_code": self.failure_code,
+            "call": None if self.call is None else self.call.to_json(),
+        }
+
+
 @dataclass(frozen=True, repr=False)
 class HostEvidenceCatalogAudit:
     catalog_utf8: bytes = field(repr=False)
@@ -639,6 +751,7 @@ class HostEvidenceCatalogAudit:
     producer_content_sha256: str
     normalized_envelope_sha256: str
     sidecar_sha256: str
+    producer_attempts: Tuple[HostEvidenceCatalogProducerAttempt, ...] = ()
 
     def __repr__(self) -> str:
         return "HostEvidenceCatalogAudit(sidecar_sha256={!r})".format(self.sidecar_sha256)
@@ -650,7 +763,8 @@ class HostEvidenceCatalogAuditHolder:
     __slots__ = (
         "_run_id", "_canonical_input_hash", "_state", "_catalog_utf8",
         "_catalog_sha256", "_producer_content_utf8", "_producer_content_sha256",
-        "_producer_prompt_version", "_semantic_prompt_version", "_audit", "_lock",
+        "_producer_prompt_version", "_semantic_prompt_version", "_producer_attempts",
+        "_audit", "_lock",
     )
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -677,6 +791,7 @@ class HostEvidenceCatalogAuditHolder:
         self._producer_content_sha256 = None
         self._producer_prompt_version = None
         self._semantic_prompt_version = None
+        self._producer_attempts = ()
         self._audit = None
         self._lock = threading.Lock()
 
@@ -695,6 +810,10 @@ class HostEvidenceCatalogAuditHolder:
     @property
     def producer_content_sha256(self) -> str | None:
         return self._producer_content_sha256
+
+    @property
+    def producer_attempts(self) -> Tuple[HostEvidenceCatalogProducerAttempt, ...]:
+        return self._producer_attempts
 
     @property
     def audit(self) -> HostEvidenceCatalogAudit | None:
@@ -741,11 +860,33 @@ class HostEvidenceCatalogAuditHolder:
             if self._state != "catalog_retained" or type(content_utf8) is not bytes:
                 raise ValueError("audit holder cannot retain producer content")
             content_copy = bytes(content_utf8)
+            if self._producer_attempts and (
+                self._producer_attempts[-1].status != "accepted"
+                or self._producer_attempts[-1].output_sha256
+                != hashlib.sha256(content_copy).hexdigest()
+            ):
+                raise ValueError("canonical producer content does not match accepted attempt")
             object.__setattr__(self, "_producer_content_utf8", content_copy)
             object.__setattr__(
                 self, "_producer_content_sha256", hashlib.sha256(content_copy).hexdigest()
             )
             object.__setattr__(self, "_state", "producer_retained")
+
+    def _record_producer_attempt(
+        self, attempt: HostEvidenceCatalogProducerAttempt
+    ) -> None:
+        with self._lock:
+            if (
+                self._state != "catalog_retained"
+                or type(attempt) is not HostEvidenceCatalogProducerAttempt
+                or len(self._producer_attempts) >= 2
+                or attempt.index != len(self._producer_attempts) + 1
+                or (attempt.index == 2 and self._producer_attempts[0].status != "format_rejected")
+            ):
+                raise ValueError("audit holder cannot append producer attempt")
+            object.__setattr__(
+                self, "_producer_attempts", self._producer_attempts + (attempt,)
+            )
 
     def _finalize(
         self,
@@ -773,9 +914,21 @@ class HostEvidenceCatalogAuditHolder:
                 or self._semantic_prompt_version != expected_semantic_prompt_version
             ):
                 raise ValueError("audit holder cannot be finalized")
+            if self._producer_attempts and (
+                self._producer_attempts[-1].status != "accepted"
+                or self._producer_attempts[-1].output_sha256
+                != hashlib.sha256(self._producer_content_utf8).hexdigest()
+                or (len(self._producer_attempts) == 2
+                    and self._producer_attempts[0].status != "format_rejected")
+            ):
+                raise ValueError("audit holder producer attempts are incomplete")
             normalized_copy = bytes(normalized_envelope_utf8)
+            retry_attempted = len(self._producer_attempts) == 2
             sidecar = {
-                "schema_version": _AUDIT_SCHEMA_VERSION,
+                "schema_version": (
+                    _AUDIT_SCHEMA_VERSION_V0_4 if retry_attempted
+                    else _AUDIT_SCHEMA_VERSION
+                ),
                 "run_id": self._run_id,
                 "canonical_input_hash": self._canonical_input_hash,
                 "producer_wire_version": _PRODUCER_WIRE_VERSION,
@@ -793,6 +946,13 @@ class HostEvidenceCatalogAuditHolder:
                 "catalog_generator_version": EVIDENCE_CATALOG_GENERATOR_VERSION,
                 "catalog_sha256": catalog.catalog_sha256,
             }
+            if retry_attempted:
+                sidecar["producer_attempts"] = [
+                    attempt.to_json() for attempt in self._producer_attempts
+                ]
+                sidecar["producer_repair_prompt_version"] = (
+                    _REPAIR_PROMPT_VERSION if retry_attempted else None
+                )
             sidecar_utf8 = _canonical_bytes(sidecar)
             audit = HostEvidenceCatalogAudit(
                 catalog_utf8=bytes(self._catalog_utf8),
@@ -803,6 +963,7 @@ class HostEvidenceCatalogAuditHolder:
                 producer_content_sha256=self._producer_content_sha256,
                 normalized_envelope_sha256=sidecar["normalized_envelope_sha256"],
                 sidecar_sha256=hashlib.sha256(sidecar_utf8).hexdigest(),
+                producer_attempts=self._producer_attempts,
             )
             object.__setattr__(self, "_audit", audit)
             object.__setattr__(self, "_state", "finalized")

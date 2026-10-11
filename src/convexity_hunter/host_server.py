@@ -122,6 +122,8 @@ _PRODUCER_FAILURE_CHECK_DIAGNOSTICS = {
     "producer_v0_3_canonical_size": "PRODUCER_FAILURE_CHECK_V0_3_CANONICAL_SIZE",
     "producer_v0_3_internal_v0_1_schema": "PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA",
     "producer_v0_3_recanonicalization": "PRODUCER_FAILURE_CHECK_V0_3_RECANONICALIZATION",
+    "producer_v0_3_json_format": "PRODUCER_FAILURE_CHECK_V0_3_JSON_FORMAT",
+    "producer_v0_3_closed_shape": "PRODUCER_FAILURE_CHECK_V0_3_CLOSED_SHAPE",
 }
 
 
@@ -419,14 +421,20 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
         return {"status": value} if value in _RUN_STATUSES else None
     if type(value) is not dict:
         return None
-    if value.get("schema_version") == "host-grounder-stage-outcome-v0.1":
+    if value.get("schema_version") in (
+        "host-grounder-stage-outcome-v0.1",
+        "host-grounder-stage-outcome-v0.2",
+    ):
         try:
             from .host_store import _validate_grounder_stage_outcome
 
             return _validate_grounder_stage_outcome(value)
         except (TypeError, ValueError):
             return None
-    if value.get("schema_version") == "host-grounder-submission-stage-outcome-v0.1":
+    if value.get("schema_version") in (
+        "host-grounder-submission-stage-outcome-v0.1",
+        "host-grounder-submission-stage-outcome-v0.2",
+    ):
         try:
             if "submission" in value:
                 from .host_store import _grounder_public_stage_outcome
@@ -440,7 +448,7 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
             ):
                 return None
             fixed = {
-                "schema_version": "host-grounder-submission-stage-outcome-v0.1",
+                "schema_version": value["schema_version"],
                 "grounder_status": "COMPLETED",
                 "source_status": "UNKNOWN",
                 "semantic_status": "RECEIPT_VALIDATED",
@@ -483,6 +491,13 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
                 key: projected[key] for key in _GROUNDER_SUBMISSION_PUBLIC_FIELDS
             }
         except (AttributeError, TypeError, ValueError):
+            return None
+    if value.get("schema_version") == "host-grounder-producer-failure-audit-v0.1":
+        try:
+            from .host_store import _validate_grounder_producer_failure_audit
+
+            return _validate_grounder_producer_failure_audit(value)
+        except (TypeError, ValueError):
             return None
     if (
         set(value) == {"schema_version", "case_id", "classification"}
@@ -1814,11 +1829,24 @@ class HostRequestHandler(BaseHTTPRequestHandler):
         except Exception as error:
             status, diagnostic = _grounder_failure_status(error)
             diagnostics = (diagnostic,) + _semantic_failure_diagnostic_codes(error)
+            outcome = status
+            from .host_grounder_runtime import HostGrounderRuntimeError
+            if (
+                type(error) is HostGrounderRuntimeError
+                and error.producer_attempts
+            ):
+                outcome = {
+                    "schema_version": "host-grounder-producer-failure-audit-v0.1",
+                    "status": status,
+                    "producer_attempts": [
+                        attempt.to_json() for attempt in error.producer_attempts
+                    ],
+                }
             if not self._complete_terminal_run(
                 run_id,
                 grounder_stage_id,
                 status=status,
-                outcome=status,
+                outcome=outcome,
                 diagnostics=diagnostics,
                 stage_diagnostics=(diagnostic,),
             ):

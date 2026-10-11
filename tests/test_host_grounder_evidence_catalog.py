@@ -248,7 +248,9 @@ def _wire_bundle(run_input, context):
     return catalog, producer, envelope, envelope_bytes, verdict
 
 
-def _config(role, *, max_input_bytes=500_000, max_output_bytes=200_000):
+def _config(
+    role, *, max_input_bytes=500_000, max_output_bytes=200_000, request_budget=1
+):
     return ModelRuntimeConfig(
         provider="fixture",
         model="fixture-{}".format(role),
@@ -256,7 +258,7 @@ def _config(role, *, max_input_bytes=500_000, max_output_bytes=200_000):
         role=role,
         capabilities=("json_mode",),
         timeout_seconds=1.0,
-        request_budget=1,
+        request_budget=request_budget,
         max_tokens=2_000,
         max_input_bytes=max_input_bytes,
         max_output_bytes=max_output_bytes,
@@ -269,27 +271,37 @@ def _config(role, *, max_input_bytes=500_000, max_output_bytes=200_000):
 
 class _FakeClient:
     def __init__(
-        self, role, content, calls, *, max_input_bytes=500_000, max_output_bytes=200_000
+        self, role, content, calls, *, max_input_bytes=500_000,
+        max_output_bytes=200_000, request_budget=1
     ):
         self.config = _config(
-            role, max_input_bytes=max_input_bytes, max_output_bytes=max_output_bytes
+            role, max_input_bytes=max_input_bytes, max_output_bytes=max_output_bytes,
+            request_budget=request_budget,
         )
         self.content = content
+        self._content_sequence = list(content) if type(content) is list else None
         self.calls = calls
-        self.remaining_request_budget = 1
+        self.remaining_request_budget = request_budget
 
     def complete(self, system_prompt, source_prompt):
         self.calls.append((self.config.role, system_prompt, source_prompt))
+        self.remaining_request_budget -= 1
+        content = (
+            self._content_sequence.pop(0)
+            if self._content_sequence is not None else self.content
+        )
+        if isinstance(content, Exception):
+            raise content
         return ModelTransportReceipt(
             provider=self.config.provider,
             requested_model=self.config.model,
             returned_model=self.config.model,
             request_id="fixture-request",
-            content=self.content,
+            content=content,
             reasoning_content=None,
             finish_reason="stop",
             bytes_sent=1,
-            bytes_received=len(self.content.encode("utf-8")),
+            bytes_received=len(content.encode("utf-8")),
             prompt_tokens=None,
             completion_tokens=None,
             total_tokens=None,
@@ -757,12 +769,18 @@ class EvidenceCatalogWireTests(unittest.TestCase):
 
 
 class EvidenceCatalogRuntimeTests(unittest.TestCase):
-    def _run_v06(self, run_input, context, producer, verdict):
-        calls = []
+    def _run_v06(
+        self, run_input, context, producer, verdict, *, discovery=None,
+        request_budget=1,
+    ):
+        calls = discovery.calls if discovery is not None else []
+        discovery = discovery or _FakeClient(
+            "discovery", _canonical(producer), calls, request_budget=request_budget
+        )
         result = run_host_grounder_same_run_evidence_catalog_v0_6(
             run_input,
             context,
-            discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+            discovery_client=discovery,
             semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
             audit_holder=HostEvidenceCatalogAuditHolder(
                 run_id=run_input.run_id,
@@ -778,13 +796,16 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         return result, calls
 
     def _run_v05(
-        self, run_input, context, producer, verdict, *, semantic_max_input_bytes=500_000
+        self, run_input, context, producer, verdict, *,
+        semantic_max_input_bytes=500_000, discovery=None
     ):
-        calls = []
+        calls = discovery.calls if discovery is not None else []
         result = run_host_grounder_same_run_evidence_catalog_v0_5(
             run_input,
             context,
-            discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+            discovery_client=discovery or _FakeClient(
+                "discovery", _canonical(producer), calls
+            ),
             semantic_client=_FakeClient(
                 "semantic", _canonical(verdict), calls,
                 max_input_bytes=semantic_max_input_bytes,
@@ -1204,7 +1225,16 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
         verdict["hypotheses"] = []
 
-        result, calls = self._run_v06(run_input, context, producer, verdict)
+        calls = []
+        result, calls = self._run_v06(
+            run_input,
+            context,
+            producer,
+            verdict,
+            discovery=_FakeClient(
+                "discovery", _canonical(producer), calls, request_budget=2
+            ),
+        )
 
         receipt = result.build_result.semantic_validation.receipt
         self.assertEqual(receipt["verified_hypothesis_ids"], ())
@@ -1248,6 +1278,254 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             json.loads(result.audit.sidecar_utf8)["producer_prompt_version"],
             "host-grounder-discovery-prompt-v0.7",
         )
+
+    def test_v06_repairs_closed_json_format_once_and_retains_both_attempts(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+        malformed = "MALFORMED_PRODUCER_SENTINEL_NOT_FOR_REPAIR_PROMPT"
+        calls = []
+        discovery = _FakeClient(
+            "discovery", [malformed, _canonical(producer)], calls,
+            request_budget=2,
+        )
+
+        result, calls = self._run_v06(
+            run_input, context, producer, verdict, discovery=discovery
+        )
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "discovery", "semantic"])
+        first_prompt = calls[0][2]
+        repair_prompt = calls[1][2]
+        notice = "\n\nOne bounded format correction"
+        self.assertTrue(repair_prompt.startswith(first_prompt + notice))
+        self.assertNotIn(malformed, repair_prompt)
+        self.assertEqual(
+            repair_prompt.split(notice, 1)[0], first_prompt
+        )
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        attempts = sidecar["producer_attempts"]
+        self.assertEqual(sidecar["schema_version"], "host-grounder-quote-localization-audit-v0.4")
+        self.assertEqual(sidecar["producer_repair_prompt_version"], "host-grounder-discovery-format-repair-v0.1")
+        self.assertEqual([item["status"] for item in attempts], ["format_rejected", "accepted"])
+        self.assertEqual(
+            [item["output_sha256"] for item in attempts],
+            [
+                hashlib.sha256(malformed.encode("utf-8")).hexdigest(),
+                hashlib.sha256(_canonical(producer).encode("utf-8")).hexdigest(),
+            ],
+        )
+        self.assertTrue(all(item["call"] is not None for item in attempts))
+        self.assertEqual(
+            result.audit.producer_content_utf8, _canonical(producer).encode("utf-8")
+        )
+        self.assertEqual(
+            result.audit.producer_content_sha256, attempts[-1]["output_sha256"]
+        )
+
+    def test_v05_does_not_repair_even_with_remaining_discovery_budget(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+        calls = []
+        discovery = _FakeClient(
+            "discovery", "not-json", calls, request_budget=2
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            self._run_v05(
+                run_input, context, producer, verdict, discovery=discovery
+            )
+
+        self.assertEqual(raised.exception.code, "PRODUCER_ENVELOPE_INVALID")
+        self.assertEqual(raised.exception.failure_check, "producer_v0_3_wire_decode")
+        self.assertEqual([call[0] for call in calls], ["discovery"])
+
+    def test_v06_repair_stops_after_second_format_failure(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+        calls = []
+        discovery = _FakeClient("discovery", ["{}", "[]"], calls, request_budget=2)
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            self._run_v06(
+                run_input, context, producer, verdict, discovery=discovery
+            )
+
+        self.assertEqual(raised.exception.code, "PRODUCER_ENVELOPE_INVALID")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(
+            [item.status for item in raised.exception.producer_attempts],
+            ["format_rejected", "format_rejected"],
+        )
+        self.assertTrue(
+            all(item.output_sha256 and item.call is not None
+                for item in raised.exception.producer_attempts)
+        )
+
+    def test_v06_budget_one_and_evidence_reference_failure_never_retry(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as budget_one:
+            self._run_v06(
+                run_input, context, producer, verdict,
+                discovery=_FakeClient("discovery", "not-json", calls),
+            )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(budget_one.exception.producer_attempts), 1)
+        self.assertEqual(budget_one.exception.producer_attempts[0].status, "format_rejected")
+
+        unknown_reference = copy.deepcopy(producer)
+        unknown_reference["claims"][0]["evidence_id"] = "unknown-evidence-id"
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as missing_evidence:
+            self._run_v06(
+                run_input, context, unknown_reference, verdict,
+                discovery=_FakeClient(
+                    "discovery", _canonical(unknown_reference), calls,
+                    request_budget=2,
+                ),
+            )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(missing_evidence.exception.producer_attempts), 1)
+        self.assertEqual(missing_evidence.exception.producer_attempts[0].status, "rejected")
+        self.assertEqual(
+            missing_evidence.exception.producer_attempts[0].failure_check,
+            "producer_v0_3_claims_catalog_expansion",
+        )
+
+    def test_v06_mixed_shape_with_unknown_claim_or_binding_reference_never_retry(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+        cases = (
+            ("claims", "producer_v0_3_claims_catalog_expansion"),
+            ("field_bindings", "producer_v0_3_bindings_catalog_expansion"),
+        )
+        for section, expected_check in cases:
+            malformed = copy.deepcopy(producer)
+            malformed[section][0]["evidence_id"] = "unknown-mixed-evidence-id"
+            malformed[section][0]["unapproved_extra"] = "not a repairable-only shape issue"
+            calls = []
+            with self.subTest(section=section), self.assertRaises(
+                HostGrounderRuntimeError
+            ) as raised:
+                self._run_v06(
+                    run_input, context, malformed, verdict,
+                    discovery=_FakeClient(
+                        "discovery", _canonical(malformed), calls,
+                        request_budget=2,
+                    ),
+                )
+            self.assertEqual([call[0] for call in calls], ["discovery"])
+            self.assertEqual(
+                raised.exception.producer_attempts[0].status, "rejected"
+            )
+            self.assertEqual(
+                raised.exception.producer_attempts[0].failure_check,
+                expected_check,
+            )
+
+    def test_v06_mixed_root_shape_with_identity_mismatch_never_retry(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+        for key, value in (("request_id", "another-run"), ("stage", "discovery")):
+            malformed = copy.deepcopy(producer)
+            malformed[key] = value
+            malformed["unapproved_extra"] = "shape error must not mask identity"
+            calls = []
+            with self.subTest(key=key), self.assertRaises(
+                HostGrounderRuntimeError
+            ) as raised:
+                self._run_v06(
+                    run_input, context, malformed, verdict,
+                    discovery=_FakeClient(
+                        "discovery", _canonical(malformed), calls,
+                        request_budget=2,
+                    ),
+                )
+            self.assertEqual([call[0] for call in calls], ["discovery"])
+            self.assertEqual(
+                raised.exception.producer_attempts[0].failure_check,
+                "producer_run_stage_binding",
+            )
+
+    def test_v06_internal_schema_failure_is_not_a_format_retry(self):
+        from convexity_hunter.host_grounder_schema import ProducerClosedShapeError
+
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+        calls = []
+        with patch.object(
+            catalog_module,
+            "parse_model_output_envelope",
+            side_effect=ProducerClosedShapeError("synthetic internal schema failure"),
+        ), self.assertRaises(HostGrounderRuntimeError) as raised:
+            self._run_v06(
+                run_input, context, producer, verdict,
+                discovery=_FakeClient(
+                    "discovery", _canonical(producer), calls, request_budget=2
+                ),
+            )
+        self.assertEqual([call[0] for call in calls], ["discovery"])
+        self.assertEqual(
+            raised.exception.producer_attempts[0].failure_check,
+            "producer_v0_3_internal_v0_1_schema",
+        )
+        self.assertEqual(raised.exception.producer_attempts[0].status, "rejected")
+
+    def test_v06_second_transport_failure_has_no_fabricated_receipt(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, verdict = _wire_bundle(
+            run_input, context
+        )
+        calls = []
+        discovery = _FakeClient(
+            "discovery", ["not-json", ModelTransportError("TIMEOUT")], calls,
+            request_budget=2,
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            self._run_v06(
+                run_input, context, producer, verdict, discovery=discovery
+            )
+
+        self.assertEqual(len(calls), 2)
+        attempts = raised.exception.producer_attempts
+        self.assertEqual([item.status for item in attempts], ["format_rejected", "call_failed"])
+        self.assertIsNone(attempts[1].output_sha256)
+        self.assertIsNone(attempts[1].call)
+        self.assertEqual(attempts[1].failure_code, "DISCOVERY_CALL_FAILED")
+
+    def test_v06_semantic_rejection_does_not_retry_discovery(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _envelope_bytes, _verdict = _wire_bundle(
+            run_input, context
+        )
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            self._run_v06(
+                run_input, context, producer, "semantic-response-invalid",
+                discovery=_FakeClient(
+                    "discovery", _canonical(producer), calls, request_budget=2
+                ),
+            )
+        self.assertEqual(raised.exception.code, "SEMANTIC_VERDICT_REJECTED")
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertEqual(len(raised.exception.producer_attempts), 1)
+        self.assertEqual(raised.exception.producer_attempts[0].status, "accepted")
 
     def test_v06_catalog_route_retains_only_exact_closed_transport_code(self):
         class DerivedTransportError(ModelTransportError):
@@ -1552,7 +1830,12 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                     )
                 self.assertEqual(raised.exception.code, "PRODUCER_ENVELOPE_INVALID")
                 self.assertEqual(raised.exception.failure_stage, "producer_envelope_normalization")
-                self.assertEqual(raised.exception.failure_check, "producer_v0_3_wire_decode")
+                expected_check = (
+                    "producer_v0_3_json_format"
+                    if route is run_host_grounder_same_run_evidence_catalog_v0_6
+                    else "producer_v0_3_wire_decode"
+                )
+                self.assertEqual(raised.exception.failure_check, expected_check)
                 self.assertEqual([call[0] for call in calls], ["discovery"])
                 self.assertEqual(calls[0][1], expected_prompt)
 

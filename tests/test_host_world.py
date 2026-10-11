@@ -698,6 +698,18 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(captured["config"].discovery_model.request_budget, 1)
         self.assertEqual(captured["config"].semantic_model.request_budget, 1)
 
+        expanded_budget = _config(model_budget=3)
+        with mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            side_effect=grounder_factory,
+        ):
+            create_world_runner(
+                expanded_budget, repo_root=ROOT, market_bridge=self.lazy_bridge
+            )
+        self.assertEqual(expanded_budget.grounder.discovery_model.request_budget, 3)
+        self.assertEqual(captured["config"].discovery_model.request_budget, 2)
+        self.assertEqual(captured["config"].semantic_model.request_budget, 1)
+
     def test_role_total_budget_preflights_before_grounder_or_skill(self):
         config = _config(model_budget=1)
         with mock.patch(

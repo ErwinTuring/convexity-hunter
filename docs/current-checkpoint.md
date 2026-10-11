@@ -2,9 +2,45 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## Event Grounder / Store compatibility — 2026-10-11
+## Producer format repair — implemented and validated
 
-Two narrow fixes are in the current diff. Grounder preserves only an exact
+The user approved at most one extra request only for a positively classified
+JSON/DTO shape failure. The [frozen boundary](local-event-delivery-v0.1.md#approved-producer-format-repair--frozen-build-boundary)
+preserves independent semantic verification and EI. Evidence, identity,
+binding, coverage, transport and semantic failures remain non-retryable.
+Budget one preserves existing behavior; budget two permits at most two
+producer calls, not an open retry loop. Production implementation and its
+independent review are complete; the mixed-failure precedence finding was
+corrected and passed targeted re-review (4 tests). Focused validation passed
+47 tests; compatibility fixes subsequently passed 99 focused tests and six
+integration checks. Full regression passed 1,932 tests (298.846s), compileall
+and diff checks passed.
+
+The fresh `/private/tmp/ch-event-format-repair-2026-10-11-wyFkFT/` operation
+is spent. Declared ceiling: two discovery requests (8,000 tokens each), one
+semantic request (6,000), Tavily two requests / three credits and unchanged
+source/workload bounds. Actual retained model calls were one discovery and one
+semantic: the first output passed format, so no repair request occurred.
+Host READY / POST 201 persisted BLOCKED / GROUNDING_NO_SUBMISSION, with five
+source bodies, 15 claims, one hypothesis, 16 bindings and one coverage row.
+Semantic receipt validation and Builder completed, but no projectable
+hypothesis remained. Closed diagnostic counts: CLAIM_REJECTED_BY_VALIDATOR 13,
+HYPOTHESIS_REJECTED_BY_VALIDATOR 1, FIELD_BINDING_MISSING 42 and
+NO_PROJECTABLE_HYPOTHESIS 1. These counts are diagnostics, not a count of
+independent missing fields. EI NOT_RUN; no Core case. Source admission was
+one request / 14,303 bytes; other source counters are unknown. SQLite creation,
+restart and Chinese HTTP readback passed. No additional source/quote acquisition
+or semantic retry was performed.
+
+Format repair is proven by deterministic integration fixtures, not exercised
+by this live run. The remaining real Event blocker is a source-supported
+hypothesis that survives independent semantic verification and projection;
+format success is not evidence acceptance. No evidence standard is relaxed.
+The historical attempts below remain spent.
+
+## Preceding Event Grounder / Store compatibility — 2026-10-11
+
+Two narrow fixes were committed before this work unit. Grounder preserves only an exact
 trusted `ModelTransportError` closed code as a fixed
 `MODEL_CALL_FAILURE_CHECK_*` run diagnostic; unknown, subclass, spoofed, or
 missing codes remain generic. Store audit/provenance accepts only the already

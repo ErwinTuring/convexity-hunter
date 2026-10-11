@@ -49,6 +49,7 @@ _WORLD_PRODUCER_VERSION = "world-v0.1"
 _GROUNDING_SUBQUESTION_ID = "user_event_input"
 _SKILL_MODEL_REQUESTS_PER_ROLE = 1
 _GROUNDER_MODEL_REQUESTS_PER_ROLE = 1
+_GROUNDER_DISCOVERY_MODEL_REQUESTS = 2
 _WORLD_MODEL_REQUESTS_PER_ROLE = (
     _SKILL_MODEL_REQUESTS_PER_ROLE + _GROUNDER_MODEL_REQUESTS_PER_ROLE
 )
@@ -452,9 +453,9 @@ def create_world_runner(
     ):
         raise TypeError("injected transports and test seams must be callable")
 
-    # Each existing per-role budget is the run-wide authorization. Allocate
-    # one request to Skill and one to Grounder; fresh clients cannot each spend
-    # the full configured budget independently.
+    # Each existing per-role budget is the run-wide authorization. Reserve one
+    # request for Skill; Grounder discovery receives at most two only when the
+    # configured total explicitly leaves that capacity. Semantic remains one.
     skill_discovery_model = replace(
         config.grounder.discovery_model,
         request_budget=_SKILL_MODEL_REQUESTS_PER_ROLE,
@@ -467,7 +468,11 @@ def create_world_runner(
         config.grounder,
         discovery_model=replace(
             config.grounder.discovery_model,
-            request_budget=_GROUNDER_MODEL_REQUESTS_PER_ROLE,
+            request_budget=min(
+                _GROUNDER_DISCOVERY_MODEL_REQUESTS,
+                config.grounder.discovery_model.request_budget
+                - _SKILL_MODEL_REQUESTS_PER_ROLE,
+            ),
         ),
         semantic_model=replace(
             config.grounder.semantic_model,

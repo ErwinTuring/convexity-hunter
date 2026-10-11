@@ -1,5 +1,18 @@
 # Project State
 
+Current 2026-10-11: the approved producer format-only repair is implemented on
+normal v0.6, independently reviewed and validated by 1,932 passing tests.
+Budget one/historical paths remain one-call; explicit spare budget permits
+only one shape-repair request, never an evidence/semantic retry. See the
+[boundary](local-event-delivery-v0.1.md#approved-producer-format-repair--frozen-build-boundary).
+One fresh real Event operation completed two model calls without needing
+repair; independent verification rejected its hypothesis, so no submission
+projected, EI NOT_RUN and no Core case. SQLite restart and Chinese HTTP
+readback passed. This is not three-entry real research completion; details and
+closed rejection counts are in the [checkpoint](current-checkpoint.md#producer-format-repair--implemented-and-validated).
+
+The following compatibility results are historical and remain unchanged.
+
 2026-10-11 Event status: two narrow fixes are present—exact trusted
 `ModelTransportError` codes can reach the existing closed run-diagnostic path,
 and Store audit/provenance accepts registered producer prompts v0.6/v0.7 while
