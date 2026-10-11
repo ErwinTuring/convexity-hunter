@@ -2,6 +2,45 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Renewed bounded Event acceptance — 2026-10-12
+
+The user authorized one further bounded Event operation. Fresh fetch confirmed
+HEAD/main/origin-main equality and a clean tree before execution. The explicit
+evaluation date was 2026-10-12; the IREN clue and previous source/model/workload
+ceilings were retained. No production or prompt change was made for this run.
+
+The operation at `/private/tmp/ch-event-acceptance.OsO0JoGw/` is spent:
+POST 201, sanitized archive readback 200, terminal BLOCKED /
+EVIDENCE_CATALOG_INVALID. One Tavily search and one extract were delegated;
+two credits were reserved against the three-credit ceiling, not verified as
+account-billed usage. Discovery and semantic model calls were both zero.
+No submission, EI invocation, Core callback or research archive was produced.
+
+The failure is localized to evidence-catalog construction/canonicalization,
+before producer invocation. That boundary maps exceptions to one closed code;
+the specific exception and admitted-source totals were not captured. Builder
+field paths and verifier outcomes are unavailable because those stages never
+ran. Code inspection alone cannot distinguish an exceeded catalog bound,
+ineligible paragraphs, invalid metadata or another catalog exception in this
+particular run. No specific production defect or fix is established.
+
+The private runner's check/failure/final result files are now separate, and
+sanitized output is emitted outside SDK-output suppression. The offline local
+check passed after escalation; the earlier sandbox permission failure made no
+external calls and remains separately recorded. Final-result retention and
+the spent guard succeeded; no second POST or API retry occurred. Temporary
+SQLite files were removed; no raw source/model payload was retained by this
+runner. The normal workbench database was not used for this isolated operation.
+
+Validation was proportional: private-runner compile/offline control checks,
+sanitized outcome inspection and documentation checks; no production change,
+full regression or claim of improved Grounder acceptance. Real three-entry
+acceptance remains incomplete. Any next live operation must first capture a
+closed catalog failure category and aggregate catalog/source bounds without
+raw payloads, and requires new bounded authority; do not repeat this spent run
+or guess its cause from the aggregate error. No reliable active-work timing
+breakdown was recorded, so a 70/30 work-allocation claim is not made.
+
 ## MVP final closure — implementation delivered, real acceptance blocked
 
 Authorized scope: repair the existing Event evidence-binding/dependency path,
