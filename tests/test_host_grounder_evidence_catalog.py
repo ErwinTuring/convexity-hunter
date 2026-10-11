@@ -38,6 +38,7 @@ from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT_V0_6,
     DISCOVERY_SYSTEM_PROMPT_V0_7,
     _DISCOVERY_SYSTEM_PROMPT_V0_8,
+    _DISCOVERY_SYSTEM_PROMPT_V0_9,
     SEMANTIC_SYSTEM_PROMPT_V0_5,
     SEMANTIC_SYSTEM_PROMPT_V0_6,
     SEMANTIC_SYSTEM_PROMPT_V0_7,
@@ -173,9 +174,8 @@ def _wire_envelope(run_input, catalog, *, claim_id=None):
 
 
 def _wire_verdict(run_input, context, catalog, envelope, envelope_bytes):
-    evidence_id = catalog.entries[0].evidence_id
     source = context.source_bodies["source-1"]
-    ref = {"evidence_id": evidence_id}
+    ref = {"evidence_id": catalog.entries[0].evidence_id}
     return {
         "schema_version": "semantic-verdict-v0.3",
         "run_id": run_input.run_id,
@@ -185,19 +185,21 @@ def _wire_verdict(run_input, context, catalog, envelope, envelope_bytes):
         ],
         "claims": [
             {
-                "claim_id": envelope["claims"][0]["claim_id"],
+                "claim_id": claim["claim_id"],
                 "outcome": "supported",
-                "rationale": "The registered paragraph directly reports the filing.",
+                "rationale": "The registered paragraph supports this declared claim.",
                 "evidence_refs": [dict(ref)],
             }
+            for claim in envelope["claims"]
         ],
         "hypotheses": [
             {
-                "hypothesis_id": "hyp-1",
+                "hypothesis_id": hypothesis["hypothesis_id"],
                 "outcome": "supported",
-                "rationale": "The cited source belongs to the supporting claim closure.",
+                "rationale": "The cited source belongs to the declared claim closure.",
                 "evidence_refs": [dict(ref)],
             }
+            for hypothesis in envelope["hypotheses"]
         ],
         "field_bindings": [
             {
@@ -206,16 +208,17 @@ def _wire_verdict(run_input, context, catalog, envelope, envelope_bytes):
                 "rationale": "The catalog paragraph is the exact producer binding.",
                 "evidence_refs": [dict(ref)],
             }
-            for index, _ in enumerate(envelope["field_bindings"])
+            for index, binding in enumerate(envelope["field_bindings"])
         ],
         "coverage": [
             {
-                "index": 0,
-                "subquestion_id": "q-1",
+                "index": index,
+                "subquestion_id": item["subquestion_id"],
                 "outcome": "supported",
                 "rationale": "The verified claim addresses the requested question.",
                 "evidence_refs": [dict(ref)],
             }
+            for index, item in enumerate(envelope["coverage"])
         ],
     }
 
@@ -248,6 +251,27 @@ def _wire_bundle(run_input, context):
     )
     verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
     return catalog, producer, envelope, envelope_bytes, verdict
+
+
+def _run_v09(run_input, context, producer, verdict):
+    calls = []
+    result = runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9(
+        run_input,
+        context,
+        discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+        semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+        audit_holder=HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        ),
+        max_json_bytes=100_000,
+        max_source_body_bytes=20_000,
+        max_catalog_entries=64,
+        max_catalog_bytes=32_768,
+        max_catalog_paragraphs=128,
+        host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+    )
+    return result, calls
 
 
 def _config(
@@ -930,6 +954,30 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             _DISCOVERY_SYSTEM_PROMPT_V0_8,
         )
 
+    def test_v09_pairs_each_nonnull_target_with_model_declared_catalog_binding(self):
+        v08_header = "Prompt version: host-grounder-discovery-prompt-v0.8."
+        v09_header = "Prompt version: host-grounder-discovery-prompt-v0.9."
+        self.assertIn(v09_header, _DISCOVERY_SYSTEM_PROMPT_V0_9)
+        self.assertNotIn(v08_header, _DISCOVERY_SYSTEM_PROMPT_V0_9)
+        v08_as_v09 = _DISCOVERY_SYSTEM_PROMPT_V0_8.replace(v08_header, v09_header, 1)
+        self.assertTrue(_DISCOVERY_SYSTEM_PROMPT_V0_9.startswith(v08_as_v09))
+        for required in (
+            "FORMAT-ONLY paired fact/interpretation/hypothesis illustration (v0.9)",
+            '"kind": "observed_fact"',
+            '"kind": "interpretation"',
+            '"dependency_claim_ids": ["FORMAT_ONLY_FACT_ID_DO_NOT_COPY"]',
+            '"supporting_claim_ids": ["FORMAT_ONLY_INTERPRETATION_ID_DO_NOT_COPY"]',
+            '"field_path": "/hypotheses/0/impact_path"',
+            '"field_path": "/hypotheses/0/distribution_mode"',
+            '"field_path": "/hypotheses/0/distribution_hypothesis"',
+            '"evidence_id": "FORMAT_ONLY_IMPACT_EVIDENCE_ID_DO_NOT_COPY"',
+            "Every FORMAT_ONLY_*_DO_NOT_COPY string is a non-evidence placeholder",
+            "The Host only expands the model-declared evidence ID to its registered source, quote, and offsets",
+            "omit the unsupported item and leave the gap unresolved",
+        ):
+            self.assertIn(required, _DISCOVERY_SYSTEM_PROMPT_V0_9)
+        self.assertNotIn("FORMAT_ONLY_INTERPRETATION_ID_DO_NOT_COPY", _DISCOVERY_SYSTEM_PROMPT_V0_8)
+
     def test_semantic_v06_has_literal_version_header_and_format_only_map_rule(self):
         self.assertEqual(
             hashlib.sha256(SEMANTIC_SYSTEM_PROMPT_V0_6.encode("utf-8")).hexdigest(),
@@ -997,6 +1045,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             "host-grounder-discovery-prompt-v0.6",
             "host-grounder-discovery-prompt-v0.7",
             "host-grounder-discovery-prompt-v0.8",
+            "host-grounder-discovery-prompt-v0.9",
         ):
             with self.subTest(version=version):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1052,7 +1101,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertEqual(holder._semantic_prompt_version, version)
 
         for invalid in (
-            "host-grounder-discovery-prompt-v0.9", "", True, 1, [], {}, object()
+            "host-grounder-discovery-prompt-v0.10", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1163,6 +1212,11 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 _DISCOVERY_SYSTEM_PROMPT_V0_8,
                 "host-grounder-discovery-prompt-v0.8",
             ),
+            (
+                runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9,
+                _DISCOVERY_SYSTEM_PROMPT_V0_9,
+                "host-grounder-discovery-prompt-v0.9",
+            ),
         )
         result_type = None
         for route, expected_prompt, expected_version in cases:
@@ -1194,6 +1248,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                         run_host_grounder_same_run_evidence_catalog_v0_5,
                         run_host_grounder_same_run_evidence_catalog_v0_6,
                         runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
+                        runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9,
                     )
                     else SEMANTIC_SYSTEM_PROMPT_V0_5
                 )
@@ -1203,6 +1258,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                     run_host_grounder_same_run_evidence_catalog_v0_5,
                     run_host_grounder_same_run_evidence_catalog_v0_6,
                     runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
+                    runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9,
                 ):
                     evidence_id = _catalog.entries[0].evidence_id
                     self.assertEqual(
@@ -1234,6 +1290,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                         run_host_grounder_same_run_evidence_catalog_v0_5,
                         run_host_grounder_same_run_evidence_catalog_v0_6,
                         runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
+                        runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9,
                     )
                     else "host-grounder-semantic-verifier-prompt-v0.5",
                 )
@@ -1252,7 +1309,127 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                     result_type = type(result)
                 self.assertIs(type(result), result_type)
 
-    def test_v08_missing_required_binding_still_blocks_submission(self):
+    def test_v09_actual_runtime_builds_nonempty_submission_accepted_by_ei(self):
+        body = (
+            "On 2026-09-28, ACME filed a report. The report states that its projected "
+            "sales range widened from $8 million-$12 million to $8 million-$16 million. "
+            "It says this may expand outcomes in both directions and increase the "
+            "frequency of tail outcomes."
+        )
+        run_input, context = _fixture(body)
+        event_range = MethodologizedDateRange(
+            datetime.date(2026, 9, 28),
+            datetime.date(2026, 9, 28),
+            "The source states that ACME filed on 2026-09-28.",
+        )
+        context = replace(context, event_date_range=event_range)
+        catalog = _catalog_for(run_input, context)
+        producer = _wire_envelope(run_input, catalog)
+        evidence_id = catalog.entries[0].evidence_id
+        producer["claims"][0].update(
+            {
+                "text": "ACME filed a report on 2026-09-28.",
+                "event_date": "2026-09-28",
+            }
+        )
+        producer["claims"].append(
+            {
+                "claim_id": "claim-2",
+                "kind": "interpretation",
+                "evidence_id": evidence_id,
+                "text": (
+                    "The reported sales-range widening may expand possible outcomes "
+                    "in both directions and increase tail-outcome frequency."
+                ),
+                "entity_refs": [],
+                "event_date": None,
+                "published_at": None,
+                "dependency_claim_ids": ["claim-1"],
+                "uncertainty": ["The report does not quantify the future outcome range."],
+                "falsification_conditions": [
+                    "A later report shows the forecast range narrowed."
+                ],
+            }
+        )
+        hypothesis = producer["hypotheses"][0]
+        hypothesis.update(
+            {
+                "impact_path": (
+                    "The reported sales-range widening may expand possible outcomes "
+                    "in both directions."
+                ),
+                "distribution_mode": "bidirectional_expansion",
+                "distribution_hypothesis": (
+                    "The event may increase the frequency of tail outcomes."
+                ),
+                "expected_window": {
+                    "start_date": "2026-09-28",
+                    "end_date": "2026-09-28",
+                    "methodology": "The source states that ACME filed on 2026-09-28.",
+                },
+                "supporting_claim_ids": ["claim-2"],
+                "contradiction_review": (
+                    "The supplied report contains no contradictory range statement."
+                ),
+                "uncertainties": [
+                    "The report does not quantify the future outcome range."
+                ],
+                "falsification_conditions": [
+                    "A later report shows the forecast range narrowed."
+                ],
+            }
+        )
+        producer["coverage"][0]["claim_ids"] = ["claim-1", "claim-2"]
+        producer["field_bindings"] = [
+            ("/claims/0/event_date", "date"),
+            ("/hypotheses/0/underlying_symbol", "entity"),
+            ("/hypotheses/0/impact_path", "hypothesis"),
+            ("/hypotheses/0/distribution_mode", "hypothesis"),
+            ("/hypotheses/0/distribution_hypothesis", "hypothesis"),
+            ("/hypotheses/0/expected_window/start_date", "date"),
+            ("/hypotheses/0/expected_window/end_date", "date"),
+        ]
+        producer["field_bindings"] = [
+            {
+                "field_path": field_path,
+                "evidence_id": evidence_id,
+                "semantic_role": semantic_role,
+                "status": "supported",
+            }
+            for field_path, semantic_role in producer["field_bindings"]
+        ]
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
+
+        result, calls = _run_v09(run_input, context, producer, verdict)
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertIn("host-grounder-discovery-prompt-v0.9", calls[0][1])
+        self.assertEqual(
+            json.loads(result.audit.sidecar_utf8)["producer_prompt_version"],
+            "host-grounder-discovery-prompt-v0.9",
+        )
+        submission = result.build_result.submission
+        self.assertIsNotNone(submission)
+        self.assertEqual(
+            tuple(statement.statement_id for statement in submission.statements),
+            ("claim-1", "claim-2"),
+        )
+        self.assertEqual(len(submission.hypotheses), 1)
+        assessment = assess_event_intelligence_submission(submission)
+        self.assertIs(assessment.status, EventIntelligenceAcceptanceStatus.ACCEPTED)
+        self.assertEqual(assessment.issues, ())
+
+    def test_v09_missing_required_binding_still_blocks_submission(self):
         run_input, context = _fixture()
         catalog, producer, _envelope, _raw, _verdict = _wire_bundle(
             run_input, context
@@ -1274,24 +1451,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             catalog=catalog,
         )
         verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
-        calls = []
-
-        result = runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8(
-            run_input,
-            context,
-            discovery_client=_FakeClient("discovery", _canonical(producer), calls),
-            semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
-            audit_holder=HostEvidenceCatalogAuditHolder(
-                run_id=run_input.run_id,
-                canonical_input_hash=run_input.canonical_input_hash,
-            ),
-            max_json_bytes=100_000,
-            max_source_body_bytes=20_000,
-            max_catalog_entries=64,
-            max_catalog_bytes=32_768,
-            max_catalog_paragraphs=128,
-            host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
-        )
+        result, calls = _run_v09(run_input, context, producer, verdict)
 
         self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
         self.assertIsNone(result.build_result.submission)
@@ -1303,7 +1463,62 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             )
         )
 
-    def test_v08_supported_interpretation_without_fact_root_reaches_ei_incomplete(self):
+    def test_v09_dangling_interpretation_dependency_blocks_hypothesis_projection(self):
+        run_input, context = _fixture()
+        catalog = _catalog_for(run_input, context)
+        producer = _wire_envelope(run_input, catalog)
+        evidence_id = catalog.entries[0].evidence_id
+        producer["claims"].append(
+            {
+                "claim_id": "claim-2",
+                "kind": "interpretation",
+                "evidence_id": evidence_id,
+                "text": "The filing may change the range of outcomes.",
+                "entity_refs": [],
+                "event_date": None,
+                "published_at": None,
+                "dependency_claim_ids": ["claim-not-declared"],
+                "uncertainty": [],
+                "falsification_conditions": [],
+            }
+        )
+        producer["hypotheses"][0]["supporting_claim_ids"] = ["claim-2"]
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
+
+        result, calls = _run_v09(run_input, context, producer, verdict)
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertIsNone(result.build_result.submission)
+        claim_rejected = [
+            item for item in result.build_result.diagnostics
+            if item.code == "CLAIM_REJECTED_BY_VALIDATOR"
+        ]
+        hypothesis_rejected = [
+            item for item in result.build_result.diagnostics
+            if item.code == "HYPOTHESIS_REJECTED_BY_VALIDATOR"
+        ]
+        self.assertEqual(len(claim_rejected), 1)
+        self.assertIn(
+            "dependency closure contains duplicate or unverified IDs",
+            claim_rejected[0].reason,
+        )
+        self.assertEqual(len(hypothesis_rejected), 1)
+        self.assertEqual(
+            hypothesis_rejected[0].reason,
+            "hypothesis claim dependency closure is incomplete",
+        )
+
+    def test_v09_supported_interpretation_without_fact_root_reaches_ei_incomplete(self):
         run_input, context = _fixture()
         context = replace(
             context,
@@ -1364,24 +1579,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             catalog=catalog,
         )
         verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
-        calls = []
-
-        result = runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8(
-            run_input,
-            context,
-            discovery_client=_FakeClient("discovery", _canonical(producer), calls),
-            semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
-            audit_holder=HostEvidenceCatalogAuditHolder(
-                run_id=run_input.run_id,
-                canonical_input_hash=run_input.canonical_input_hash,
-            ),
-            max_json_bytes=100_000,
-            max_source_body_bytes=20_000,
-            max_catalog_entries=64,
-            max_catalog_bytes=32_768,
-            max_catalog_paragraphs=128,
-            host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
-        )
+        result, calls = _run_v09(run_input, context, producer, verdict)
 
         semantic_receipt = result.build_result.semantic_validation.receipt
         self.assertEqual(semantic_receipt["verified_claim_ids"], ("claim-1",))
@@ -1408,7 +1606,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
         self.assertEqual(
             json.loads(result.audit.sidecar_utf8)["producer_prompt_version"],
-            "host-grounder-discovery-prompt-v0.8",
+            "host-grounder-discovery-prompt-v0.9",
         )
 
     def test_v06_valid_empty_hypotheses_remains_no_submission(self):

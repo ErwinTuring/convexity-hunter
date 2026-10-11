@@ -1454,9 +1454,9 @@ class HostServerBatchTests(unittest.TestCase):
             store.close()
             temporary_directory.cleanup()
 
-    def test_normal_event_runtime_v08_negative_and_positive_archives_survive_restart(self):
+    def test_normal_event_runtime_v09_negative_and_positive_archives_survive_restart(self):
         from convexity_hunter.host_event import create_event_grounder
-        from convexity_hunter.host_grounder_runtime import _DISCOVERY_SYSTEM_PROMPT_V0_8
+        from convexity_hunter.host_grounder_runtime import _DISCOVERY_SYSTEM_PROMPT_V0_9
         from convexity_hunter.host_store import HostStore
         from tests.test_host_event import (
             _NoNetworkAdmissionClient,
@@ -1553,7 +1553,7 @@ class HostServerBatchTests(unittest.TestCase):
                         json.loads(runtime_result.audit.sidecar_utf8.decode("utf-8"))[
                             "producer_prompt_version"
                         ],
-                        "host-grounder-discovery-prompt-v0.8",
+                        "host-grounder-discovery-prompt-v0.9",
                     )
                     discovery_request = next(
                         call for call in model_transport.calls
@@ -1561,7 +1561,7 @@ class HostServerBatchTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         discovery_request["messages"][0]["content"],
-                        _DISCOVERY_SYSTEM_PROMPT_V0_8,
+                        _DISCOVERY_SYSTEM_PROMPT_V0_9,
                     )
                     self.assertEqual(len(model_transport.calls), 2)
                     if has_submission:
@@ -1578,7 +1578,7 @@ class HostServerBatchTests(unittest.TestCase):
                     self.assertEqual(run["events"][1]["status"], "COMPLETED")
                     self.assertEqual(
                         outcome["provenance"]["producer_prompt_version"],
-                        "host-grounder-discovery-prompt-v0.8",
+                        "host-grounder-discovery-prompt-v0.9",
                     )
                     self.assertEqual(
                         outcome["schema_version"],
@@ -1617,7 +1617,7 @@ class HostServerBatchTests(unittest.TestCase):
                             recovered_run["events"][1]["outcome"]["provenance"][
                                 "producer_prompt_version"
                             ],
-                            "host-grounder-discovery-prompt-v0.8",
+                            "host-grounder-discovery-prompt-v0.9",
                         )
                     finally:
                         recovered.close()
@@ -2813,14 +2813,41 @@ class HostServerDirectStoreIntegrationTests(unittest.TestCase):
         self.assertEqual(set(public_run["cases"][0]), {"case_id", "classification", "reasons"})
         self.assertEqual(public_run["cases"][0]["case_id"], case_id)
         detail_path = "/api/runs/{}/cases/{}".format(run_id, quote(case_id, safe=""))
+        retained_archive = self.store.get_direct_case(run_id, case_id)
+        retained_report = retained_archive["report_cache"]["text"]
         public_case_response = self._request("GET", detail_path)
         self.assertEqual(public_case_response[0], 200)
         public_case = self._decoded(public_case_response)
-        self.assertEqual(set(public_case), {"case_id", "classification", "reasons", "report"})
-        self.assertEqual(public_case["case_id"], case_id)
         self.assertEqual(
-            public_case["report"],
-            self.store.get_direct_case(run_id, case_id)["report_cache"]["text"],
+            set(public_case),
+            {
+                "case_id",
+                "classification",
+                "reasons",
+                "report",
+                "conditional_entry_fee_illustration",
+            },
+        )
+        self.assertEqual(public_case["case_id"], case_id)
+        self.assertEqual(public_case["report"], retained_report)
+        self.assertEqual(retained_archive["report_cache"]["text"], retained_report)
+        fee_illustration = public_case["conditional_entry_fee_illustration"]
+        self.assertIsInstance(fee_illustration, str)
+        self.assertIn("固定式情景：平台费 USD 0.30/张；未取整算术合计 USD 2.5075", fee_illustration)
+        self.assertIn("阶梯式首50张公开档位情景", fee_illustration)
+        self.assertIn("未取整算术合计 USD 2.8075", fee_illustration)
+        self.assertIn("非报告缓存、非CoreCostLedger输入", fee_illustration)
+        self.assertIn("不是实际费用", fee_illustration)
+        self.assertIn("不是实际费用、完整交易费用、费用上界", fee_illustration)
+        self.assertNotIn("公开费率条件化买入开仓示例", public_case["report"])
+        core_result = self.store.load_core_result(run_id, case_id)
+        from convexity_hunter.core_research import CoreCostComponentStatus
+
+        self.assertTrue(
+            all(
+                component.status is CoreCostComponentStatus.UNKNOWN
+                for component in core_result.request.cost_ledger.impact_components
+            )
         )
         for response_body in (created[2], json.dumps(public_run).encode(), public_case_response[2]):
             for private_field in (
@@ -2844,6 +2871,10 @@ class HostServerDirectStoreIntegrationTests(unittest.TestCase):
         reopened_detail = self._request("GET", detail_path)
         self.assertEqual(reopened_detail[0], 200)
         self.assertEqual(self._decoded(reopened_detail), public_case)
+        self.assertEqual(
+            self.store.get_direct_case(run_id, case_id)["report_cache"]["text"],
+            retained_report,
+        )
         reopened_run = self._decoded(
             self._request("GET", "/api/runs/{}".format(run_id))
         )
@@ -2913,6 +2944,172 @@ class HostServerDirectStoreIntegrationTests(unittest.TestCase):
         self.assertEqual(
             self.store.list_direct_cases(failed["run_id"]), []
         )
+
+
+class HostServerConditionalEntryFeeIllustrationTests(unittest.TestCase):
+    def setUp(self):
+        from tests.test_host_store import make_direct_result
+
+        self.leg = make_direct_result(cached_report=False).kernel_request.structure.legs[0]
+
+    def test_unrounded_fixed_and_first_fifty_tiered_two_leg_examples(self):
+        from convexity_hunter.core_research import CoreOptionType
+
+        put_leg = replace(
+            self.leg,
+            leg_id="US.XYZ270115P100000",
+            option_type=CoreOptionType.PUT,
+        )
+        illustration = host_server_module._conditional_buy_entry_fee_illustration(
+            (self.leg, put_leg)
+        )
+
+        self.assertIn("未取整算术合计 USD 5.015", illustration)
+        self.assertIn("未取整算术合计 USD 5.615", illustration)
+        self.assertIn("跨交易日成交按不同订单计费", illustration)
+        self.assertIn("期权费用取整规则", illustration)
+        self.assertIn("0.0000206×交易金额、每次成交最低 USD 0.01", illustration)
+        self.assertIn("TAF当前列示 USD 0.00/张", illustration)
+        self.assertIn("不估算平仓费用", illustration)
+        self.assertIn("不表示实际套餐", illustration)
+        self.assertIn("费用上界、最大损失上界", illustration)
+
+    def test_commission_threshold_and_contract_quantity_not_multiplier(self):
+        import decimal
+
+        low_premium = replace(
+            self.leg,
+            quantity=4,
+            ask_per_underlying_unit=decimal.Decimal("0.10"),
+        )
+        high_premium = replace(
+            self.leg,
+            quantity=4,
+            ask_per_underlying_unit=decimal.Decimal("0.1001"),
+        )
+        low_text = host_server_module._conditional_buy_entry_fee_illustration(
+            (low_premium,)
+        )
+        high_text = host_server_module._conditional_buy_entry_fee_illustration(
+            (high_premium,)
+        )
+
+        self.assertIn("佣金 USD 0.15/张", low_text)
+        self.assertIn("该腿佣金 USD 1.99", low_text)
+        self.assertIn("佣金 USD 0.65/张", high_text)
+        self.assertIn("该腿佣金 USD 2.6", high_text)
+        self.assertIn("固定式情景：平台费 USD 0.30/张；未取整算术合计 USD 4.67", high_text)
+
+    def test_missing_ask_and_contract_count_over_first_tier_do_not_get_filled_in(self):
+        missing_ask = replace(self.leg, ask_per_underlying_unit=None)
+        self.assertIsNone(
+            host_server_module._conditional_buy_entry_fee_illustration((missing_ask,))
+        )
+        over_first_tier = replace(self.leg, quantity=51)
+        illustration = host_server_module._conditional_buy_entry_fee_illustration(
+            (over_first_tier,)
+        )
+        self.assertIn("阶梯式首50张情景未计算", illustration)
+        self.assertNotIn("阶梯式首50张公开档位情景（", illustration)
+        self.assertIn("不外推到其他档位", illustration)
+        non_usd = replace(self.leg, currency="HKD")
+        self.assertIsNone(
+            host_server_module._conditional_buy_entry_fee_illustration((non_usd,))
+        )
+
+
+class HostServerRetainedFeeIllustrationOfflineTests(unittest.TestCase):
+    def test_reopened_retained_direct_case_adds_separate_fee_appendix(self):
+        from tests.test_host_store import BOUNDS, _run_start_metadata, make_direct_result
+        from convexity_hunter.host_store import HostStore
+        from convexity_hunter.host_profile import StandardResearchProfile
+
+        temporary = tempfile.TemporaryDirectory(
+            dir=pathlib.Path(tempfile.gettempdir()).resolve()
+        )
+        self.addCleanup(temporary.cleanup)
+        database_path = pathlib.Path(temporary.name) / "retained-direct.sqlite3"
+
+        store = HostStore(database_path)
+        run_id = store.create_run(
+            "direct",
+            "offline retained-fee-illustration validation",
+            BOUNDS,
+            STANDARD_RESEARCH_PROFILE.snapshot(),
+            _run_start_metadata(),
+        )
+        result = make_direct_result()
+        case_id = store.save_direct_result(run_id, result)
+        retained_report = store.get_direct_case(run_id, case_id)["report_cache"]["text"]
+        self.assertEqual(retained_report, result.full_report)
+        historical_records = []
+        for version in ("v0.1", "v0.2"):
+            profile = StandardResearchProfile(version=version)
+            historical_run_id = store.create_run(
+                "direct",
+                "offline retained historical renderer validation " + version,
+                BOUNDS,
+                profile.snapshot(),
+                _run_start_metadata(),
+            )
+            historical_result = make_direct_result(profile=profile)
+            historical_case_id = store.save_direct_result(
+                historical_run_id, historical_result
+            )
+            historical_archive = store.get_direct_case(
+                historical_run_id, historical_case_id
+            )
+            historical_records.append(
+                (
+                    historical_run_id,
+                    historical_case_id,
+                    historical_archive["report_cache"]["renderer_version"],
+                    historical_archive["report_cache"]["text"],
+                )
+            )
+        store.close()
+
+        reopened = HostStore(database_path)
+        try:
+            archive = reopened.get_direct_case(run_id, case_id)
+            detail = host_server_module._public_direct_case_detail(archive, case_id)
+            self.assertEqual(detail["report"], retained_report)
+            self.assertEqual(archive["report_cache"]["text"], retained_report)
+            self.assertNotIn("公开费率条件化买入开仓示例", detail["report"])
+            fee_appendix = detail["conditional_entry_fee_illustration"]
+            self.assertIn("未取整算术合计 USD 2.5075", fee_appendix)
+            self.assertIn("未取整算术合计 USD 2.8075", fee_appendix)
+            self.assertIn("非报告缓存、非CoreCostLedger输入", fee_appendix)
+            self.assertNotIn("core_snapshot", detail)
+
+            for version, record in zip(("v0.1", "v0.2"), historical_records):
+                historical_run_id, historical_case_id, renderer, historical_report = record
+                historical_archive = reopened.get_direct_case(
+                    historical_run_id, historical_case_id
+                )
+                historical_detail = host_server_module._public_direct_case_detail(
+                    historical_archive, historical_case_id
+                )
+                self.assertEqual(historical_detail["report"], historical_report)
+                self.assertIsNone(
+                    historical_detail["conditional_entry_fee_illustration"]
+                )
+                self.assertEqual(
+                    historical_archive["report_cache"]["renderer_version"], renderer
+                )
+                self.assertEqual(renderer, "core-presentation-direct-{}".format(version))
+
+            restored = reopened.load_core_result(run_id, case_id)
+            from convexity_hunter.core_research import CoreCostComponentStatus
+
+            self.assertTrue(
+                all(
+                    component.status is CoreCostComponentStatus.UNKNOWN
+                    for component in restored.request.cost_ledger.impact_components
+                )
+            )
+        finally:
+            reopened.close()
 
 
 class HostServerCliTests(unittest.TestCase):

@@ -2,6 +2,87 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## MVP final closure — implementation delivered, real acceptance blocked
+
+Authorized scope: repair the existing Event evidence-binding/dependency path,
+prove actual Builder projection with fixed sources, then perform at most one
+new budget-bound real Event acceptance operation. Historical spent operations
+remain spent. World reuses this Grounder; no producer comparison or new supplier.
+Direct adds conditional public-tariff illustrations without changing approved
+Profile v0.3, required UNKNOWN costs, Core classification or historical records.
+Normal implementation fixes do not require a new methodology successor.
+Real EI acceptance and downstream Core execution remain unverified until an
+actual run establishes them; successful transport/format is insufficient.
+
+Stage A: no parser-loss/catalog-conversion defect was demonstrated. Normal
+Event now uses producer prompt v0.9's concrete fact/interpretation/dependency
+and hypothesis-binding illustration. Existing catalog expansion, DTOs,
+semantic verification, Builder/EI gates, historical public routes and
+format-only retry budgets are unchanged. Fixed-source actual runtime/Builder
+integration produced a nonempty submission and EI ACCEPTED; missing binding,
+dangling dependency and absent factual root still fail closed. Focused
+validation and independent Stage A review passed. This is instruction and
+integration improvement, not proof of improved live model output.
+
+The single authorized fresh Event operation is spent at
+`/private/tmp/ch-event-acceptance.4clPmT/`. It retained five source bodies and
+one discovery plus one semantic call, but finished BLOCKED /
+GROUNDING_NO_SUBMISSION: submission MISSING, EI NOT_RUN, no Core archive.
+Builder diagnostics: FIELD_BINDING_MISSING 41,
+CLAIM_REJECTED_BY_VALIDATOR 20, HYPOTHESIS_REJECTED_BY_VALIDATOR 1,
+NO_PROJECTABLE_HYPOTHESIS 1. These are check counts, not independent field
+counts. Individual missing paths/verifier causes and Tavily request/credit
+counts are not retained and remain unknown.
+
+The external runner encountered a result-file collision after the one POST:
+a failed preflight had already created its exclusive result file. The actual
+terminal result above was recovered read-only from SQLite to a separate
+sanitized recovery file; original files and spent guards were preserved.
+This is an external experiment-runner defect, not evidence of a production
+Grounder conversion defect. No source/model/quote retry or second POST.
+Event positive real EI-to-Core acceptance remains unverified; this branch
+does not acquire another batch to force acceptance. World shares the updated
+factory, proven by fixed integration, not by a new real World operation.
+
+Direct: a separate HTTP-detail/workbench appendix computes exact unrounded
+public buy-entry illustrations, never a CoreCostLedger bound or actual account
+tariff. Profile v0.3, cached reports and all UNKNOWN cost components are
+unchanged; historical v0.1/v0.2 do not receive this current-tariff appendix.
+Independent cost review passed. One read-only replay of the actual retained
+Direct structure/asks under v0.3 produced position ask USD 2,745, conditional
+premium budget USD 3,019.5, 15 sensitivity points and the two-leg fixed-tariff
+illustration USD 5.015. Classification remained DATA_INSUFFICIENT_CORE;
+funding/exit/settlement and entry-fee bounds remain UNKNOWN. This was pure
+Core/report presentation replay, not a fresh market operation or new persisted
+research archive. Normal database SHA-256 remained unchanged.
+
+Validation: final full regression passed 1,954 tests in 301.251s. The first
+regression had one obsolete negative test using newly registered prompt v0.9;
+it now uses unregistered v0.10 and its 28-test group passed without a production
+change. A subsequently added synthetic SQLite close/reopen/fee-detail test
+passed separately; do not present it as part of that already-started full run.
+Compileall, Markdown links/fences and diff checks passed. Event and fee changes
+passed separate independent reviews. Builder/reviewer timing was incomplete:
+no reliable active coding-versus-overhead percentage can be claimed. Permission
+waiting and the external result-file recovery are not implementation time.
+
+Normal workbench deployment passed read-only status/Profile/history checks:
+Host/journal/UI READY, all three executors configured, Profile v0.3, no active
+research, and the fee view present. Old Direct report SHA-256 remains
+`f1ca601403192e13489b2d8beb6a6fca619d65e0b5a36d8746545d4b5ae2103d`.
+The explicit evaluation date remains 2026-10-11 despite local-date rollover;
+it was not silently extended. Startup/GET verification made no research POST.
+
+Delivery distinction: Direct real research and local persistence were already
+proven; current-policy replay is now proven. Event/World wiring, fixed-source
+projection and shared execution are implemented, but real Event EI ACCEPTED
+to Core remains blocked by unprojectable model/evidence output. Latest real
+World evidence remains the historical EI INCOMPLETE/source-anomaly result,
+not a new validated run. Full three-entry real MVP acceptance is NOT COMPLETE.
+Another real Event acceptance operation needs new bounded authorization; no
+new supplier, economic assumption, source permission or acceptance relaxation
+has been introduced to manufacture completion.
+
 ## Approved strategy and fresh Event result — 2026-10-11
 
 The user approved a cash-funded long-option research scope: no margin

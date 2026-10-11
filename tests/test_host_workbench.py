@@ -90,6 +90,9 @@ class HostWorkbenchTests(unittest.TestCase):
         self.assertIn("button.addEventListener(\"click\", () => loadCase(caseId))", page)
         self.assertIn('typeof data.report === "string"', page)
         self.assertIn('setText(byId("case-detail"), disclosure + "\\n\\n" + data.report)', page)
+        self.assertIn('id="direct-fee-illustration"', page)
+        self.assertIn('typeof data.conditional_entry_fee_illustration === "string"', page)
+        self.assertIn('setText(byId("direct-fee-illustration"), data.conditional_entry_fee_illustration)', page)
         self.assertNotIn("innerHTML", page)
         self.assertNotRegex(page, r"(?i)\beval\s*\(|\bimport\s*\(|javascript\s*:")
         self.assertNotIn(".sort(", page)
@@ -197,12 +200,13 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
 
 (async () => {
   const report = "<img src=x onerror=alert(1)>\nplain report";
+  const feeIllustration = "CONDITIONAL_FEE_APPENDIX_ONLY";
   const direct = await scenario({
     mode: "direct",
     cases: [{ case_id: "case:XYZ:2026-01-02" }],
     responses: [
-      { case_id: "case:XYZ:2026-01-02", classification: "RESEARCHABLE", reasons: ["synthetic reason"], report },
-      { case_id: "case:XYZ:2026-01-02", classification: "DATA_INSUFFICIENT", reasons: ["missing"], report: null }
+      { case_id: "case:XYZ:2026-01-02", classification: "RESEARCHABLE", reasons: ["synthetic reason"], report, conditional_entry_fee_illustration: feeIllustration },
+      { case_id: "case:XYZ:2026-01-02", classification: "DATA_INSUFFICIENT", reasons: ["missing"], report: null, conditional_entry_fee_illustration: null }
     ],
     executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
   });
@@ -212,13 +216,17 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   const directCaseGets = () => direct.calls.filter((call) => call.path === casePath && call.method === "GET").length;
   if (directCaseGets() !== 1) throw new Error("direct singleton case was not fetched exactly once automatically");
   const detail = direct.elements.get("case-detail");
+  const feeView = direct.elements.get("direct-fee-illustration");
   if (!detail.textContent.includes("classification: RESEARCHABLE") || !detail.textContent.includes("reasons: [\"synthetic reason\"]")) throw new Error("classification/reasons disclosure missing");
   if (!detail.textContent.endsWith(report)) throw new Error("report was not shown as literal text");
+  if (feeView.textContent !== feeIllustration) throw new Error("fee appendix was not displayed separately");
+  if (detail.textContent.includes(feeIllustration)) throw new Error("fee appendix mutated the cached report view");
   if (innerHtmlWrites !== 0) throw new Error("untrusted report reached innerHTML");
   detail.textContent = "STALE REPORT";
   await direct.elements.get("case-list").children[0].children[0].click();
   if (directCaseGets() !== 2 || detail.textContent.includes("STALE REPORT")) throw new Error("null report did not clear stale content");
   if (!detail.textContent.includes("报告字段为 null")) throw new Error("null report disclosure was not shown honestly");
+  if (feeView.textContent.includes(feeIllustration) || !feeView.textContent.includes("实际费用仍未知")) throw new Error("missing fee appendix did not clear stale content or preserve unknown state");
 
   const digest = (letter) => letter.repeat(64);
   const grounderOutcome = {

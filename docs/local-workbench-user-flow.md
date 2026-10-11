@@ -26,11 +26,16 @@
 [策略范围](core-strategy-governance-v0.1.md)：自有现金、不融资、到期前拟平仓或
 放弃、不行权转股票。这是研究假设，不是券商执行控制或自动行权保护。
 未知费用仍未知，网页和报告不据此填零或保证亏损上限；旧记录保留原版本。
+读取 Profile v0.3 的 Direct 用例详情时，工作台另显示香港富途公开费率的
+条件化买入开仓示例：固定式与首 50 张阶梯档位分别列出，账户实际套餐不选定。
+按合约张数、逐腿最低佣金计算，金额保留未取整精确算术；取整和其他生命周期
+费用仍未知。这是详情显示附录，不是旧报告缓存、Core 成本上界或实际扣费。
+历史 Profile 不自动补算；打开详情不会重新查询行情或改变研究分类。
 持久数据库保存了一个真实 Direct 案例，可读取中文报告而不重新查询行情。
 其结果为 `DATA_INSUFFICIENT_CORE`，缺少成本账本和敏感性输入，不能显示为
 发现可投资机会。日期不会自动滚动；改变日期须明确重启，而不是悄悄延长
 假设适用期。当前 Event/World 的真实验收仍被来源/EI 证据阻断，详细结果见
-[当前检查点](current-checkpoint.md#three-entry-mvp-continuation--2026-10-11)。
+[当前检查点](current-checkpoint.md#mvp-final-closure--implementation-delivered-real-acceptance-blocked)。
 
 2026-10-10 的两次独立正常运行已完成并存档：Event 在 producer envelope
 校验处 `BLOCKED / PRODUCER_ENVELOPE_INVALID`；World 为

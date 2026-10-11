@@ -38,6 +38,7 @@ from .host_grounder_evidence_catalog import (
     _PRODUCER_PROMPT_VERSION_V0_6,
     _PRODUCER_PROMPT_VERSION_V0_7,
     _PRODUCER_PROMPT_VERSION_V0_8,
+    _PRODUCER_PROMPT_VERSION_V0_9,
     _VERIFIER_PROMPT_VERSION as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
     _VERIFIER_PROMPT_VERSION_V0_6 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
     _VERIFIER_PROMPT_VERSION_V0_7 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
@@ -443,6 +444,63 @@ _DISCOVERY_SYSTEM_PROMPT_V0_8 += (
     "the hypothesis and leave the question unresolved; do not force a root or "
     "hypothesis. These instructions do not change producer schema, independent "
     "semantic verification, Host binding gates, or EI acceptance."
+)
+
+_DISCOVERY_SYSTEM_PROMPT_V0_9 = _DISCOVERY_SYSTEM_PROMPT_V0_8.replace(
+    "Prompt version: host-grounder-discovery-prompt-v0.8.",
+    "Prompt version: host-grounder-discovery-prompt-v0.9.",
+    1,
+) + (
+    "\n\nFORMAT-ONLY paired fact/interpretation/hypothesis illustration (v0.9): "
+    "this fragment demonstrates how declared claim dependencies and exact "
+    "target paths pair with catalog IDs; it is not evidence. Every "
+    "FORMAT_ONLY_*_DO_NOT_COPY string is a non-evidence placeholder: never "
+    "copy or emit it, and never treat it as a catalog item. In a real response, "
+    "replace a placeholder only with an actually declared claim ID or supplied "
+    "catalog evidence ID, and include a field binding only when the selected "
+    "catalog paragraph directly supports that exact non-null target. The Host "
+    "only expands the model-declared evidence ID to its registered source, "
+    "quote, and offsets; it does not infer the relationship. If the real source "
+    "does not support the factual root, interpretation, or hypothesis, omit the "
+    "unsupported item and leave the gap unresolved. Example syntax only:\n"
+    "```json\n"
+    "{\n"
+    '  "claims": [\n'
+    '    {"claim_id": "FORMAT_ONLY_FACT_ID_DO_NOT_COPY", "kind": "observed_fact", '
+    '"evidence_id": "FORMAT_ONLY_FACT_EVIDENCE_ID_DO_NOT_COPY", '
+    '"text": "FORMAT_ONLY_FACT_TEXT_DO_NOT_COPY", "entity_refs": [], '
+    '"event_date": null, "published_at": null, "dependency_claim_ids": [], '
+    '"uncertainty": [], "falsification_conditions": []},\n'
+    '    {"claim_id": "FORMAT_ONLY_INTERPRETATION_ID_DO_NOT_COPY", '
+    '"kind": "interpretation", '
+    '"evidence_id": "FORMAT_ONLY_INTERPRETATION_EVIDENCE_ID_DO_NOT_COPY", '
+    '"text": "FORMAT_ONLY_INTERPRETATION_TEXT_DO_NOT_COPY", "entity_refs": [], '
+    '"event_date": null, "published_at": null, '
+    '"dependency_claim_ids": ["FORMAT_ONLY_FACT_ID_DO_NOT_COPY"], '
+    '"uncertainty": [], "falsification_conditions": []}\n'
+    '  ],\n'
+    '  "hypotheses": [{"hypothesis_id": "FORMAT_ONLY_HYPOTHESIS_ID_DO_NOT_COPY", '
+    '"underlying_symbol": null, '
+    '"impact_path": "FORMAT_ONLY_IMPACT_PATH_DO_NOT_COPY", '
+    '"distribution_mode": "FORMAT_ONLY_DISTRIBUTION_MODE_DO_NOT_COPY", '
+    '"distribution_hypothesis": "FORMAT_ONLY_DISTRIBUTION_HYPOTHESIS_DO_NOT_COPY", '
+    '"expected_window": null, "reassessment": null, '
+    '"supporting_claim_ids": ["FORMAT_ONLY_INTERPRETATION_ID_DO_NOT_COPY"], '
+    '"contradicting_claim_ids": [], "contradiction_review": null, '
+    '"uncertainties": [], "falsification_conditions": []}],\n'
+    '  "field_bindings": [\n'
+    '    {"field_path": "/hypotheses/0/impact_path", '
+    '"evidence_id": "FORMAT_ONLY_IMPACT_EVIDENCE_ID_DO_NOT_COPY", '
+    '"semantic_role": "hypothesis", "status": "supported"},\n'
+    '    {"field_path": "/hypotheses/0/distribution_mode", '
+    '"evidence_id": "FORMAT_ONLY_MODE_EVIDENCE_ID_DO_NOT_COPY", '
+    '"semantic_role": "hypothesis", "status": "supported"},\n'
+    '    {"field_path": "/hypotheses/0/distribution_hypothesis", '
+    '"evidence_id": "FORMAT_ONLY_HYPOTHESIS_EVIDENCE_ID_DO_NOT_COPY", '
+    '"semantic_role": "hypothesis", "status": "supported"}\n'
+    "  ]\n"
+    "}\n"
+    "```"
 )
 
 _PRODUCER_FORMAT_REPAIR_NOTICE = (
@@ -1559,6 +1617,8 @@ def _run_host_grounder_same_run_evidence_catalog(
         discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_7
     elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_8:
         discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_8
+    elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9:
+        discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_9
     else:
         raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
     if type(semantic_prompt_version) is not str:
@@ -1568,6 +1628,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     if producer_format_repair_enabled and producer_prompt_version not in (
         _PRODUCER_PROMPT_VERSION_V0_7,
         _PRODUCER_PROMPT_VERSION_V0_8,
+        _PRODUCER_PROMPT_VERSION_V0_9,
     ):
         raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_ROUTE_INVALID")
     if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION:
@@ -2321,6 +2382,47 @@ def _run_host_grounder_same_run_evidence_catalog_v0_8(
         max_catalog_bytes=max_catalog_bytes,
         max_catalog_paragraphs=max_catalog_paragraphs,
         producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_8,
+        semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
+        context_preparer=host_context_preparer,
+        producer_diagnostics_v0_3=True,
+        producer_format_repair_enabled=True,
+    )
+
+
+def _run_host_grounder_same_run_evidence_catalog_v0_9(
+    run_input: HostGrounderRunInput,
+    context: HostBuildContext,
+    *,
+    discovery_client: ChatCompletionsClient,
+    semantic_client: ChatCompletionsClient,
+    audit_holder: HostEvidenceCatalogAuditHolder,
+    max_json_bytes: int,
+    max_source_body_bytes: int,
+    max_catalog_entries: int,
+    max_catalog_bytes: int,
+    max_catalog_paragraphs: int,
+    host_context_preparer: Optional[
+        Callable[
+            [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
+            HostBuildContext,
+        ]
+    ] = None,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Private normal-Event successor selecting producer prompt v0.9."""
+    if not callable(host_context_preparer):
+        raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
+    return _run_host_grounder_same_run_evidence_catalog(
+        run_input,
+        context,
+        discovery_client=discovery_client,
+        semantic_client=semantic_client,
+        audit_holder=audit_holder,
+        max_json_bytes=max_json_bytes,
+        max_source_body_bytes=max_source_body_bytes,
+        max_catalog_entries=max_catalog_entries,
+        max_catalog_bytes=max_catalog_bytes,
+        max_catalog_paragraphs=max_catalog_paragraphs,
+        producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_9,
         semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
         context_preparer=host_context_preparer,
         producer_diagnostics_v0_3=True,

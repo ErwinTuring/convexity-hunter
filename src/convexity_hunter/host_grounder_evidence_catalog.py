@@ -42,6 +42,7 @@ _PRODUCER_PROMPT_VERSION_V0_5 = "host-grounder-discovery-prompt-v0.5"
 _PRODUCER_PROMPT_VERSION_V0_6 = "host-grounder-discovery-prompt-v0.6"
 _PRODUCER_PROMPT_VERSION_V0_7 = "host-grounder-discovery-prompt-v0.7"
 _PRODUCER_PROMPT_VERSION_V0_8 = "host-grounder-discovery-prompt-v0.8"
+_PRODUCER_PROMPT_VERSION_V0_9 = "host-grounder-discovery-prompt-v0.9"
 _PRODUCER_PROMPT_VERSIONS = frozenset(
     (
         _PRODUCER_PROMPT_VERSION_V0_4,
@@ -49,6 +50,7 @@ _PRODUCER_PROMPT_VERSIONS = frozenset(
         _PRODUCER_PROMPT_VERSION_V0_6,
         _PRODUCER_PROMPT_VERSION_V0_7,
         _PRODUCER_PROMPT_VERSION_V0_8,
+        _PRODUCER_PROMPT_VERSION_V0_9,
     )
 )
 _PRODUCER_PROMPT_VERSION = _PRODUCER_PROMPT_VERSION_V0_4

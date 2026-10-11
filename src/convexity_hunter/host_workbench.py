@@ -144,6 +144,9 @@ _DOCUMENT = r'''<!doctype html>
       <p class="help">选择稳定 case_id 后才读取对应详情；打开详情不会重新运行。</p>
       <div id="case-list" class="record-list">尚未读取用例索引。</div>
       <h3>所选用例详情</h3><pre id="case-detail">尚未选择用例。</pre>
+      <h4>公开费率条件化开仓费用示例（独立附录）</h4>
+      <p class="help">这是按需读取的显示示例，不属于已缓存报告、Core 数值或成本账本；未提供时不代表费用为零。</p>
+      <pre id="direct-fee-illustration">尚未读取 Direct 条件化费用示例。</pre>
     </section>
   </div>
 </main>
@@ -799,6 +802,7 @@ _DOCUMENT = r'''<!doctype html>
       setText(byId("run-identity"), "运行响应格式不可识别。");
       setText(byId("run-status"), "状态缺失（接口未提供）");
       setText(byId("run-snapshot"), "接口未提供可显示运行快照。");
+      setText(byId("direct-fee-illustration"), "运行详情不可识别；没有费用示例。");
       return null;
     }
     const suppliedId = safeRunId(data.run_id) === null ? null : data.run_id;
@@ -818,6 +822,9 @@ _DOCUMENT = r'''<!doctype html>
     setText(byId("run-snapshot"), Object.keys(extras).length ? jsonText(extras, true) : "运行响应未提供其他非用例快照字段。");
     renderCaseIndex(data.cases);
     setText(byId("case-detail"), "尚未选择用例；详情按需读取。");
+    setText(byId("direct-fee-illustration"), data.mode === "direct"
+      ? "Direct 用例详情尚未读取。"
+      : "仅 Direct 用例显示条件化费用示例；此入口不适用。");
     if (data.mode === "direct" && Array.isArray(data.cases) && data.cases.length === 1) {
       const caseId = caseIdFromEntry(data.cases[0]);
       if (safeCaseId(caseId) !== null) return caseId;
@@ -842,6 +849,7 @@ _DOCUMENT = r'''<!doctype html>
     setText(byId("unavailable-case-list"), "正在读取不可用分支详情……");
     setText(byId("case-list"), "正在读取用例索引……");
     setText(byId("case-detail"), "尚未选择用例。");
+    setText(byId("direct-fee-illustration"), "正在读取 Direct 条件化费用示例……");
     try {
       const data = await getJson(API.runs + "/" + encodedId);
       const directCaseId = renderRun(data, runId);
@@ -856,6 +864,7 @@ _DOCUMENT = r'''<!doctype html>
       setText(byId("batch-case-list"), "紧凑用例行暂不可用。");
       setText(byId("unavailable-case-list"), "不可用分支详情暂不可用。");
       setText(byId("case-list"), "用例索引暂不可用。");
+      setText(byId("direct-fee-illustration"), "运行详情读取失败；没有费用示例。");
     }
   }
 
@@ -865,12 +874,24 @@ _DOCUMENT = r'''<!doctype html>
     const encodedCaseId = batchMode ? safeBatchCaseKey(caseKey) : safeCaseId(caseId);
     if (encodedRunId === null || encodedCaseId === null) return;
     setText(byId("case-detail"), "正在按需读取用例详情……");
+    setText(byId("direct-fee-illustration"), batchMode
+      ? "仅 Direct 用例显示条件化费用示例；此入口不适用。"
+      : "正在读取 Direct 条件化费用示例……");
     try {
       const path = API.runs + "/" + encodedRunId + "/cases/" + encodedCaseId;
       const data = await getJson(path);
       if (!isRecord(data) || data.case_id !== caseId || (batchMode && data.case_key !== caseKey)) {
         setText(byId("case-detail"), "用例详情响应的 case_id 缺失、无效或与请求不一致；未显示报告。");
+        setText(byId("direct-fee-illustration"), "用例详情身份校验失败；没有费用示例。");
         return;
+      }
+      if (batchMode) {
+        setText(byId("direct-fee-illustration"), "仅 Direct 用例显示条件化费用示例；此入口不适用。");
+      } else if (typeof data.conditional_entry_fee_illustration === "string"
+          && data.conditional_entry_fee_illustration.length > 0) {
+        setText(byId("direct-fee-illustration"), data.conditional_entry_fee_illustration);
+      } else {
+        setText(byId("direct-fee-illustration"), "当前档案未提供符合条件的示例输入（可能为历史 Profile 或缺少存档 Ask）；不推断费用，实际费用仍未知，未按零处理。");
       }
       const classification = data.classification === undefined
         ? "接口未提供" : (typeof data.classification === "string" ? data.classification : JSON.stringify(data.classification));
@@ -886,6 +907,7 @@ _DOCUMENT = r'''<!doctype html>
       }
     } catch (error) {
       setText(byId("case-detail"), "用例详情读取失败（" + error.message + "）。");
+      setText(byId("direct-fee-illustration"), "用例详情读取失败；没有费用示例。");
     }
   }
 

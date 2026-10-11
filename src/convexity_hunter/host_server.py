@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime
+import decimal
 import hashlib
 import json
 import math
@@ -30,7 +31,7 @@ from .core_application import (
     CoreRunResult,
     SourceSubmissionBatch,
 )
-from .core_research import CoreDisposition, CoreReasonCode
+from .core_research import CoreDisposition, CoreLeg, CoreReasonCode
 from .host_direct import HostDirectBoundsError, HostDirectInputError
 from .host_profile import PROFILE_ID, PROFILE_VERSION, STANDARD_RESEARCH_PROFILE
 
@@ -581,12 +582,143 @@ def _public_direct_case_detail(value: Any, requested_case_id: str) -> Dict[str, 
         report = report_cache["text"]
     else:
         raise ValueError("stored Direct report cache is malformed")
+    fee_illustration = None
+    if value.get("profile_snapshot") == STANDARD_RESEARCH_PROFILE.snapshot():
+        core_snapshot = value.get("core_snapshot")
+        if (
+            type(core_snapshot) is not dict
+            or core_snapshot.get("version") != "host-core-result-v0.1"
+        ):
+            raise ValueError("stored Direct Core snapshot is malformed")
+        from .host_core_snapshot import decode_core_result
+
+        core_result = decode_core_result(core_snapshot)
+        if core_result.request.case_id != requested_case_id:
+            raise ValueError("stored Direct Core snapshot has the wrong case identity")
+        fee_illustration = _conditional_buy_entry_fee_illustration(
+            core_result.request.structure.legs
+        )
     return {
         "case_id": summary["case_id"],
         "classification": summary["classification"],
         "reasons": summary["reasons"],
         "report": report,
+        "conditional_entry_fee_illustration": fee_illustration,
     }
+
+
+_USD_1E4 = 10_000
+_BUY_COMMISSION_MIN_1E4 = 19_900
+_BUY_COMMISSION_ABOVE_010_1E4 = 6_500
+_BUY_COMMISSION_AT_OR_BELOW_010_1E4 = 1_500
+_FIXED_PLATFORM_FEE_1E4_PER_CONTRACT = 3_000
+_TIERED_FIRST_50_PLATFORM_FEE_1E4_PER_CONTRACT = 6_000
+_PUBLISHED_OTHER_BUY_FEES_1E4_PER_CONTRACT = 122 + 250 + 1_800 + 3
+_FUTU_TARIFF_CHECKED_ON = "2026-10-11"
+
+
+def _usd_from_1e4(amount: int) -> str:
+    whole, fractional = divmod(amount, _USD_1E4)
+    fractional_text = "{:04d}".format(fractional).rstrip("0")
+    return str(whole) if not fractional_text else "{}.{}".format(whole, fractional_text)
+
+
+def _conditional_buy_entry_fee_illustration(legs: object) -> Optional[str]:
+    """Render a separate, unrounded public-tariff illustration; never a Core input."""
+
+    if type(legs) is not tuple or len(legs) not in (1, 2):
+        return None
+    if any(
+        type(leg) is not CoreLeg
+        or leg.currency != "USD"
+        or type(leg.quantity) is not int
+        or leg.quantity <= 0
+        or type(leg.ask_per_underlying_unit) is not decimal.Decimal
+        or not leg.ask_per_underlying_unit.is_finite()
+        or leg.ask_per_underlying_unit <= decimal.Decimal("0")
+        for leg in legs
+    ):
+        return None
+
+    contract_count = sum(leg.quantity for leg in legs)
+    commission_by_leg = []
+    for leg in legs:
+        rate_1e4 = (
+            _BUY_COMMISSION_ABOVE_010_1E4
+            if leg.ask_per_underlying_unit > decimal.Decimal("0.10")
+            else _BUY_COMMISSION_AT_OR_BELOW_010_1E4
+        )
+        commission_1e4 = max(_BUY_COMMISSION_MIN_1E4, rate_1e4 * leg.quantity)
+        commission_by_leg.append((rate_1e4, commission_1e4))
+
+    commission_total_1e4 = sum(item[1] for item in commission_by_leg)
+    other_fees_1e4 = _PUBLISHED_OTHER_BUY_FEES_1E4_PER_CONTRACT * contract_count
+    fixed_platform_1e4 = _FIXED_PLATFORM_FEE_1E4_PER_CONTRACT * contract_count
+    fixed_total_1e4 = commission_total_1e4 + other_fees_1e4 + fixed_platform_1e4
+
+    lines = [
+        "公开费率条件化买入开仓示例（独立附录；非报告缓存、非CoreCostLedger输入）",
+        "适用市场/币种：美国股票及指数期权 / USD；富途香港公开标准费率。账户实际套餐未知；本例不选择实际套餐。",
+        "来源：{}（4.1–4.3）；本页核验日 {}；网页未公布费率版本号或期权费用取整规则。佣金列示自美东时间2024-04-24生效；ORF列示自美东时间2026-09-01生效。".format(
+            "https://www.futuhk.com/hans/support/topic2_283from_platform=2&&lang=zh-hk",
+            _FUTU_TARIFF_CHECKED_ON,
+        ),
+        "方向/订单假设：仅假设买入开仓；每条腿各一笔订单，并假设在同一交易日计费。跨交易日成交按不同订单计费；未估算多日拆单。",
+        "数量：{}张期权合约（逐腿 quantity 求和；按张计费，不乘 contract_multiplier）。每腿佣金最低 USD 1.99 / leg / order。".format(
+            contract_count
+        ),
+        "佣金档位按存档 indicative ask（每标的单位）判定：权利金 > USD 0.10 为 USD 0.65/张；≤ USD 0.10 为 USD 0.15/张；逐腿佣金=max(USD 1.99, 费率×该腿张数)。这是档位条件，不是成交价。",
+        "逐腿佣金示例：",
+    ]
+    for index, (leg, (rate_1e4, commission_1e4)) in enumerate(
+        zip(legs, commission_by_leg), 1
+    ):
+        lines.append(
+            "  腿{}：存档ask USD {}/标的单位；{}张；佣金 USD {}/张，逐腿最低 USD 1.99；该腿佣金 USD {}。".format(
+                index,
+                format(leg.ask_per_underlying_unit, "f"),
+                leg.quantity,
+                _usd_from_1e4(rate_1e4),
+                _usd_from_1e4(commission_1e4),
+            )
+        )
+    lines.extend(
+        (
+            "每张其他公开列示买入费用：ORF USD 0.0122 + OCC清算 USD 0.025 + 期权交收 USD 0.18 + CAT USD 0.0003 = USD 0.2175。",
+            "固定式情景：平台费 USD 0.30/张；未取整算术合计 USD {}（佣金 USD {} + 平台费 USD {} + 上述其他费用 USD {}）。".format(
+                _usd_from_1e4(fixed_total_1e4),
+                _usd_from_1e4(commission_total_1e4),
+                _usd_from_1e4(fixed_platform_1e4),
+                _usd_from_1e4(other_fees_1e4),
+            ),
+        )
+    )
+    if contract_count <= 50:
+        tiered_platform_1e4 = (
+            _TIERED_FIRST_50_PLATFORM_FEE_1E4_PER_CONTRACT * contract_count
+        )
+        tiered_total_1e4 = commission_total_1e4 + tiered_platform_1e4 + other_fees_1e4
+        lines.append(
+            "阶梯式首50张公开档位情景（仅假设本例全部{}张均落在自然月累计第1–50张的 USD 0.60/张档；不表示实际套餐或月累计位置）：未取整算术合计 USD {}（佣金 USD {} + 平台费 USD {} + 上述其他费用 USD {}）。".format(
+                contract_count,
+                _usd_from_1e4(tiered_total_1e4),
+                _usd_from_1e4(commission_total_1e4),
+                _usd_from_1e4(tiered_platform_1e4),
+                _usd_from_1e4(other_fees_1e4),
+            )
+        )
+    else:
+        lines.append(
+            "阶梯式首50张情景未计算：本例合约数超过该公开档位；不外推到其他档位。"
+        )
+    lines.extend(
+        (
+            "以上为页面费率的精确未取整加总；官方页面未说明期权费用取整规则，故不推断扣款舍入。",
+            "卖出端不计入本例：页面另列SEC规费 USD 0.0000206×交易金额、每次成交最低 USD 0.01，TAF当前列示 USD 0.00/张；未来价格与成交未知，因此不估算平仓费用。",
+            "实际账户套餐、实扣金额、成交与跨日订单均未证明；本例不是实际费用、完整交易费用、费用上界、最大损失上界、保证成交成本或可执行报价。未知费用及Core分类保持原样；此附录不修改Profile、Core数值或成本账本。",
+        )
+    )
+    return "\n".join(lines)
 
 
 def _public_batch_reasons(value: Any) -> list[str]:

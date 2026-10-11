@@ -27,6 +27,8 @@ from convexity_hunter.event_intelligence import (  # noqa: E402
     EventUnderlyingHypothesis,
 )
 from convexity_hunter.host_event import HostEventGrounderConfig  # noqa: E402
+import convexity_hunter.host_event as host_event_module  # noqa: E402
+import convexity_hunter.host_world as host_world_module  # noqa: E402
 from convexity_hunter.host_grounder_run_input import HostGrounderRunInputBounds  # noqa: E402
 from convexity_hunter.host_model import ModelCredential, ModelRuntimeConfig  # noqa: E402
 from convexity_hunter.host_profile import (  # noqa: E402
@@ -709,6 +711,22 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(expanded_budget.grounder.discovery_model.request_budget, 3)
         self.assertEqual(captured["config"].discovery_model.request_budget, 2)
         self.assertEqual(captured["config"].semantic_model.request_budget, 1)
+
+    def test_world_uses_the_shared_event_grounder_factory(self):
+        self.assertIs(
+            host_world_module.create_event_grounder,
+            host_event_module.create_event_grounder,
+        )
+        with mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            wraps=host_event_module.create_event_grounder,
+        ) as factory:
+            runner = create_world_runner(
+                self.config, repo_root=ROOT, market_bridge=self.lazy_bridge
+            )
+
+        factory.assert_called_once()
+        self.assertTrue(callable(runner))
 
     def test_role_total_budget_preflights_before_grounder_or_skill(self):
         config = _config(model_budget=1)

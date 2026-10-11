@@ -1,5 +1,16 @@
 # Project State
 
+Final closure implementation delivered and independently reviewed: normal
+Event producer v0.9 demonstrates explicit fact/interpretation/dependency and
+catalog-binding syntax; no deterministic conversion defect was established.
+Fixed-source actual Builder-to-EI acceptance passes, and World shares the
+factory. The one fresh real Event is spent: GROUNDING_NO_SUBMISSION, EI NOT_RUN,
+no Core. Direct now has a separate conditional public-tariff detail appendix;
+approved Profile v0.3, UNKNOWN costs and historical caches remain unchanged.
+Actual retained-evidence policy replay passed; full regression and local
+deployment passed. Real three-entry acceptance is still NOT COMPLETE.
+See [the closure checkpoint](current-checkpoint.md#mvp-final-closure--implementation-delivered-real-acceptance-blocked).
+
 Current continuation: approved strategy governance is implemented in normal
 Profile v0.3, preserving exact v0.1/v0.2 archives and report semantics. The
 cash-funded/no-margin/close-or-abandon/no-stock-exercise scope is research

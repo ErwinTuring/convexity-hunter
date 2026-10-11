@@ -130,6 +130,24 @@ account details were added to the profile. Unknown costs remain unknown.
 
 ### Public tariff evidence — 2026-10-11
 
+Fresh verification for final MVP closure confirmed the rates below against
+the official [tariff sections 4.1–4.3](https://www.futuhk.com/hans/support/topic2_283from_platform%3D2%26%26lang%3Dzh-hk).
+Buy-side illustrations assume USD US equity options, one order per leg
+executed within one trading day, and no promotion or additional service.
+Separate trading-day executions are billed as separate orders. The public
+page does not establish option-fee rounding; retain unrounded arithmetic and
+mark rounding UNKNOWN. Do not identify the actual account package from the
+broker's default-package description.
+
+Fixed platform pricing and the published first-50-contract tier may be
+displayed as separate conditional scenarios, not selected as the account's
+tariff. Sell-side SEC fees depend on eventual transaction proceeds; no future
+closing price or exit-fee total is inferred. Entry settlement charges in this
+tariff are not evidence that physical exercise/stock conversion is safe.
+The subsequently approved strategy governance is in
+[strategy v0.1](core-strategy-governance-v0.1.md); the earlier approval-only
+statements above remain historical, not a denial of that later approval.
+
 The [Hong Kong Futu public options tariff](https://www.futuhk.com/hans/support/topic2_283from_platform%3D1%26%26lang%3Dzh-hk)
 lists USD 1.99 minimum commission per leg/order, fixed platform fee 0.30 per
 contract, and a tiered alternative from 0.60 to 0.05. Listed per-contract

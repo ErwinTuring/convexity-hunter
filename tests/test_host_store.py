@@ -654,6 +654,7 @@ class HostStoreTests(unittest.TestCase):
             "host-grounder-discovery-prompt-v0.6",
             "host-grounder-discovery-prompt-v0.7",
             "host-grounder-discovery-prompt-v0.8",
+            "host-grounder-discovery-prompt-v0.9",
         ):
             versioned_sidecar = dict(sidecar)
             versioned_sidecar["producer_prompt_version"] = prompt_version
@@ -682,12 +683,12 @@ class HostStoreTests(unittest.TestCase):
         unsupported = dict(outcome)
         unsupported["provenance"] = dict(outcome["provenance"])
         unsupported["provenance"]["producer_prompt_version"] = (
-            "host-grounder-discovery-prompt-v0.9"
+            "host-grounder-discovery-prompt-v0.10"
         )
         with self.assertRaisesRegex(ValueError, "producer prompt version is not registered"):
             _validate_grounder_stage_outcome(unsupported)
 
-        sidecar["producer_prompt_version"] = "host-grounder-discovery-prompt-v0.9"
+        sidecar["producer_prompt_version"] = "host-grounder-discovery-prompt-v0.10"
         sidecar_wire = json.dumps(
             sidecar, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
