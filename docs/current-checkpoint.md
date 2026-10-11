@@ -2,6 +2,60 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Three-entry MVP continuation — 2026-10-11
+
+Normal Host grounding now selects producer prompt v0.8 through a private
+successor route. It replaces the populated-record/empty-binding illustration
+and clarifies existing binding and dependency requirements. Public v0.6
+retains historical prompt v0.7; public exports, DTOs, semantic verification,
+EI gates and format-only retry limits are unchanged. Independent targeted
+review passed. Missing factual roots may still produce a provisional
+submission, but the existing EI gate returns INCOMPLETE; prompt instructions
+are not claimed as a deterministic Host gate.
+
+One fresh real Direct operation completed through normal HTTP, Futu exact
+verification, the shared Core, full Chinese report and SQLite restart/readback.
+The retained AMZN 2026-11-20 K255 Long Straddle matched both exact identifiers,
+quantity one and multiplier 100. The approved profile was preserved; result
+was DATA_INSUFFICIENT_CORE for cost_ledger_missing and sensitivity_missing.
+Quotes remained INDICATIVE_ONLY, without freshness, RTH or executability claims.
+The operation is spent at `/private/tmp/ch-direct-mvp-fhp6tHfF/`; no quote retry
+or new source/model request was used by Direct. Context counts are unknown.
+
+A private repository-external launcher and configurations are available at
+`/Users/erwinlee/convexity-hunter/local-mvp/`. Explicit evaluation date is
+required. The normal Host was started and its Chinese workbench plus all three
+configured executors were checked; startup did not submit research. This is
+operational wiring, not Event/World EI acceptance. The validated Direct record
+was copied, without replacing the older database, to private durable
+`local-mvp/data/research.sqlite3`; the normal workbench now uses that database.
+
+The fresh Event operation at
+`/private/tmp/ch-three-entry-acceptance-1Acgq6/event/` is spent: POST 201,
+BLOCKED / EXTRACTION_FAILURE, before any model receipt or EI assessment.
+The source adapter requires complete ordered extraction and nonempty bodies;
+this aggregate error does not identify which extraction check failed. Direct
+source-admission counts are zero, not proof of zero Tavily requests/credits.
+No source retry was performed. This run cannot validate v0.8 live grounding.
+
+The independent fresh World operation at
+`/private/tmp/ch-three-entry-acceptance-1Acgq6/world/` is spent: POST 201,
+BLOCKED, one submission / three hypotheses / four source references,
+EI INCOMPLETE (one assessment), zero Core cases and one unavailable branch.
+The retained closed reason includes world_last30days_failed; native stage and
+provider-request counts are unknown, not zero. SQLite restart/readback and
+Chinese HTTP delivery passed. This is not a zero-event finding or EI acceptance.
+No extra batch, query tuning, quote refresh or semantic retry was performed.
+
+Final independent implementation review passed; full regression passed
+1,936 tests (308.372s), compileall and git diff --check passed. Public API
+exports/signatures and historical prompt routes remain unchanged. Direct is
+the only real downstream research completion in this continuation. Event
+source extraction and World source/EI evidence remain operational blockers;
+approved cost-ledger and sensitivity inputs remain required for a qualifying
+Core case. No hidden economic defaults or optional historical requirements
+were introduced. The three-entry real acceptance milestone is not complete.
+
 ## Fresh Event semantic evidence — 2026-10-11
 
 The single authorized run is spent at `/private/tmp/ch-event-semantic-evidence-wlF6mn/`: FINISHED / BLOCKED / GROUNDING_NO_SUBMISSION, with 2 completed model calls. Verifier outcomes were supported for all 17 claims, both hypotheses, and the one coverage result; there were 0 field-binding records. The Host receipt accepted 6 claims and rejected 11, and rejected both hypotheses. Required binding coverage was missing on 13 records across 27 paths (11 claims / 25 `claim.entity_refs[]`; 2 hypotheses / 2 `hypothesis.impact_path`). One rejected hypothesis also had incomplete claim-dependency closure; quote-reference failures were 0. Both runtime receipt-validation calls returned successfully; this is not acceptance. EI NOT_RUN; no Core case and no successful/projected submission. This evidence does not establish a production defect; no semantic retry or production change was made. Earlier spent markers remain untouched.

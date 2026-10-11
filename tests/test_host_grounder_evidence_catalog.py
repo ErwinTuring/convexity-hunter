@@ -14,6 +14,7 @@ from convexity_hunter.event_entry import UserEventInput
 from convexity_hunter.event_intelligence import (
     EventIntelligenceAcceptanceStatus,
     EventIntelligenceIssueCode,
+    MethodologizedDateRange,
     assess_event_intelligence_submission,
 )
 from convexity_hunter.host_grounder_builder import HostBuildContext, HostSourceBody
@@ -36,6 +37,7 @@ from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT_V0_5,
     DISCOVERY_SYSTEM_PROMPT_V0_6,
     DISCOVERY_SYSTEM_PROMPT_V0_7,
+    _DISCOVERY_SYSTEM_PROMPT_V0_8,
     SEMANTIC_SYSTEM_PROMPT_V0_5,
     SEMANTIC_SYSTEM_PROMPT_V0_6,
     SEMANTIC_SYSTEM_PROMPT_V0_7,
@@ -891,6 +893,43 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         self.assertNotIn("must produce", clarification)
         self.assertNotIn("nonempty hypotheses", clarification)
 
+    def test_v08_prompt_requires_binding_and_root_completeness(self):
+        self.assertIn(
+            "Prompt version: host-grounder-discovery-prompt-v0.8.",
+            _DISCOVERY_SYSTEM_PROMPT_V0_8,
+        )
+        self.assertNotIn(
+            "Prompt version: host-grounder-discovery-prompt-v0.7.",
+            _DISCOVERY_SYSTEM_PROMPT_V0_8,
+        )
+        self.assertIn(
+            '"field_path": "/claims/0/entity_refs/0"',
+            _DISCOVERY_SYSTEM_PROMPT_V0_8,
+        )
+        self.assertIn(
+            '"evidence_id": "FORMAT_ONLY_EVIDENCE_ID_DO_NOT_COPY"',
+            _DISCOVERY_SYSTEM_PROMPT_V0_8,
+        )
+        self.assertNotIn('"field_bindings": []', _DISCOVERY_SYSTEM_PROMPT_V0_8)
+        for required in (
+            "Producer binding/dependency completeness self-check (v0.8)",
+            "enumerate every non-null value",
+            "directly supports that exact value",
+            "Compare the final bindings against every non-null target",
+            "dependency_claim_ids entry",
+            "exactly match a claim_id declared",
+            "An observed_fact has no dependencies",
+            "interpretation",
+            "observed_fact root",
+            "omit the hypothesis and leave the question unresolved",
+            "do not force a root or hypothesis",
+        ):
+            self.assertIn(required, _DISCOVERY_SYSTEM_PROMPT_V0_8)
+        self.assertIn(
+            "an empty hypotheses array remains valid",
+            _DISCOVERY_SYSTEM_PROMPT_V0_8,
+        )
+
     def test_semantic_v06_has_literal_version_header_and_format_only_map_rule(self):
         self.assertEqual(
             hashlib.sha256(SEMANTIC_SYSTEM_PROMPT_V0_6.encode("utf-8")).hexdigest(),
@@ -957,6 +996,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             "host-grounder-discovery-prompt-v0.5",
             "host-grounder-discovery-prompt-v0.6",
             "host-grounder-discovery-prompt-v0.7",
+            "host-grounder-discovery-prompt-v0.8",
         ):
             with self.subTest(version=version):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1012,7 +1052,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertEqual(holder._semantic_prompt_version, version)
 
         for invalid in (
-            "host-grounder-discovery-prompt-v0.8", "", True, 1, [], {}, object()
+            "host-grounder-discovery-prompt-v0.9", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1118,6 +1158,11 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 DISCOVERY_SYSTEM_PROMPT_V0_7,
                 "host-grounder-discovery-prompt-v0.7",
             ),
+            (
+                runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
+                _DISCOVERY_SYSTEM_PROMPT_V0_8,
+                "host-grounder-discovery-prompt-v0.8",
+            ),
         )
         result_type = None
         for route, expected_prompt, expected_version in cases:
@@ -1148,6 +1193,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                     in (
                         run_host_grounder_same_run_evidence_catalog_v0_5,
                         run_host_grounder_same_run_evidence_catalog_v0_6,
+                        runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
                     )
                     else SEMANTIC_SYSTEM_PROMPT_V0_5
                 )
@@ -1156,6 +1202,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 if route in (
                     run_host_grounder_same_run_evidence_catalog_v0_5,
                     run_host_grounder_same_run_evidence_catalog_v0_6,
+                    runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
                 ):
                     evidence_id = _catalog.entries[0].evidence_id
                     self.assertEqual(
@@ -1186,6 +1233,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                     in (
                         run_host_grounder_same_run_evidence_catalog_v0_5,
                         run_host_grounder_same_run_evidence_catalog_v0_6,
+                        runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
                     )
                     else "host-grounder-semantic-verifier-prompt-v0.5",
                 )
@@ -1203,6 +1251,165 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 if result_type is None:
                     result_type = type(result)
                 self.assertIs(type(result), result_type)
+
+    def test_v08_missing_required_binding_still_blocks_submission(self):
+        run_input, context = _fixture()
+        catalog, producer, _envelope, _raw, _verdict = _wire_bundle(
+            run_input, context
+        )
+        producer = copy.deepcopy(producer)
+        producer["field_bindings"] = [
+            binding
+            for binding in producer["field_bindings"]
+            if binding["field_path"] != "/hypotheses/0/distribution_hypothesis"
+        ]
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
+        calls = []
+
+        result = runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8(
+            run_input,
+            context,
+            discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+            semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+            audit_holder=HostEvidenceCatalogAuditHolder(
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+            ),
+            max_json_bytes=100_000,
+            max_source_body_bytes=20_000,
+            max_catalog_entries=64,
+            max_catalog_bytes=32_768,
+            max_catalog_paragraphs=128,
+            host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+        )
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertIsNone(result.build_result.submission)
+        self.assertTrue(
+            any(
+                item.code == "HYPOTHESIS_REJECTED_BY_VALIDATOR"
+                and "required field binding is not supported" in item.reason
+                for item in result.build_result.diagnostics
+            )
+        )
+
+    def test_v08_supported_interpretation_without_fact_root_reaches_ei_incomplete(self):
+        run_input, context = _fixture()
+        context = replace(
+            context,
+            event_description_binding=None,
+            event_date_range=MethodologizedDateRange(
+                datetime.date(2026, 10, 1),
+                datetime.date(2026, 10, 10),
+                "Illustrative post-filing event interval.",
+            ),
+        )
+        catalog, producer, _envelope, _raw, _verdict = _wire_bundle(
+            run_input, context
+        )
+        producer = copy.deepcopy(producer)
+        producer["claims"][0]["kind"] = "interpretation"
+        producer["claims"][0]["text"] = "A possible distribution shift may follow."
+        producer["claims"][0]["dependency_claim_ids"] = []
+        hypothesis = producer["hypotheses"][0]
+        hypothesis["impact_path"] = "The filing may widen the range of outcomes."
+        hypothesis["distribution_mode"] = "bidirectional_expansion"
+        hypothesis["expected_window"] = {
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-10",
+            "methodology": "Illustrative post-filing event interval.",
+        }
+        hypothesis["uncertainties"] = [
+            "The filing's implications may differ from this interpretation."
+        ]
+        hypothesis["falsification_conditions"] = [
+            "Subsequent disclosures show no distribution change."
+        ]
+        hypothesis["contradiction_review"] = (
+            "Contradictory evidence was reviewed but not identified."
+        )
+        evidence_id = catalog.entries[0].evidence_id
+        for field_path, semantic_role in (
+            ("/hypotheses/0/impact_path", "hypothesis"),
+            ("/hypotheses/0/distribution_mode", "hypothesis"),
+            ("/hypotheses/0/expected_window/start_date", "date"),
+            ("/hypotheses/0/expected_window/end_date", "date"),
+        ):
+            producer["field_bindings"].append(
+                {
+                    "field_path": field_path,
+                    "evidence_id": evidence_id,
+                    "semantic_role": semantic_role,
+                    "status": "supported",
+                }
+            )
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        verdict = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
+        calls = []
+
+        result = runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8(
+            run_input,
+            context,
+            discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+            semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+            audit_holder=HostEvidenceCatalogAuditHolder(
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+            ),
+            max_json_bytes=100_000,
+            max_source_body_bytes=20_000,
+            max_catalog_entries=64,
+            max_catalog_bytes=32_768,
+            max_catalog_paragraphs=128,
+            host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+        )
+
+        semantic_receipt = result.build_result.semantic_validation.receipt
+        self.assertEqual(semantic_receipt["verified_claim_ids"], ("claim-1",))
+        self.assertEqual(semantic_receipt["verified_hypothesis_ids"], ("hyp-1",))
+        self.assertIsNotNone(result.build_result.submission)
+        self.assertEqual(
+            tuple(
+                statement.kind.value
+                for statement in result.build_result.submission.statements
+            ),
+            ("interpretation",),
+        )
+        assessment = assess_event_intelligence_submission(
+            result.build_result.submission
+        )
+        self.assertIs(assessment.status, EventIntelligenceAcceptanceStatus.INCOMPLETE)
+        self.assertEqual(
+            set(assessment.issue_codes),
+            {
+                EventIntelligenceIssueCode.MISSING_EVENT_DESCRIPTION,
+                EventIntelligenceIssueCode.MISSING_SUPPORTING_OBSERVED_FACT,
+            },
+        )
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertEqual(
+            json.loads(result.audit.sidecar_utf8)["producer_prompt_version"],
+            "host-grounder-discovery-prompt-v0.8",
+        )
 
     def test_v06_valid_empty_hypotheses_remains_no_submission(self):
         run_input, context = _fixture()
@@ -1787,6 +1994,10 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             (run_host_grounder_same_run_evidence_catalog_v0_4, DISCOVERY_SYSTEM_PROMPT_V0_6),
             (run_host_grounder_same_run_evidence_catalog_v0_5, DISCOVERY_SYSTEM_PROMPT_V0_6),
             (run_host_grounder_same_run_evidence_catalog_v0_6, DISCOVERY_SYSTEM_PROMPT_V0_7),
+            (
+                runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
+                _DISCOVERY_SYSTEM_PROMPT_V0_8,
+            ),
         )
         calls = []
         with self.assertRaises(HostGrounderRuntimeError) as missing_preparer:
@@ -1832,7 +2043,11 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertEqual(raised.exception.failure_stage, "producer_envelope_normalization")
                 expected_check = (
                     "producer_v0_3_json_format"
-                    if route is run_host_grounder_same_run_evidence_catalog_v0_6
+                    if route
+                    in (
+                        run_host_grounder_same_run_evidence_catalog_v0_6,
+                        runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
+                    )
                     else "producer_v0_3_wire_decode"
                 )
                 self.assertEqual(raised.exception.failure_check, expected_check)

@@ -1,5 +1,20 @@
 # Project State
 
+Current continuation: producer prompt v0.8 is implemented and independently
+reviewed, preserving historical routes and all Host/EI acceptance gates.
+One real Direct operation completed exact verification, shared Core, Chinese
+HTTP report and SQLite restart with DATA_INSUFFICIENT_CORE (cost ledger and
+sensitivity missing). A private three-entry local Host is wired and startup
+checked; Event/World research acceptance is not established by configuration.
+Final regression passed 1,936 tests, compileall and diff checks. Fresh Event
+stopped at EXTRACTION_FAILURE before model/EI; independent World retained one
+submission and three hypotheses, but EI was INCOMPLETE, with zero Core cases
+and world_last30days_failed. Both operations are spent, not success or proof
+of no events. The normal workbench uses a durable copy of the completed Direct
+record. Real three-entry acceptance is still incomplete; cost-ledger and
+sensitivity policy inputs must not be fabricated. See the
+[current continuation](current-checkpoint.md#three-entry-mvp-continuation--2026-10-11).
+
 2026-10-11 fresh semantic evidence run (spent: `/private/tmp/ch-event-semantic-evidence-wlF6mn/`): 2 completed model calls; FINISHED / BLOCKED / GROUNDING_NO_SUBMISSION. Verifier outcomes were supported for 17/17 claims, 2/2 hypotheses and 1/1 coverage result; field-binding records were 0. The Host receipt accepted 6 claims, rejected 11 claims and both hypotheses. Missing required bindings affected 13 records / 27 paths: 25 `claim.entity_refs[]` and 2 `hypothesis.impact_path`; one hypothesis also had incomplete claim-dependency closure, with 0 quote-reference failures. Both receipt-validation calls returned successfully, without implying acceptance. EI NOT_RUN; no Core case or projected submission. No production defect is established and no production change or semantic retry was made. Earlier spent markers remain untouched.
 
 Current 2026-10-11: the approved producer format-only repair is implemented on

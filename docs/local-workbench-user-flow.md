@@ -13,6 +13,20 @@
 
 ## 启动与输入
 
+2026-10-11 本机已有仓库外的私有启动器及配置，须显式提供研究日期：
+
+```bash
+/Users/erwinlee/convexity-hunter/local-mvp/start-host.sh YYYY-MM-DD
+```
+
+此路径是本机部署，不是 Git 中的共享默认配置。工作台位于
+`http://127.0.0.1:8080`，三个入口已接线；启动本身不执行研究。
+持久数据库保存了一个真实 Direct 案例，可读取中文报告而不重新查询行情。
+其结果为 `DATA_INSUFFICIENT_CORE`，缺少成本账本和敏感性输入，不能显示为
+发现可投资机会。日期不会自动滚动；改变日期须明确重启，而不是悄悄延长
+假设适用期。当前 Event/World 的真实验收仍被来源/EI 证据阻断，详细结果见
+[当前检查点](current-checkpoint.md#three-entry-mvp-continuation--2026-10-11)。
+
 2026-10-10 的两次独立正常运行已完成并存档：Event 在 producer envelope
 校验处 `BLOCKED / PRODUCER_ENVELOPE_INVALID`；World 为
 `BLOCKED / world_last30days_empty / world_grounder_no_submission`。两者均未

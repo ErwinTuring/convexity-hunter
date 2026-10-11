@@ -1,7 +1,12 @@
 # Core Convexity MVP User Flow v0.1
 
-Status: Application API implemented and independently reviewed; live source wiring incomplete
+Status: Core API and independent local Host implemented; three-entry live research acceptance incomplete
 Readiness: `CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS` ([readiness audit](core-convexity-mvp-readiness-v0.1.md))
+
+Current Host startup and real-entry evidence are tracked in the
+[current checkpoint](current-checkpoint.md#three-entry-mvp-continuation--2026-10-11)
+and [local workbench guide](local-workbench-user-flow.md). The original API
+milestone below did not itself include the later Host/UI/SQLite delivery.
 
 This compact flow is governed by the
 [Core Convexity Research Doctrine](core-convexity-research-doctrine-v0.1.md).

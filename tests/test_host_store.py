@@ -645,15 +645,44 @@ class HostStoreTests(unittest.TestCase):
             sidecar["producer_prompt_version"],
         )
 
+        for prompt_version in (
+            "host-grounder-discovery-prompt-v0.6",
+            "host-grounder-discovery-prompt-v0.7",
+            "host-grounder-discovery-prompt-v0.8",
+        ):
+            versioned_sidecar = dict(sidecar)
+            versioned_sidecar["producer_prompt_version"] = prompt_version
+            versioned_sidecar_wire = json.dumps(
+                versioned_sidecar,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            versioned_audit = replace(
+                result.audit,
+                sidecar_utf8=versioned_sidecar_wire,
+                sidecar_sha256=hashlib.sha256(versioned_sidecar_wire).hexdigest(),
+            )
+            versioned_outcome = _grounder_stage_outcome(
+                replace(result, audit=versioned_audit),
+                run_id,
+                "synthetic fixture event",
+            )
+            self.assertEqual(
+                versioned_outcome["provenance"]["producer_prompt_version"],
+                prompt_version,
+            )
+            _validate_grounder_stage_outcome(versioned_outcome)
+
         unsupported = dict(outcome)
         unsupported["provenance"] = dict(outcome["provenance"])
         unsupported["provenance"]["producer_prompt_version"] = (
-            "host-grounder-discovery-prompt-v0.8"
+            "host-grounder-discovery-prompt-v0.9"
         )
         with self.assertRaisesRegex(ValueError, "producer prompt version is not registered"):
             _validate_grounder_stage_outcome(unsupported)
 
-        sidecar["producer_prompt_version"] = "host-grounder-discovery-prompt-v0.8"
+        sidecar["producer_prompt_version"] = "host-grounder-discovery-prompt-v0.9"
         sidecar_wire = json.dumps(
             sidecar, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")

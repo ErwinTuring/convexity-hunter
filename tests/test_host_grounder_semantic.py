@@ -338,6 +338,28 @@ class HostGrounderSemanticTests(unittest.TestCase):
         self.assertEqual(receipt["verified_hypothesis_ids"], ("hypothesis-1",))
         self.assertEqual(receipt["rejected_hypotheses"][0][0], "hypothesis-2")
 
+    def test_unknown_dependency_claim_id_rejects_claim_and_hypothesis_closure(self):
+        envelope, verdict, bodies = _case()
+        envelope = copy.deepcopy(envelope)
+        envelope["claims"][0]["dependency_claim_ids"] = ["unknown-claim-id"]
+        verdict["envelope_hash"] = hashlib.sha256(
+            json.dumps(
+                envelope,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+
+        receipt = _build(envelope, verdict, bodies)
+
+        self.assertEqual(receipt["verified_claim_ids"], ())
+        self.assertEqual(receipt["rejected_claims"][0][0], "claim-1")
+        self.assertIn("unverified IDs", receipt["rejected_claims"][0][1])
+        self.assertEqual(receipt["verified_hypothesis_ids"], ())
+        self.assertIn("incomplete", receipt["rejected_hypotheses"][0][1])
+
     def test_instruction_like_body_text_is_opaque_to_deterministic_conversion(self):
         # This exercises deterministic parsing/conversion only; it says nothing
         # about how a separate model verifier would respond to prompt injection.

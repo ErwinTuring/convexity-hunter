@@ -37,6 +37,7 @@ from .host_grounder_evidence_catalog import (
     _PRODUCER_PROMPT_VERSION_V0_5,
     _PRODUCER_PROMPT_VERSION_V0_6,
     _PRODUCER_PROMPT_VERSION_V0_7,
+    _PRODUCER_PROMPT_VERSION_V0_8,
     _VERIFIER_PROMPT_VERSION as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
     _VERIFIER_PROMPT_VERSION_V0_6 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
     _VERIFIER_PROMPT_VERSION_V0_7 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
@@ -347,6 +348,103 @@ DISCOVERY_SYSTEM_PROMPT_V0_7 = _replace_prompt_fragment(
     "does not change the DTO, evidence, Builder, semantic-validation, or EI acceptance "
     "rules."
 )
+
+_DISCOVERY_SYSTEM_PROMPT_V0_8 = _replace_prompt_fragment(
+    DISCOVERY_SYSTEM_PROMPT_V0_7,
+    "Prompt version: host-grounder-discovery-prompt-v0.7.",
+    "Prompt version: host-grounder-discovery-prompt-v0.8.",
+)
+_DISCOVERY_V0_8_EXAMPLE_START = "FORMAT-ONLY JSON shape example:"
+_DISCOVERY_V0_8_EXAMPLE_END = "\n\nclaims[] keys:"
+if (
+    _DISCOVERY_SYSTEM_PROMPT_V0_8.count(_DISCOVERY_V0_8_EXAMPLE_START) != 1
+    or _DISCOVERY_SYSTEM_PROMPT_V0_8.count(_DISCOVERY_V0_8_EXAMPLE_END) != 1
+):
+    raise RuntimeError("versioned producer prompt example fragment changed")
+_discovery_v0_8_example_start = _DISCOVERY_SYSTEM_PROMPT_V0_8.index(
+    _DISCOVERY_V0_8_EXAMPLE_START
+)
+_discovery_v0_8_example_end = _DISCOVERY_SYSTEM_PROMPT_V0_8.index(
+    _DISCOVERY_V0_8_EXAMPLE_END, _discovery_v0_8_example_start
+)
+_DISCOVERY_SYSTEM_PROMPT_V0_8 = (
+    _DISCOVERY_SYSTEM_PROMPT_V0_8[:_discovery_v0_8_example_start]
+    + "FORMAT-ONLY binding illustration: This shows DTO syntax only. Every "
+    "FORMAT_ONLY_*_DO_NOT_COPY value is a non-evidence placeholder; never copy "
+    "or emit it, and never treat it as support. The supported status below is "
+    "also syntax only; choose status from the actual evidence. Example:\n"
+    "```json\n"
+    "{\n"
+    '  "schema_version": "grounder-output-v0.3",\n'
+    '  "stage": "semantic",\n'
+    '  "request_id": "FORMAT_ONLY_RUN_ID_DO_NOT_COPY",\n'
+    '  "claims": [{\n'
+    '    "claim_id": "FORMAT_ONLY_CLAIM_ID_DO_NOT_COPY",\n'
+    '    "kind": "observed_fact",\n'
+    '    "evidence_id": "FORMAT_ONLY_EVIDENCE_ID_DO_NOT_COPY",\n'
+    '    "text": "FORMAT_ONLY_CLAIM_TEXT_DO_NOT_COPY",\n'
+    '    "entity_refs": ["FORMAT_ONLY_ENTITY_REF_DO_NOT_COPY"],\n'
+    '    "event_date": null,\n'
+    '    "published_at": null,\n'
+    '    "dependency_claim_ids": [],\n'
+    '    "uncertainty": [],\n'
+    '    "falsification_conditions": []\n'
+    "  }],\n"
+    '  "hypotheses": [],\n'
+    '  "coverage": [{\n'
+    '    "subquestion_id": "FORMAT_ONLY_SUBQUESTION_ID_DO_NOT_COPY",\n'
+    '    "status": "unresolved",\n'
+    '    "claim_ids": [],\n'
+    '    "gap": "FORMAT_ONLY_GAP_DO_NOT_COPY"\n'
+    "  }],\n"
+    '  "field_bindings": [{\n'
+    '    "field_path": "/claims/0/entity_refs/0",\n'
+    '    "evidence_id": "FORMAT_ONLY_EVIDENCE_ID_DO_NOT_COPY",\n'
+    '    "semantic_role": "entity",\n'
+    '    "status": "supported"\n'
+    "  }]\n"
+    "}\n"
+    "```"
+    + _DISCOVERY_SYSTEM_PROMPT_V0_8[_discovery_v0_8_example_end:]
+)
+_DISCOVERY_SYSTEM_PROMPT_V0_8 += (
+    "\n\nProducer binding/dependency completeness self-check (v0.8): before "
+    "returning JSON, enumerate every non-null value at each existing consumed "
+    "path and emit exactly one matching field_bindings item. The complete map "
+    "is /claims/{i}/event_date=date; /claims/{i}/entity_refs/{j}=entity; "
+    "/hypotheses/{i}/underlying_symbol=entity; "
+    "/hypotheses/{i}/impact_path=hypothesis; "
+    "/hypotheses/{i}/distribution_mode=hypothesis; "
+    "/hypotheses/{i}/distribution_hypothesis=hypothesis; "
+    "/hypotheses/{i}/expected_window/start_date=date; "
+    "/hypotheses/{i}/expected_window/end_date=date; "
+    "/hypotheses/{i}/reassessment/reassessment_by=date. For each emitted "
+    "non-null target, its binding must use the exact path and role above, "
+    "status supported, and an evidence_id copied from a supplied catalog "
+    "paragraph that directly supports that exact value. Do not infer a value "
+    "or create a binding from a related claim, a matching string, or a path. "
+    "Compare the final bindings against every non-null target; do not omit a "
+    "required path or add a binding for a null/omitted target. If direct catalog "
+    "support is absent, leave the nullable scalar or whole window/reassessment "
+    "null, or omit the unsupported entity_refs item, emit no binding for it, "
+    "and disclose the unresolved gap. Never force a hypothesis.\n\n"
+    "Claim-reference integrity: every dependency_claim_ids entry and every "
+    "hypothesis/coverage claim reference must exactly match a claim_id declared "
+    "in this same claims array; do not invent IDs, self-dependencies, duplicate "
+    "dependencies, or cycles. An observed_fact has no dependencies. Keep each "
+    "source-supported factual statement as an observed_fact. Keep explanatory "
+    "inferences labeled interpretation; when an interpretation depends on a "
+    "factual claim, retain that fact as its own claim and reference its exact "
+    "claim_id in dependency_claim_ids rather than relabeling or dropping the "
+    "factual root. A hypothesis may be emitted only when its declared "
+    "supporting_claim_ids have a complete source-supported dependency closure "
+    "containing both an observed_fact root and a separately labeled "
+    "interpretation. If catalog evidence does not support that closure, omit "
+    "the hypothesis and leave the question unresolved; do not force a root or "
+    "hypothesis. These instructions do not change producer schema, independent "
+    "semantic verification, Host binding gates, or EI acceptance."
+)
+
 _PRODUCER_FORMAT_REPAIR_NOTICE = (
     "\n\nOne bounded format correction ({}): the previous response failed a closed "
     "JSON/DTO shape check. Its text is not included. Regenerate one JSON object "
@@ -1459,13 +1557,18 @@ def _run_host_grounder_same_run_evidence_catalog(
         discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_6
     elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_7:
         discovery_system_prompt = DISCOVERY_SYSTEM_PROMPT_V0_7
+    elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_8:
+        discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_8
     else:
         raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
     if type(semantic_prompt_version) is not str:
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     if type(producer_format_repair_enabled) is not bool:
         raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_FLAG_INVALID")
-    if producer_format_repair_enabled and producer_prompt_version != _PRODUCER_PROMPT_VERSION_V0_7:
+    if producer_format_repair_enabled and producer_prompt_version not in (
+        _PRODUCER_PROMPT_VERSION_V0_7,
+        _PRODUCER_PROMPT_VERSION_V0_8,
+    ):
         raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_ROUTE_INVALID")
     if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION:
         semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_5
@@ -2162,7 +2265,7 @@ def run_host_grounder_same_run_evidence_catalog_v0_6(
         ]
     ] = None,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
-    """Run catalog semantics v0.7 with the event-research producer prompt v0.7."""
+    """Run catalog semantics v0.7 with the historical event producer prompt v0.7."""
     if not callable(host_context_preparer):
         raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
     return _run_host_grounder_same_run_evidence_catalog(
@@ -2177,6 +2280,47 @@ def run_host_grounder_same_run_evidence_catalog_v0_6(
         max_catalog_bytes=max_catalog_bytes,
         max_catalog_paragraphs=max_catalog_paragraphs,
         producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_7,
+        semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
+        context_preparer=host_context_preparer,
+        producer_diagnostics_v0_3=True,
+        producer_format_repair_enabled=True,
+    )
+
+
+def _run_host_grounder_same_run_evidence_catalog_v0_8(
+    run_input: HostGrounderRunInput,
+    context: HostBuildContext,
+    *,
+    discovery_client: ChatCompletionsClient,
+    semantic_client: ChatCompletionsClient,
+    audit_holder: HostEvidenceCatalogAuditHolder,
+    max_json_bytes: int,
+    max_source_body_bytes: int,
+    max_catalog_entries: int,
+    max_catalog_bytes: int,
+    max_catalog_paragraphs: int,
+    host_context_preparer: Optional[
+        Callable[
+            [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
+            HostBuildContext,
+        ]
+    ] = None,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Private normal-Event successor selecting producer prompt v0.8."""
+    if not callable(host_context_preparer):
+        raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
+    return _run_host_grounder_same_run_evidence_catalog(
+        run_input,
+        context,
+        discovery_client=discovery_client,
+        semantic_client=semantic_client,
+        audit_holder=audit_holder,
+        max_json_bytes=max_json_bytes,
+        max_source_body_bytes=max_source_body_bytes,
+        max_catalog_entries=max_catalog_entries,
+        max_catalog_bytes=max_catalog_bytes,
+        max_catalog_paragraphs=max_catalog_paragraphs,
+        producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_8,
         semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
         context_preparer=host_context_preparer,
         producer_diagnostics_v0_3=True,

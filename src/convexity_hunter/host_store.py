@@ -181,6 +181,7 @@ _GROUNDER_STAGE_MAX_BYTES = 1_000_000
 _GROUNDER_PRODUCER_PROMPT_VERSIONS = frozenset((
     "host-grounder-discovery-prompt-v0.6",
     "host-grounder-discovery-prompt-v0.7",
+    "host-grounder-discovery-prompt-v0.8",
 ))
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _EVENT_MODEL_SNAPSHOT_FIELDS = frozenset((

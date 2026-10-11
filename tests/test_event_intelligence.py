@@ -406,6 +406,11 @@ class AcceptanceTests(unittest.TestCase):
                 ),
             )
         )
+        self.assertIs(fact_only.status, EventIntelligenceAcceptanceStatus.INCOMPLETE)
+        self.assertEqual(
+            fact_only.issue_codes,
+            (EventIntelligenceIssueCode.MISSING_SUPPORTING_INTERPRETATION,),
+        )
         self.assertIn(
             EventIntelligenceIssueCode.MISSING_SUPPORTING_INTERPRETATION,
             fact_only.issue_codes,
