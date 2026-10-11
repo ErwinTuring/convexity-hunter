@@ -23,7 +23,12 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 from urllib.parse import parse_qsl, urlsplit
 
 from .core_application import CoreOperationalBounds
-from .host_profile import STANDARD_RESEARCH_PROFILE, StandardResearchProfile
+from .host_profile import (
+    PROFILE_VERSION,
+    StandardResearchProfile,
+    _profile_for_snapshot,
+    _request_has_conflicting_registered_profile,
+)
 from .host_model import _MODEL_TRANSPORT_ERROR_CODES
 
 
@@ -112,7 +117,8 @@ _BATCH_ARCHIVE_TABLE_SQL = (
 _BATCH_SCHEMA_OBJECTS = _DIRECT_SCHEMA_OBJECTS | {
     "batch_archives", "batch_archives_no_update", "batch_archives_no_delete"
 }
-_DIRECT_REPORT_VERSION = "core-presentation-direct-v0.1"
+_DIRECT_REPORT_VERSION_V0_1 = "core-presentation-direct-v0.1"
+_DIRECT_REPORT_VERSION = "core-presentation-direct-v0.2"
 _GROUNDER_STAGE_OUTCOME_VERSION = "host-grounder-stage-outcome-v0.1"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-stage-outcome-v0.2"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION = "host-grounder-submission-stage-outcome-v0.1"
@@ -360,11 +366,18 @@ def _validated_profile(value: Any) -> Dict[str, Any]:
         snapshot = value
     else:
         raise TypeError("profile_snapshot must be the approved profile or its snapshot")
-    approved = STANDARD_RESEARCH_PROFILE.snapshot()
-    if snapshot != approved:
-        raise ValueError("profile_snapshot is not the approved Standard Research Profile")
+    _profile_for_snapshot(snapshot)
     _canonical_json(snapshot, "profile_snapshot")
     return snapshot
+
+
+def _direct_report_version(profile_snapshot: Any) -> str:
+    profile = _profile_for_snapshot(profile_snapshot)
+    return (
+        _DIRECT_REPORT_VERSION
+        if profile.version == PROFILE_VERSION
+        else _DIRECT_REPORT_VERSION_V0_1
+    )
 
 
 def _validated_event_configuration_snapshot(value: Any) -> Dict[str, Any]:
@@ -2153,7 +2166,7 @@ class HostStore:
                     "cross_structure_quote_synchronicity": result.cross_structure_quote_synchronicity,
                 },
                 "report_cache": None if not result.full_report else {
-                    "renderer_version": _DIRECT_REPORT_VERSION,
+                    "renderer_version": _direct_report_version(run["profile_snapshot"]),
                     "core_sha256": core_digest, "text": result.full_report,
                 },
             }
@@ -2182,12 +2195,21 @@ class HostStore:
         if archive["core_sha256"] != digest:
             raise ValueError("Core snapshot digest mismatch")
         core = decode_core_result(archive["core_snapshot"])
+        profile = _profile_for_snapshot(archive["profile_snapshot"])
         risk = core.request.risk_policy
-        approved = STANDARD_RESEARCH_PROFILE.to_core_risk_policy(core.request.structure)
+        approved = profile.to_core_risk_policy(core.request.structure)
         risk_fields = ("portfolio_value", "maximum_single_loss_fraction",
                        "maximum_repeated_loss_fraction", "repeat_count", "currency")
         if risk is None or any(getattr(risk, name) != getattr(approved, name) for name in risk_fields):
             raise ValueError("Core risk inputs differ from the approved run profile")
+        if profile.version == PROFILE_VERSION:
+            expected_request = profile.request_factory(
+                case_id=case_id, structure=core.request.structure, context=None
+            )
+            if core.request != expected_request:
+                raise ValueError("Core request differs from the registered v0.2 profile factory")
+        elif _request_has_conflicting_registered_profile(core.request, profile.version):
+            raise ValueError("v0.1 run contains registered successor-profile provenance")
         direct_reasons = archive["direct_reasons"]
         if (type(direct_reasons) is not list
                 or any(type(item) is not str or item != "missing_direct_quote_evidence" for item in direct_reasons)
@@ -2207,7 +2229,7 @@ class HostStore:
         cache = archive["report_cache"]
         if cache is not None and (type(cache) is not dict
                 or set(cache) != {"renderer_version", "core_sha256", "text"}
-                or cache["renderer_version"] != _DIRECT_REPORT_VERSION
+                or cache["renderer_version"] != _direct_report_version(archive["profile_snapshot"])
                 or cache["core_sha256"] != digest or type(cache["text"]) is not str or not cache["text"]):
             raise ValueError("invalid digest-bound Direct report cache")
         return core

@@ -1,5 +1,6 @@
 """Pure presentation for the current Core application records."""
 
+import json as _json
 from dataclasses import dataclass as _dataclass
 from datetime import date as _Date
 from decimal import Decimal as _Decimal
@@ -307,8 +308,84 @@ def _render_core_report(
                 "ask_authority=INDICATIVE_ONLY; executable_price_claim=none; underpricing_claim=not_established",
             )
         )
+        profile = _profile_from_request_provenance(request)
+        if profile is not None and profile.version == "v0.2":
+            policy = profile.snapshot()["cash_sensitivity_policy"]
+            lines.append(
+                "现金与敏感性政策: "
+                + _text(
+                    (
+                        "profile=standard-research-profile:v0.2",
+                        "policy={}:{}".format(policy["policy_id"], policy["version"]),
+                        "observed_position_ask_basis=" + policy["observed_position_ask_basis"],
+                        "conditional_premium_factor=" + policy["conditional_premium_factor"],
+                        "unknown_required_costs=entry_fees,strategy_dependent_funding,strategy_dependent_exit,strategy_dependent_settlement",
+                        "actual_tariff=unknown; funding_strategy=not_assumed; no zero-cost inference",
+                    )
+                )
+            )
+            sensitivity = request.sensitivity
+            grid_results = (
+                tuple(
+                    (
+                        item.point.point_id,
+                        item.point.description,
+                        item.point.terminal_underlying_price,
+                        item.point.ask_per_leg,
+                        item.conditional_gross_payoff_per_underlying_unit,
+                        item.conditional_position_payoff,
+                        item.gross_response_multiple,
+                        tuple(
+                            (
+                                hurdle.gross_value_multiple,
+                                hurdle.side.value,
+                                hurdle.status.value,
+                                hurdle.terminal_underlying_price,
+                                hurdle.reason,
+                            )
+                            for hurdle in item.gross_hurdles
+                        ),
+                        item.unavailable_reason,
+                    )
+                    for item in result.sensitivity_results.points
+                )
+                if result.sensitivity_results is not None
+                else None
+            )
+            lines.append(
+                "固定基线敏感性网格: "
+                + _text(
+                    (
+                        None if sensitivity is None else sensitivity.description,
+                        grid_results,
+                    )
+                )
+            )
     else:
         lines.extend(("处置: unknown", "几何: unknown", "cash: unknown"))
     lines.append("原因: " + ("、".join(reasons) if reasons else "无"))
     lines.append("本报告仅保留条件性研究证据，不构成方向预测、交易建议或可执行价格声明。")
     return "\n".join(lines)
+
+
+def _profile_from_request_provenance(request: object):
+    """Resolve only an exact registered Host profile embedded by its factory."""
+
+    provenance = getattr(request, "provenance", None)
+    description = getattr(provenance, "description", None)
+    marker = "profile_snapshot="
+    if type(description) is not str or marker not in description:
+        return None
+    try:
+        snapshot = _json.loads(description.split(marker, 1)[1])
+        from .host_profile import _profile_for_snapshot
+
+        profile = _profile_for_snapshot(snapshot)
+        expected = profile.request_factory(
+            case_id=request.case_id,
+            structure=request.structure,
+            context=None,
+        )
+        return profile if request == expected else None
+    except (TypeError, ValueError, _json.JSONDecodeError):
+        return None

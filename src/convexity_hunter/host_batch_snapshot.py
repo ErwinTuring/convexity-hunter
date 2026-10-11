@@ -35,7 +35,10 @@ from .event_intelligence import (
     assess_event_intelligence_submission,
 )
 from .host_core_snapshot import decode_core_result, encode_core_result
-from .host_profile import STANDARD_RESEARCH_PROFILE
+from .host_profile import (
+    _profile_for_snapshot,
+    _request_has_conflicting_registered_profile,
+)
 from .market_data import UnderlyingSecurityType
 from .option_chain_discovery import HypothesisMaturityAlignment, OptionMaturityAuthority
 
@@ -362,14 +365,24 @@ def _disclosures(record: CoreCaseRecord) -> Dict[str, str]:
     }
 
 
-def _profile_check(result: CoreResearchResult) -> None:
+def _profile_check(result: CoreResearchResult, profile_snapshot: Dict[str, Any]) -> None:
     request = result.request
+    profile = _profile_for_snapshot(profile_snapshot)
     risk = request.risk_policy
-    approved = STANDARD_RESEARCH_PROFILE.to_core_risk_policy(request.structure)
+    approved = profile.to_core_risk_policy(request.structure)
     if risk is None or type(risk) is not type(approved) or risk != approved:
         raise ValueError("Core risk inputs differ from the approved Standard Research Profile")
-    if request.cost_ledger is not None or request.sensitivity is not None:
-        raise ValueError("batch Core request must retain the approved absent cost and sensitivity inputs")
+    if profile.version == "v0.1":
+        if request.cost_ledger is not None or request.sensitivity is not None:
+            raise ValueError("v0.1 batch Core request must retain absent cost and sensitivity inputs")
+        if _request_has_conflicting_registered_profile(request, profile.version):
+            raise ValueError("v0.1 batch Core request contains successor-profile provenance")
+    else:
+        expected = profile.request_factory(
+            case_id=request.case_id, structure=request.structure, context=None
+        )
+        if request != expected:
+            raise ValueError("batch Core request differs from the registered v0.2 profile factory")
 
 
 def _compact_case(
@@ -714,7 +727,7 @@ def build_batch_archive(
         all_keys.add(key)
         if type(record.kernel_result) is not CoreResearchResult:
             raise TypeError("evaluated case must retain exact CoreResearchResult")
-        _profile_check(record.kernel_result)
+        _profile_check(record.kernel_result, profile_snapshot)
         snapshot = encode_core_result(record.kernel_result)
         validate_source_uris(snapshot)
         digest = hashlib.sha256(canonical_json(snapshot, "Core snapshot").encode("utf-8")).hexdigest()
@@ -1184,7 +1197,7 @@ def validate_batch_archive(
             raise ValueError("Core snapshot does not retain its exact case ID")
         if item["classification"] != core_result.disposition.value:
             raise ValueError("case classification differs from Core disposition")
-        _profile_check(core_result)
+        _profile_check(core_result, profile_snapshot)
         expected_reasons = list(dict.fromkeys(
             tuple(item["application_reasons"]) + tuple(reason.value for reason in core_result.reasons)
         ))

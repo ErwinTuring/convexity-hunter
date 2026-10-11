@@ -2,6 +2,31 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Approved Core cash/sensitivity policy — 2026-10-11
+
+The user approved [policy v0.1](core-cash-sensitivity-policy-v0.1.md): a
+conditional premium budget of 1.10 times position indicative asks, plus a
+fixed-baseline five-price / three-ask-factor Long Straddle grid. No actual
+fees, cash-only funding declaration, exit/settlement rule or executable-price
+authority was supplied by that approval. Unknown costs remain unknown.
+
+Bounded preflight is READY; the frozen implementation uses a normal Profile
+v0.2 successor with exact historical v0.1 compatibility, unchanged risk
+numbers, shared three-entry factory and existing Core numeric DTOs. BUILD and
+independent review passed, including the corrected cross-version provenance
+boundary. Focused tests: 87 passed; full regression: 1,944 passed in 297.785s;
+compileall and documentation checks passed. There are no new live
+source/model/quote requests in this work unit, and earlier spent attempts
+remain spent. Single-leg sensitivity is not silently extrapolated from the
+approved straddle grid. This policy does not resolve Event/World EI evidence
+blockers or establish three-entry real research completion.
+
+The local workbench now serves Profile v0.2 and policy v0.1. Read-only HTTP
+verification confirmed Host/journal/UI READY and all three executors configured.
+The retained historical Direct case remains readable with an unchanged report
+hash; its old missing-input result was not recomputed. Applicable tariffs,
+funding and exit/settlement strategy evidence remain unresolved, never zero.
+
 ## Three-entry MVP continuation — 2026-10-11
 
 Normal Host grounding now selects producer prompt v0.8 through a private

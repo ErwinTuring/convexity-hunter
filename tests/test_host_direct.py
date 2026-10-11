@@ -16,6 +16,7 @@ from tests import test_core_application as core_fixtures
 from convexity_hunter.core_application import CoreOperationalBounds
 from convexity_hunter.core_research import (
     CoreAskAuthority,
+    CoreCostComponentStatus,
     CoreDisposition,
     CoreOptionType,
     CoreReasonCode,
@@ -234,17 +235,57 @@ class HostDirectExecutionTests(unittest.TestCase):
                     OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
                 )
                 self.assertIs(result.kernel_result.request, result.kernel_request)
-                self.assertIsNone(result.kernel_request.cost_ledger)
-                self.assertIsNone(result.kernel_request.sensitivity)
-                self.assertIsNotNone(result.kernel_request.risk_policy)
-                self.assertIn(
+                ledger = result.kernel_request.cost_ledger
+                self.assertIsNotNone(ledger)
+                expected_premium = (
+                    decimal.Decimal("550")
+                    if structure == "LONG_STRADDLE"
+                    else decimal.Decimal("275")
+                )
+                self.assertEqual(ledger.premium_bound, expected_premium)
+                self.assertEqual(
+                    tuple(
+                        component.component_id
+                        for component in ledger.impact_components
+                    ),
+                    (
+                        "entry_fees",
+                        "strategy_dependent_funding",
+                        "strategy_dependent_exit",
+                        "strategy_dependent_settlement",
+                    ),
+                )
+                self.assertTrue(
+                    all(
+                        component.status is CoreCostComponentStatus.UNKNOWN
+                        and component.upper_bound is None
+                        for component in ledger.impact_components
+                    )
+                )
+                self.assertIsNone(
+                    result.kernel_result.cash_ledger.conditional_total_upper_bound
+                )
+                self.assertNotIn(
                     CoreReasonCode.COST_LEDGER_MISSING,
                     result.kernel_result.reasons,
                 )
-                self.assertIn(
-                    CoreReasonCode.SENSITIVITY_MISSING,
-                    result.kernel_result.reasons,
-                )
+                if structure == "LONG_STRADDLE":
+                    self.assertIsNotNone(result.kernel_request.sensitivity)
+                    self.assertEqual(len(result.kernel_request.sensitivity.points), 15)
+                    self.assertEqual(
+                        tuple(
+                            point.point_id
+                            for point in result.kernel_request.sensitivity.points
+                        ),
+                        tuple(
+                            "x{:+d}-ask-{}".format(offset, factor)
+                            for offset in (-2, -1, 0, 1, 2)
+                            for factor in ("1", "1.10", "1.25")
+                        ),
+                    )
+                else:
+                    self.assertIsNone(result.kernel_request.sensitivity)
+                self.assertIsNotNone(result.kernel_request.risk_policy)
                 self.assertEqual(
                     tuple(call[0] for call in bridge.calls),
                     tuple(

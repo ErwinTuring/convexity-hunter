@@ -26,7 +26,7 @@ from convexity_hunter.core_application import CoreDirectResult, CoreOperationalB
 from convexity_hunter import core_research as core
 from convexity_hunter.core_presentation import report
 from convexity_hunter.market_data import DataOrigin, SourceQualityFlag, SourceReference
-from convexity_hunter.host_profile import STANDARD_RESEARCH_PROFILE
+from convexity_hunter.host_profile import STANDARD_RESEARCH_PROFILE, StandardResearchProfile
 from convexity_hunter.host_store import (
     HostStore,
     HostStoreError,
@@ -121,7 +121,12 @@ def blocked_outcome():
     }
 
 
-def make_direct_result(*, cached_report=True, source_uri="https://example.test/quote"):
+def make_direct_result(
+    *,
+    cached_report=True,
+    source_uri="https://example.test/quote",
+    profile=STANDARD_RESEARCH_PROFILE,
+):
     observed = datetime.datetime(2026, 1, 2, tzinfo=datetime.timezone.utc)
     source = SourceReference(
         source_id="synthetic-quote", provider_name="synthetic", dataset_name="option-ask",
@@ -139,7 +144,7 @@ def make_direct_result(*, cached_report=True, source_uri="https://example.test/q
                        decimal.Decimal("2.50"), core.CoreAskAuthority.INDICATIVE_ONLY,
                        "synthetic declared leg", provenance)
     structure = core.CoreStructure((leg,), "synthetic declared structure", provenance)
-    request = STANDARD_RESEARCH_PROFILE.request_factory(
+    request = profile.request_factory(
         case_id="direct:" + identifier, structure=structure, context=None
     )
     result = CoreDirectResult(
@@ -1350,6 +1355,7 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(case_id, result.kernel_request.case_id)
         archive = self.store.get_direct_case(run_id, case_id)
         self.assertEqual(archive["schema_version"], "host-direct-case-v0.1")
+        self.assertEqual(archive["report_cache"]["renderer_version"], "core-presentation-direct-v0.2")
         self.assertEqual(archive["profile_snapshot"], STANDARD_RESEARCH_PROFILE.snapshot())
         self.assertEqual(archive["disclosures"], {
             "maturity_authority": "neutral_structural_research",
@@ -1363,7 +1369,7 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(restored, result.kernel_result)
         self.assertEqual(restored.request.provenance.source_reference, result.kernel_request.provenance.source_reference)
         self.assertEqual(restored.request.risk_policy.portfolio_value, STANDARD_RESEARCH_PROFILE.portfolio_value)
-        self.assertIsNone(restored.request.cost_ledger)
+        self.assertIsNotNone(restored.request.cost_ledger)
         self.assertIsNone(restored.request.sensitivity)
         summary = self.store.list_direct_cases(run_id)[0]
         self.assertEqual(set(summary), {"case_id", "classification", "reasons"})
@@ -1379,6 +1385,112 @@ class HostStoreTests(unittest.TestCase):
         for sql in ("UPDATE direct_cases SET archive_json='{}'", "DELETE FROM direct_cases"):
             with self.assertRaises(sqlite3.IntegrityError):
                 self.store._conn().execute(sql)
+
+    def test_v01_direct_report_cache_round_trips_without_v02_rendering(self):
+        legacy = StandardResearchProfile(version="v0.1")
+        run_id = self.store.create_run(
+            "direct", "legacy direct", BOUNDS, legacy.snapshot(), _run_start_metadata()
+        )
+        result = make_direct_result(profile=legacy)
+        case_id = self.store.save_direct_result(run_id, result)
+        archived = self.store.get_direct_case(run_id, case_id)
+        old_text = archived["report_cache"]["text"]
+        self.assertEqual(archived["profile_snapshot"], legacy.snapshot())
+        self.assertEqual(
+            archived["report_cache"]["renderer_version"],
+            "core-presentation-direct-v0.1",
+        )
+        self.assertNotIn("现金与敏感性政策", old_text)
+        self.assertNotIn("固定基线敏感性网格", old_text)
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        restored_archive = reopened.get_direct_case(run_id, case_id)
+        self.assertEqual(restored_archive["report_cache"]["text"], old_text)
+        self.assertEqual(
+            restored_archive["report_cache"]["renderer_version"],
+            "core-presentation-direct-v0.1",
+        )
+
+    def test_v01_direct_preserves_previously_accepted_unmarked_custom_request(self):
+        legacy = StandardResearchProfile(version="v0.1")
+        run_id = self.store.create_run(
+            "direct", "legacy custom direct", BOUNDS, legacy.snapshot(), _run_start_metadata()
+        )
+        original = make_direct_result(cached_report=False, profile=legacy)
+        custom_request = replace(
+            original.kernel_request,
+            description="legacy caller-supplied request description",
+            provenance=replace(
+                original.kernel_request.provenance,
+                description="legacy caller-supplied unmarked provenance",
+            ),
+        )
+        custom_core = core.evaluate_core_research(custom_request)
+        custom_result = replace(
+            original,
+            kernel_request=custom_request,
+            kernel_result=custom_core,
+            full_report="",
+        )
+        custom_result = replace(custom_result, full_report=report(custom_result))
+
+        case_id = self.store.save_direct_result(run_id, custom_result)
+        archive = self.store.get_direct_case(run_id, case_id)
+        self.assertEqual(archive["profile_snapshot"], legacy.snapshot())
+        self.assertEqual(
+            archive["report_cache"]["renderer_version"],
+            "core-presentation-direct-v0.1",
+        )
+        self.assertEqual(archive["report_cache"]["text"], custom_result.full_report)
+        self.assertNotIn("现金与敏感性政策", archive["report_cache"]["text"])
+
+    def test_direct_rejects_factory_request_from_other_registered_profile(self):
+        legacy = StandardResearchProfile(version="v0.1")
+        legacy_run = self.store.create_run(
+            "direct", "legacy direct", BOUNDS, legacy.snapshot(), _run_start_metadata()
+        )
+        with self.assertRaises(ValueError):
+            self.store.save_direct_result(
+                legacy_run, make_direct_result(profile=STANDARD_RESEARCH_PROFILE)
+            )
+
+        current_run = self.create_run("direct", "current direct")
+        with self.assertRaises(ValueError):
+            self.store.save_direct_result(
+                current_run, make_direct_result(profile=legacy)
+            )
+        self.assertEqual(self.store.list_direct_cases(legacy_run), [])
+        self.assertEqual(self.store.list_direct_cases(current_run), [])
+
+    def test_store_accepts_only_the_two_registered_profile_snapshots(self):
+        legacy = StandardResearchProfile(version="v0.1")
+        for profile in (legacy, STANDARD_RESEARCH_PROFILE):
+            run_id = self.store.create_run(
+                "world", "registered profile", BOUNDS, profile.snapshot(), _run_start_metadata()
+            )
+            self.assertEqual(self.store.get_run(run_id)["profile_snapshot"], profile.snapshot())
+
+        altered_snapshots = []
+        altered_factor = STANDARD_RESEARCH_PROFILE.snapshot()
+        altered_factor["cash_sensitivity_policy"]["conditional_premium_factor"] = "1.25"
+        altered_snapshots.append(altered_factor)
+        boolean_offset = STANDARD_RESEARCH_PROFILE.snapshot()
+        boolean_offset["cash_sensitivity_policy"]["sensitivity"]["x_offsets"][2] = False
+        altered_snapshots.append(boolean_offset)
+        float_offset = STANDARD_RESEARCH_PROFILE.snapshot()
+        float_offset["cash_sensitivity_policy"]["sensitivity"]["x_offsets"][0] = -2.0
+        altered_snapshots.append(float_offset)
+        for altered in altered_snapshots:
+            with self.subTest(snapshot=altered), self.assertRaises(ValueError):
+                self.store.create_run(
+                    "world", "altered profile", BOUNDS, altered, _run_start_metadata()
+                )
+        unknown = legacy.snapshot()
+        unknown["version"] = "v0.3"
+        with self.assertRaises(ValueError):
+            self.store.create_run("world", "unknown profile", BOUNDS, unknown, _run_start_metadata())
 
     def test_direct_pointer_requires_committed_case_and_core_done_is_completed(self):
         run_id = self.create_run("direct")

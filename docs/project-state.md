@@ -1,5 +1,16 @@
 # Project State
 
+Current work: the user-approved Core cash/sensitivity policy is implemented and
+independently reviewed. It supplies a conditional 1.10 premium budget and a
+descriptive fixed-baseline Long Straddle grid, not actual fees or execution
+authority. Unknown costs remain missing evidence; the unchanged risk profile
+and historical records are preserved. Validation: 87 focused and 1,944 full-suite
+tests passed, with compileall and documentation checks. The local workbench
+serves Profile v0.2; its historical Direct report hash is unchanged. No fresh
+research/provider operation was performed for this policy deployment.
+See [the policy](core-cash-sensitivity-policy-v0.1.md)
+and [checkpoint](current-checkpoint.md#approved-core-cashsensitivity-policy--2026-10-11).
+
 Current continuation: producer prompt v0.8 is implemented and independently
 reviewed, preserving historical routes and all Host/EI acceptance gates.
 One real Direct operation completed exact verification, shared Core, Chinese

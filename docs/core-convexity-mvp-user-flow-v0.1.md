@@ -8,6 +8,13 @@ Current Host startup and real-entry evidence are tracked in the
 and [local workbench guide](local-workbench-user-flow.md). The original API
 milestone below did not itself include the later Host/UI/SQLite delivery.
 
+The user-approved [cash/sensitivity policy v0.1](core-cash-sensitivity-policy-v0.1.md)
+adds a normal Host Profile v0.2 successor: a conditional 1.10 premium budget
+and a fixed-baseline Long Straddle pressure grid. It does not supply an actual
+broker tariff, cash-funding/exit/settlement declaration or executable quote.
+Applicable unknown costs remain unknown; historical v0.1 records retain their
+original policy. Final implementation/review status is in the checkpoint.
+
 This compact flow is governed by the
 [Core Convexity Research Doctrine](core-convexity-research-doctrine-v0.1.md).
 The implementation follows the approved conditional-budget boundary. It is

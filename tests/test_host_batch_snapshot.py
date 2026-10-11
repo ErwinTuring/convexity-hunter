@@ -39,7 +39,7 @@ from convexity_hunter.event_intelligence import (
     assess_event_intelligence_submission,
 )
 from convexity_hunter.host_batch_snapshot import case_key
-from convexity_hunter.host_profile import STANDARD_RESEARCH_PROFILE
+from convexity_hunter.host_profile import STANDARD_RESEARCH_PROFILE, StandardResearchProfile
 from convexity_hunter.host_store import HostStore, StoreCorruptionError
 
 
@@ -62,17 +62,17 @@ def _policy(*, max_submissions=2, max_hypotheses=3, max_cases=8):
     )
 
 
-def _standard_profile_result(result):
+def _standard_profile_result(result, profile=STANDARD_RESEARCH_PROFILE):
     """Bind test Core cases to the exact Host-approved risk policy."""
 
     cases = []
     for record in result.case_set.cases:
-        request = replace(
-            record.kernel_request,
-            risk_policy=STANDARD_RESEARCH_PROFILE.to_core_risk_policy(
-                record.kernel_request.structure
-            ),
+        approved = profile.request_factory(
+            case_id=record.kernel_request.case_id,
+            structure=record.kernel_request.structure,
+            context=record.context,
         )
+        request = approved
         evaluated = evaluate_core_research(request)
         context = replace(
             record.context, kernel_request=request, kernel_result=evaluated
@@ -645,6 +645,104 @@ class HostBatchSnapshotTests(unittest.TestCase):
         valid_run = self._create_run("world", raw_input, _policy().bounds)
         self.store.save_batch_result(valid_run, result)
         self.assertEqual(self.store.get_batch_summary(valid_run)["host_status"], "COMPLETED")
+
+        legacy_profile = StandardResearchProfile(version="v0.1")
+        legacy_input = "historical v0.1 World snapshot"
+        legacy_result = _standard_profile_result(
+            _world_result(legacy_input), profile=legacy_profile
+        )
+        legacy_run = self.store.create_run(
+            "world",
+            legacy_input,
+            _policy().bounds,
+            legacy_profile.snapshot(),
+            _metadata("world"),
+        )
+        self.store.save_batch_result(legacy_run, legacy_result)
+        legacy_archive, legacy_decoded = self.store._read_batch_archive(legacy_run)
+        self.assertEqual(legacy_archive["profile_snapshot"], legacy_profile.snapshot())
+        self.assertIsNone(next(iter(legacy_decoded.values())).request.cost_ledger)
+        self.assertIsNone(next(iter(legacy_decoded.values())).request.sensitivity)
+        self.assertEqual(self.store.get_batch_summary(legacy_run)["host_status"], "COMPLETED")
+
+        legacy_record = legacy_result.case_set.cases[0]
+        custom_request = replace(
+            legacy_record.kernel_request,
+            description="legacy caller-supplied request description",
+            provenance=replace(
+                legacy_record.kernel_request.provenance,
+                description="legacy caller-supplied unmarked provenance",
+            ),
+        )
+        custom_core = evaluate_core_research(custom_request)
+        custom_context = replace(
+            legacy_record.context,
+            kernel_request=custom_request,
+            kernel_result=custom_core,
+        )
+        custom_record = CoreCaseRecord(
+            legacy_record.case_id,
+            custom_context,
+            custom_request,
+            custom_core,
+            legacy_record.reasons,
+        )
+        custom_case_set = replace(legacy_result.case_set, cases=(custom_record,))
+        custom_result = CoreRunResult(
+            custom_case_set, compact_summary(custom_case_set)
+        )
+        custom_run = self.store.create_run(
+            "world",
+            legacy_input,
+            _policy().bounds,
+            legacy_profile.snapshot(),
+            _metadata("world"),
+        )
+        self.store.save_batch_result(custom_run, custom_result)
+        _, custom_decoded = self.store._read_batch_archive(custom_run)
+        custom_request_restored = next(iter(custom_decoded.values())).request
+        self.assertEqual(
+            custom_request_restored.description,
+            "legacy caller-supplied request description",
+        )
+        self.assertEqual(
+            custom_request_restored.provenance.description,
+            "legacy caller-supplied unmarked provenance",
+        )
+
+        legacy_record = legacy_result.case_set.cases[0]
+        forged_request = replace(
+            legacy_record.kernel_request,
+            provenance=replace(
+                legacy_record.kernel_request.provenance,
+                description="core-request; profile_snapshot="
+                + json.dumps(STANDARD_RESEARCH_PROFILE.snapshot(), sort_keys=True, separators=(",", ":")),
+            ),
+        )
+        forged_core = evaluate_core_research(forged_request)
+        forged_context = replace(
+            legacy_record.context,
+            kernel_request=forged_request,
+            kernel_result=forged_core,
+        )
+        forged_record = CoreCaseRecord(
+            legacy_record.case_id,
+            forged_context,
+            forged_request,
+            forged_core,
+            legacy_record.reasons,
+        )
+        forged_case_set = replace(legacy_result.case_set, cases=(forged_record,))
+        forged_result = CoreRunResult(forged_case_set, compact_summary(forged_case_set))
+        forged_run = self.store.create_run(
+            "world",
+            legacy_input,
+            _policy().bounds,
+            legacy_profile.snapshot(),
+            _metadata("world"),
+        )
+        with self.assertRaises(ValueError):
+            self.store.save_batch_result(forged_run, forged_result)
 
         original_record = result.case_set.cases[0]
         approved_risk = original_record.kernel_request.risk_policy
