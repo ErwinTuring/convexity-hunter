@@ -2,6 +2,39 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Catalog capacity diagnosed and corrected — 2026-10-12
+
+One newly authorized diagnostic Event operation is spent at
+`/private/tmp/ch-event-acceptance.eRNUpO/`: POST 201/readback 200,
+BLOCKED / EVIDENCE_CATALOG_INVALID, exact failure CATALOG_ENTRY_LIMIT.
+Its five registered sources totaled 8,468 bytes and 108 paragraphs; 103
+paragraphs met the catalog grammar, exceeding the configured 64-entry/array
+limit. The 128-paragraph limit was not hit; serialization stopped before the
+catalog-byte check. This identifies this run's cause, not the cause of the
+earlier run. Two Tavily requests reserved two credits; both model-call counts,
+EI invocations and Core callbacks were zero. Reserved credits are not verified
+account charges. No retry of the spent operation.
+
+The private local Event configuration now explicitly sets catalog entries and
+array items to 128, and catalog bytes to 65,536. Source/paragraph, model-input,
+token, request and credit budgets are unchanged. This is operational capacity,
+not a production defect, evidence truncation, new acceptance rule or economic
+policy. The original private configuration is recoverably backed up outside
+Git. JSON escaping can still exceed the byte guard; all bounds remain enforced.
+Five offline checks passed: exact three-field delta, typed factory projection,
+103 synthetic entries accepted only at the new capacity, 129 paragraphs
+rejected, and escaped-byte overflow rejected. Seven catalog-observer checks
+also passed. Synthetic success is not a replay of the discarded live bodies.
+
+The local workbench was reloaded and read-only status/history checks passed:
+all executors configured, one historical COMPLETED run, database SHA-256
+unchanged. Its evaluation date remains explicitly 2026-10-11. Initial reload
+attempts failed without a retained precise cause; later startup succeeded.
+No new research POST accompanied the reload. Production remains unchanged;
+real Event EI-to-Core acceptance and three-entry completion remain unverified.
+The corrected capacity is ready for a separately authorized live acceptance,
+not proof that any hypothesis will satisfy Builder/EI.
+
 ## Renewed bounded Event acceptance — 2026-10-12
 
 The user authorized one further bounded Event operation. Fresh fetch confirmed

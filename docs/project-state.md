@@ -1,13 +1,14 @@
 # Project State
 
-Latest bounded Event acceptance (2026-10-12) is spent: Tavily search/extract
-delegated two requests, but evidence-catalog construction stopped with
-EVIDENCE_CATALOG_INVALID before any model call. No submission, EI invocation
-or Core case. The private runner result-file collision was corrected and the
-sanitized final result retained. The exact catalog exception remains unknown;
-no production defect or semantic fix is established. Production is unchanged,
-and real three-entry acceptance remains incomplete. See
-[the latest checkpoint](current-checkpoint.md#renewed-bounded-event-acceptance--2026-10-12).
+Latest diagnostic Event (2026-10-12) is spent: 103 eligible catalog paragraphs
+exceeded the explicit 64-entry/array capacity; models, EI and Core were not
+called. Local capacity is now 128 entries/array items and 65,536 catalog bytes,
+with source, paragraph and call budgets unchanged. Five offline capacity checks
+passed; the reloaded workbench is READY and its historical database unchanged.
+No production/economic/acceptance semantics changed. Real three-entry
+acceptance remains incomplete; the corrected capacity has not yet had a live
+acceptance run. See
+[the latest checkpoint](current-checkpoint.md#catalog-capacity-diagnosed-and-corrected--2026-10-12).
 
 Final closure implementation delivered and independently reviewed: normal
 Event producer v0.9 demonstrates explicit fact/interpretation/dependency and
