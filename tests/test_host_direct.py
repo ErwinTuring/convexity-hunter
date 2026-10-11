@@ -235,6 +235,14 @@ class HostDirectExecutionTests(unittest.TestCase):
                     OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
                 )
                 self.assertIs(result.kernel_result.request, result.kernel_request)
+                self.assertEqual(
+                    result.kernel_request.risk_policy.methodology,
+                    "approved-standard-research-profile-v0.3",
+                )
+                self.assertIn(
+                    "profile_snapshot=" + STANDARD_RESEARCH_PROFILE.snapshot_json(),
+                    result.kernel_request.provenance.description,
+                )
                 ledger = result.kernel_request.cost_ledger
                 self.assertIsNotNone(ledger)
                 expected_premium = (

@@ -1355,7 +1355,8 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(case_id, result.kernel_request.case_id)
         archive = self.store.get_direct_case(run_id, case_id)
         self.assertEqual(archive["schema_version"], "host-direct-case-v0.1")
-        self.assertEqual(archive["report_cache"]["renderer_version"], "core-presentation-direct-v0.2")
+        self.assertEqual(archive["report_cache"]["renderer_version"], "core-presentation-direct-v0.3")
+        self.assertIn("策略治理意图（非执行控制）", archive["report_cache"]["text"])
         self.assertEqual(archive["profile_snapshot"], STANDARD_RESEARCH_PROFILE.snapshot())
         self.assertEqual(archive["disclosures"], {
             "maturity_authority": "neutral_structural_research",
@@ -1413,6 +1414,33 @@ class HostStoreTests(unittest.TestCase):
             "core-presentation-direct-v0.1",
         )
 
+    def test_v02_direct_report_cache_keeps_historical_renderer_version(self):
+        historical = StandardResearchProfile(version="v0.2")
+        run_id = self.store.create_run(
+            "direct", "historical v0.2 direct", BOUNDS, historical.snapshot(), _run_start_metadata()
+        )
+        result = make_direct_result(profile=historical)
+        case_id = self.store.save_direct_result(run_id, result)
+        archived = self.store.get_direct_case(run_id, case_id)
+        old_text = archived["report_cache"]["text"]
+        self.assertEqual(archived["profile_snapshot"], historical.snapshot())
+        self.assertEqual(
+            archived["report_cache"]["renderer_version"],
+            "core-presentation-direct-v0.2",
+        )
+        self.assertIn("现金与敏感性政策", old_text)
+        self.assertNotIn("策略治理意图", old_text)
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        restored_archive = reopened.get_direct_case(run_id, case_id)
+        self.assertEqual(restored_archive["report_cache"]["text"], old_text)
+        self.assertEqual(
+            restored_archive["report_cache"]["renderer_version"],
+            "core-presentation-direct-v0.2",
+        )
+
     def test_v01_direct_preserves_previously_accepted_unmarked_custom_request(self):
         legacy = StandardResearchProfile(version="v0.1")
         run_id = self.store.create_run(
@@ -1447,26 +1475,40 @@ class HostStoreTests(unittest.TestCase):
         self.assertNotIn("现金与敏感性政策", archive["report_cache"]["text"])
 
     def test_direct_rejects_factory_request_from_other_registered_profile(self):
-        legacy = StandardResearchProfile(version="v0.1")
-        legacy_run = self.store.create_run(
-            "direct", "legacy direct", BOUNDS, legacy.snapshot(), _run_start_metadata()
+        profiles = (
+            StandardResearchProfile(version="v0.1"),
+            StandardResearchProfile(version="v0.2"),
+            STANDARD_RESEARCH_PROFILE,
         )
-        with self.assertRaises(ValueError):
-            self.store.save_direct_result(
-                legacy_run, make_direct_result(profile=STANDARD_RESEARCH_PROFILE)
-            )
+        for archive_profile in profiles:
+            for request_profile in profiles:
+                if archive_profile.version == request_profile.version:
+                    continue
+                with self.subTest(
+                    archive=archive_profile.version,
+                    request=request_profile.version,
+                ):
+                    run_id = self.store.create_run(
+                        "direct",
+                        "cross-version direct",
+                        BOUNDS,
+                        archive_profile.snapshot(),
+                        _run_start_metadata(),
+                    )
+                    with self.assertRaises(ValueError):
+                        self.store.save_direct_result(
+                            run_id,
+                            make_direct_result(profile=request_profile),
+                        )
+                    self.assertEqual(self.store.list_direct_cases(run_id), [])
 
-        current_run = self.create_run("direct", "current direct")
-        with self.assertRaises(ValueError):
-            self.store.save_direct_result(
-                current_run, make_direct_result(profile=legacy)
-            )
-        self.assertEqual(self.store.list_direct_cases(legacy_run), [])
-        self.assertEqual(self.store.list_direct_cases(current_run), [])
-
-    def test_store_accepts_only_the_two_registered_profile_snapshots(self):
-        legacy = StandardResearchProfile(version="v0.1")
-        for profile in (legacy, STANDARD_RESEARCH_PROFILE):
+    def test_store_accepts_only_the_three_registered_profile_snapshots(self):
+        profiles = (
+            StandardResearchProfile(version="v0.1"),
+            StandardResearchProfile(version="v0.2"),
+            STANDARD_RESEARCH_PROFILE,
+        )
+        for profile in profiles:
             run_id = self.store.create_run(
                 "world", "registered profile", BOUNDS, profile.snapshot(), _run_start_metadata()
             )
@@ -1482,13 +1524,16 @@ class HostStoreTests(unittest.TestCase):
         float_offset = STANDARD_RESEARCH_PROFILE.snapshot()
         float_offset["cash_sensitivity_policy"]["sensitivity"]["x_offsets"][0] = -2.0
         altered_snapshots.append(float_offset)
+        altered_governance = STANDARD_RESEARCH_PROFILE.snapshot()
+        altered_governance["strategy_governance"]["automatic_exercise_protection"] = "PROTECTED"
+        altered_snapshots.append(altered_governance)
         for altered in altered_snapshots:
             with self.subTest(snapshot=altered), self.assertRaises(ValueError):
                 self.store.create_run(
                     "world", "altered profile", BOUNDS, altered, _run_start_metadata()
                 )
-        unknown = legacy.snapshot()
-        unknown["version"] = "v0.3"
+        unknown = profiles[0].snapshot()
+        unknown["version"] = "v0.4"
         with self.assertRaises(ValueError):
             self.store.create_run("world", "unknown profile", BOUNDS, unknown, _run_start_metadata())
 

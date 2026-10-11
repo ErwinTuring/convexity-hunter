@@ -1,6 +1,17 @@
 # Project State
 
-Current work: the user-approved Core cash/sensitivity policy is implemented and
+Current continuation: approved strategy governance is implemented in normal
+Profile v0.3, preserving exact v0.1/v0.2 archives and report semantics. The
+cash-funded/no-margin/close-or-abandon/no-stock-exercise scope is research
+intent, not broker enforcement or automatic exercise protection. Unknown costs
+remain UNKNOWN. Independent review, 90 focused and 89 related tests passed
+(overlapping sets); local deployment and old report hash verification passed.
+One fresh isolated IREN Event run completed HTTP/grounder processing but ended
+GROUNDING_NO_SUBMISSION, EI NOT_RUN; no Core submission. No semantic retry.
+See [strategy governance](core-strategy-governance-v0.1.md) and
+[latest checkpoint](current-checkpoint.md#approved-strategy-and-fresh-event-result--2026-10-11).
+
+Preceding work: the user-approved Core cash/sensitivity policy is implemented and
 independently reviewed. It supplies a conditional 1.10 premium budget and a
 descriptive fixed-baseline Long Straddle grid, not actual fees or execution
 authority. Unknown costs remain missing evidence; the unchanged risk profile

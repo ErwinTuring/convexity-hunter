@@ -127,3 +127,21 @@ states that each leg is charged separately and minimum charges apply per leg.
 This does not establish a user's actual package, promotional entitlement,
 future fill venue or strategy-dependent charges. No tariff numbers or private
 account details were added to the profile. Unknown costs remain unknown.
+
+### Public tariff evidence — 2026-10-11
+
+The [Hong Kong Futu public options tariff](https://www.futuhk.com/hans/support/topic2_283from_platform%3D1%26%26lang%3Dzh-hk)
+lists USD 1.99 minimum commission per leg/order, fixed platform fee 0.30 per
+contract, and a tiered alternative from 0.60 to 0.05. Listed per-contract
+third-party charges are ORF 0.0122, clearing 0.025, settlement 0.18 and CAT
+0.0003. ORF is stated effective 2026-09-01; sell-side charges are separate.
+
+For one contract per leg, fixed pricing, one buy order per leg and the listed
+standard tariff, the unrounded entry-fee arithmetic is
+`2 * (1.99 + 0.30 + 0.0122 + 0.025 + 0.18 + 0.0003) = 5.015 USD`.
+This is a conditional published-tariff illustration, not a confirmed debit,
+rounding rule, actual account tariff or cost upper bound. Multi-day execution,
+applicable package, funding, closing/abandonment and exercise prevention remain
+explicit unresolved inputs. The production profile still uses UNKNOWN and
+does not consume this illustration. No cash-only or no-exercise policy has
+been presumed.

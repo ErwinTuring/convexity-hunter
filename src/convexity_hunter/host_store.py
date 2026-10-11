@@ -24,8 +24,10 @@ from urllib.parse import parse_qsl, urlsplit
 
 from .core_application import CoreOperationalBounds
 from .host_profile import (
-    PROFILE_VERSION,
     StandardResearchProfile,
+    _PROFILE_VERSION_V0_1,
+    _PROFILE_VERSION_V0_2,
+    _PROFILE_VERSION_V0_3,
     _profile_for_snapshot,
     _request_has_conflicting_registered_profile,
 )
@@ -117,8 +119,11 @@ _BATCH_ARCHIVE_TABLE_SQL = (
 _BATCH_SCHEMA_OBJECTS = _DIRECT_SCHEMA_OBJECTS | {
     "batch_archives", "batch_archives_no_update", "batch_archives_no_delete"
 }
-_DIRECT_REPORT_VERSION_V0_1 = "core-presentation-direct-v0.1"
-_DIRECT_REPORT_VERSION = "core-presentation-direct-v0.2"
+_DIRECT_REPORT_VERSION_BY_PROFILE = {
+    _PROFILE_VERSION_V0_1: "core-presentation-direct-v0.1",
+    _PROFILE_VERSION_V0_2: "core-presentation-direct-v0.2",
+    _PROFILE_VERSION_V0_3: "core-presentation-direct-v0.3",
+}
 _GROUNDER_STAGE_OUTCOME_VERSION = "host-grounder-stage-outcome-v0.1"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-stage-outcome-v0.2"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION = "host-grounder-submission-stage-outcome-v0.1"
@@ -373,11 +378,7 @@ def _validated_profile(value: Any) -> Dict[str, Any]:
 
 def _direct_report_version(profile_snapshot: Any) -> str:
     profile = _profile_for_snapshot(profile_snapshot)
-    return (
-        _DIRECT_REPORT_VERSION
-        if profile.version == PROFILE_VERSION
-        else _DIRECT_REPORT_VERSION_V0_1
-    )
+    return _DIRECT_REPORT_VERSION_BY_PROFILE[profile.version]
 
 
 def _validated_event_configuration_snapshot(value: Any) -> Dict[str, Any]:
@@ -2202,14 +2203,21 @@ class HostStore:
                        "maximum_repeated_loss_fraction", "repeat_count", "currency")
         if risk is None or any(getattr(risk, name) != getattr(approved, name) for name in risk_fields):
             raise ValueError("Core risk inputs differ from the approved run profile")
-        if profile.version == PROFILE_VERSION:
+        if profile.version == _PROFILE_VERSION_V0_1:
+            if _request_has_conflicting_registered_profile(core.request, profile.version):
+                raise ValueError("v0.1 run contains registered successor-profile provenance")
+        elif profile.version in (_PROFILE_VERSION_V0_2, _PROFILE_VERSION_V0_3):
             expected_request = profile.request_factory(
                 case_id=case_id, structure=core.request.structure, context=None
             )
             if core.request != expected_request:
-                raise ValueError("Core request differs from the registered v0.2 profile factory")
-        elif _request_has_conflicting_registered_profile(core.request, profile.version):
-            raise ValueError("v0.1 run contains registered successor-profile provenance")
+                raise ValueError(
+                    "Core request differs from the registered {} profile factory".format(
+                        profile.version
+                    )
+                )
+        else:
+            raise ValueError("Direct archive profile version is not supported")
         direct_reasons = archive["direct_reasons"]
         if (type(direct_reasons) is not list
                 or any(type(item) is not str or item != "missing_direct_quote_evidence" for item in direct_reasons)

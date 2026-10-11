@@ -309,13 +309,13 @@ def _render_core_report(
             )
         )
         profile = _profile_from_request_provenance(request)
-        if profile is not None and profile.version == "v0.2":
+        if profile is not None and profile.version in ("v0.2", "v0.3"):
             policy = profile.snapshot()["cash_sensitivity_policy"]
             lines.append(
                 "现金与敏感性政策: "
                 + _text(
                     (
-                        "profile=standard-research-profile:v0.2",
+                        "profile=standard-research-profile:{}".format(profile.version),
                         "policy={}:{}".format(policy["policy_id"], policy["version"]),
                         "observed_position_ask_basis=" + policy["observed_position_ask_basis"],
                         "conditional_premium_factor=" + policy["conditional_premium_factor"],
@@ -361,6 +361,23 @@ def _render_core_report(
                     )
                 )
             )
+            if profile.version == "v0.3":
+                governance = profile.snapshot()["strategy_governance"]
+                lines.append(
+                    "策略治理意图（非执行控制）: "
+                    + _text(
+                        (
+                            "profile=standard-research-profile:v0.3",
+                            "funding_rule=" + governance["funding_rule"],
+                            "lifecycle_intent=" + governance["lifecycle_intent"],
+                            "exercise_rule=" + governance["exercise_rule"],
+                            "execution_enforcement=" + governance["execution_enforcement"],
+                            "automatic_exercise_protection="
+                            + governance["automatic_exercise_protection"],
+                            "研究意图不证明券商控制、已完成平仓或放弃，也不构成自动行权保护；被动不操作不等于已放弃；到期收益几何不是提前退出估值。",
+                        )
+                    )
+                )
     else:
         lines.extend(("处置: unknown", "几何: unknown", "cash: unknown"))
     lines.append("原因: " + ("、".join(reasons) if reasons else "无"))

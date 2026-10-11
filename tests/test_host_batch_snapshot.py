@@ -665,6 +665,52 @@ class HostBatchSnapshotTests(unittest.TestCase):
         self.assertIsNone(next(iter(legacy_decoded.values())).request.sensitivity)
         self.assertEqual(self.store.get_batch_summary(legacy_run)["host_status"], "COMPLETED")
 
+        historical_profile = StandardResearchProfile(version="v0.2")
+        historical_input = "historical v0.2 World snapshot"
+        historical_result = _standard_profile_result(
+            _world_result(historical_input), profile=historical_profile
+        )
+        historical_run = self.store.create_run(
+            "world",
+            historical_input,
+            _policy().bounds,
+            historical_profile.snapshot(),
+            _metadata("world"),
+        )
+        self.store.save_batch_result(historical_run, historical_result)
+        historical_archive, historical_decoded = self.store._read_batch_archive(
+            historical_run
+        )
+        self.assertEqual(
+            historical_archive["profile_snapshot"], historical_profile.snapshot()
+        )
+        self.assertEqual(
+            next(iter(historical_decoded.values())).request.risk_policy.methodology,
+            "approved-standard-research-profile-v0.2",
+        )
+        self.assertIsNotNone(next(iter(historical_decoded.values())).request.cost_ledger)
+
+        current_input = historical_input
+        current_result = _standard_profile_result(_world_result(current_input))
+        historical_mismatch_run = self.store.create_run(
+            "world",
+            historical_input,
+            _policy().bounds,
+            historical_profile.snapshot(),
+            _metadata("world"),
+        )
+        with self.assertRaises(ValueError):
+            self.store.save_batch_result(historical_mismatch_run, current_result)
+        current_mismatch_run = self.store.create_run(
+            "world",
+            current_input,
+            _policy().bounds,
+            STANDARD_RESEARCH_PROFILE.snapshot(),
+            _metadata("world"),
+        )
+        with self.assertRaises(ValueError):
+            self.store.save_batch_result(current_mismatch_run, historical_result)
+
         legacy_record = legacy_result.case_set.cases[0]
         custom_request = replace(
             legacy_record.kernel_request,
@@ -711,38 +757,46 @@ class HostBatchSnapshotTests(unittest.TestCase):
         )
 
         legacy_record = legacy_result.case_set.cases[0]
-        forged_request = replace(
-            legacy_record.kernel_request,
-            provenance=replace(
-                legacy_record.kernel_request.provenance,
-                description="core-request; profile_snapshot="
-                + json.dumps(STANDARD_RESEARCH_PROFILE.snapshot(), sort_keys=True, separators=(",", ":")),
-            ),
-        )
-        forged_core = evaluate_core_research(forged_request)
-        forged_context = replace(
-            legacy_record.context,
-            kernel_request=forged_request,
-            kernel_result=forged_core,
-        )
-        forged_record = CoreCaseRecord(
-            legacy_record.case_id,
-            forged_context,
-            forged_request,
-            forged_core,
-            legacy_record.reasons,
-        )
-        forged_case_set = replace(legacy_result.case_set, cases=(forged_record,))
-        forged_result = CoreRunResult(forged_case_set, compact_summary(forged_case_set))
-        forged_run = self.store.create_run(
-            "world",
-            legacy_input,
-            _policy().bounds,
-            legacy_profile.snapshot(),
-            _metadata("world"),
-        )
-        with self.assertRaises(ValueError):
-            self.store.save_batch_result(forged_run, forged_result)
+        for forged_profile in (historical_profile, STANDARD_RESEARCH_PROFILE):
+            forged_request = replace(
+                legacy_record.kernel_request,
+                provenance=replace(
+                    legacy_record.kernel_request.provenance,
+                    description="core-request; profile_snapshot="
+                    + json.dumps(
+                        forged_profile.snapshot(),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                ),
+            )
+            forged_core = evaluate_core_research(forged_request)
+            forged_context = replace(
+                legacy_record.context,
+                kernel_request=forged_request,
+                kernel_result=forged_core,
+            )
+            forged_record = CoreCaseRecord(
+                legacy_record.case_id,
+                forged_context,
+                forged_request,
+                forged_core,
+                legacy_record.reasons,
+            )
+            forged_case_set = replace(legacy_result.case_set, cases=(forged_record,))
+            forged_result = CoreRunResult(
+                forged_case_set, compact_summary(forged_case_set)
+            )
+            forged_run = self.store.create_run(
+                "world",
+                legacy_input,
+                _policy().bounds,
+                legacy_profile.snapshot(),
+                _metadata("world"),
+            )
+            with self.subTest(forged_profile=forged_profile.version):
+                with self.assertRaises(ValueError):
+                    self.store.save_batch_result(forged_run, forged_result)
 
         original_record = result.case_set.cases[0]
         approved_risk = original_record.kernel_request.risk_policy

@@ -1,5 +1,10 @@
 # Core Convexity MVP User Flow v0.1
 
+Current normal Host Profile v0.3 adds the approved
+[strategy-governance scope](core-strategy-governance-v0.1.md) without changing
+the preceding cash/sensitivity arithmetic. Research intent is not execution
+or automatic-exercise protection; unknown costs and historical versions remain.
+
 Status: Core API and independent local Host implemented; three-entry live research acceptance incomplete
 Readiness: `CORE_MVP_READY_WITH_APPROVED_ASSUMPTIONS` ([readiness audit](core-convexity-mvp-readiness-v0.1.md))
 

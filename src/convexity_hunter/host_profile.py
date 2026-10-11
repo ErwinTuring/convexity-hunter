@@ -1,8 +1,9 @@
 """Host-owned approved Standard Research Profile versions.
 
-The v0.1 factory remains available for historical records. The v0.2 profile
-adds only the frozen conditional cash and descriptive sensitivity assumptions;
-it does not provide provider data, tariffs, or execution authority.
+The v0.1 and v0.2 factories remain available for historical records. The v0.2
+profile adds the frozen conditional cash and descriptive sensitivity
+assumptions; v0.3 adds only strategy-governance research intent. None provides
+provider data, tariffs, execution authority, or broker controls.
 """
 
 from __future__ import annotations
@@ -37,8 +38,15 @@ from .option_chain_discovery import OptionMaturityAuthority
 
 
 PROFILE_ID = "standard-research-profile"
-PROFILE_VERSION = "v0.2"
 _PROFILE_VERSION_V0_1 = "v0.1"
+_PROFILE_VERSION_V0_2 = "v0.2"
+_PROFILE_VERSION_V0_3 = "v0.3"
+PROFILE_VERSION = _PROFILE_VERSION_V0_3
+_REGISTERED_PROFILE_VERSIONS = (
+    _PROFILE_VERSION_V0_1,
+    _PROFILE_VERSION_V0_2,
+    _PROFILE_VERSION_V0_3,
+)
 AUTHORIZED_SOURCE_ID = "standalone-mvp-architecture-v0.1"
 AUTHORIZED_SOURCE_VERSION = "v0.1"
 AUTHORIZED_SOURCE_BASIS = "user-approved-standard-research-profile"
@@ -104,6 +112,17 @@ def _cash_sensitivity_policy_snapshot() -> Dict[str, Any]:
     }
 
 
+def _strategy_governance_snapshot() -> Dict[str, str]:
+    return {
+        "version": "v0.1",
+        "funding_rule": "OWN_CASH_PREMIUM; MARGIN_FINANCING_PROHIBITED",
+        "lifecycle_intent": "CLOSE_OR_ABANDON_BEFORE_EXPIRY",
+        "exercise_rule": "EXERCISE_TO_STOCK_PROHIBITED",
+        "execution_enforcement": "NOT_ESTABLISHED",
+        "automatic_exercise_protection": "NOT_ESTABLISHED",
+    }
+
+
 def _exact_decimal(name: str, value: object, expected: decimal.Decimal) -> None:
     if type(value) is not decimal.Decimal:
         raise TypeError("{} must be Decimal".format(name))
@@ -134,7 +153,7 @@ class StandardResearchProfile:
     def __post_init__(self) -> None:
         if (
             self.profile_id != PROFILE_ID
-            or self.version not in (_PROFILE_VERSION_V0_1, PROFILE_VERSION)
+            or self.version not in _REGISTERED_PROFILE_VERSIONS
             or self.currency != "USD"
         ):
             raise ValueError("only the approved Standard Research Profile is supported")
@@ -183,8 +202,10 @@ class StandardResearchProfile:
                 "limitations": list(self.payoff_limitations),
             },
         }
-        if self.version == PROFILE_VERSION:
+        if self.version in (_PROFILE_VERSION_V0_2, _PROFILE_VERSION_V0_3):
             snapshot["cash_sensitivity_policy"] = _cash_sensitivity_policy_snapshot()
+        if self.version == _PROFILE_VERSION_V0_3:
+            snapshot["strategy_governance"] = _strategy_governance_snapshot()
         return snapshot
 
     def snapshot_json(self) -> str:
@@ -222,7 +243,7 @@ class StandardResearchProfile:
         )
         cost_ledger = None
         sensitivity = None
-        if self.version == PROFILE_VERSION and _supported_cash_structure(structure):
+        if self.version in (_PROFILE_VERSION_V0_2, _PROFILE_VERSION_V0_3) and _supported_cash_structure(structure):
             asks = tuple(leg.ask_per_underlying_unit for leg in structure.legs)
             if all(ask is not None for ask in asks):
                 observed_position_ask = _decimal_sum(
@@ -261,6 +282,7 @@ class StandardResearchProfile:
 
 
 _STANDARD_RESEARCH_PROFILE_V0_1 = StandardResearchProfile(version=_PROFILE_VERSION_V0_1)
+_STANDARD_RESEARCH_PROFILE_V0_2 = StandardResearchProfile(version=_PROFILE_VERSION_V0_2)
 STANDARD_RESEARCH_PROFILE = StandardResearchProfile()
 APPROVED_STANDARD_RESEARCH_PROFILE = STANDARD_RESEARCH_PROFILE
 
@@ -270,7 +292,11 @@ def _profile_for_snapshot(snapshot: object) -> StandardResearchProfile:
 
     if type(snapshot) is not dict:
         raise TypeError("profile snapshot must be an exact registered mapping")
-    for profile in (_STANDARD_RESEARCH_PROFILE_V0_1, STANDARD_RESEARCH_PROFILE):
+    for profile in (
+        _STANDARD_RESEARCH_PROFILE_V0_1,
+        _STANDARD_RESEARCH_PROFILE_V0_2,
+        STANDARD_RESEARCH_PROFILE,
+    ):
         expected = profile.snapshot()
         try:
             candidate_json = json.dumps(
@@ -344,15 +370,13 @@ def _request_has_conflicting_registered_profile(
     for text in text_values:
         if type(text) is not str:
             continue
-        if (
-            "Standard Research Profile v0.2" in text
-            or "approved-standard-research-profile-v0.2" in text
-            or (
-                "profile_snapshot=" in text
-                and STANDARD_RESEARCH_PROFILE.snapshot_json() in text
-            )
-        ):
-            if expected_version != PROFILE_VERSION:
+        for registered_version in _REGISTERED_PROFILE_VERSIONS:
+            if registered_version == expected_version:
+                continue
+            if (
+                "Standard Research Profile {}".format(registered_version) in text
+                or "approved-standard-research-profile-{}".format(registered_version) in text
+            ):
                 return True
         marker = "profile_snapshot="
         if marker in text:

@@ -2,6 +2,35 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Approved strategy and fresh Event result — 2026-10-11
+
+The user approved a cash-funded long-option research scope: no margin
+financing, intended closing or abandonment before expiration, and no exercise
+into stock. This is caller research governance, not evidence that closing is
+executable or automatic exercise can actually be prevented. Tariff package is
+unknown; no fixed-plan fees, zero funding/exit/settlement charges or new loss
+guarantee may be inferred. Narrow integration preflight returned READY for
+governance metadata and disclosure only; [the frozen boundary](core-strategy-governance-v0.1.md)
+uses Profile v0.3 while preserving exact v0.1/v0.2 behavior.
+Integration is now implemented and reviewed: 90 focused tests and 89 related
+Core/HTTP tests passed (overlapping sets), with compileall and docs checks.
+The only review finding was an independently pinned historical snapshot test;
+its correction passed targeted re-review. The normal workbench now serves
+Profile v0.3 with the approved governance and three configured executors.
+The old Direct report hash is unchanged; no new research operation was used
+to deploy or verify this policy. Costs remain UNKNOWN.
+
+One new isolated production-HTTP Event operation for the IREN financing /
+deployment clue is spent at `/private/tmp/ch-event-one-shot.hnnXs6/`.
+Exactly one POST returned 201; run-detail GET returned 200. Profile v0.2;
+elapsed 24.52s; result BLOCKED / GROUNDING_NO_SUBMISSION. Retained counts:
+15 claims, one hypothesis, five bindings, one coverage row and five source
+bodies; two model calls (roles not distinguished by this sanitized result).
+Semantic receipt validation and Builder completed, but submission is missing;
+EI NOT_RUN, no downstream Core submission and no batch archive. Source status
+is UNKNOWN, not proof of no requests. No retry or additional quote request.
+The normal 8080 workbench and its database were not changed by this run.
+
 ## Approved Core cash/sensitivity policy — 2026-10-11
 
 The user approved [policy v0.1](core-cash-sensitivity-policy-v0.1.md): a

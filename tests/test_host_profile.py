@@ -116,7 +116,7 @@ class StandardResearchProfileTests(unittest.TestCase):
         self.assertIs(profile, APPROVED_STANDARD_RESEARCH_PROFILE)
         self.assertIsInstance(profile, StandardResearchProfile)
         self.assertEqual(profile.profile_id, "standard-research-profile")
-        self.assertEqual(profile.version, "v0.2")
+        self.assertEqual(profile.version, "v0.3")
         self.assertEqual(profile.currency, "USD")
         self.assertEqual(profile.portfolio_value, D("100000"))
         self.assertEqual(profile.maximum_single_loss_fraction, D("0.005"))
@@ -131,12 +131,29 @@ class StandardResearchProfileTests(unittest.TestCase):
         encoded = json.dumps(snapshot, sort_keys=True)
         decoded = json.loads(encoded)
         self.assertEqual(decoded, snapshot)
+        self.assertEqual(
+            set(snapshot),
+            {
+                "profile_id",
+                "version",
+                "currency",
+                "portfolio_value",
+                "maximum_single_loss_fraction",
+                "maximum_repeated_loss_fraction",
+                "repeat_count",
+                "quantity",
+                "authorized_source",
+                "payoff_approval",
+                "cash_sensitivity_policy",
+                "strategy_governance",
+            },
+        )
         self.assertEqual(snapshot["portfolio_value"], "100000")
         self.assertEqual(snapshot["maximum_single_loss_fraction"], "0.005")
         self.assertEqual(snapshot["maximum_repeated_loss_fraction"], "0.015")
         self.assertEqual(snapshot["repeat_count"], 3)
         self.assertEqual(snapshot["quantity"], 1)
-        self.assertEqual(snapshot["version"], "v0.2")
+        self.assertEqual(snapshot["version"], "v0.3")
         self.assertEqual(
             snapshot["cash_sensitivity_policy"],
             {
@@ -163,12 +180,118 @@ class StandardResearchProfileTests(unittest.TestCase):
             snapshot["authorized_source"]["source_id"],
             "standalone-mvp-architecture-v0.1",
         )
+        self.assertEqual(
+            snapshot["strategy_governance"],
+            {
+                "version": "v0.1",
+                "funding_rule": "OWN_CASH_PREMIUM; MARGIN_FINANCING_PROHIBITED",
+                "lifecycle_intent": "CLOSE_OR_ABANDON_BEFORE_EXPIRY",
+                "exercise_rule": "EXERCISE_TO_STOCK_PROHIBITED",
+                "execution_enforcement": "NOT_ESTABLISHED",
+                "automatic_exercise_protection": "NOT_ESTABLISHED",
+            },
+        )
         self.assertEqual(snapshot["authorized_source"]["frozen_commit"], "1adc636")
         self.assertNotIn("credential", encoded.lower())
         self.assertNotIn("token", encoded.lower())
         self.assertEqual(
             json.loads(STANDARD_RESEARCH_PROFILE.snapshot_json()), snapshot
         )
+
+    def test_v02_snapshot_factory_and_cash_report_remain_historical(self):
+        historical = StandardResearchProfile(version="v0.2")
+        historical_snapshot = {
+            "authorized_source": {
+                "basis": "user-approved-standard-research-profile",
+                "frozen_commit": "1adc636",
+                "source_id": "standalone-mvp-architecture-v0.1",
+                "version": "v0.1",
+            },
+            "cash_sensitivity_policy": {
+                "conditional_premium_factor": "1.10",
+                "observed_position_ask_basis": "sum(ask_per_underlying_unit*quantity*contract_multiplier)",
+                "policy_id": "core-cash-sensitivity-policy",
+                "required_unknown_component_ids": [
+                    "entry_fees",
+                    "strategy_dependent_funding",
+                    "strategy_dependent_exit",
+                    "strategy_dependent_settlement",
+                ],
+                "sensitivity": {
+                    "grammar": "long_straddle_equal_quantity_multiplier_same_underlying_strike_expiration",
+                    "negative_terminal_price": "NOT_APPLICABLE",
+                    "per_leg_ask_factors": ["1", "1.10", "1.25"],
+                    "terminal_formula": "strike+x*baseline_sum_per_underlying_unit_asks",
+                    "x_offsets": [-2, -1, 0, 1, 2],
+                },
+                "version": "v0.1",
+            },
+            "currency": "USD",
+            "maximum_repeated_loss_fraction": "0.015",
+            "maximum_single_loss_fraction": "0.005",
+            "payoff_approval": {
+                "limitations": [
+                    "conditional standard-payoff geometry only",
+                    "exact deliverable verification remains unestablished",
+                    "indicative asks are non-executable and do not establish underpricing",
+                ],
+                "model_id": "conditional-standard-payoff",
+                "model_version": "0.1",
+            },
+            "portfolio_value": "100000",
+            "profile_id": "standard-research-profile",
+            "quantity": 1,
+            "repeat_count": 3,
+            "version": "v0.2",
+        }
+        historical_snapshot_json = (
+            '{"authorized_source":{"basis":"user-approved-standard-research-profile",'
+            '"frozen_commit":"1adc636","source_id":"standalone-mvp-architecture-v0.1",'
+            '"version":"v0.1"},"cash_sensitivity_policy":{"conditional_premium_factor":"1.10",'
+            '"observed_position_ask_basis":"sum(ask_per_underlying_unit*quantity*contract_multiplier)",'
+            '"policy_id":"core-cash-sensitivity-policy","required_unknown_component_ids":'
+            '["entry_fees","strategy_dependent_funding","strategy_dependent_exit",'
+            '"strategy_dependent_settlement"],"sensitivity":{"grammar":'
+            '"long_straddle_equal_quantity_multiplier_same_underlying_strike_expiration",'
+            '"negative_terminal_price":"NOT_APPLICABLE","per_leg_ask_factors":'
+            '["1","1.10","1.25"],"terminal_formula":'
+            '"strike+x*baseline_sum_per_underlying_unit_asks","x_offsets":[-2,-1,0,1,2]},'
+            '"version":"v0.1"},"currency":"USD","maximum_repeated_loss_fraction":"0.015",'
+            '"maximum_single_loss_fraction":"0.005","payoff_approval":{"limitations":'
+            '["conditional standard-payoff geometry only","exact deliverable verification remains '
+            'unestablished","indicative asks are non-executable and do not establish underpricing"],'
+            '"model_id":"conditional-standard-payoff","model_version":"0.1"},'
+            '"portfolio_value":"100000","profile_id":"standard-research-profile",'
+            '"quantity":1,"repeat_count":3,"version":"v0.2"}'
+        )
+        self.assertEqual(historical.snapshot(), historical_snapshot)
+        self.assertEqual(historical.snapshot_json(), historical_snapshot_json)
+        self.assertNotIn("strategy_governance", historical.snapshot())
+
+        structure = make_straddle()
+        request = historical.request_factory(
+            case_id="case-v02-historical", structure=structure, context=None
+        )
+        result = core_research.evaluate_core_research(request)
+        self.assertEqual(request.risk_policy.methodology, "approved-standard-research-profile-v0.2")
+        self.assertEqual(request.cost_ledger.premium_bound, D("440.000"))
+        self.assertEqual(len(request.sensitivity.points), 12)
+        rendered = report(
+            CoreDirectResult(
+                raw_input=None,
+                core_structure=structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=request,
+                kernel_result=result,
+                reasons=(),
+                full_report="",
+            )
+        )
+        self.assertIn("profile=standard-research-profile:v0.2", rendered)
+        self.assertIn("conditional_premium_factor=1.10", rendered)
+        self.assertNotIn("策略治理意图", rendered)
 
     def test_v01_snapshot_and_factory_remain_exact_historical_behavior(self):
         legacy = StandardResearchProfile(version="v0.1")
@@ -248,6 +371,63 @@ class StandardResearchProfileTests(unittest.TestCase):
             )
         )
         self.assertNotIn("现金与敏感性政策", forged_rendered)
+        self.assertNotIn("策略治理意图", forged_rendered)
+
+    def test_v03_governance_report_separates_intent_from_enforcement(self):
+        structure = make_structure()
+        request = STANDARD_RESEARCH_PROFILE.request_factory(
+            case_id="case-v03-governance", structure=structure, context=None
+        )
+        result = core_research.evaluate_core_research(request)
+        rendered = report(
+            CoreDirectResult(
+                raw_input=None,
+                core_structure=structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=request,
+                kernel_result=result,
+                reasons=(),
+                full_report="",
+            )
+        )
+        self.assertIn("策略治理意图（非执行控制）", rendered)
+        self.assertIn("funding_rule=OWN_CASH_PREMIUM; MARGIN_FINANCING_PROHIBITED", rendered)
+        self.assertIn("lifecycle_intent=CLOSE_OR_ABANDON_BEFORE_EXPIRY", rendered)
+        self.assertIn("exercise_rule=EXERCISE_TO_STOCK_PROHIBITED", rendered)
+        self.assertIn("execution_enforcement=NOT_ESTABLISHED", rendered)
+        self.assertIn("automatic_exercise_protection=NOT_ESTABLISHED", rendered)
+        self.assertIn("unknown_required_costs=entry_fees", rendered)
+        self.assertIn("不构成自动行权保护", rendered)
+        self.assertIn("被动不操作不等于已放弃", rendered)
+
+        mutated = STANDARD_RESEARCH_PROFILE.snapshot()
+        mutated["strategy_governance"]["automatic_exercise_protection"] = "PROTECTED"
+        forged_request = replace(
+            request,
+            provenance=replace(
+                request.provenance,
+                description="core-request; profile_snapshot="
+                + json.dumps(mutated, sort_keys=True, separators=(",", ":")),
+            ),
+        )
+        forged_result = core_research.evaluate_core_research(forged_request)
+        forged_rendered = report(
+            CoreDirectResult(
+                raw_input=None,
+                core_structure=forged_request.structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=forged_request,
+                kernel_result=forged_result,
+                reasons=(),
+                full_report="",
+            )
+        )
+        self.assertNotIn("策略治理意图", forged_rendered)
+        self.assertNotIn("automatic_exercise_protection=PROTECTED", forged_rendered)
 
     def test_three_origins_use_the_same_profile_request_factory(self):
         structures = (make_structure(101), make_structure(102), make_structure(103))
@@ -302,7 +482,8 @@ class StandardResearchProfileTests(unittest.TestCase):
 
     def test_v02_exact_cash_budget_unknown_costs_and_fixed_baseline_grid(self):
         structure = make_straddle()
-        request = STANDARD_RESEARCH_PROFILE.request_factory(
+        historical = StandardResearchProfile(version="v0.2")
+        request = historical.request_factory(
             case_id="case-v02-grid", structure=structure, context=object()
         )
         ledger = request.cost_ledger
@@ -382,7 +563,8 @@ class StandardResearchProfileTests(unittest.TestCase):
         )
         with decimal.localcontext() as context:
             context.prec = 3
-            request = STANDARD_RESEARCH_PROFILE.request_factory(
+            historical = StandardResearchProfile(version="v0.2")
+            request = historical.request_factory(
                 case_id="case-exact-decimal", structure=structure, context=object()
             )
             self.assertEqual(
@@ -396,14 +578,15 @@ class StandardResearchProfileTests(unittest.TestCase):
 
     def test_v02_missing_asks_and_single_leg_scope(self):
         missing = make_straddle(put_ask=None)
-        missing_request = STANDARD_RESEARCH_PROFILE.request_factory(
+        historical = StandardResearchProfile(version="v0.2")
+        missing_request = historical.request_factory(
             case_id="case-missing-ask", structure=missing, context=None
         )
         self.assertIsNone(missing_request.cost_ledger)
         self.assertIsNone(missing_request.sensitivity)
 
         single = make_structure()
-        single_request = STANDARD_RESEARCH_PROFILE.request_factory(
+        single_request = historical.request_factory(
             case_id="case-single-leg", structure=single, context=None
         )
         self.assertIsNotNone(single_request.cost_ledger)
