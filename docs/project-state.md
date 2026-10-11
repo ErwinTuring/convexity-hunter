@@ -1,5 +1,7 @@
 # Project State
 
+2026-10-11 fresh semantic evidence run (spent: `/private/tmp/ch-event-semantic-evidence-wlF6mn/`): 2 completed model calls; FINISHED / BLOCKED / GROUNDING_NO_SUBMISSION. Verifier outcomes were supported for 17/17 claims, 2/2 hypotheses and 1/1 coverage result; field-binding records were 0. The Host receipt accepted 6 claims, rejected 11 claims and both hypotheses. Missing required bindings affected 13 records / 27 paths: 25 `claim.entity_refs[]` and 2 `hypothesis.impact_path`; one hypothesis also had incomplete claim-dependency closure, with 0 quote-reference failures. Both receipt-validation calls returned successfully, without implying acceptance. EI NOT_RUN; no Core case or projected submission. No production defect is established and no production change or semantic retry was made. Earlier spent markers remain untouched.
+
 Current 2026-10-11: the approved producer format-only repair is implemented on
 normal v0.6, independently reviewed and validated by 1,932 passing tests.
 Budget one/historical paths remain one-call; explicit spare budget permits

@@ -2,6 +2,10 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Fresh Event semantic evidence — 2026-10-11
+
+The single authorized run is spent at `/private/tmp/ch-event-semantic-evidence-wlF6mn/`: FINISHED / BLOCKED / GROUNDING_NO_SUBMISSION, with 2 completed model calls. Verifier outcomes were supported for all 17 claims, both hypotheses, and the one coverage result; there were 0 field-binding records. The Host receipt accepted 6 claims and rejected 11, and rejected both hypotheses. Required binding coverage was missing on 13 records across 27 paths (11 claims / 25 `claim.entity_refs[]`; 2 hypotheses / 2 `hypothesis.impact_path`). One rejected hypothesis also had incomplete claim-dependency closure; quote-reference failures were 0. Both runtime receipt-validation calls returned successfully; this is not acceptance. EI NOT_RUN; no Core case and no successful/projected submission. This evidence does not establish a production defect; no semantic retry or production change was made. Earlier spent markers remain untouched.
+
 ## Producer format repair — implemented and validated
 
 The user approved at most one extra request only for a positively classified
