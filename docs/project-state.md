@@ -10,6 +10,9 @@ repair; independent verification rejected its hypothesis, so no submission
 projected, EI NOT_RUN and no Core case. SQLite restart and Chinese HTTP
 readback passed. This is not three-entry real research completion; details and
 closed rejection counts are in the [checkpoint](current-checkpoint.md#producer-format-repair--implemented-and-validated).
+Read-only follow-up verified missing producer bindings, but individual semantic
+reasons were not retained. No production defect or lawful semantic retry was
+established; do not repeat that diagnosis from aggregate counts alone.
 
 The following compatibility results are historical and remain unchanged.
 

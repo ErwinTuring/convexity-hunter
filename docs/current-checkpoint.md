@@ -38,6 +38,16 @@ hypothesis that survives independent semantic verification and projection;
 format success is not evidence acceptance. No evidence standard is relaxed.
 The historical attempts below remain spent.
 
+Read-only follow-up confirmed that FIELD_BINDING_MISSING denotes checks for
+required non-null fields without a binding row. The producer prompt already
+requires bindings and catalog expansion preserves supplied rows; no parser
+loss or other production defect was demonstrated. The archive retains only
+aggregate rejection diagnostics, not the individual verifier reasons, source
+bodies or envelope. The exact per-claim/hypothesis cause therefore remains
+unknown beyond the missing-binding checks. Do not infer unsupported facts or
+a verifier defect from those totals. No live call or code change was made in
+this follow-up; the format-only policy still forbids binding/semantic retries.
+
 ## Preceding Event Grounder / Store compatibility — 2026-10-11
 
 Two narrow fixes were committed before this work unit. Grounder preserves only an exact
