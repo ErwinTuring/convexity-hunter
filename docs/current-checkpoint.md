@@ -2,6 +2,27 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Lawful zero-hypothesis product result — 2026-10-12
+
+The user accepts zero hypotheses as a legitimate result. This bounded unit
+clarifies normal workbench presentation using retained counts, coverage and
+Builder diagnostics only. It does not force causal links, change prompts,
+create a submission, relax EI, or retry the spent IREN operation. Zero proposed
+hypotheses, rejected hypotheses and EI INCOMPLETE are distinct outcomes.
+Absent historical diagnostics remain unavailable rather than invented zeros.
+No reason for the model's zero output may be inferred from aggregate counts.
+Fixed-source tests are implementation evidence, not real three-entry closure.
+The production change is presentation-only: an exact retained zero count plus
+the existing Builder diagnostic produces an explicit explanation; nonzero
+rejection and positive submissions retain their distinct paths. All 108
+workbench/server/store tests passed, including local HTTP positive/negative
+paths and restart retention; compileall and diff checks passed. Worker sandbox
+loopback errors were resolved by running the same tests with local-bind
+permission, not by changing code. No live source/model/provider calls occurred.
+Independent review passed with no findings; schemas, gates, prompts and budgets
+are unchanged. The running local Host has not been restarted by this unit;
+deployment must reload the application before serving the changed renderer.
+
 ## Successful model processing, no hypothesis — 2026-10-12
 
 The next explicitly approved single diagnostic at

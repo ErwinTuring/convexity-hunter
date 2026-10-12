@@ -627,6 +627,16 @@ _DOCUMENT = r'''<!doctype html>
       }
     }
 
+    const hypothesisCount = isRecord(outcome.counts)
+      ? outcome.counts.hypothesis_count : undefined;
+    const hasNoProjectableHypothesis = Array.isArray(outcome.diagnostic_counts)
+      && outcome.diagnostic_counts.some((item) => isRecord(item)
+        && item.code === "NO_PROJECTABLE_HYPOTHESIS"
+        && Number.isSafeInteger(item.count) && item.count > 0);
+    if (hypothesisCount === 0 && hasNoProjectableHypothesis) {
+      lines.push("Hypothesis 边界：输出数为 0；NO_PROJECTABLE_HYPOTHESIS 是 Builder 诊断，不是 verifier 拒绝计数；零输出原因未提供。");
+    }
+
     lines.push("Coverage（逐项原顺序；状态不是评分或排名）：");
     if (!Array.isArray(outcome.coverage)) {
       lines.push("  接口未提供可识别 Coverage。");

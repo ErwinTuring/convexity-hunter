@@ -1,5 +1,14 @@
 # Project State
 
+Lawful zero-hypothesis presentation is implemented in the normal workbench:
+producer count zero is not verifier rejection, and the Builder diagnostic does
+not explain the model's reason. Missing diagnostics remain unavailable; no
+submission still means EI NOT_RUN and no Core. The 108 workbench/server/store
+tests, compileall and diff checks passed; independent review passed.
+No source/model/provider call, prompt, schema, acceptance or budget change.
+Real three-entry research acceptance remains incomplete. See
+[zero-result checkpoint](current-checkpoint.md#lawful-zero-hypothesis-product-result--2026-10-12).
+
 Latest approved Event diagnostic (2026-10-12) completed both model calls:
 14 claims and 28 bindings verified, no missing binding paths, but the producer
 emitted zero hypotheses and coverage remained unresolved. Builder returned

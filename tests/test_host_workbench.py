@@ -235,7 +235,6 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     builder_status: "COMPLETED", submission_status: "MISSING", ei_status: "NOT_RUN",
     counts: { source_body_count: 1, claim_count: 1, hypothesis_count: 0, field_binding_count: 1, coverage_count: 2 },
     diagnostic_counts: [
-      { code: "CLAIM_NOT_PROJECTABLE", count: 1 },
       { code: "NO_PROJECTABLE_HYPOTHESIS", count: 1 }
     ],
     coverage: [
@@ -283,7 +282,8 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     "阶段状态：已完成（COMPLETED）", "Grounder：COMPLETED", "source_status：UNKNOWN（不是搜索成功）",
     "semantic_status：RECEIPT_VALIDATED（不是事实真理）", "builder_status：COMPLETED",
     "EI submission：MISSING", "EI：NOT_RUN", "没有 Core 结果或报告",
-    "诊断计数（保留负面结果；不是评分）", "CLAIM_NOT_PROJECTABLE：1",
+    "诊断计数（保留负面结果；不是评分）", "NO_PROJECTABLE_HYPOTHESIS：1",
+    "Hypothesis 边界：输出数为 0；NO_PROJECTABLE_HYPOTHESIS 是 Builder 诊断，不是 verifier 拒绝计数；零输出原因未提供。",
     "model=unresolved", "validator=contradicted", "Hypothesis 数：0", "Coverage 数：2",
     "Producer wire：grounder-output-v0.3", digest("a"), "发送字节=10", "接收字节=40"
   ]) {
@@ -297,9 +297,51 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     if (grounderText.includes(forbidden)) throw new Error("private or unknown Grounder data was displayed: " + forbidden);
   }
   if (!grounderText.includes("Coverage #0") || !grounderText.includes("Coverage #1")) throw new Error("coverage rows/order were omitted");
+  if (grounderText.includes("HYPOTHESIS_REJECTED_BY_VALIDATOR")) throw new Error("zero producer hypotheses were presented as verifier-rejected hypotheses");
   if (grounderText.includes("question-1") || grounderText.includes("question-2")) throw new Error("unbounded subquestion identifiers were exposed");
   if (innerHtmlWrites !== 0) throw new Error("Grounder outcome reached innerHTML");
   if (grounder.calls.some((call) => call.path.includes("/cases/"))) throw new Error("Grounder stage rendering triggered an extra detail request");
+
+  const historicalOutcome = { ...grounderOutcome };
+  delete historicalOutcome.diagnostic_counts;
+  delete historicalOutcome.coverage;
+  const historical = await scenario({
+    mode: "event", cases: [], runStatus: "BLOCKED",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: historicalOutcome }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await historical.clickRun();
+  const historicalText = historical.elements.get("run-events").textContent;
+  if (!historicalText.includes("接口未提供可识别诊断计数") || !historicalText.includes("接口未提供可识别 Coverage")) {
+    throw new Error("missing historical diagnostics or coverage were not shown as unavailable");
+  }
+  if (historicalText.includes("NO_PROJECTABLE_HYPOTHESIS") || historicalText.includes("Hypothesis 边界：")) {
+    throw new Error("missing historical diagnostics were inferred from a zero count");
+  }
+
+  const rejectedOutcome = {
+    ...grounderOutcome,
+    counts: { ...grounderOutcome.counts, hypothesis_count: 1 },
+    diagnostic_counts: [
+      { code: "CLAIM_NOT_PROJECTABLE", count: 1 },
+      { code: "HYPOTHESIS_REJECTED_BY_VALIDATOR", count: 1 },
+      { code: "NO_PROJECTABLE_HYPOTHESIS", count: 1 }
+    ]
+  };
+  const rejected = await scenario({
+    mode: "event", cases: [], runStatus: "BLOCKED",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: rejectedOutcome }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await rejected.clickRun();
+  const rejectedText = rejected.elements.get("run-events").textContent;
+  for (const expected of [
+    "Hypothesis 数：1", "CLAIM_NOT_PROJECTABLE：1",
+    "HYPOTHESIS_REJECTED_BY_VALIDATOR：1", "NO_PROJECTABLE_HYPOTHESIS：1"
+  ]) {
+    if (!rejectedText.includes(expected)) throw new Error("nonzero rejected-hypothesis diagnostics were omitted: " + expected);
+  }
+  if (rejectedText.includes("Hypothesis 边界：")) throw new Error("nonzero hypothesis output received the zero-output explanation");
 
   const positiveOutcome = {
     ...grounderOutcome,
@@ -307,6 +349,8 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     submission_status: "PRESENT",
     ei_status: "ASSESSED",
     ei_assessment_status: "incomplete",
+    counts: { ...grounderOutcome.counts, hypothesis_count: 1 },
+    diagnostic_counts: [],
     source_batch_count: 1,
     submission_sha256: digest("2"),
     submission: {
@@ -330,10 +374,13 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   for (const expected of [
     "host-grounder-submission-stage-outcome-v0.1", "EI submission：PRESENT", "EI：ASSESSED",
     "EI 确定性评估：INCOMPLETE", "Source batch 数：1", "Submission SHA-256：" + digest("2"),
-    "Hypothesis 数：0", "Coverage 数：2", "Producer wire：grounder-output-v0.3",
+    "Hypothesis 数：1", "Coverage 数：2", "Producer wire：grounder-output-v0.3",
     "model=unresolved", "validator=contradicted", "不自动表示研究成功、Core 结果或市场完成"
   ]) {
     if (!positiveText.includes(expected)) throw new Error("Positive Grounder safe stage field was omitted: " + expected);
+  }
+  if (positiveText.includes("Hypothesis 边界：") || positiveText.includes("NO_PROJECTABLE_HYPOTHESIS")) {
+    throw new Error("positive submission was mislabeled as a zero-hypothesis outcome");
   }
   if (positiveText.includes("EI 确定性评估：ACCEPTED")) throw new Error("ASSESSED was incorrectly promoted to ACCEPTED");
   for (const forbidden of [

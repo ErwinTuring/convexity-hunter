@@ -64,6 +64,21 @@ Core evidence or disposition semantics.
 - **Direct:** “Research this exact supported Long Straddle.” Result: the Core
   disposition and an automatically rendered full report.
 
+### When grounding proposes no hypothesis
+
+Zero proposed hypotheses is a lawful negative grounding result, not a reason
+to invent a causal connection or retry for a positive answer. The normal
+workbench shows retained counts, coverage and Builder diagnostics. A zero
+producer count is distinct from verifier rejection; `NO_PROJECTABLE_HYPOTHESIS`
+does not itself explain why the producer returned zero. Missing historical
+diagnostics are unavailable, not zero.
+
+When no submission exists, the Host retains `GROUNDING_NO_SUBMISSION`, EI is
+`NOT_RUN`, and no Core branch/report is created. This is not EI `INCOMPLETE`,
+not `DATA_INSUFFICIENT_CORE`, and not proof that no relevant market event
+exists. Inspectable negative grounding is product behavior, not evidence of a
+successful real EI-to-Core research loop.
+
 ## Evidence rules
 
 - Payoff is real only with verified terms, or conditional only with explicit
