@@ -2,6 +2,37 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Successful model processing, no hypothesis — 2026-10-12
+
+The next explicitly approved single diagnostic at
+`/private/tmp/ch-event-acceptance.Q8DOf0Fx/` is spent: POST 201/readback 200,
+BLOCKED / GROUNDING_NO_SUBMISSION, elapsed 31.12 seconds. Source/catalog
+processing completed: five sources / 10,495 bytes and 45 catalog entries /
+22,236 bytes. Discovery and semantic each completed one call with stop finish;
+the installed model-error observer captured no error. Two Tavily requests
+reserved two credits, not verified account charges. No extra batch or retry.
+
+The normalized producer envelope contained zero hypotheses, rather than
+hypotheses being rejected by the verifier. The stored hypothesis_count is the
+envelope-array length, not the count of accepted hypotheses; catalog expansion
+preserves that array. All 14 claims and 28 field bindings were verified; rejected
+counts and required-field-gap paths were zero. The one coverage record remained
+unresolved. Builder's only diagnostic was NO_PROJECTABLE_HYPOTHESIS. Thus no
+submission was constructed, EI was not invoked, and Core callbacks were zero.
+This is neither EI ACCEPTED nor EI INCOMPLETE, and does not establish that no
+credible IREN hypothesis exists outside the returned evidence/output.
+
+The current prompt already permits source-supported provisional hypotheses
+with unknown identity/time fields and explicitly allows zero when unsupported.
+No parser, binding or transport defect is established by this run. Its success
+at model processing cannot explain the preceding run's unrecovered failure.
+Do not invent a hypothesis, relax EI, or repeat the same clue to obtain a
+positive acceptance result. The remaining product question is source-backed
+hypothesis formation, not model connectivity. Production/configuration/prompts
+remain unchanged. Private observer wiring checks passed; documentation checks
+are proportional and no full regression is claimed for this documentation-only
+result. Real three-entry acceptance remains incomplete.
+
 ## Post-capacity real Event acceptance — 2026-10-12
 
 The newly approved single operation at

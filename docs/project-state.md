@@ -1,6 +1,15 @@
 # Project State
 
-Latest approved post-capacity Event run (2026-10-12) completed source/catalog
+Latest approved Event diagnostic (2026-10-12) completed both model calls:
+14 claims and 28 bindings verified, no missing binding paths, but the producer
+emitted zero hypotheses and coverage remained unresolved. Builder returned
+NO_PROJECTABLE_HYPOTHESIS, so submission/EI/Core were not reached. The spent
+run establishes model processing, not real three-entry acceptance or absence
+of market hypotheses. No implementation defect or production change is
+established; do not force a hypothesis or repeat the clue for a positive result.
+See [latest result](current-checkpoint.md#successful-model-processing-no-hypothesis--2026-10-12).
+
+Preceding approved post-capacity Event run (2026-10-12) completed source/catalog
 processing (45 entries / 22,236 bytes), then stopped at DISCOVERY_CALL_FAILED
 after one delegated discovery request. The specific client error is not
 retained; semantic/EI/Core were not invoked. This run is spent, not a real
