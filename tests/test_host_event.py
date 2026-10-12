@@ -18,7 +18,9 @@ from convexity_hunter.event_intelligence import MethodologizedDateRange
 from convexity_hunter.host_event import (
     HostEventGrounderConfig,
     _make_listing_source_preparer,
+    _resolve_sec_occurrence_date,
     _retain_unknown_context,
+    _retain_unknown_context_v0_2,
     _publication_datetime,
     create_event_grounder,
 )
@@ -201,6 +203,9 @@ def _model_outputs(
     *,
     fact_text=None,
     event_date=None,
+    additional_fact_texts=(),
+    coverage_supported=False,
+    covered_claim_ids=None,
 ):
     run_input, context = _context_and_run_input(
         run_id,
@@ -226,52 +231,65 @@ def _model_outputs(
     verdict_claims = []
     verdict_bindings = []
     coverage_claim_ids = []
-    if fact_text is not None:
+    claim_evidence_refs = {}
+    fact_texts = () if fact_text is None else (fact_text,) + tuple(additional_fact_texts)
+    for claim_index, claim_text in enumerate(fact_texts):
         entry = next(
             entry
             for entry in catalog.entries
-            if entry.quote.rstrip("\r\n") == fact_text
+            if entry.quote.rstrip("\r\n") == claim_text
         )
         evidence_ref = {"evidence_id": entry.evidence_id}
+        claim_id = "fact-{}".format(claim_index + 1)
+        claim_evidence_refs[claim_id] = evidence_ref
+        claim_event_date = event_date if claim_index == 0 else None
         producer_claims.append(
             {
-                "claim_id": "fact-1",
+                "claim_id": claim_id,
                 "kind": "observed_fact",
                 "evidence_id": entry.evidence_id,
-                "text": fact_text,
+                "text": claim_text,
                 "entity_refs": [],
-                "event_date": event_date,
+                "event_date": claim_event_date,
                 "published_at": None,
                 "dependency_claim_ids": [],
                 "uncertainty": [],
                 "falsification_conditions": [],
             }
         )
-        producer_bindings.append(
-            {
-                "field_path": "/claims/0/event_date",
-                "evidence_id": entry.evidence_id,
-                "semantic_role": "date",
-                "status": "supported",
-            }
-        )
         verdict_claims.append(
             {
-                "claim_id": "fact-1",
+                "claim_id": claim_id,
                 "outcome": "supported",
                 "rationale": "Synthetic source sentence supports the fact.",
                 "evidence_refs": [evidence_ref],
             }
         )
-        verdict_bindings.append(
-            {
-                "index": 0,
-                "outcome": "supported",
-                "rationale": "Synthetic source sentence localizes the date field.",
-                "evidence_refs": [evidence_ref],
-            }
-        )
-        coverage_claim_ids.append("fact-1")
+        if claim_event_date is not None:
+            producer_bindings.append(
+                {
+                    "field_path": "/claims/{}/event_date".format(claim_index),
+                    "evidence_id": entry.evidence_id,
+                    "semantic_role": "date",
+                    "status": "supported",
+                }
+            )
+            verdict_bindings.append(
+                {
+                    "index": len(producer_bindings) - 1,
+                    "outcome": "supported",
+                    "rationale": "Synthetic source sentence localizes the date field.",
+                    "evidence_refs": [evidence_ref],
+                }
+            )
+        coverage_claim_ids.append(claim_id)
+    selected_coverage_ids = (
+        coverage_claim_ids
+        if covered_claim_ids is None
+        else list(covered_claim_ids)
+    )
+    if any(claim_id not in claim_evidence_refs for claim_id in selected_coverage_ids):
+        raise ValueError("synthetic coverage must reference an emitted claim")
     producer = {
         "schema_version": "grounder-output-v0.3",
         "stage": "semantic",
@@ -281,9 +299,9 @@ def _model_outputs(
         "coverage": [
             {
                 "subquestion_id": "user_event_input",
-                "status": "unresolved",
-                "claim_ids": coverage_claim_ids,
-                "gap": "Synthetic fixture supplies no supported hypothesis.",
+                "status": "supported" if coverage_supported else "unresolved",
+                "claim_ids": selected_coverage_ids,
+                "gap": None if coverage_supported else "Synthetic fixture supplies no supported hypothesis.",
             }
         ],
         "field_bindings": producer_bindings,
@@ -313,9 +331,9 @@ def _model_outputs(
             {
                 "index": 0,
                 "subquestion_id": "user_event_input",
-                "outcome": "unresolved",
-                "rationale": "The synthetic fixture does not establish an answer.",
-                "evidence_refs": [],
+                "outcome": "supported" if coverage_supported else "unresolved",
+                "rationale": "Synthetic verifier supports the covered event fact." if coverage_supported else "The synthetic fixture does not establish an answer.",
+                "evidence_refs": [claim_evidence_refs[claim_id] for claim_id in selected_coverage_ids] if coverage_supported else [],
             }
         ],
     }
@@ -338,6 +356,10 @@ def _source_fact_case(
     receipt_body_hash=None,
     binding_offset_delta=0,
     extra_claim=False,
+    extra_interpretation=False,
+    coverage_items=None,
+    coverage_outcomes=None,
+    claim_order=None,
     description=None,
     date_range=None,
 ):
@@ -374,6 +396,23 @@ def _source_fact_case(
         source = HostSourceBody(
             body, _digest(body), locator, _NOW, "Synthetic SEC filing", None
         )
+    if extra_interpretation:
+        interpretation = "The filing suggests broader strategic effects."
+        claims.append(
+            {
+                "claim_id": "interpretation-1",
+                "kind": "interpretation",
+                "source_id": source_id,
+                "locator": locator,
+                "quote": interpretation,
+                "text": interpretation,
+                "event_date": None,
+            }
+        )
+        body += interpretation + "\n"
+        source = HostSourceBody(
+            body, _digest(body), locator, _NOW, "Synthetic SEC filing", None
+        )
     start = body.find(sentence)
     envelope = {
         "schema_version": "grounder-output-v0.1",
@@ -401,6 +440,18 @@ def _source_fact_case(
             }
         ],
     }
+    if claim_order is not None:
+        claims_by_id = {claim["claim_id"]: claim for claim in claims}
+        new_indexes = {claim_id: index for index, claim_id in enumerate(claim_order)}
+        envelope["claims"] = [claims_by_id[claim_id] for claim_id in claim_order]
+        for binding in envelope["field_bindings"]:
+            parts = binding["field_path"].split("/")
+            if len(parts) > 3 and parts[1] == "claims":
+                claim_id = claims[int(parts[2])]["claim_id"]
+                parts[2] = str(new_indexes[claim_id])
+                binding["field_path"] = "/".join(parts)
+    if coverage_items is not None:
+        envelope["coverage"] = coverage_items
     canonical_bytes = json.dumps(
         envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
@@ -418,21 +469,22 @@ def _source_fact_case(
         event_description_binding=description,
         event_date_range=date_range,
     )
-    receipt = MappingProxyType(
-        {
-            "schema_version": "semantic-validation-v0.2",
-            "run_id": _RUN_ID,
-            "canonical_input_hash": context.canonical_input_hash,
-            "envelope_hash": envelope_hash,
-            "source_body_hashes": (
-                (source_id, receipt_body_hash or source.body_sha256),
-            ),
-            "verified_claim_ids": (
-                ("fact-1", "fact-2") if extra_claim else ("fact-1",)
-            ) if verified_claim else (),
-            "verified_binding_indices": (0,) if verified_binding else (),
-        }
-    )
+    receipt_values = {
+        "schema_version": "semantic-validation-v0.2",
+        "run_id": _RUN_ID,
+        "canonical_input_hash": context.canonical_input_hash,
+        "envelope_hash": envelope_hash,
+        "source_body_hashes": (
+            (source_id, receipt_body_hash or source.body_sha256),
+        ),
+        "verified_claim_ids": (
+            tuple(claim["claim_id"] for claim in claims) if verified_claim else ()
+        ),
+        "verified_binding_indices": (0,) if verified_binding else (),
+    }
+    if coverage_outcomes is not None:
+        receipt_values["coverage_outcomes"] = coverage_outcomes
+    receipt = MappingProxyType(receipt_values)
     return ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash), receipt, context
 
 
@@ -922,7 +974,7 @@ class HostEventGrounderTests(unittest.TestCase):
         callback = create_event_grounder(config, repo_root=_ROOT)
         self.assertIs(
             inspect.getclosurevars(callback).nonlocals["context_preparer"],
-            _retain_unknown_context,
+            _retain_unknown_context_v0_2,
         )
         self.assertEqual(
             tuple(inspect.signature(callback).parameters),
@@ -955,6 +1007,146 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(
             source.body[methodology["start"]:methodology["end"]], _SEC_SENTENCE
         )
+
+    def test_v02_coverage_selects_one_fact_independent_of_claim_and_id_order(self):
+        coverage = [
+            {
+                "subquestion_id": "user_event_input",
+                "status": "supported",
+                "claim_ids": ["interpretation-1", "fact-1"],
+                "gap": None,
+            }
+        ]
+        outcomes = ((0, "user_event_input", "supported", "Verified event coverage."),)
+        first_case = _source_fact_case(
+            extra_claim=True,
+            extra_interpretation=True,
+            coverage_items=coverage,
+            coverage_outcomes=outcomes,
+        )
+        snapshot, receipt, context = first_case
+        reordered = _source_fact_case(
+            extra_claim=True,
+            extra_interpretation=True,
+            coverage_items=[dict(coverage[0], claim_ids=["fact-1", "interpretation-1"])],
+            coverage_outcomes=outcomes,
+            claim_order=("interpretation-1", "fact-2", "fact-1"),
+        )
+
+        prepared = _retain_unknown_context_v0_2(*first_case)
+        reordered_prepared = _retain_unknown_context_v0_2(*reordered)
+        for result in (prepared, reordered_prepared):
+            self.assertEqual(result.event_description_binding, "fact-1")
+            self.assertEqual(result.event_date_range.start_date, datetime.date(2026, 10, 3))
+            self.assertEqual(result.event_date_range.end_date, datetime.date(2026, 10, 3))
+        self.assertEqual(
+            prepared.event_date_range.methodology,
+            reordered_prepared.event_date_range.methodology,
+        )
+        self.assertEqual(
+            json.loads(prepared.event_date_range.methodology)["rule_version"],
+            "host-event-source-facts-v0.2/sec-8-k-occurrence-date",
+        )
+
+        # A caller-supplied description is already the anchor; another fact
+        # cannot lend it a date, and the supplied string object is retained.
+        supplied = "".join(("fact", "-2"))
+        supplied_context = replace(context, event_description_binding=supplied)
+        supplied_result = _retain_unknown_context_v0_2(
+            snapshot, receipt, supplied_context
+        )
+        self.assertIs(supplied_result.event_description_binding, supplied)
+        self.assertIsNone(supplied_result.event_date_range)
+
+    def test_v02_covered_multi_fact_selection_fails_closed_on_bad_roots(self):
+        good = {
+            "subquestion_id": "user_event_input",
+            "status": "supported",
+            "claim_ids": ["fact-1"],
+            "gap": None,
+        }
+        supported = ((0, "user_event_input", "supported", "Verified event coverage."),)
+        cases = (
+            ("unresolved-envelope", [dict(good, status="unresolved")], supported),
+            ("non-null-gap", [dict(good, gap="still open")], supported),
+            ("duplicate-claim-id", [dict(good, claim_ids=["fact-1", "fact-1"])], supported),
+            ("malformed-claim-id", [dict(good, claim_ids=["fact-1", 7])], supported),
+            ("unverified-claim-id", [dict(good, claim_ids=["missing"])], supported),
+            ("ambiguous-facts", [dict(good, claim_ids=["fact-1", "fact-2"])], supported),
+            ("rejected-receipt", [good], ((0, "user_event_input", "unresolved", "Not supported."),)),
+            ("missing-outcome", [good], ()),
+            ("mismatched-outcome-id", [good], ((0, "other-question", "supported", "Mismatch."),)),
+            ("malformed-outcome", [good], ((False, "user_event_input", "supported", "Bad index."),)),
+            ("duplicate-outcome", [good], (supported[0], supported[0])),
+            (
+                "duplicate-coverage-root",
+                [good, dict(good)],
+                (supported[0], (1, "user_event_input", "supported", "Duplicate root.")),
+            ),
+        )
+        for label, coverage, outcomes in cases:
+            with self.subTest(case=label):
+                case = _source_fact_case(
+                    extra_claim=True,
+                    coverage_items=coverage,
+                    coverage_outcomes=outcomes,
+                )
+                self.assertIs(_retain_unknown_context_v0_2(*case), case[2])
+
+    def test_v02_announced_occurrence_is_narrow_and_keeps_v01_rejection(self):
+        announced = (
+            "On October 3, 2026, ACME HOLDINGS, INC. announced its acquisition "
+            "of Example Corp."
+        )
+        snapshot, receipt, context = _source_fact_case(sentence=announced)
+        envelope = json.loads(snapshot.canonical_bytes.decode("utf-8"))
+        self.assertIsNone(
+            _resolve_sec_occurrence_date(
+                0,
+                envelope["claims"][0],
+                context.source_bodies["sec-fact"],
+                envelope,
+                frozenset((0,)),
+                context,
+            )
+        )
+        self.assertIsNone(_retain_unknown_context(snapshot, receipt, context).event_date_range)
+
+        prepared = _retain_unknown_context_v0_2(snapshot, receipt, context)
+        methodology = json.loads(prepared.event_date_range.methodology)
+        self.assertEqual(prepared.event_date_range.start_date, datetime.date(2026, 10, 3))
+        self.assertEqual(
+            methodology["rule_version"],
+            "host-event-source-facts-v0.2/sec-8-k-occurrence-date",
+        )
+        self.assertEqual(methodology["verb"], "announced")
+        self.assertEqual(
+            context.source_bodies["sec-fact"].body[methodology["start"]:methodology["end"]],
+            announced,
+        )
+
+        unsafe_cases = (
+            {
+                "sentence": "ACME HOLDINGS, INC. announced its acquisition of Example Corp.",
+                "body": _SEC_HEADER + "Filing date: October 3, 2026\n" + "ACME HOLDINGS, INC. announced its acquisition of Example Corp.\n",
+            },
+            {
+                "sentence": "On October 3, 2026, ACME HOLDINGS, INC. announced that it will complete its acquisition of Example Corp."
+            },
+            {
+                "sentence": announced.replace("ACME HOLDINGS, INC.", "OTHER CORPORATION, INC.")
+            },
+            {"sentence": announced, "model_date": "2026-10-02"},
+            {"sentence": announced, "binding_offset_delta": 1},
+            {"sentence": announced, "receipt_body_hash": "f" * 64},
+        )
+        for options in unsafe_cases:
+            with self.subTest(options=options):
+                unsafe_snapshot, unsafe_receipt, unsafe_context = _source_fact_case(**options)
+                result = _retain_unknown_context_v0_2(
+                    unsafe_snapshot, unsafe_receipt, unsafe_context
+                )
+                self.assertIsNone(result.event_date_range)
 
     def test_listing_preparer_requires_explicit_exact_authorized_source_tuple(self):
         case = _listing_identity_case()
@@ -2034,7 +2226,10 @@ class HostEventGrounderTests(unittest.TestCase):
 
     def test_create_event_grounder_default_preparer_fills_from_validated_runtime_snapshot(self):
         source_order = (("sec-fact", _SEC_LOCATOR),)
-        source_bodies = {_SEC_LOCATOR: _SEC_HEADER + _SEC_SENTENCE + "\n"}
+        secondary_fact = "The filing describes a separate source-backed fact."
+        source_bodies = {
+            _SEC_LOCATOR: _SEC_HEADER + _SEC_SENTENCE + "\n\n" + secondary_fact + "\n"
+        }
         config = _config(source_order=source_order)
         discovery, semantic, _normalized = _model_outputs(
             _RUN_ID,
@@ -2044,6 +2239,9 @@ class HostEventGrounderTests(unittest.TestCase):
             config,
             fact_text=_SEC_SENTENCE,
             event_date="2026-10-03",
+            additional_fact_texts=(secondary_fact,),
+            coverage_supported=True,
+            covered_claim_ids=("fact-1",),
         )
         source_transport = _SyntheticSourceTransport(
             search_order=source_order,
@@ -2068,6 +2266,12 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(prepared.event_description_binding, "fact-1")
         self.assertEqual(prepared.event_date_range.start_date, datetime.date(2026, 10, 3))
         self.assertEqual(prepared.event_date_range.end_date, datetime.date(2026, 10, 3))
+        methodology = json.loads(prepared.event_date_range.methodology)
+        self.assertEqual(
+            methodology["rule_version"],
+            "host-event-source-facts-v0.2/sec-8-k-occurrence-date",
+        )
+        self.assertEqual(methodology["verb"], "completed")
         self.assertEqual(prepared.underlying_bindings, {})
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
@@ -2226,17 +2430,20 @@ class HostEventGrounderTests(unittest.TestCase):
             ),
         )
         for label, options, expected_description, expected_date in cases:
-            with self.subTest(case=label):
-                snapshot, receipt, context = _source_fact_case(**options)
-                prepared = _retain_unknown_context(snapshot, receipt, context)
-                self.assertEqual(prepared.event_description_binding, expected_description)
-                actual_date = (
-                    None
-                    if prepared.event_date_range is None
-                    else prepared.event_date_range.start_date
-                )
-                self.assertEqual(actual_date, expected_date)
-                self.assertEqual(prepared.underlying_bindings, {})
+            for preparer in (_retain_unknown_context, _retain_unknown_context_v0_2):
+                with self.subTest(case=label, route=preparer.__name__):
+                    snapshot, receipt, context = _source_fact_case(**options)
+                    prepared = preparer(snapshot, receipt, context)
+                    self.assertEqual(
+                        prepared.event_description_binding, expected_description
+                    )
+                    actual_date = (
+                        None
+                        if prepared.event_date_range is None
+                        else prepared.event_date_range.start_date
+                    )
+                    self.assertEqual(actual_date, expected_date)
+                    self.assertEqual(prepared.underlying_bindings, {})
 
     def test_default_context_preparer_preserves_caller_supplied_fields_by_identity(self):
         supplied_range = MethodologizedDateRange(
@@ -2244,13 +2451,18 @@ class HostEventGrounderTests(unittest.TestCase):
             datetime.date(2026, 9, 2),
             "caller-supplied methodology",
         )
+        supplied_description = "".join(("fact", "-1"))
         snapshot, receipt, context = _source_fact_case(
-            description="caller-supplied description", date_range=supplied_range
+            extra_claim=True,
+            description=supplied_description,
+            date_range=supplied_range,
         )
-        prepared = _retain_unknown_context(snapshot, receipt, context)
-        self.assertIs(prepared, context)
-        self.assertIs(prepared.event_date_range, supplied_range)
-        self.assertEqual(prepared.event_description_binding, "caller-supplied description")
+        for preparer in (_retain_unknown_context, _retain_unknown_context_v0_2):
+            with self.subTest(route=preparer.__name__):
+                prepared = preparer(snapshot, receipt, context)
+                self.assertIs(prepared, context)
+                self.assertIs(prepared.event_date_range, supplied_range)
+                self.assertIs(prepared.event_description_binding, supplied_description)
 
     def test_run_start_configuration_snapshot_is_exact_safe_and_detached(self):
         callback = create_event_grounder(_config(), repo_root=_ROOT)

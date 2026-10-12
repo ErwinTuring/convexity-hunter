@@ -2,11 +2,12 @@
 
 This module performs source acquisition and the pre-Core Grounder run only. It
 does not assess EI, invoke market data, persist records, or fabricate Event
-dates/listing evidence. Its default context preparer may bind a unique verified
-observed fact and a narrowly source-bound SEC 8-K occurrence date; unsupported
-dates and listing bindings remain unknown. This is not a complete product
-Grounder. Credentials remain external references and are resolved only by the
-existing clients when a request is made.
+dates/listing evidence. Its default context preparer may bind a sole verified
+observed fact, or one uniquely covered verified fact when several exist, and a
+narrowly source-bound SEC 8-K occurrence date. Unsupported dates and listing
+bindings remain unknown. This is not a complete product Grounder. Credentials
+remain external references and are resolved only by the existing clients when
+a request is made.
 """
 
 from __future__ import annotations
@@ -110,6 +111,7 @@ _UNCERTAIN_ACTION = re.compile(
     re.IGNORECASE,
 )
 _ACTION_VERB = r"(?:entered into|completed|closed|executed|signed)"
+_ACTION_VERB_V0_2 = r"(?:entered into|completed|closed|executed|signed|announced)"
 _SEC_HEADER_LABELS = {
     "form": "CONFORMED SUBMISSION TYPE",
     "accession": "ACCESSION NUMBER",
@@ -471,6 +473,209 @@ def _preparation_evidence(snapshot: object, receipt: object, context: HostBuildC
     ):
         return None
     return envelope, frozenset(verified_claim_ids), frozenset(verified_binding_indices)
+
+
+def _covered_event_fact(
+    envelope: dict,
+    receipt: object,
+    claims: list,
+    candidates: list,
+    verified_claim_ids: frozenset,
+):
+    """Select one eligible fact only from one complete supported coverage root."""
+    coverage = envelope.get("coverage")
+    if type(coverage) is not list or type(receipt) is not _RECEIPT_MAPPING_TYPE:
+        return None
+    if any(type(item) is not dict for item in coverage):
+        return None
+
+    coverage_ids = []
+    for item in coverage:
+        subquestion_id = item.get("subquestion_id")
+        if type(subquestion_id) is not str or not subquestion_id:
+            return None
+        coverage_ids.append(subquestion_id)
+    if len(set(coverage_ids)) != len(coverage_ids):
+        return None
+    matching_indexes = [
+        index
+        for index, item in enumerate(coverage)
+        if item.get("subquestion_id") == _SUBQUESTION_ID
+    ]
+    if len(matching_indexes) != 1:
+        return None
+    coverage_index = matching_indexes[0]
+    selected_coverage = coverage[coverage_index]
+    listed_claim_ids = selected_coverage.get("claim_ids")
+    if (
+        selected_coverage.get("status") != "supported"
+        or "gap" not in selected_coverage
+        or selected_coverage["gap"] is not None
+        or type(listed_claim_ids) is not list
+        or any(type(claim_id) is not str or not claim_id for claim_id in listed_claim_ids)
+        or len(set(listed_claim_ids)) != len(listed_claim_ids)
+        or any(claim_id not in verified_claim_ids for claim_id in listed_claim_ids)
+    ):
+        return None
+
+    # A coverage ID must resolve to one exact envelope claim; receipt membership
+    # alone cannot turn a missing or duplicate claim root into evidence.
+    for claim_id in listed_claim_ids:
+        if sum(
+            type(claim) is dict and claim.get("claim_id") == claim_id
+            for claim in claims
+        ) != 1:
+            return None
+
+    outcomes = receipt.get("coverage_outcomes")
+    if type(outcomes) is not tuple or len(outcomes) != len(coverage):
+        return None
+    outcomes_by_index = {}
+    seen_outcome_ids = set()
+    for outcome in outcomes:
+        if (
+            type(outcome) is not tuple
+            or len(outcome) != 4
+            or type(outcome[0]) is not int
+            or outcome[0] < 0
+            or outcome[0] >= len(coverage)
+            or type(outcome[1]) is not str
+            or not outcome[1]
+            or type(outcome[2]) is not str
+            or outcome[2] not in ("supported", "unresolved", "contradicted")
+            or type(outcome[3]) is not str
+            or not outcome[3]
+            or outcome[0] in outcomes_by_index
+            or outcome[1] in seen_outcome_ids
+            or outcome[1] != coverage_ids[outcome[0]]
+        ):
+            return None
+        outcomes_by_index[outcome[0]] = outcome
+        seen_outcome_ids.add(outcome[1])
+    if set(outcomes_by_index) != set(range(len(coverage))):
+        return None
+    selected_outcome = outcomes_by_index[coverage_index]
+    if (
+        selected_outcome[1] != _SUBQUESTION_ID
+        or selected_outcome[2] != "supported"
+    ):
+        return None
+
+    covered_ids = frozenset(listed_claim_ids)
+    covered_candidates = [
+        candidate for candidate in candidates if candidate[1].get("claim_id") in covered_ids
+    ]
+    if len(covered_candidates) != 1:
+        return None
+    return covered_candidates[0]
+
+
+def _retain_unknown_context_v0_2(
+    snapshot: object,
+    receipt: object,
+    original_context: HostBuildContext,
+) -> HostBuildContext:
+    """Successor default: bind one exact fact, using supported coverage if needed."""
+    if type(original_context) is not HostBuildContext:
+        raise TypeError("original_context must be HostBuildContext")
+    evidence = _preparation_evidence(snapshot, receipt, original_context)
+    if evidence is None:
+        return original_context
+    envelope, verified_claim_ids, verified_binding_indices = evidence
+
+    claims = envelope.get("claims")
+    if type(claims) is not list:
+        return original_context
+    candidates = []
+    for index, claim in enumerate(claims):
+        if type(claim) is not dict:
+            continue
+        claim_id = claim.get("claim_id")
+        source_id = claim.get("source_id")
+        if (
+            type(claim_id) is not str
+            or claim_id not in verified_claim_ids
+            or claim.get("kind") != "observed_fact"
+            or type(source_id) is not str
+        ):
+            continue
+        source = original_context.source_bodies.get(source_id)
+        if type(source) is not HostSourceBody:
+            continue
+        if claim.get("locator") != source.final_locator:
+            continue
+        quote = claim.get("quote")
+        if type(quote) is not str or not quote:
+            continue
+        first_quote = source.body.find(quote)
+        if first_quote < 0 or source.body.find(quote, first_quote + 1) >= 0:
+            continue
+        candidates.append((index, claim, source))
+
+    if not candidates:
+        return original_context
+
+    supplied_description = original_context.event_description_binding
+    if supplied_description is not None:
+        selected = [
+            candidate
+            for candidate in candidates
+            if candidate[1].get("claim_id") == supplied_description
+        ]
+        if len(selected) != 1:
+            return original_context
+        claim_index, claim, source = selected[0]
+        description = supplied_description
+    elif len(candidates) == 1:
+        claim_index, claim, source = candidates[0]
+        description = claim["claim_id"]
+    else:
+        selected = _covered_event_fact(
+            envelope, receipt, claims, candidates, verified_claim_ids
+        )
+        if selected is None:
+            return original_context
+        claim_index, claim, source = selected
+        description = claim["claim_id"]
+
+    date_range = original_context.event_date_range
+    if date_range is None:
+        occurrence = _resolve_sec_occurrence_date_v0_2(
+            claim_index,
+            claim,
+            source,
+            envelope,
+            verified_binding_indices,
+            original_context,
+        )
+        if occurrence is not None:
+            event_date, start, end, verb = occurrence
+            methodology = json.dumps(
+                {
+                    "rule_version": "host-event-source-facts-v0.2/sec-8-k-occurrence-date",
+                    "verb": verb,
+                    "source_id": claim["source_id"],
+                    "body_sha256": source.body_sha256,
+                    "start": start,
+                    "end": end,
+                    "locator": source.final_locator,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            date_range = MethodologizedDateRange(event_date, event_date, methodology)
+
+    if (
+        description is original_context.event_description_binding
+        and date_range is original_context.event_date_range
+    ):
+        return original_context
+    return replace(
+        original_context,
+        event_description_binding=description,
+        event_date_range=date_range,
+    )
 
 
 _LISTING_TICKER = re.compile(r"[A-Z0-9]+(?:[.-][A-Z0-9]+)*\Z")
@@ -1225,7 +1430,7 @@ def _make_listing_source_preparer(
     def prepare_listing_sources(
         snapshot: object, receipt: object, original_context: HostBuildContext
     ) -> HostBuildContext:
-        prepared = _retain_unknown_context(snapshot, receipt, original_context)
+        prepared = _retain_unknown_context_v0_2(snapshot, receipt, original_context)
         if not listing_source_ids:
             return prepared
         composite_records = ()
@@ -1431,7 +1636,49 @@ def _resolve_sec_occurrence_date(
     verified_binding_indices: frozenset,
     context: HostBuildContext,
 ):
-    """Resolve one sentence only when its receipt binding covers exact offsets."""
+    """Retain the historical v0.1 completed-action occurrence grammar."""
+    occurrence = _resolve_sec_occurrence_date_with_verbs(
+        claim_index,
+        claim,
+        source,
+        envelope,
+        verified_binding_indices,
+        context,
+        _ACTION_VERB,
+    )
+    return None if occurrence is None else occurrence[:3]
+
+
+def _resolve_sec_occurrence_date_v0_2(
+    claim_index: int,
+    claim: dict,
+    source: HostSourceBody,
+    envelope: dict,
+    verified_binding_indices: frozenset,
+    context: HostBuildContext,
+):
+    """Use the shared SEC guards with v0.2's narrow announced verb addition."""
+    return _resolve_sec_occurrence_date_with_verbs(
+        claim_index,
+        claim,
+        source,
+        envelope,
+        verified_binding_indices,
+        context,
+        _ACTION_VERB_V0_2,
+    )
+
+
+def _resolve_sec_occurrence_date_with_verbs(
+    claim_index: int,
+    claim: dict,
+    source: HostSourceBody,
+    envelope: dict,
+    verified_binding_indices: frozenset,
+    context: HostBuildContext,
+    action_verbs: str,
+):
+    """Resolve a dated SEC sentence only with exact source-bound receipt offsets."""
     locator_parts = _sec_locator_parts(source.final_locator)
     registrant = _sec_submission_header(source.body, locator_parts)
     if registrant is None or not registrant:
@@ -1443,7 +1690,7 @@ def _resolve_sec_occurrence_date(
         r"On (?P<month>" + _ENGLISH_MONTHS + r") "
         r"(?P<day>[0-9]{1,2}), (?P<year>[0-9]{4}), "
         + re.escape(registrant)
-        + r" (?P<verb>" + _ACTION_VERB + r") (?P<act>[^.!?\r\n]+)\."
+        + r" (?P<verb>" + action_verbs + r") (?P<act>[^.!?\r\n]+)\."
     )
     match = sentence_pattern.fullmatch(sentence)
     if match is None:
@@ -1531,7 +1778,7 @@ def _resolve_sec_occurrence_date(
         or binding.get("status") != "supported"
     ):
         return None
-    return event_date, start, end
+    return event_date, start, end, match.group("verb")
 
 
 def _publication_datetime(value: Optional[str]) -> Optional[datetime.datetime]:
@@ -1664,7 +1911,7 @@ def create_event_grounder(
         if transport is not None and not callable(transport):
             raise TypeError("{} must be callable or None".format(name))
     context_preparer = (
-        _retain_unknown_context
+        _retain_unknown_context_v0_2
         if host_context_preparer is None
         else host_context_preparer
     )

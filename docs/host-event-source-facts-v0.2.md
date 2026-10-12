@@ -1,7 +1,8 @@
 # Host Event Source Facts v0.2
 
-Status: FROZEN / INDEPENDENT CONTRACT REVIEW PASS / BUILD READY.
-Production implementation is not yet present at this contract-freeze checkpoint.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS.
+Contract review preceded BUILD. The normal default uses the successor; the
+historical v0.1 helpers remain testable with their original semantics.
 
 This successor changes only the default Host fact preparer's deterministic
 anchor selection and narrow occurrence grammar. [v0.1](host-event-source-facts-v0.1.md)
@@ -73,3 +74,22 @@ occurrence and publication-only/planned/issuer/date/hash/binding negatives.
 Verify the actual default composition, unchanged budgets/call counts and public
 API, then independently review implementation and run relevant regression.
 No new live experiment is authorized by this contract.
+
+## Implementation evidence
+
+The default factory/listing-preparer dispatch uses the private successor.
+Public Host Event exports (2), signatures, prompts, request budgets, receipt,
+Builder/EI and listing contracts remain unchanged. Source identities and
+caller-supplied fields are preserved. The shared SEC parser keeps the old
+verb set for v0.1 and adds `announced` only for v0.2.
+
+The 46 focused Event tests passed, including actual default composition with
+multiple facts and unchanged synthetic source/model call counts. Independent
+implementation review passed; seven targeted checks passed separately.
+Compileall, public API compatibility and diff checks passed. Whole-suite
+results are recorded in the current checkpoint after completion.
+
+No source/model/provider request or spent-run replay was made. General IR
+announcements and remaining EI fields are not made complete by this work;
+the prior real incomplete result remains historical evidence, not a recovered
+cause or a newly accepted hypothesis.

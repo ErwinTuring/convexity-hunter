@@ -2,6 +2,46 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Deterministic Event fact anchoring successor — 2026-10-13
+
+[Host Event Source Facts v0.2](host-event-source-facts-v0.2.md) is frozen,
+implemented and independently reviewed. The default can bind the unique
+verified observed fact explicitly named by complete supported event coverage
+even when other facts exist. Multiple covered facts, rejected/malformed roots,
+conflicting outcomes or a coverage gap remain unresolved. Supplied bindings
+retain identity; no first-fact, ranking or synthesized-description fallback.
+
+The shared SEC occurrence parser adds `announced` only for v0.2, with existing
+SEC registrant/header, locator, source/hash/offset, chronology and date-binding
+guards. It dates the announcement, not the announced act or market impact.
+Publication labels/timestamps and general IR pages do not acquire authority.
+Legacy v0.1 semantics and archives remain unchanged. No listing, distribution,
+falsification, reassessment, impact end or maturity authority is invented.
+
+Validation: 46 focused Event tests; seven independent targeted review checks;
+1,971 full-suite tests PASS in 300.592s; compileall, two-export public API/signature
+compatibility, relative Markdown links/fences and diff checks PASS. The first
+full-suite invocation was interrupted after an early error; it is not a pass.
+The final pass uses explicit `PYTHONPATH=src` and a private bytecode cache.
+The existing LibreSSL warning is non-fatal. Normal Host was restarted on
+2026-10-13 and is READY, with all three executors CONFIGURED and the same five
+historical run IDs/statuses preserved. No new POST, source/model/provider
+operation or spent-run replay occurred.
+
+This is implementation evidence, not a new real EI acceptance/Core loop. The
+latest real Event remains incomplete as recorded below. Next live validation
+requires a separate bounded authorization; do not infer the 15-claim count
+proved the former singleton guard was the cause.
+
+Work accounting is partial, not a claimed 70% implementation result: the worker
+measured 27.688s initial production editing and 185.361s test authoring (including
+a small docstring edit); later fixture/doc edits were not separately timed.
+Focused executions took 0.443s, contract review 4m12s, implementation review
+54s, and full regression 300.592s. These are not exclusive whole-phase totals;
+no reliable whole-phase percentage is available. This small evidence-boundary
+change did not meet the intended implementation-heavy shape; no extra product
+scope was added merely to improve the ratio.
+
 ## Recovered normal Event result — 2026-10-13
 
 The approved one-shot normal Event run is spent under
