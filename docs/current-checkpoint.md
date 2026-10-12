@@ -2,6 +2,46 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Recovered normal Event result — 2026-10-13
+
+The approved one-shot normal Event run is spent under
+`/private/tmp/ch-event-runner.1ZxV25/` (`spent-once.json`). Runner stdout,
+release exit code/session ID and POST HTTP status were not captured; the
+projection keeps `post_http_status: null`. The result was recovered only by
+read-only GET for `5941d95c-f70f-4eb0-b543-78935537bdee` (HTTP 200), passed
+through the existing `project_run`, and saved at
+`/private/tmp/ch-event-runner.1ZxV25/safe-result.json` (mode 0600). This is
+not a POST-201 claim; do not POST again.
+
+The run is `BLOCKED / HOST_BATCH_BLOCKED`. Its public batch summary is 0
+cases / 1 unavailable, with exact reasons
+`event_intelligence_not_accepted`, `missing_event_description`,
+`incomplete_event_date_range`, `missing_underlying_key`,
+`missing_distribution_mode`, `missing_temporal_applicability`, and
+`missing_falsification_conditions`. It has 15 claims, 1 hypothesis, 35 field
+bindings and 5 sources; its single coverage record is supported with
+`gap_present=false`. Submission is PRESENT; EI is ASSESSED / incomplete.
+Builder completed with empty Builder diagnostics, so no projection-failure
+log is required. No positive Core case or production defect is established.
+No full suite was run.
+
+The normal preparer's frozen source-fact grammar is unchanged: missing facts
+remain missing and do not authorize invention or relaxed constraints. No
+follow-up POST or source/model call, budget/config change, or production change
+was made.
+
+Read-only contract-fit follow-up confirmed that
+[Source Facts v0.1](host-event-source-facts-v0.1.md) binds an absent description
+only when exactly one eligible receipt-verified observed fact exists. Its
+occurrence-date rule is limited to explicit SEC 8-K submission headers and a
+completed-action sentence; a general official announcement is not covered.
+The aggregate 15-claim count does not reveal the eligible fact count and does
+not prove which description guard fired here. Listing identity still requires
+independent Host evidence; distribution mode, temporal applicability and
+falsification conditions cannot be defaulted. Extending the frozen preparation
+grammar requires a separately reviewed contract change, not another identical
+query or a relaxed EI gate.
+
 ## Safe hypothesis projection diagnostics — 2026-10-13
 
 The Builder now emits private, closed check codes at actual
@@ -20,9 +60,10 @@ The 151 focused Builder/runtime/Event/Store/workbench tests, compileall and
 diff checks passed. This is logging-only implementation evidence, not a new
 real EI/Core acceptance result; no source/model/provider request was made.
 Independent review passed after isolated hostile-subclass/object tests ensured
-deduplication could not mask non-exact-type acceptance. Normal Host deployment
-is READY at the unchanged evaluation date 2026-10-13, with all four historical
-runs retained. No live request was used to exercise the new logs.
+deduplication could not mask non-exact-type acceptance. At that earlier
+deployment checkpoint, Normal Host was READY on evaluation date 2026-10-13 and
+the four then-historical runs were retained. No live request was used to
+exercise the new logs.
 
 Observed dispatch-to-deployment window was approximately 13 minutes; editing time
 was not separately measured, so no coding/overhead percentage or 70% claim is

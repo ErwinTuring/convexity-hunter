@@ -1,16 +1,34 @@
 # Project State
 
+Latest approved normal Event run (2026-10-13) is spent at
+`/private/tmp/ch-event-runner.1ZxV25/`. Read-only GET recovery returned HTTP
+200 for `5941d95c-f70f-4eb0-b543-78935537bdee`; the sanitized
+`project_run` result is saved in
+`/private/tmp/ch-event-runner.1ZxV25/safe-result.json`. Release stdout,
+exit/session fields and POST status were not captured; `post_http_status`
+remains null, with no POST-201 claim. The run is BLOCKED /
+HOST_BATCH_BLOCKED: 0 cases, 1 unavailable, 15 claims, 1 hypothesis, 35
+bindings, 5 sources, one supported coverage record with no gap, submission
+PRESENT and EI ASSESSED/incomplete. Exact public batch reasons and the
+Builder-success/no-projection-log distinction are in the
+[checkpoint](current-checkpoint.md#recovered-normal-event-result--2026-10-13).
+No positive Core case or production defect is established; no full suite was
+run. The frozen normal source-fact grammar is unchanged: missing facts do not
+authorize invention or relaxed constraints. No follow-up POST/source-model
+call or production/config/budget change was made.
+
 Safe Builder hypothesis-projection logging is implemented without changing
 projection or acceptance semantics. It records only controlled closed check
 categories; no model text, IDs or exception details. Verifier rejection remains
 distinct. All nine exports/signatures and stored diagnostic counts are unchanged.
 The 151 focused tests and compileall passed; no new source/model/provider call.
 Historical discarded reasons cannot be recovered. Independent review passed
-after isolated non-exact-type tests were added. Normal Host deployment is READY;
-all four historical runs survived restart. See
+after isolated non-exact-type tests were added. At that prior deployment
+checkpoint, Normal Host was READY and the four then-existing historical runs
+survived restart. See
 [projection diagnostics](current-checkpoint.md#safe-hypothesis-projection-diagnostics--2026-10-13).
 
-Latest Event diagnostic (2026-10-13): one fresh private operation returned
+Prior Event diagnostic (2026-10-13): one fresh private operation returned
 HTTP 201 and was read back. Catalog processing succeeded and the semantic
 receipt validated (12 claims, 1 hypothesis, 23 bindings, 5 source bodies); its
 single coverage record had model/validator `supported` but `gap_present=true`.
@@ -24,7 +42,7 @@ so its cause cannot be inferred or used to explain the 2026-10-12
 `/private/tmp/ch-event-diagnostic.kF6X9u/`. No budget/config/production change
 or source retry. Two earlier outer-cwd startup attempts failed generically;
 startup from the actual repository cwd succeeded, with no cause inferred. See
-[latest Event result](current-checkpoint.md#one-shot-event-diagnostic--2026-10-13).
+[prior Event result](current-checkpoint.md#one-shot-event-diagnostic--2026-10-13).
 
 Normal World continuation (2026-10-12): the workbench was reloaded and one
 new normal HTTP World request was persisted/read back. It returned BLOCKED /
