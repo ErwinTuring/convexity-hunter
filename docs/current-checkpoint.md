@@ -28,6 +28,15 @@ Further live diagnosis must capture the client's closed error code and safe
 HTTP status before runtime reduction, without response bodies or secrets;
 do not infer this run's cause or repeat its spent operation.
 
+Next-run private capture is prepared at
+`/private/tmp/ch-event-error-observer.XOmMgA/model_error_capture.py`: it observes
+the actual client completion boundary, retains only whitelisted transport codes
+and safe HTTP status, and rethrows the same exception. Five executable synthetic
+checks passed, including unknown-text redaction and observer-error isolation.
+It made no network call and is not installed in production. Install it alongside
+catalog capture before any separately authorized future run; this does not
+recover the spent run's specific failure.
+
 ## Catalog capacity diagnosed and corrected — 2026-10-12
 
 One newly authorized diagnostic Event operation is spent at
