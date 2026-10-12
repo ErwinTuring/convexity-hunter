@@ -2,6 +2,33 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Safe hypothesis projection diagnostics — 2026-10-13
+
+The Builder now emits private, closed check codes at actual
+`HYPOTHESIS_NOT_PROJECTED` exclusion points. Codes come from controlled checks,
+not diagnostic text or model explanations. Normalization, support/dependency
+closure, field bindings, chronology, reassessment basis/methodology and EI
+constructor/provenance checks remain unchanged. Verifier rejection and omitted
+unauthorized caller-policy reassessment are not relabeled as projection failure.
+Logs contain no hypothesis/claim IDs, source bodies, URLs or exception text;
+unknown inputs remain `unknown`, and handler failure cannot change projection.
+
+All nine public exports, public signatures, stored diagnostic counts, prompts,
+source/model budgets and EI/Core acceptance rules are unchanged. These logs do
+not recover the spent runs below and do not authorize another source operation.
+The 151 focused Builder/runtime/Event/Store/workbench tests, compileall and
+diff checks passed. This is logging-only implementation evidence, not a new
+real EI/Core acceptance result; no source/model/provider request was made.
+Independent review passed after isolated hostile-subclass/object tests ensured
+deduplication could not mask non-exact-type acceptance. Normal Host deployment
+is READY at the unchanged evaluation date 2026-10-13, with all four historical
+runs retained. No live request was used to exercise the new logs.
+
+Observed dispatch-to-deployment window was approximately 13 minutes; editing time
+was not separately measured, so no coding/overhead percentage or 70% claim is
+made. Final combined focused tests took 0.574s; the initial missing expected
+support-closure log was corrected in the test, not by removing a valid check.
+
 ## One-shot Event diagnostic — 2026-10-13
 
 One fresh private Event operation (evaluation date 2026-10-13; spent guard at

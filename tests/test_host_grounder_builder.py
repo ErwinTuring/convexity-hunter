@@ -2,6 +2,7 @@ import copy
 import datetime
 import hashlib
 import json
+import logging
 import unittest
 from dataclasses import replace
 from unittest.mock import patch
@@ -396,6 +397,315 @@ class HostGrounderBuilderTests(unittest.TestCase):
         self.assertIs(result.source_batch.raw_input, case[2].raw_input)
         self.assertIs(result.raw_input, case[2].raw_input)
 
+    def test_positive_projection_emits_no_warning(self):
+        with patch.object(builder_module._LOGGER, "warning") as warning:
+            result = _build(_case())
+
+        self.assertIsNotNone(result.submission)
+        warning.assert_not_called()
+
+    def test_projection_warnings_contain_only_closed_codes(self):
+        hypothesis = _hypothesis(
+            hypothesis_id="secret-hypothesis-id",
+            impact_path="  SECRET_IMPACT_PATH  ",
+        )
+        case = _case(
+            hypotheses=[hypothesis],
+            rejected_bindings=((0, "SECRET_BINDING_REASON"),),
+        )
+
+        with self.assertLogs(builder_module._LOGGER, level="WARNING") as captured:
+            result = _build(case)
+
+        self.assertIsNone(result.submission)
+        self.assertTrue(
+            any(
+                item.code == "HYPOTHESIS_NOT_PROJECTED"
+                and item.subject_id == "secret-hypothesis-id"
+                for item in result.diagnostics
+            )
+        )
+        self.assertEqual(
+            tuple(record.getMessage() for record in captured.records),
+            (
+                "grounder_hypothesis_not_projected check=field_binding",
+                "grounder_hypothesis_not_projected check=hypothesis_normalization",
+            ),
+        )
+        self.assertTrue(all(record.exc_info is None for record in captured.records))
+        log_text = "\n".join(record.getMessage() for record in captured.records)
+        for secret in (
+            "secret-hypothesis-id",
+            "SECRET_IMPACT_PATH",
+            "SECRET_BINDING_REASON",
+            "claim-2",
+            "Text for claim-2.",
+            "https://publisher.example/final",
+            _RUN_ID,
+            _INPUT_HASH,
+        ):
+            self.assertNotIn(secret, log_text)
+
+    def test_projection_logger_deduplicates_codes_and_maps_unknown_codes(self):
+        class HostileCode(str):
+            def __repr__(self):
+                raise AssertionError("SECRET_SUBCLASS_REPR")
+
+            def __str__(self):
+                raise AssertionError("SECRET_SUBCLASS_STR")
+
+        class HostileValue:
+            def __repr__(self):
+                raise AssertionError("SECRET_VALUE_REPR")
+
+            def __str__(self):
+                raise AssertionError("SECRET_VALUE_STR")
+
+        with self.assertLogs(builder_module._LOGGER, level="WARNING") as captured:
+            builder_module._log_hypothesis_projection_failures(
+                (
+                    "chronology",
+                    "hypothesis_normalization",
+                    "chronology",
+                    "SECRET_UNKNOWN",
+                    HostileCode("chronology"),
+                    HostileValue(),
+                    None,
+                    False,
+                )
+            )
+
+        self.assertEqual(
+            tuple(record.getMessage() for record in captured.records),
+            (
+                "grounder_hypothesis_not_projected check=chronology",
+                "grounder_hypothesis_not_projected check=hypothesis_normalization",
+                "grounder_hypothesis_not_projected check=unknown",
+            ),
+        )
+        self.assertNotIn("SECRET_UNKNOWN", "\n".join(captured.output))
+
+        for label, value in (
+            ("str_subclass", HostileCode("chronology")),
+            ("arbitrary_object", HostileValue()),
+            ("none", None),
+            ("boolean", False),
+        ):
+            with self.subTest(value_kind=label):
+                with self.assertLogs(builder_module._LOGGER, level="WARNING") as isolated:
+                    builder_module._log_hypothesis_projection_failures((value,))
+                self.assertEqual(
+                    tuple(record.getMessage() for record in isolated.records),
+                    ("grounder_hypothesis_not_projected check=unknown",),
+                )
+                self.assertNotIn("SECRET", "\n".join(isolated.output))
+
+    def test_projection_handler_failure_does_not_change_result(self):
+        case = _case(
+            hypotheses=[_hypothesis(impact_path="  SECRET_IMPACT_PATH  ")],
+            rejected_bindings=((0, "SECRET_BINDING_REASON"),),
+        )
+        logger = builder_module._LOGGER
+        with patch.object(logger, "warning"):
+            expected = _build(case)
+
+        class FailingHandler(logging.Handler):
+            def emit(self, _record):
+                raise RuntimeError("SECRET_HANDLER_FAILURE")
+
+        handler = FailingHandler()
+        previous_level = logger.level
+        previous_propagate = logger.propagate
+        logger.addHandler(handler)
+        logger.setLevel(logging.WARNING)
+        logger.propagate = False
+        try:
+            actual = _build(case)
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(previous_level)
+            logger.propagate = previous_propagate
+
+        self.assertEqual(actual.submission, expected.submission)
+        self.assertEqual(actual.source_batch, expected.source_batch)
+        self.assertEqual(actual.diagnostics, expected.diagnostics)
+        self.assertEqual(actual.coverage, expected.coverage)
+        self.assertEqual(actual.field_bindings, expected.field_bindings)
+
+    def test_dependency_closure_failure_logs_only_its_static_check(self):
+        claims = [
+            _claim("claim-1", text="SECRET_CLAIM_TEXT"),
+            _claim(
+                "claim-2",
+                kind="interpretation",
+                text="SECRET_DEPENDENT_TEXT",
+                dependency_claim_ids=["claim-1"],
+            ),
+        ]
+        case = _case(
+            claims=claims,
+            verified_claim_ids=("claim-2",),
+            rejected_claims=(("claim-1", "SECRET_RECEIPT_REASON"),),
+        )
+
+        with self.assertLogs(builder_module._LOGGER, level="WARNING") as captured:
+            result = _build(case)
+
+        self.assertIsNone(result.submission)
+        self.assertEqual(
+            tuple(record.getMessage() for record in captured.records),
+            (
+                "grounder_hypothesis_not_projected check=dependency_closure",
+                "grounder_hypothesis_not_projected check=support_closure",
+            ),
+        )
+        self.assertNotIn("SECRET", "\n".join(captured.output))
+
+    def test_reassessment_method_and_basis_failures_are_logged_separately(self):
+        date_text = "2026-11-15"
+        hypotheses = [
+            _hypothesis(
+                "hyp-bad-basis",
+                supporting_claim_ids=["claim-2"],
+                reassessment={
+                    "reassessment_by": date_text,
+                    "methodology": "SECRET_INVALID_SOURCE_METHOD",
+                    "basis_kind": "source_backed_milestone",
+                    "basis_claim_ids": ["claim-1", "claim-2"],
+                },
+            ),
+            _hypothesis(
+                "hyp-bad-method",
+                supporting_claim_ids=["claim-2"],
+                reassessment={
+                    "reassessment_by": date_text,
+                    "methodology": "SECRET_INVALID_CALLER_METHOD",
+                    "basis_kind": "caller_research_policy_assumption",
+                    "basis_claim_ids": ["claim-1"],
+                },
+            ),
+        ]
+        case = _case(hypotheses=hypotheses)
+
+        with self.assertLogs(builder_module._LOGGER, level="WARNING") as captured:
+            result = _build(case)
+
+        self.assertIsNone(result.submission)
+        self.assertEqual(
+            tuple(record.getMessage() for record in captured.records),
+            (
+                "grounder_hypothesis_not_projected check=reassessment_basis",
+                "grounder_hypothesis_not_projected check=reassessment_methodology",
+            ),
+        )
+        self.assertNotIn("SECRET", "\n".join(captured.output))
+
+    def test_reassessment_constructor_error_uses_fixed_log_code(self):
+        date_text = "2026-11-15"
+        hypothesis = _hypothesis(
+            supporting_claim_ids=["claim-2"],
+            reassessment={
+                "reassessment_by": date_text,
+                "methodology": "source-backed-milestone:claim-1:{}".format(date_text),
+                "basis_kind": "source_backed_milestone",
+                "basis_claim_ids": ["claim-1"],
+            },
+        )
+        case = _case(hypotheses=[hypothesis])
+
+        with patch.object(
+            builder_module,
+            "HypothesisReassessment",
+            side_effect=ValueError("SECRET_REASSESSMENT_CONSTRUCTOR_DETAIL"),
+        ):
+            with self.assertLogs(builder_module._LOGGER, level="WARNING") as captured:
+                result = _build(case)
+
+        self.assertIsNone(result.submission)
+        self.assertTrue(
+            any("SECRET_REASSESSMENT_CONSTRUCTOR_DETAIL" in item.reason
+                for item in result.diagnostics)
+        )
+        self.assertEqual(
+            tuple(record.getMessage() for record in captured.records),
+            ("grounder_hypothesis_not_projected check=reassessment_constructor",),
+        )
+        self.assertNotIn("SECRET_REASSESSMENT_CONSTRUCTOR_DETAIL", "\n".join(captured.output))
+
+    def test_ei_hypothesis_constructor_error_uses_fixed_log_code(self):
+        case = _case()
+
+        with patch.object(
+            builder_module,
+            "EventUnderlyingHypothesis",
+            side_effect=ValueError("SECRET_EI_CONSTRUCTOR_DETAIL"),
+        ):
+            with self.assertLogs(builder_module._LOGGER, level="WARNING") as captured:
+                result = _build(case)
+
+        self.assertIsNone(result.submission)
+        self.assertTrue(
+            any("SECRET_EI_CONSTRUCTOR_DETAIL" in item.reason
+                for item in result.diagnostics)
+        )
+        self.assertEqual(
+            tuple(record.getMessage() for record in captured.records),
+            ("grounder_hypothesis_not_projected check=ei_hypothesis_constructor",),
+        )
+        self.assertNotIn("SECRET_EI_CONSTRUCTOR_DETAIL", "\n".join(captured.output))
+
+    def test_ei_reassessment_provenance_rejection_uses_fixed_log_code(self):
+        date_text = "2026-11-15"
+        claims = [
+            _claim("claim-1", text="A source-reported milestone occurred."),
+            _claim(
+                "claim-2",
+                kind="interpretation",
+                text="The milestone may affect the distribution.",
+                dependency_claim_ids=["claim-1"],
+            ),
+        ]
+        hypothesis = _hypothesis(
+            supporting_claim_ids=["claim-2"],
+            reassessment={
+                "reassessment_by": date_text,
+                "methodology": "caller-research-policy-assumption:{}:Review next filing".format(
+                    date_text
+                ),
+                "basis_kind": "caller_research_policy_assumption",
+                "basis_claim_ids": ["claim-1"],
+            },
+        )
+        policy = CallerPolicyProvenance(
+            run_id=_RUN_ID,
+            canonical_input_hash=_INPUT_HASH,
+            reassessment_by=datetime.date.fromisoformat(date_text),
+            rationale="Review next filing",
+            authorization_source="caller decision record 7",
+        )
+        case = _case(
+            claims=claims,
+            hypotheses=[hypothesis],
+            caller_policy_provenance=policy,
+        )
+
+        with self.assertLogs(builder_module._LOGGER, level="WARNING") as captured:
+            result = _build(case)
+
+        self.assertIsNone(result.submission)
+        self.assertTrue(
+            any(
+                item.code == "HYPOTHESIS_NOT_PROJECTED"
+                and "EI reassessment provenance rejected" in item.reason
+                for item in result.diagnostics
+            )
+        )
+        self.assertEqual(
+            tuple(record.getMessage() for record in captured.records),
+            ("grounder_hypothesis_not_projected check=ei_reassessment_provenance",),
+        )
+        self.assertNotIn("hyp-1", "\n".join(captured.output))
+
     def test_keeps_unrelated_verified_hypothesis_when_another_is_rejected(self):
         claims = [
             _claim("claim-1", text="The supported event occurred."),
@@ -418,12 +728,14 @@ class HostGrounderBuilderTests(unittest.TestCase):
             rejected_hypotheses=(("hyp-rejected", "counterevidence unresolved"),),
         )
 
-        result = _build(case)
+        with patch.object(builder_module._LOGGER, "warning") as warning:
+            result = _build(case)
 
         self.assertEqual(
             tuple(item.hypothesis_id for item in result.submission.hypotheses),
             ("hyp-good",),
         )
+        warning.assert_not_called()
         self.assertEqual(
             {statement.statement_id for statement in result.submission.statements},
             {"claim-1", "claim-2"},
@@ -468,10 +780,18 @@ class HostGrounderBuilderTests(unittest.TestCase):
             rejected_bindings=((rejected_index, "date role was not supported"),),
         )
 
-        result = _build(case)
+        with self.assertLogs(builder_module._LOGGER, level="WARNING") as captured:
+            result = _build(case)
 
         self.assertIsNone(result.submission)
         self.assertIsNone(result.source_batch)
+        self.assertEqual(
+            tuple(record.getMessage() for record in captured.records),
+            (
+                "grounder_hypothesis_not_projected check=dependency_closure",
+                "grounder_hypothesis_not_projected check=support_closure",
+            ),
+        )
         self.assertTrue(
             any(item.code == "FIELD_BINDING_NOT_VERIFIED" for item in result.diagnostics)
         )
@@ -642,7 +962,8 @@ class HostGrounderBuilderTests(unittest.TestCase):
             ),
         )
 
-        result = _build((case[0], case[1], context))
+        with self.assertLogs(builder_module._LOGGER, level="WARNING") as captured:
+            result = _build((case[0], case[1], context))
 
         self.assertIsNotNone(result.submission)
         self.assertEqual(
@@ -659,6 +980,10 @@ class HostGrounderBuilderTests(unittest.TestCase):
             and "reassessment_by precedes observed_at UTC calendar date" in item.reason
         )
         self.assertEqual(stale_diagnostic.code, "HYPOTHESIS_NOT_PROJECTED")
+        self.assertEqual(
+            tuple(record.getMessage() for record in captured.records),
+            ("grounder_hypothesis_not_projected check=chronology",),
+        )
 
     def test_mismatched_caller_policy_is_retained_in_sidecar_but_not_projected(self):
         date_text = "2026-11-15"
@@ -695,7 +1020,8 @@ class HostGrounderBuilderTests(unittest.TestCase):
             caller_policy_provenance=stale_policy,
         )
 
-        result = _build(case)
+        with patch.object(builder_module._LOGGER, "warning") as warning:
+            result = _build(case)
 
         self.assertIsNotNone(result.submission)
         self.assertIsNone(result.submission.hypotheses[0].reassessment)
@@ -705,6 +1031,7 @@ class HostGrounderBuilderTests(unittest.TestCase):
                 for item in result.diagnostics
             )
         )
+        warning.assert_not_called()
         self.assertEqual(
             result.semantic_validation.snapshot.envelope_hash,
             result.semantic_validation.receipt["envelope_hash"],

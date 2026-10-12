@@ -1,5 +1,15 @@
 # Project State
 
+Safe Builder hypothesis-projection logging is implemented without changing
+projection or acceptance semantics. It records only controlled closed check
+categories; no model text, IDs or exception details. Verifier rejection remains
+distinct. All nine exports/signatures and stored diagnostic counts are unchanged.
+The 151 focused tests and compileall passed; no new source/model/provider call.
+Historical discarded reasons cannot be recovered. Independent review passed
+after isolated non-exact-type tests were added. Normal Host deployment is READY;
+all four historical runs survived restart. See
+[projection diagnostics](current-checkpoint.md#safe-hypothesis-projection-diagnostics--2026-10-13).
+
 Latest Event diagnostic (2026-10-13): one fresh private operation returned
 HTTP 201 and was read back. Catalog processing succeeded and the semantic
 receipt validated (12 claims, 1 hypothesis, 23 bindings, 5 source bodies); its

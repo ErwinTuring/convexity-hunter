@@ -2,6 +2,7 @@
 
 import datetime
 import hashlib
+import logging
 import re
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -42,12 +43,45 @@ __all__ = (
 )
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_LOGGER = logging.getLogger(__name__)
+_PROJECTION_CHECK_CODES = frozenset(
+    {
+        "hypothesis_normalization",
+        "support_closure",
+        "field_binding",
+        "dependency_closure",
+        "chronology",
+        "reassessment_methodology",
+        "reassessment_basis",
+        "reassessment_constructor",
+        "ei_hypothesis_constructor",
+        "ei_reassessment_provenance",
+    }
+)
 _RFC3339 = re.compile(
     r"(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})[Tt]"
     r"(?P<clock>(?:[01][0-9]|2[0-3]):[0-5][0-9]:(?P<second>[0-5][0-9]|60))"
     r"(?:\.(?P<fraction>[0-9]+))?"
     r"(?P<offset>[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])"
 )
+
+
+def _log_hypothesis_projection_failures(check_codes) -> None:
+    """Best-effort safe logging for closed, static projection check codes."""
+    try:
+        candidates = (check_codes,) if type(check_codes) is str else tuple(check_codes)
+    except Exception:
+        candidates = (None,)
+    safe_codes = {
+        code if type(code) is str and code in _PROJECTION_CHECK_CODES else "unknown"
+        for code in candidates
+    }
+    for code in sorted(safe_codes):
+        try:
+            _LOGGER.warning("grounder_hypothesis_not_projected check=%s", code)
+        except Exception:
+            # Logging is deliberately non-authoritative and cannot affect projection.
+            pass
 
 
 def _exact_string(value: object, label: str) -> str:
@@ -532,38 +566,61 @@ def _build_host_grounder_with_schema(
             )
             continue
         failures = []
+        failure_checks = []
+
+        def hypothesis_failure(reason: str, check_code: str) -> None:
+            failures.append(reason)
+            failure_checks.append(check_code)
+
         if not hypothesis_id or hypothesis_id != hypothesis_id.strip():
-            failures.append("EI normalization would alter hypothesis_id")
+            hypothesis_failure(
+                "EI normalization would alter hypothesis_id", "hypothesis_normalization"
+            )
         for key in ("impact_path", "distribution_hypothesis", "contradiction_review"):
             value = item[key]
             if value is not None and value != value.strip():
-                failures.append("EI normalization would alter " + key)
+                hypothesis_failure(
+                    "EI normalization would alter " + key, "hypothesis_normalization"
+                )
         for key in ("uncertainties", "falsification_conditions"):
             values = item[key]
             if (
                 any(not value or value != value.strip() for value in values)
                 or len(set(values)) != len(values)
             ):
-                failures.append(key + " contains text EI would alter or reject")
+                hypothesis_failure(
+                    key + " contains text EI would alter or reject",
+                    "hypothesis_normalization",
+                )
 
         support = item["supporting_claim_ids"]
         contradiction = item["contradicting_claim_ids"]
         reassessment_data = item["reassessment"]
         basis = [] if reassessment_data is None else reassessment_data["basis_claim_ids"]
         if not support:
-            failures.append("hypothesis has no supporting claim closure")
+            hypothesis_failure(
+                "hypothesis has no supporting claim closure", "support_closure"
+            )
         if len(set(support)) != len(support) or len(set(contradiction)) != len(contradiction):
-            failures.append("supporting or contradicting IDs contain duplicates")
+            hypothesis_failure(
+                "supporting or contradicting IDs contain duplicates", "support_closure"
+            )
         if set(support) & set(contradiction):
-            failures.append("supporting and contradicting IDs overlap")
+            hypothesis_failure(
+                "supporting and contradicting IDs overlap", "support_closure"
+            )
         if len(set(basis)) != len(basis):
-            failures.append("reassessment basis IDs contain duplicates")
+            hypothesis_failure(
+                "reassessment basis IDs contain duplicates", "reassessment_basis"
+            )
 
         for key in ("impact_path", "distribution_mode", "distribution_hypothesis"):
             if item[key] is not None and not has_verified_binding(
                 "/hypotheses/{}/{}".format(index, key), "hypothesis", hypothesis_id
             ):
-                failures.append(key + " lacks fully verified field bindings")
+                hypothesis_failure(
+                    key + " lacks fully verified field bindings", "field_binding"
+                )
         window_data = item["expected_window"]
         if window_data is not None:
             for key in ("start_date", "end_date"):
@@ -571,39 +628,54 @@ def _build_host_grounder_with_schema(
                     "/hypotheses/{}/expected_window/{}".format(index, key),
                     "hypothesis", hypothesis_id
                 ):
-                    failures.append("expected_window date lacks verified binding")
+                    hypothesis_failure(
+                        "expected_window date lacks verified binding", "field_binding"
+                    )
             if window_data["methodology"] != window_data["methodology"].strip():
-                failures.append("EI normalization would alter window methodology")
+                hypothesis_failure(
+                    "EI normalization would alter window methodology",
+                    "hypothesis_normalization",
+                )
             start = datetime.date.fromisoformat(window_data["start_date"])
             end = datetime.date.fromisoformat(window_data["end_date"])
             if start > end:
-                failures.append("expected_window start_date is after end_date")
+                hypothesis_failure(
+                    "expected_window start_date is after end_date", "chronology"
+                )
 
         reassessment_date = basis_kind = methodology = None
         caller_authorized = False
         if reassessment_data is not None:
             date_path = "/hypotheses/{}/reassessment/reassessment_by".format(index)
             if not has_verified_binding(date_path, "hypothesis", hypothesis_id):
-                failures.append("reassessment date lacks verified binding")
+                hypothesis_failure(
+                    "reassessment date lacks verified binding", "field_binding"
+                )
             reassessment_date = datetime.date.fromisoformat(reassessment_data["reassessment_by"])
             basis_kind = ReassessmentBasisKind(reassessment_data["basis_kind"])
             methodology = reassessment_data["methodology"]
             if methodology != methodology.strip():
-                failures.append("EI normalization would alter reassessment methodology")
+                hypothesis_failure(
+                    "EI normalization would alter reassessment methodology",
+                    "hypothesis_normalization",
+                )
             if basis_kind is ReassessmentBasisKind.SOURCE_BACKED_MILESTONE:
                 expected = "source-backed-milestone:{}:{}".format(
                     basis[0] if len(basis) == 1 else "", reassessment_date.isoformat()
                 )
                 if len(basis) != 1 or methodology != expected:
-                    failures.append(
-                        "source-backed reassessment methodology or basis is invalid"
+                    hypothesis_failure(
+                        "source-backed reassessment methodology or basis is invalid",
+                        "reassessment_basis",
                     )
             else:
                 prefix = "caller-research-policy-assumption:{}:".format(
                     reassessment_date.isoformat()
                 )
                 if not methodology.startswith(prefix):
-                    failures.append("caller-policy methodology is invalid")
+                    hypothesis_failure(
+                        "caller-policy methodology is invalid", "reassessment_methodology"
+                    )
                 else:
                     policy = context.caller_policy_provenance
                     rationale = methodology[len(prefix):]
@@ -621,20 +693,28 @@ def _build_host_grounder_with_schema(
                             )
                         )
                     elif not basis:
-                        failures.append("authorized caller-policy reassessment needs basis claims")
+                        hypothesis_failure(
+                            "authorized caller-policy reassessment needs basis claims",
+                            "reassessment_basis",
+                        )
 
         roots = tuple(support) + tuple(contradiction) + tuple(basis)
         all_closure, support_closure = set(), set()
         for root in roots:
             valid, closure, reason = claim_closure(root)
             if not valid:
-                failures.append("claim {} closure is not projectable: {}".format(root, reason))
+                hypothesis_failure(
+                    "claim {} closure is not projectable: {}".format(root, reason),
+                    "dependency_closure",
+                )
             else:
                 all_closure.update(closure)
                 if root in support:
                     support_closure.update(closure)
         if support and not support_closure:
-            failures.append("hypothesis has no source-backed supporting closure")
+            hypothesis_failure(
+                "hypothesis has no source-backed supporting closure", "support_closure"
+            )
 
         if (
             reassessment_data is not None
@@ -644,8 +724,8 @@ def _build_host_grounder_with_schema(
             )
             and reassessment_date < observed_at_utc_date
         ):
-            failures.append(
-                "reassessment_by precedes observed_at UTC calendar date"
+            hypothesis_failure(
+                "reassessment_by precedes observed_at UTC calendar date", "chronology"
             )
 
         reassessment = None
@@ -659,7 +739,9 @@ def _build_host_grounder_with_schema(
                     reassessment_date, methodology, basis_kind, tuple(basis)
                 )
             except (TypeError, ValueError) as exc:
-                failures.append("invalid EI reassessment: {}".format(exc))
+                hypothesis_failure(
+                    "invalid EI reassessment: {}".format(exc), "reassessment_constructor"
+                )
 
         if failures:
             diagnostics.append(
@@ -668,6 +750,7 @@ def _build_host_grounder_with_schema(
                     "; ".join(dict.fromkeys(failures))
                 )
             )
+            _log_hypothesis_projection_failures(failure_checks)
             continue
 
         symbol = item["underlying_symbol"]
@@ -719,6 +802,7 @@ def _build_host_grounder_with_schema(
                     str(exc)
                 )
             )
+            _log_hypothesis_projection_failures(("ei_hypothesis_constructor",))
             continue
         if reassessment is not None:
             # Reuse EI's own provenance rule; this adapter does not copy its
@@ -744,6 +828,7 @@ def _build_host_grounder_with_schema(
                         "EI reassessment provenance rejected: {}".format(exc)
                     )
                 )
+                _log_hypothesis_projection_failures(("ei_reassessment_provenance",))
                 continue
         kept_hypotheses.append(projected)
         kept_claim_ids.update(all_closure)
