@@ -1,5 +1,14 @@
 # Project State
 
+Latest approved normal Event validation after Source Facts v0.2 returned
+HTTP 201 / BLOCKED / GROUNDING_NO_SUBMISSION. Five source bodies, ten claims,
+one hypothesis and 21 bindings were retained; coverage remained unresolved
+with a gap. Validator rejected two claims and the hypothesis. Submission was
+missing, EI NOT_RUN, Core not reached; absent batch counts remain null.
+The fresh guard at `/private/tmp/ch-event-v02.DnNoMK/` is spent. No retry,
+production/configuration change or real acceptance claim. See
+[the one-shot checkpoint](current-checkpoint.md#post-v02-one-shot-normal-event-validation--2026-10-13).
+
 Host Event Source Facts v0.2 is implemented after bounded read-only preflight,
 contract freeze and independent contract/implementation review. The default
 successor permits a unique verified event-coverage fact amid
@@ -10,7 +19,7 @@ The 46 focused tests, compileall and public API compatibility checks passed;
 whole-suite/deployment evidence is tracked in the current checkpoint. No new
 live operation is authorized; historical results remain unchanged.
 
-Latest approved normal Event run (2026-10-13) is spent at
+Preceding approved normal Event run (2026-10-13) is spent at
 `/private/tmp/ch-event-runner.1ZxV25/`. Read-only GET recovery returned HTTP
 200 for `5941d95c-f70f-4eb0-b543-78935537bdee`; the sanitized
 `project_run` result is saved in

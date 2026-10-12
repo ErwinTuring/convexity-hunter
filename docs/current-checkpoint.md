@@ -2,6 +2,40 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Post-v0.2 one-shot normal Event validation — 2026-10-13
+
+Grounding: HEAD/main/origin/main were equal at `ec7c7ee` with a clean tree.
+The separately approved Nasdaq 23/5 Event operation used a new private runner
+at `/private/tmp/ch-event-v02.DnNoMK/`; its spent guard must not be reset or
+replayed. Normal Host was READY. Unchanged configured ceilings were two source
+requests/three credits and two requests per model role; actual consumption
+was not reported and is not inferred from ceilings.
+
+Exactly one POST returned HTTP 201 for
+`990627f7-b749-4734-8b93-4c4dbaa1b6fb`, then was read back. Session `78963`
+exited 0. The operation took 32.461s (2026-10-12 23:34:25.357–23:34:57.818 UTC);
+evaluation date was 2026-10-13. Mode-0600 sanitized aggregate:
+`/private/tmp/ch-event-v02.DnNoMK/safe-result.json`, in a mode-0700 directory.
+
+Result: BLOCKED / GROUNDING_NO_SUBMISSION. Retained counts are five source
+bodies, ten claims, one hypothesis, 21 field bindings and one coverage record.
+Coverage is model/validator `unresolved`, with `gap_present=true`.
+Semantic receipt validated; Builder completed with
+`CLAIM_REJECTED_BY_VALIDATOR` (2), `HYPOTHESIS_REJECTED_BY_VALIDATOR` (1),
+and `NO_PROJECTABLE_HYPOTHESIS` (1). Submission is MISSING, EI NOT_RUN and
+Core not reached. Batch/case/unavailable counts and reason arrays are absent
+(`null`), not zero or empty. Exact rejected fields/source entailment details
+are not present in this aggregate; no specific cause is inferred.
+
+This does not establish a defect in v0.2, validate its real multi-fact anchor,
+or prove a successful real EI/Core loop. Do not respond with an identical
+retry, forced hypothesis or relaxed validator/EI rule. No production,
+configuration, budget or model change was made; no second POST or extra live
+operation was issued by the runner. Documentation-only checks apply; no full suite.
+This phase is a requested live validation, not coding: production-edit share
+is 0%; complete execution/preparation/review timing was not measured, so a
+whole-phase time split is not claimed.
+
 ## Deterministic Event fact anchoring successor — 2026-10-13
 
 [Host Event Source Facts v0.2](host-event-source-facts-v0.2.md) is frozen,
