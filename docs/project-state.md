@@ -1,5 +1,21 @@
 # Project State
 
+Latest Event diagnostic (2026-10-13): one fresh private operation returned
+HTTP 201 and was read back. Catalog processing succeeded and the semantic
+receipt validated (12 claims, 1 hypothesis, 23 bindings, 5 source bodies); its
+single coverage record had model/validator `supported` but `gap_present=true`.
+Builder diagnostics were `HYPOTHESIS_NOT_PROJECTED` (1) and
+`NO_PROJECTABLE_HYPOTHESIS` (1). The run ended `BLOCKED /
+GROUNDING_NO_SUBMISSION`; submission was missing, EI `NOT_RUN`, and Core was
+not reached. Case and unavailable counts are null/unavailable, not zero. Exact
+diagnostic detail was not retained (Host Store retains counts, not messages),
+so its cause cannot be inferred or used to explain the 2026-10-12
+`EVIDENCE_CATALOG_INVALID` failure. Evaluation date: 2026-10-13; spent guard:
+`/private/tmp/ch-event-diagnostic.kF6X9u/`. No budget/config/production change
+or source retry. Two earlier outer-cwd startup attempts failed generically;
+startup from the actual repository cwd succeeded, with no cause inferred. See
+[latest Event result](current-checkpoint.md#one-shot-event-diagnostic--2026-10-13).
+
 Normal World continuation (2026-10-12): the workbench was reloaded and one
 new normal HTTP World request was persisted/read back. It returned BLOCKED /
 world_last30days_failed / world_grounder_failed, with no EI/Core research case.
@@ -13,7 +29,7 @@ Independent review and corrected full regression (1,957 tests) passed. The
 distinct normal Event POST also returned 201/BLOCKED at EVIDENCE_CATALOG_INVALID,
 before hypothesis formation. Its counts and precise catalog cause are
 unavailable. Neither failed normal operation is a measured zero-hypothesis
-result or a positive EI/Core loop. Closed catalog-failure logging is being
+result or a positive EI/Core loop. Closed catalog-failure logging is
 implemented; the final 54 focused tests, independent review and normal Host
 deployment passed. Direct and both blocked runs survive restart. No source
 limit or evidence rule is relaxed; positive Event/World-to-Core remains

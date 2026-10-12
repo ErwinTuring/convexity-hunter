@@ -2,6 +2,27 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## One-shot Event diagnostic — 2026-10-13
+
+One fresh private Event operation (evaluation date 2026-10-13; spent guard at
+`/private/tmp/ch-event-diagnostic.kF6X9u/`) returned HTTP 201 and was read back.
+Catalog processing succeeded and the semantic receipt validated: 12 claims, 1
+hypothesis, 23 field bindings and 5 source bodies. Its single coverage record
+had model and validator status `supported`, with `gap_present=true`. Builder
+diagnostics were `HYPOTHESIS_NOT_PROJECTED` (1) and
+`NO_PROJECTABLE_HYPOTHESIS` (1). The run was `BLOCKED / GROUNDING_NO_SUBMISSION`,
+with submission missing; EI was `NOT_RUN` and Core was not reached. Case and
+unavailable counts are null/unavailable, not zero.
+
+The retained Host Store projection keeps diagnostic counts, not the exact
+diagnostic messages, so the reason for `HYPOTHESIS_NOT_PROJECTED` cannot be
+recovered or inferred. This result does not retroactively explain the distinct
+2026-10-12 `EVIDENCE_CATALOG_INVALID` failure. The guard is spent. No
+budget/config/production change or source retry occurred. No full-suite result
+is claimed for this diagnostic/docs-only update. Two earlier startup attempts
+from the outer cwd failed generically; startup from the actual repository cwd
+succeeded. The startup failure cause is not established.
+
 ## Paired normal-entry acceptance — 2026-10-12
 
 After the spent World operation below, one distinct normal Event request is
