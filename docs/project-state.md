@@ -1,13 +1,20 @@
 # Project State
 
-Latest diagnostic Event (2026-10-12) is spent: 103 eligible catalog paragraphs
+Latest approved post-capacity Event run (2026-10-12) completed source/catalog
+processing (45 entries / 22,236 bytes), then stopped at DISCOVERY_CALL_FAILED
+after one delegated discovery request. The specific client error is not
+retained; semantic/EI/Core were not invoked. This run is spent, not a real
+three-entry acceptance pass. Production and budgets remain unchanged. See
+[latest result](current-checkpoint.md#post-capacity-real-event-acceptance--2026-10-12).
+
+Preceding diagnostic Event (2026-10-12) is spent: 103 eligible catalog paragraphs
 exceeded the explicit 64-entry/array capacity; models, EI and Core were not
 called. Local capacity is now 128 entries/array items and 65,536 catalog bytes,
 with source, paragraph and call budgets unchanged. Five offline capacity checks
 passed; the reloaded workbench is READY and its historical database unchanged.
 No production/economic/acceptance semantics changed. Real three-entry
-acceptance remains incomplete; the corrected capacity has not yet had a live
-acceptance run. See
+acceptance was incomplete; at that checkpoint the corrected capacity had not
+yet had a live acceptance run. See
 [the latest checkpoint](current-checkpoint.md#catalog-capacity-diagnosed-and-corrected--2026-10-12).
 
 Final closure implementation delivered and independently reviewed: normal

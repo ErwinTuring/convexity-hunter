@@ -2,6 +2,32 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Post-capacity real Event acceptance — 2026-10-12
+
+The newly approved single operation at
+`/private/tmp/ch-event-acceptance.gNjMBX/` is spent: POST 201/readback 200,
+BLOCKED / DISCOVERY_CALL_FAILED. Five sources totaled 10,495 bytes; the complete
+catalog returned 45 entries / 22,236 bytes within the corrected limits.
+This demonstrates catalog completion for this input, not that the previous
+103-entry live input was replayed or that increased capacity caused this
+smaller catalog to succeed.
+
+Two Tavily requests reserved two credits, and one discovery model request was
+delegated. Semantic calls and Core callbacks were zero; no submission, EI
+assessment or Core archive. The operation took 31.29 seconds. Call delegation
+does not establish a successful model response or account charges. No second
+batch, model retry or quote acquisition occurred.
+
+The precise model failure is not retained. The runtime deliberately reduces
+discovery-client exceptions to DISCOVERY_CALL_FAILED; only its semantic role
+currently exposes whitelisted transport failure checks. Thus timeout, HTTP,
+response parsing and other client failures cannot be distinguished for this
+spent run. Source/catalog completion is not Event acceptance. Production,
+prompts, credentials, budgets and the workbench were not changed by this run.
+Further live diagnosis must capture the client's closed error code and safe
+HTTP status before runtime reduction, without response bodies or secrets;
+do not infer this run's cause or repeat its spent operation.
+
 ## Catalog capacity diagnosed and corrected — 2026-10-12
 
 One newly authorized diagnostic Event operation is spent at
