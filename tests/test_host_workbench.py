@@ -6,12 +6,78 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from convexity_hunter.host_workbench import render_workbench
+from convexity_hunter.core_application import (
+    SourceSubmissionBatch,
+    run_event_core,
+    run_world_core,
+)
+from convexity_hunter.event_entry import UserEventInput
+from convexity_hunter.host_profile import STANDARD_RESEARCH_PROFILE
+from convexity_hunter.host_server import _public_batch_summary
+from convexity_hunter.host_store import HostStore
+from tests.test_core_application import make_policy
+
+
+def _retained_empty_batch_summary(mode):
+    raw_input = "retained {} batch input".format(mode)
+    policy = make_policy([])
+    if mode == "world":
+        result = run_world_core(
+            raw_input,
+            source_producer=lambda raw: SourceSubmissionBatch(raw, ()),
+            market_bridge=object(),
+            policy=policy,
+        )
+    else:
+        event_input = UserEventInput(raw_input)
+        result = run_event_core(
+            event_input,
+            grounder=lambda raw: SourceSubmissionBatch(raw, ()),
+            market_bridge=object(),
+            policy=policy,
+        )
+
+    metadata = {
+        "configuration_snapshot": {"models": [], "sources": [], "skills": []},
+        "execution_snapshot": {
+            mode + "_executor": {
+                "status": "CONFIGURED",
+                "version": "host-batch-executor-v0.1",
+            }
+        },
+        "contract_versions": {
+            "architecture": "standalone-mvp-architecture-v0.1",
+            "host_shell": "host-server-v0.1",
+            "standard_research_profile": "standard-research-profile:v0.1",
+        },
+    }
+    canonical_temp_root = pathlib.Path(tempfile.gettempdir()).resolve()
+    with tempfile.TemporaryDirectory(dir=str(canonical_temp_root)) as directory:
+        database_path = pathlib.Path(directory) / "host.sqlite3"
+        store = HostStore(database_path)
+        try:
+            run_id = store.create_run(
+                mode,
+                raw_input,
+                policy.bounds,
+                STANDARD_RESEARCH_PROFILE.snapshot(),
+                metadata,
+            )
+            store.save_batch_result(run_id, result)
+        finally:
+            store.close()
+        reopened = HostStore(database_path)
+        try:
+            return _public_batch_summary(reopened.get_batch_summary(run_id))
+        finally:
+            reopened.close()
 
 
 class HostWorkbenchTests(unittest.TestCase):
@@ -118,6 +184,19 @@ class HostWorkbenchTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for DOM behavior tests")
     def test_node_fake_dom_workflows(self):
         page = render_workbench("csrf-value")
+        retained_world_summary = _retained_empty_batch_summary("world")
+        retained_event_summary = _retained_empty_batch_summary("event")
+        self.assertEqual(retained_world_summary["entry_origin"], "WORLD")
+        self.assertEqual(retained_event_summary["entry_origin"], "EVENT")
+        self.assertNotIn(
+            "AUTONOMOUS_DISCOVERY",
+            (retained_world_summary["entry_origin"], retained_event_summary["entry_origin"]),
+        )
+        with self.assertRaises(ValueError):
+            _public_batch_summary({
+                **retained_world_summary,
+                "entry_origin": "AUTONOMOUS_DISCOVERY",
+            })
         harness = r'''
 const vm = require("node:vm");
 const fs = require("node:fs");
@@ -431,7 +510,8 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     const lane = await scenario({
       mode, cases: keyedCases,
       batchSummary: {
-        entry_origin: mode.toUpperCase(), case_count: cases.length, unavailable_count: 0,
+        entry_origin: (mode === "world" ? input.worldSummary : input.eventSummary).entry_origin,
+        case_count: cases.length, unavailable_count: 0,
         disposition_counts: [], case_ids: keyedCases.map((item) => item.case_id), reasons: [],
         case_summaries: keyedCases.map((item) => ({ case_id: item.case_id, case_key: item.case_key, reasons: [], legs: [] })),
         unavailable_case_ids: []
@@ -444,6 +524,74 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     if (!lane.elements.get("case-detail").textContent.includes("尚未选择用例")) throw new Error(mode + " detail was not left on demand");
     await lane.elements.get("case-list").children[0].children[0].click();
     if (!lane.calls.some((call) => call.path.endsWith(encodeURIComponent(keyedCases[0].case_key)))) throw new Error(mode + " human selection did not load its case by case_key");
+  }
+
+  const worldReasonCases = [
+    ["world_grounder_no_submission", "未形成可交给 EI 评估的非空合法 submission", "不表示 Last30Days 原生 leads 为零、所有 hypotheses 均被拒绝，也不表示 EI 结果为 INCOMPLETE"],
+    ["world_last30days_empty", "本次 Last30Days 结果未提供 leads", "不证明现实中没有相关事件"],
+    ["world_grounder_failed", "本次 Grounder 执行失败", "不是 hypothesis 数为零的结果"]
+  ];
+  for (const [reason, expectedMeaning, expectedBoundary] of worldReasonCases) {
+    const worldNegative = await scenario({
+      mode: "world", cases: [], runStatus: "BLOCKED", events: [],
+      batchSummary: {
+        ...input.worldSummary,
+        reasons: [reason], case_summaries: [], unavailable_case_ids: [], unavailable_cases: []
+      },
+      executors: { world: "CONFIGURED", event: "CONFIGURED", direct: "NOT_CONFIGURED" }
+    });
+    await worldNegative.clickRun();
+    const explanation = worldNegative.elements.get("batch-summary-view").textContent;
+    if (!explanation.includes("汇总原因：" + reason)) throw new Error("raw World reason code was changed or omitted: " + reason);
+    if (!explanation.includes("说明（" + reason + "）") || !explanation.includes(expectedMeaning) || !explanation.includes(expectedBoundary)) {
+      throw new Error("truthful World reason explanation was omitted or weakened: " + reason);
+    }
+    if (!explanation.includes("已计算案例数：0") || !explanation.includes("不可用分支数：0")
+      || !explanation.includes("Host 状态：阻断（BLOCKED）")) {
+      throw new Error("World reason explanation changed stored counts or status: " + reason);
+    }
+    const runPath = "/api/runs/" + runId;
+    const expectedPaths = ["/api/status", "/api/profile", "/api/runs", runPath];
+    if (worldNegative.calls.length !== expectedPaths.length
+      || expectedPaths.some((path) => worldNegative.calls.filter((call) => call.path === path).length !== 1)
+      || worldNegative.calls.some((call) => call.method !== "GET")) {
+      throw new Error("World reason explanation triggered an extra API call: " + reason);
+    }
+  }
+
+  const eventWithWorldReason = await scenario({
+    mode: "event", cases: [], runStatus: "BLOCKED", events: [],
+    batchSummary: {
+      ...input.eventSummary,
+      reasons: ["world_grounder_no_submission"]
+    },
+    executors: { world: "CONFIGURED", event: "CONFIGURED", direct: "NOT_CONFIGURED" }
+  });
+  await eventWithWorldReason.clickRun();
+  const eventSummaryText = eventWithWorldReason.elements.get("batch-summary-view").textContent;
+  if (!eventSummaryText.includes("入口来源：EVENT（事件）")
+      || !eventSummaryText.includes("汇总原因：world_grounder_no_submission")
+      || eventSummaryText.includes("说明（world_grounder_no_submission）")) {
+    throw new Error("World reason explanation was incorrectly applied to an Event-origin summary");
+  }
+
+  const orderedWorldReasons = await scenario({
+    mode: "world", cases: [], runStatus: "BLOCKED", events: [],
+    batchSummary: {
+      ...input.worldSummary,
+      reasons: ["world_last30days_empty", "world_grounder_no_submission"],
+      case_summaries: [], unavailable_case_ids: [], unavailable_cases: []
+    },
+    executors: { world: "CONFIGURED", event: "CONFIGURED", direct: "NOT_CONFIGURED" }
+  });
+  await orderedWorldReasons.clickRun();
+  const orderedWorldText = orderedWorldReasons.elements.get("batch-summary-view").textContent;
+  if (!orderedWorldText.includes("汇总原因：world_last30days_empty；world_grounder_no_submission")) {
+    throw new Error("raw World reasons did not retain their stored order");
+  }
+  if (!(orderedWorldText.indexOf("说明（world_last30days_empty）")
+      < orderedWorldText.indexOf("说明（world_grounder_no_submission）"))) {
+    throw new Error("World reason explanations did not preserve stored reason order");
   }
 
   const longBatchId = "研究/✨:" + "x".repeat(600);
@@ -480,7 +628,7 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     mode: "world",
     cases: batchCases.map((item) => ({ case_id: item.case_id, case_key: item.case_key })),
     batchSummary: {
-      entry_origin: "WORLD", case_count: 3, unavailable_count: 1,
+      entry_origin: input.worldSummary.entry_origin, case_count: 3, unavailable_count: 1,
       host_status: "PARTIAL",
       disposition_counts: { DATA_INSUFFICIENT_CORE: 1, RESEARCHABLE_CONVEXITY: 1, REJECT: 1 },
       case_ids: batchCases.map((item) => item.case_id), reasons: ["partial_summary_reason"],
@@ -498,6 +646,7 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   if (batch.calls.some((call) => call.path.includes("/cases/"))) throw new Error("batch compact rows triggered case detail GETs");
   const summaryView = batch.elements.get("batch-summary-view").textContent;
   if (!summaryView.includes("已计算案例数：3") || !summaryView.includes("不可用分支数：1")) throw new Error("batch case counts were not displayed with frozen labels");
+  if (summaryView.includes("说明（world_") || summaryView.includes("world_grounder_no_submission")) throw new Error("positive World batch received a negative-result explanation");
   if (summaryView.includes("可用用例数") || summaryView.includes("不可用用例数")) throw new Error("batch counts imply availability instead of computed/unavailable branches");
   if (!summaryView.includes("Host 状态：部分完成（PARTIAL）")) throw new Error("batch host_status was not displayed");
   if (!summaryView.includes("partial_summary_reason") || !summaryView.includes(unavailableBatchId) || !summaryView.includes("不可用分支 case_id：" + unavailableBatchId)) throw new Error("summary reasons or string-only unavailable case IDs were omitted");
@@ -548,7 +697,11 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
 '''
         result = subprocess.run(
             ["node", "-e", harness],
-            input=json.dumps({"page": page}),
+            input=json.dumps({
+                "page": page,
+                "worldSummary": retained_world_summary,
+                "eventSummary": retained_event_summary,
+            }),
             capture_output=True,
             text=True,
             timeout=15,

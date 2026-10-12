@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from convexity_hunter.event_entry import UserEventInput
 from convexity_hunter.host_grounder_builder import HostBuildContext, HostSourceBody
+from convexity_hunter.host_grounder_evidence_catalog import HostEvidenceCatalogAuditHolder
 from convexity_hunter.host_grounder_run_input import (
     HostGrounderRunInput,
     HostGrounderRunInputBounds,
@@ -24,8 +25,10 @@ from convexity_hunter.host_grounder_runtime import (
     SEMANTIC_SYSTEM_PROMPT_V0_4,
     HostGrounderRuntimeError,
     run_host_grounder_same_run,
+    run_host_grounder_same_run_evidence_catalog_v0_6,
     run_host_grounder_same_run_quote_localization_v0_1,
 )
+from convexity_hunter import host_grounder_runtime as host_grounder_runtime_module
 from convexity_hunter.host_grounder_quote_localization import (
     QuoteLocalizationAuditHolder,
     make_quote_localization_audit,
@@ -35,6 +38,7 @@ from convexity_hunter.host_grounder_quote_localization import (
 from convexity_hunter.host_grounder_schema import parse_model_output_envelope
 from convexity_hunter.host_model import (
     ModelRuntimeConfig,
+    ModelTransportError,
     ModelTransportReceipt,
 )
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
@@ -1075,6 +1079,266 @@ class HostGrounderQuoteLocalizationTests(unittest.TestCase):
         self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
         self.assertTrue(holder.finalized)
         self.assertIsNotNone(holder.audit)
+
+    def test_call_once_logs_only_closed_transport_metadata(self):
+        class DerivedTransportError(ModelTransportError):
+            pass
+
+        class CodeString(str):
+            pass
+
+        class IntSubclass(int):
+            pass
+
+        class FailingClient:
+            def __init__(self, error):
+                self.error = error
+                self.calls = 0
+
+            def complete(self, _system_prompt, _source_prompt):
+                self.calls += 1
+                raise self.error
+
+        malformed_code = ModelTransportError("TIMEOUT")
+        malformed_code.code = CodeString("TIMEOUT")
+        spoof = RuntimeError("PRIVATE_EXCEPTION_SENTINEL")
+        spoof.code = "HTTP_ERROR"
+        spoof.status = 503
+        cases = (
+            (
+                "DISCOVERY", ModelTransportError("TIMEOUT"),
+                "grounder_model_call_failed role=discovery code=TIMEOUT status=UNKNOWN",
+                None, None,
+            ),
+            (
+                "SEMANTIC", ModelTransportError("HTTP_ERROR", status=503),
+                "grounder_model_call_failed role=semantic code=HTTP_ERROR status=503",
+                "semantic_model_transport", "model_transport_http_error",
+            ),
+            (
+                "SEMANTIC", ModelTransportError("HTTP_ERROR", status=100),
+                "grounder_model_call_failed role=semantic code=HTTP_ERROR status=100",
+                "semantic_model_transport", "model_transport_http_error",
+            ),
+            (
+                "SEMANTIC", ModelTransportError("HTTP_ERROR", status=599),
+                "grounder_model_call_failed role=semantic code=HTTP_ERROR status=599",
+                "semantic_model_transport", "model_transport_http_error",
+            ),
+            (
+                "SEMANTIC", ModelTransportError("MALFORMED_JSON"),
+                "grounder_model_call_failed role=semantic code=MALFORMED_JSON status=UNKNOWN",
+                "semantic_model_transport", "model_transport_malformed_json",
+            ),
+            (
+                "DISCOVERY", ModelTransportError("TRUNCATED_RESPONSE"),
+                "grounder_model_call_failed role=discovery code=TRUNCATED_RESPONSE status=UNKNOWN",
+                None, None,
+            ),
+            (
+                "SEMANTIC", ModelTransportError("PRIVATE_SECRET_SENTINEL", status=503),
+                "grounder_model_call_failed role=semantic code=UNKNOWN status=503",
+                None, None,
+            ),
+            (
+                "SEMANTIC", ModelTransportError("HTTP_ERROR", status=True),
+                "grounder_model_call_failed role=semantic code=HTTP_ERROR status=UNKNOWN",
+                "semantic_model_transport", "model_transport_http_error",
+            ),
+            (
+                "SEMANTIC", ModelTransportError("HTTP_ERROR", status=99),
+                "grounder_model_call_failed role=semantic code=HTTP_ERROR status=UNKNOWN",
+                "semantic_model_transport", "model_transport_http_error",
+            ),
+            (
+                "SEMANTIC", ModelTransportError("HTTP_ERROR", status=600),
+                "grounder_model_call_failed role=semantic code=HTTP_ERROR status=UNKNOWN",
+                "semantic_model_transport", "model_transport_http_error",
+            ),
+            (
+                "SEMANTIC", ModelTransportError("HTTP_ERROR", status=503.0),
+                "grounder_model_call_failed role=semantic code=HTTP_ERROR status=UNKNOWN",
+                "semantic_model_transport", "model_transport_http_error",
+            ),
+            (
+                "SEMANTIC", ModelTransportError("HTTP_ERROR", status=IntSubclass(503)),
+                "grounder_model_call_failed role=semantic code=HTTP_ERROR status=UNKNOWN",
+                "semantic_model_transport", "model_transport_http_error",
+            ),
+            (
+                "SEMANTIC", malformed_code,
+                "grounder_model_call_failed role=semantic code=UNKNOWN status=UNKNOWN",
+                None, None,
+            ),
+            ("SEMANTIC", DerivedTransportError("HTTP_ERROR", status=503), None, None, None),
+            ("SEMANTIC", spoof, None, None, None),
+        )
+        with self.assertLogs(host_grounder_runtime_module._logger, level="WARNING") as captured:
+            for role, error, _message, expected_stage, expected_check in cases:
+                client = FailingClient(error)
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    host_grounder_runtime_module._call_once(
+                        client, _config(role.lower()), "PRIVATE_PROMPT_SENTINEL",
+                        "PRIVATE_SOURCE_SENTINEL", role=role,
+                    )
+                self.assertEqual(raised.exception.code, role + "_CALL_FAILED")
+                self.assertEqual(raised.exception.failure_stage, expected_stage)
+                self.assertEqual(raised.exception.failure_check, expected_check)
+                self.assertNotIn("PRIVATE", repr(raised.exception))
+                self.assertEqual(client.calls, 1)
+
+        self.assertEqual(
+            [record.getMessage() for record in captured.records],
+            [message for _role, _error, message, _stage, _check in cases if message is not None],
+        )
+        log_text = "\n".join(record.getMessage() for record in captured.records)
+        for private_value in (
+            "PRIVATE_SECRET_SENTINEL", "PRIVATE_EXCEPTION_SENTINEL",
+            "PRIVATE_PROMPT_SENTINEL", "PRIVATE_SOURCE_SENTINEL",
+            "fixture-semantic", "127.0.0.1",
+        ):
+            self.assertNotIn(private_value, log_text)
+
+    def test_call_once_logging_failure_does_not_change_fail_closed_metadata(self):
+        class FailingClient:
+            calls = 0
+
+            def complete(self, _system_prompt, _source_prompt):
+                self.calls += 1
+                raise ModelTransportError("HTTP_ERROR", status=503)
+
+        client = FailingClient()
+        with patch.object(
+            host_grounder_runtime_module._logger,
+            "warning",
+            side_effect=RuntimeError("PRIVATE_LOGGER_FAILURE"),
+        ):
+            with self.assertRaises(HostGrounderRuntimeError) as raised:
+                host_grounder_runtime_module._call_once(
+                    client, _config("semantic"), "system", "source", role="SEMANTIC"
+                )
+        self.assertEqual(raised.exception.code, "SEMANTIC_CALL_FAILED")
+        self.assertEqual(raised.exception.failure_stage, "semantic_model_transport")
+        self.assertEqual(raised.exception.failure_check, "model_transport_http_error")
+        self.assertNotIn("PRIVATE_LOGGER_FAILURE", repr(raised.exception))
+        self.assertEqual(client.calls, 1)
+
+    def test_catalog_failure_check_only_accepts_exact_static_builder_messages(self):
+        expected = {
+            "source registry exceeds max_array_items": "SOURCE_COUNT_LIMIT",
+            "catalog exceeds max_catalog_paragraphs": "PARAGRAPH_LIMIT",
+            "catalog exceeds entry bound": "ENTRY_LIMIT",
+            "catalog exceeds array or entry bound": "ENTRY_LIMIT",
+            "catalog exceeds max_catalog_bytes": "BYTE_LIMIT",
+            "source registry must be nonempty": "EMPTY",
+            "catalog has no eligible entries": "EMPTY",
+            "source body hash mismatch": "HASH_INVALID",
+        }
+        for message, check in expected.items():
+            with self.subTest(message=message):
+                self.assertEqual(
+                    host_grounder_runtime_module._catalog_failure_check(
+                        ValueError(message)
+                    ),
+                    check,
+                )
+
+        class StringBombValueError(ValueError):
+            def __str__(self):
+                raise AssertionError("exception must not be rendered")
+
+        class StringSubclass(str):
+            pass
+
+        self.assertEqual(
+            host_grounder_runtime_module._catalog_failure_check(
+                ValueError("PRIVATE_CATALOG_SENTINEL")
+            ),
+            "UNKNOWN",
+        )
+        self.assertEqual(
+            host_grounder_runtime_module._catalog_failure_check(
+                StringBombValueError("PRIVATE_SUBCLASS_SENTINEL")
+            ),
+            "UNKNOWN",
+        )
+        self.assertEqual(
+            host_grounder_runtime_module._catalog_failure_check(
+                ValueError(StringSubclass("source body hash mismatch"))
+            ),
+            "UNKNOWN",
+        )
+        self.assertEqual(
+            host_grounder_runtime_module._catalog_failure_check(
+                ValueError("source body hash mismatch", "PRIVATE_EXTRA_SENTINEL")
+            ),
+            "UNKNOWN",
+        )
+
+    def test_normal_catalog_build_failure_is_logged_safely_and_remains_fail_closed(self):
+        run_input, context, envelope, _discovery_json, _semantic_json = _fixture()
+        body = "ACME filed a report.\n\nA possible distribution shift may follow."
+        source = context.source_bodies["source-1"]
+        context = replace(
+            context,
+            source_bodies={
+                "source-1": HostSourceBody(
+                    body, _sha(body), source.final_locator, source.retrieved_at, source.title
+                )
+            },
+        )
+
+        def run_with_tiny_catalog_limit():
+            discovery, semantic, calls = _clients(
+                json.dumps(_quote_only_output(envelope)),
+                json.dumps(_quote_only_verdict(_verdict(envelope))),
+            )
+            holder = HostEvidenceCatalogAuditHolder(
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+            )
+            with self.assertRaises(HostGrounderRuntimeError) as raised:
+                run_host_grounder_same_run_evidence_catalog_v0_6(
+                    run_input,
+                    context,
+                    discovery_client=discovery,
+                    semantic_client=semantic,
+                    audit_holder=holder,
+                    max_json_bytes=100_000,
+                    max_source_body_bytes=20_000,
+                    max_catalog_entries=64,
+                    max_catalog_bytes=32_768,
+                    max_catalog_paragraphs=1,
+                    host_context_preparer=lambda _snapshot, _receipt, original: original,
+                )
+            return raised.exception, calls
+
+        with self.assertLogs(host_grounder_runtime_module._logger, level="WARNING") as captured:
+            error, calls = run_with_tiny_catalog_limit()
+        self.assertEqual(
+            [record.getMessage() for record in captured.records],
+            ["grounder_catalog_failed check=PARAGRAPH_LIMIT"],
+        )
+        self.assertEqual(error.code, "EVIDENCE_CATALOG_INVALID")
+        self.assertIsNone(error.failure_stage)
+        self.assertIsNone(error.failure_check)
+        self.assertEqual(error.producer_attempts, ())
+        self.assertEqual(str(error), "EVIDENCE_CATALOG_INVALID")
+        self.assertEqual(calls, [])
+
+        with patch.object(
+            host_grounder_runtime_module._logger,
+            "warning",
+            side_effect=RuntimeError("PRIVATE_LOGGER_SENTINEL"),
+        ):
+            error, calls = run_with_tiny_catalog_limit()
+        self.assertEqual(error.code, "EVIDENCE_CATALOG_INVALID")
+        self.assertIsNone(error.failure_stage)
+        self.assertIsNone(error.failure_check)
+        self.assertEqual(error.producer_attempts, ())
+        self.assertEqual(str(error), "EVIDENCE_CATALOG_INVALID")
+        self.assertNotIn("PRIVATE_LOGGER_SENTINEL", repr(error))
+        self.assertEqual(calls, [])
 
     def test_builder_failure_retains_finalized_audit_without_exposing_exception(self):
         run_input, context, envelope, _discovery_json, _semantic_json = _fixture()

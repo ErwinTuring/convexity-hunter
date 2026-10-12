@@ -2,6 +2,83 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Paired normal-entry acceptance — 2026-10-12
+
+After the spent World operation below, one distinct normal Event request is
+preregistered on the Nasdaq 23/5 market-infrastructure topic. It does not
+reuse historical acceptance, invent an impact end, or force supported links.
+Official/regulatory sources, contradictory evidence and any lawful future
+reassessment milestone must be freshly verified. Evaluation date 2026-10-12
+and per-run operational/source/model ceilings remain as declared below.
+This is one Event POST, not a second World batch or a success-seeking retry.
+The reviewed model-logging patch is deployed and the corrected full regression
+passed 1,957 tests. Exactly one Event POST returned 201 and was read back:
+BLOCKED / EVIDENCE_CATALOG_INVALID at the pre-model catalog boundary. No
+submission/EI/Core result was created. Public counts, coverage, diagnostic
+counts and batch totals are unavailable, not zero; account charges are not
+claimed. The operation is spent at
+`/private/tmp/ch-event-normal-acceptance.vL4RnY/`; it must not be rerun.
+No old Nasdaq ACCEPTED state was reused. This is a technical failure, not a
+zero-hypothesis research result. Its precise catalog cause was not retained.
+Normal closed catalog-failure logging is implemented without changing limits,
+truncating sources, altering failure metadata or making another call. It maps
+only exact built-in ValueError arguments matching known static builder checks;
+unknowns/subclasses stay UNKNOWN without rendering exception text. The final
+54-test focused set passed, including the real paragraph-limit boundary and
+logging-handler failure isolation. The 1,957-test full pass preceded this last
+logging-only addition; it is not presented as a rerun including its new tests.
+Catalog logging independent review passed. Final normal Host deployment and
+read-only checks passed: three executors configured, updated World renderer
+served, and the historical Direct plus both new blocked runs survived restart.
+The new model/catalog log paths were not exercised by another live request.
+Further causal diagnosis cannot recover the discarded bodies of these spent
+runs; it requires a separately declared new bounded source operation, not a
+replay of either guard. No positive Event/World EI-to-Core proof is claimed.
+
+Timing evidence is partial: UI implementation window 79s; origin-review/test
+window 157s; model-log patch/validation window 234s; catalog-log patch/validation
+window 127s. The latter windows mix coding, inspection and checks and cannot
+establish a coding-only percentage. Full test-command durations were 245.396s
+(incorrect import environment) and 302.328s (passing). No 70% work-share claim
+is made; the command correction incurred avoidable overhead.
+
+## Normal World continuation — 2026-10-12
+
+The normal Host was reloaded without changing historical records. For one new
+World request, evaluation_date is explicitly 2026-10-12; this does not roll
+forward any retained hypothesis. The declared public-information window is
+2026-10-06 through 2026-10-12, not a historical last30days replay. Existing
+limits remain: one submission, ten hypotheses, 400 Browser rows, 200 cases,
+ten-second quote timeout; Tavily two requests/three credits, discovery and
+semantic two requests per role across Skill and shared Grounder. No budget
+increase, new provider, prompt tuning, second POST or success-seeking retry.
+Zero supported hypotheses remains legitimate. Exactly one normal HTTP POST
+returned 201 and was read back: BLOCKED with HOST_BATCH_BLOCKED,
+world_last30days_failed and world_grounder_failed. It retained zero cases and
+zero unavailable cases, not a measured zero hypothesis/native-lead count.
+No EI/Core research case was reached. Native stage/provider/model-call counts
+are unavailable; no account-charge claim is made. The operation is spent at
+`/private/tmp/ch-world-normal-acceptance.yDWPeY/`, and is not to be retried.
+The runner's first invocation stopped on a local Python compatibility check
+before its guard or any HTTP; correcting that check did not create a second
+POST. This normal-path result is distinct from zero-hypothesis grounding.
+
+World's frozen batch callback and Event-only negative Grounder archive have
+different input/run identities. They cannot be conflated to retain additional
+World diagnostics. The bounded implementation explains existing World reason
+codes in the normal UI, without inventing missing counts or changing storage,
+source identities, acceptance or economic policy. Workbench/World focused tests
+and independent UI review passed; the real webpage serves the explanations.
+The first broad test command omitted PYTHONPATH=src: 1,906 tests ran but one
+module failed to import. This is not recorded as a full regression pass.
+Normal sanitized model-error logging is implemented and independently reviewed:
+only exact ModelTransportError, closed roles/codes and exact integer HTTP status
+100–599 are emitted; unknowns stay UNKNOWN. Logging-handler errors do not change
+fail-closed behavior. Public signatures (eight runtime functions), failure
+metadata, schemas, prompts and budgets are unchanged. It cannot recover this
+spent run's cause, diagnose failures before model calls, or observe Skill's
+separate call boundary. The 27 focused runtime tests and compileall passed.
+
 ## Lawful zero-hypothesis product result — 2026-10-12
 
 The user accepts zero hypotheses as a legitimate result. This bounded unit
@@ -20,8 +97,13 @@ paths and restart retention; compileall and diff checks passed. Worker sandbox
 loopback errors were resolved by running the same tests with local-bind
 permission, not by changing code. No live source/model/provider calls occurred.
 Independent review passed with no findings; schemas, gates, prompts and budgets
-are unchanged. The running local Host has not been restarted by this unit;
-deployment must reload the application before serving the changed renderer.
+are unchanged. During continuation, the normal local Host was safely reloaded
+with its original explicit evaluation date (2026-10-11), after checking there
+was no active run. Read-only HTTP checks confirm the changed renderer is served
+and all three executors remain configured. The historical database SHA-256 is
+unchanged. No research POST or external source/model/provider call accompanied
+deployment. An initial remote fetch failed with a network/TLS error; the later
+fetch succeeded and confirmed HEAD/main/origin-main equality at 4abf4fe.
 
 ## Successful model processing, no hypothesis — 2026-10-12
 

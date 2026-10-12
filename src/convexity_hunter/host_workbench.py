@@ -587,6 +587,19 @@ _DOCUMENT = r'''<!doctype html>
       "汇总原因：" + compactStringList(summary.reasons),
       "不可用分支 case_id：" + compactStringList(summary.unavailable_case_ids)
     ];
+    const worldReasonExplanations = {
+      world_grounder_no_submission: "本次 World 流程未形成可交给 EI 评估的非空合法 submission；这不表示 Last30Days 原生 leads 为零、所有 hypotheses 均被拒绝，也不表示 EI 结果为 INCOMPLETE。World 批量存档未保留 Grounder 计数或具体诊断，因此 hypothesis 数和具体原因不可用。",
+      world_last30days_empty: "本次 Last30Days 结果未提供 leads；这不证明现实中没有相关事件，也不证明所有来源都已覆盖。",
+      world_grounder_failed: "本次 Grounder 执行失败；这不是 hypothesis 数为零的结果。失败原因及 Grounder 计数/诊断未在 World 批量存档中保留，当前不可用。"
+    };
+    if (summary.entry_origin === "WORLD" && Array.isArray(summary.reasons)) {
+      for (const reason of summary.reasons) {
+        if (typeof reason === "string"
+          && Object.prototype.hasOwnProperty.call(worldReasonExplanations, reason)) {
+          lines.push("说明（" + reason + "）:" + worldReasonExplanations[reason]);
+        }
+      }
+    }
     setText(view, lines.join("\n"));
     renderCompactCases(summary.case_summaries);
     renderUnavailableCases(summary.unavailable_cases);

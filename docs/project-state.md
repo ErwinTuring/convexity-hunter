@@ -1,5 +1,25 @@
 # Project State
 
+Normal World continuation (2026-10-12): the workbench was reloaded and one
+new normal HTTP World request was persisted/read back. It returned BLOCKED /
+world_last30days_failed / world_grounder_failed, with no EI/Core research case.
+Zero cases is not a zero hypothesis count; unretained call counts and causes
+remain unavailable. There was no second POST or success-seeking retry.
+World reason explanations now use the existing batch projection; the frozen
+Event-only Grounder archive is not reused with incompatible World identities.
+Shared Grounder model-failure logging is implemented with closed error
+codes/safe HTTP status only, preserving public failure metadata and gates.
+Independent review and corrected full regression (1,957 tests) passed. The
+distinct normal Event POST also returned 201/BLOCKED at EVIDENCE_CATALOG_INVALID,
+before hypothesis formation. Its counts and precise catalog cause are
+unavailable. Neither failed normal operation is a measured zero-hypothesis
+result or a positive EI/Core loop. Closed catalog-failure logging is being
+implemented; the final 54 focused tests, independent review and normal Host
+deployment passed. Direct and both blocked runs survive restart. No source
+limit or evidence rule is relaxed; positive Event/World-to-Core remains
+unverified. See
+[normal World continuation](current-checkpoint.md#normal-world-continuation--2026-10-12).
+
 Lawful zero-hypothesis presentation is implemented in the normal workbench:
 producer count zero is not verifier rejection, and the Builder diagnostic does
 not explain the model's reason. Missing diagnostics remain unavailable; no

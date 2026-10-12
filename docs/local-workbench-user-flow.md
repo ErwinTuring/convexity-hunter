@@ -133,6 +133,18 @@ exact verification 和 `run_direct_core`。SDK 输出受控；不读取 Futu 私
 
 ## 结果与历史
 
+World 的正常批量结果保留原始原因码，并对三个已知原因提供中文说明：
+`world_grounder_no_submission` 不表示原始线索为零、全部假设被拒或 EI
+`INCOMPLETE`；`world_last30days_empty` 不证明市场无事件或来源全覆盖；
+`world_grounder_failed` 是执行失败，不是零假设结果。World 存档没有保留的
+Grounder 计数和底层原因仍不可用，不从 Event 存档格式补造。
+
+正常 Grounder 的模型调用与目录失败日志仅记录封闭错误类别，模型 HTTP
+状态只接受精确整数 100–599；不打印异常正文、来源正文、密钥、模型标识或
+账户信息。未知类别仍为 UNKNOWN，日志处理失败不改变原有阻断行为。
+这些日志用于之后的执行，不恢复已结束运行丢失的原因，也不等于来源事实
+或 EI 接受证据；更不自动授权再次查询。
+
 每次提交创建独立运行记录，先保存原始输入和政策快照，再开始 provider 工作。
 当前 schema v3 非破坏式迁移 v1/v2 历史；保存结构化 Core 数值结果作为事实源。
 Direct 单案例自动打开中文报告，其缓存是绑定数值快照 digest 的派生视图。
