@@ -1,5 +1,13 @@
 # Project State
 
+Host Event Source Facts v0.2 is frozen after bounded read-only preflight and
+independent contract review. BUILD is ready; production remains unchanged at
+this freeze. The successor permits a unique verified event-coverage fact amid
+other facts and explicit SEC registrant announcement occurrence dates, without
+relaxing EI or inferring publication/impact dates. General IR announcement
+identity remains unsupported. See [the contract](host-event-source-facts-v0.2.md).
+No new live operation is authorized; historical results remain unchanged.
+
 Latest approved normal Event run (2026-10-13) is spent at
 `/private/tmp/ch-event-runner.1ZxV25/`. Read-only GET recovery returned HTTP
 200 for `5941d95c-f70f-4eb0-b543-78935537bdee`; the sanitized
