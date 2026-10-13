@@ -21,6 +21,7 @@ from .core_futu import FutuMarketBridge
 from .core_presentation import compact_summary
 from .event_entry import UserEventInput
 from .event_intelligence import EventIntelligenceSubmission
+from .host_grounder_runtime import HostGrounderRuntimeError
 from .host_event import HostEventGrounderConfig, create_event_grounder
 from .host_grounder_run_input import HostGrounderRunInput, HostGrounderSubquestion
 from .host_model import ChatCompletionsClient, ModelTransportError
@@ -94,6 +95,47 @@ class HostWorldError(RuntimeError):
 
     def __repr__(self) -> str:
         return "HostWorldError(code={!r})".format(self.code)
+
+
+_WORLD_FAILURE_DIAGNOSTICS = {
+    HostWorldError: {
+        "LAST30DAYS_OUTPUT_INVALID": "world_last30days_output_invalid",
+    },
+    HostSkillError: {
+        "SKILL_PIN_UNAVAILABLE": "world_last30days_skill_pin_failed",
+        "INVALID_SKILL_PIN": "world_last30days_skill_pin_failed",
+        "INVALID_SKILL_PIN_HASH": "world_last30days_skill_pin_failed",
+        "SKILL_CONTENT_MISMATCH": "world_last30days_skill_pin_failed",
+        "SKILL_VERSION_MISMATCH": "world_last30days_skill_pin_failed",
+        "STAGE_RUNNER_FAILED": "world_last30days_stage_failed",
+        "STAGE_RUNNER_INVALID": "world_last30days_stage_failed",
+        "SKILL_STAGE_FAILED": "world_last30days_stage_failed",
+        "STAGE_TIMEOUT": "world_last30days_stage_failed",
+        "STAGE_OUTPUT_LIMIT": "world_last30days_stage_failed",
+        "SPAWN_FAILED": "world_last30days_stage_failed",
+        "PYTHON_VERSION_UNSUPPORTED": "world_last30days_stage_failed",
+        "SKILL_CONTRACT_FAILED": "world_last30days_contract_failed",
+        "MODEL_CALLBACK_FAILED": "world_last30days_model_failed",
+        "MODEL_OUTPUT_INVALID": "world_last30days_model_failed",
+    },
+    HostGrounderRuntimeError: {
+        "DISCOVERY_CALL_FAILED": "world_grounder_model_call_failed",
+        "SEMANTIC_CALL_FAILED": "world_grounder_model_call_failed",
+        "DISCOVERY_RESPONSE_INVALID": "world_grounder_output_invalid",
+        "PRODUCER_ENVELOPE_INVALID": "world_grounder_output_invalid",
+        "EVIDENCE_CATALOG_INVALID": "world_grounder_output_invalid",
+        "NO_SEARCH_RESULTS": "world_grounder_no_search_results",
+        "EXTRACTION_FAILURE": "world_grounder_extraction_failed",
+    },
+}
+
+
+def _world_failure_diagnostic(error: Exception) -> Optional[str]:
+    diagnostics = _WORLD_FAILURE_DIAGNOSTICS.get(type(error))
+    if diagnostics is None:
+        return None
+    code = getattr(error, "code", None)
+    return diagnostics.get(code) if type(code) is str else None
 
 
 @dataclass(frozen=True, repr=False)
@@ -594,12 +636,18 @@ def create_world_runner(
                             raw_request, leads
                         )
                         last30days_status = "consumed"
-            except HostWorldError:
+            except HostWorldError as error:
                 last30days_status = "failed"
                 reasons.append("world_last30days_failed")
-            except HostSkillError:
+                diagnostic = _world_failure_diagnostic(error)
+                if diagnostic is not None:
+                    reasons.append(diagnostic)
+            except HostSkillError as error:
                 last30days_status = "failed"
                 reasons.append("world_last30days_failed")
+                diagnostic = _world_failure_diagnostic(error)
+                if diagnostic is not None:
+                    reasons.append(diagnostic)
             except Exception:
                 last30days_status = "failed"
                 reasons.append("world_last30days_failed")
@@ -617,8 +665,11 @@ def create_world_runner(
                     run_id=run_id,
                     bounds=bounds,
                 )
-            except Exception:
+            except Exception as error:
                 reasons.append("world_grounder_failed")
+                diagnostic = _world_failure_diagnostic(error)
+                if diagnostic is not None:
+                    reasons.append(diagnostic)
                 return _empty_batch(raw_request)
 
             build_result = getattr(grounded, "build_result", None)

@@ -29,6 +29,7 @@ from convexity_hunter.event_intelligence import (  # noqa: E402
 from convexity_hunter.host_event import HostEventGrounderConfig  # noqa: E402
 import convexity_hunter.host_event as host_event_module  # noqa: E402
 import convexity_hunter.host_world as host_world_module  # noqa: E402
+from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError  # noqa: E402
 from convexity_hunter.host_grounder_run_input import HostGrounderRunInputBounds  # noqa: E402
 from convexity_hunter.host_model import ModelCredential, ModelRuntimeConfig  # noqa: E402
 from convexity_hunter.host_profile import (  # noqa: E402
@@ -38,6 +39,7 @@ from convexity_hunter.host_profile import (  # noqa: E402
 from convexity_hunter.host_skill import (  # noqa: E402
     AngleInput,
     HostSkillConfig,
+    HostSkillError,
     HostSkillResult,
     Last30DaysSkillPin,
     NominationInput,
@@ -417,6 +419,8 @@ class HostWorldTests(unittest.TestCase):
             skill_result=None, skill_error=RuntimeError("synthetic hidden failure")
         )
         self.assertIn("world_last30days_failed", result.case_set.reasons)
+        self.assertIs(result.case_set.raw_input, self.raw_input)
+        self.assertIs(captured[0].raw_input, self.raw_input)
         self.assertTrue(
             all(
                 "last30days_status=failed@3.21.1" in s.producer_version
@@ -425,6 +429,71 @@ class HostWorldTests(unittest.TestCase):
             )
         )
         self.assertNotIn("synthetic hidden failure", repr(result.case_set.reasons))
+
+    def test_typed_last30days_failures_add_only_closed_diagnostics(self):
+        failures = (
+            (
+                HostSkillError("SKILL_PIN_UNAVAILABLE"),
+                "world_last30days_skill_pin_failed",
+            ),
+            (
+                HostSkillError("STAGE_RUNNER_FAILED"),
+                "world_last30days_stage_failed",
+            ),
+            (
+                HostSkillError("SKILL_STAGE_FAILED"),
+                "world_last30days_stage_failed",
+            ),
+            (
+                HostSkillError("STAGE_TIMEOUT"),
+                "world_last30days_stage_failed",
+            ),
+            (
+                HostSkillError("STAGE_OUTPUT_LIMIT"),
+                "world_last30days_stage_failed",
+            ),
+            (
+                HostSkillError("SPAWN_FAILED"),
+                "world_last30days_stage_failed",
+            ),
+            (
+                HostSkillError("PYTHON_VERSION_UNSUPPORTED"),
+                "world_last30days_stage_failed",
+            ),
+            (
+                HostSkillError("SKILL_CONTRACT_FAILED"),
+                "world_last30days_contract_failed",
+            ),
+            (
+                HostSkillError("MODEL_CALLBACK_FAILED"),
+                "world_last30days_model_failed",
+            ),
+            (
+                HostWorldError("LAST30DAYS_OUTPUT_INVALID"),
+                "world_last30days_output_invalid",
+            ),
+            (HostSkillError("PRIVATE_TOKEN_DO_NOT_LEAK"), None),
+        )
+        for error, diagnostic in failures:
+            with self.subTest(diagnostic=diagnostic):
+                result, captured, _, _ = self._run_through_real_core(
+                    skill_result=None, skill_error=error
+                )
+                self.assertIn("world_last30days_failed", result.case_set.reasons)
+                self.assertIs(result.case_set.raw_input, self.raw_input)
+                self.assertIs(captured[0].raw_input, self.raw_input)
+                if diagnostic is not None:
+                    self.assertIn(diagnostic, result.case_set.reasons)
+                else:
+                    self.assertFalse(
+                        any(
+                            reason.startswith("world_last30days_")
+                            and reason != "world_last30days_failed"
+                            for reason in result.case_set.reasons
+                        )
+                    )
+                self.assertNotIn(str(error), repr(result.case_set.reasons))
+                self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
 
     def test_native_partial_diagnostics_preserve_generic_reasons(self):
         self.config = replace(
@@ -593,12 +662,38 @@ class HostWorldTests(unittest.TestCase):
 
     def test_grounder_empty_and_failure_retain_no_source_reasons(self):
         skill = _native_result([_topic("lead", "https://lead.example/1", rank=1, score=1, angle="x")])
-        for failure in ("empty", "failed"):
+
+        class PoisonedCodeError(RuntimeError):
+            @property
+            def code(self):
+                raise AssertionError("unallowlisted code property was accessed")
+
+        failures = (
+            ("empty", None),
+            ("failed", None),
+            (
+                HostGrounderRuntimeError("SEMANTIC_CALL_FAILED"),
+                "world_grounder_model_call_failed",
+            ),
+            (
+                HostGrounderRuntimeError("NO_SEARCH_RESULTS"),
+                "world_grounder_no_search_results",
+            ),
+            (
+                HostGrounderRuntimeError("EXTRACTION_FAILURE"),
+                "world_grounder_extraction_failed",
+            ),
+            (HostGrounderRuntimeError("PRIVATE_TOKEN_DO_NOT_LEAK"), None),
+            (PoisonedCodeError("PRIVATE_EXCEPTION_MESSAGE"), None),
+        )
+        for failure, diagnostic in failures:
             self.grounder_calls.clear()
 
             def fake_factory(_config, **_kwargs):
                 def grounder(text, *, run_id, bounds):
                     self.grounder_calls.append(text)
+                    if isinstance(failure, Exception):
+                        raise failure
                     if failure == "failed":
                         raise RuntimeError("synthetic hidden failure")
                     event_input = UserEventInput(text)
@@ -635,6 +730,24 @@ class HostWorldTests(unittest.TestCase):
                 "world_grounder_no_submission" if failure == "empty" else "world_grounder_failed",
                 result.case_set.reasons,
             )
+            self.assertIs(result.case_set.raw_input, self.raw_input)
+            if diagnostic is not None:
+                self.assertIn(diagnostic, result.case_set.reasons)
+            elif isinstance(failure, Exception):
+                self.assertFalse(
+                    any(
+                        reason in result.case_set.reasons
+                        for reason in (
+                            "world_grounder_model_call_failed",
+                            "world_grounder_output_invalid",
+                            "world_grounder_no_search_results",
+                            "world_grounder_extraction_failed",
+                        )
+                    )
+                )
+            if isinstance(failure, Exception):
+                self.assertNotIn(str(failure), repr(result.case_set.reasons))
+            self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
             self.assertEqual(result.case_set.submissions.submissions, ())
 
     def test_capacity_and_lead_limit_refuse_grounder_before_request(self):
