@@ -2,6 +2,45 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Exact SEC order review (2026-10-13)
+
+One separately authorized direct GET of the [SEC order PDF](https://www.sec.gov/files/rules/sro/nasdaq/2026/34-105199.pdf)
+returned HTTP 200, `application/pdf`, 368,784 bytes; request count 1, with no
+redirect or retry. SHA-256:
+`ae792024d01d2a41e29be1f55818d1ab93601cd6f2ac62238d7194b634ef0e09`. The
+PDF and sanitized operation record are mode `0600` in mode-`0700`
+`/private/tmp/ch-sec-order.wOt15X/` (`order.pdf`, `safe-summary.json`); no
+credential or User-Agent value is retained here.
+
+The order is dated April 10, 2026; Release No. 34-105199, File No.
+SR-Nasdaq-2025-109. Its title and conclusion expressly grant accelerated
+approval of the amended proposed rule change (PDF pp. 1-2, 44-45). The named
+SRO/exchange is The Nasdaq Stock Market LLC, not Nasdaq, Inc. or ticker NDAQ
+(p. 1). The order establishes approval as a regulatory occurrence on its date;
+it does not establish that 23/5 trading has begun or provide a go-live or
+impact-end date.
+
+The proposal is for 23/5 trading, but gives no calendar launch date (pp. 1, 8).
+Operation is barred until the
+Equity Data Plans/SIP are ready to collect, consolidate, process, and
+disseminate quotes and trades throughout that session, and Nasdaq files a
+separate Section 19(b) rule change confirming Nasdaq and plan readiness; that
+filing must be approved or otherwise become effective before trading begins
+(pp. 8, 33, 37-38; footnote 26). If the follow-up filing is not made within 18
+months of SEC approval, Nasdaq must promptly file to remove the Night Session
+rules (p. 8, footnote 26). That filing is an observable review trigger, not a
+complete dated `HypothesisReassessment`; no reassessment date is assigned here.
+Do not treat this approval as the operational start or an impact-end boundary. PDF
+pp. 1, 8, 37-38, and 44-45, including footnotes and the conclusion, were read
+and visually checked offline.
+
+No production/parser, source/model configuration, Event run or historical EI
+result changed. The current SEC 8-K occurrence grammar does not admit this SRO
+order. Regulatory occurrence evidence is now available, but lawful Host binding,
+listed-issuer mapping and the hypothesis's interpretation, falsification and
+temporal applicability still require independent support. This source-reading
+unit has zero production edits; a full work-time split was not measured.
+
 ## Bounded SEC primary-source acquisition — 2026-10-13
 
 Two predeclared Tavily `/search` attempts, not an Event run: request 01 used
@@ -19,9 +58,10 @@ SRO, with a [`/file/34-105199` resource](https://www.sec.gov/file/34-105199).
 This is exchange/SRO identity, not a listed `Nasdaq, Inc.`/`NDAQ` issuer.
 Provider `published_date` values (25 Feb and 10 Apr 2026) are page metadata;
 captured `SEC Issue Date` values are blank. No occurrence date or future 23/5
-start/effective milestone is established. Linked order resources were not
-fetched; snippets and provider `raw_content` are not verified complete order
-text. The complete 16,008-byte Tavily response JSON is preserved mode `0600` at
+start/effective milestone was established from that search response. At that
+checkpoint, linked order resources had not been fetched; the separate direct
+order review above closes the full-text gap. The complete 16,008-byte Tavily
+response JSON is preserved mode `0600` at
 `/private/tmp/ch-primary-source.meunujmj/search-02.response.body` (SHA-256
 `eae54d5807b0d9529a3c59271e8f3f012136ee5d0e01013a5b43805584e84490`); the
 directory is mode `0700`.

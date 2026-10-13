@@ -1,15 +1,19 @@
 # Project State
 
-Bounded SEC source acquisition (2026-10-13): request 01 ended in sandbox-default
+SEC order audit (2026-10-13): the one authorized direct GET succeeded (HTTP
+200; one request; 368,784-byte PDF). Release 34-105199 / File
+SR-Nasdaq-2025-109 is dated April 10, 2026 and grants accelerated approval.
+The named SRO is The Nasdaq Stock Market LLC, not Nasdaq, Inc./NDAQ. The order
+supports occurrence of the SEC approval, not commencement of 23/5 trading:
+there is no launch date, and trading awaits SIP/Data Plan readiness plus a
+separate Nasdaq readiness filing that is approved or otherwise effective.
+No impact-end date is established. See the [exact-order review](current-checkpoint.md#exact-sec-order-review-2026-10-13).
+
+Prior bounded SEC search (2026-10-13): request 01 ended in sandbox-default
 `NETWORK_ERROR`, without provider response/usage; actual billing is unknown.
 Request 02 returned HTTP 200, five SEC-domain results and one reported credit.
-Offline review of the first two relevant `raw_content` fields found SEC
-landing/index metadata, not complete order text. They identify The Nasdaq Stock
-Market LLC as the SRO/exchange, not a listed `Nasdaq, Inc.`/`NDAQ` issuer;
-provider publication timestamps are not event-occurrence dates, and no future
-23/5 start milestone is present. No direct source fetch, Event POST or model
-call occurred. Source-format and evidence boundaries remain open; see the
-[acquisition checkpoint](current-checkpoint.md#bounded-sec-primary-source-acquisition--2026-10-13).
+Its first two relevant `raw_content` fields were landing/index metadata, not
+the complete order. See the [search checkpoint](current-checkpoint.md#bounded-sec-primary-source-acquisition--2026-10-13).
 
 The earlier offline input-preparation trace found no Builder field-loss defect;
 description/date still lack Host context, so no code or prompt change is
