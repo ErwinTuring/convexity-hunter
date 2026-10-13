@@ -2277,7 +2277,16 @@ class HostServerBatchTests(unittest.TestCase):
             self.assertEqual(actual_input, raw_input)
             return result
 
-        executor.configuration_snapshot = self._event_configuration_snapshot_accessor()
+        world_snapshot = self._event_configuration_snapshot_accessor()()
+        world_snapshot["world_source_query_policy"] = {
+            "schema_version": "world-source-query-v0.1",
+            "basis": "exact_original_world_request",
+            "max_characters": 400,
+            "full_research_context_preserved": True,
+        }
+        executor.configuration_snapshot = lambda: json.loads(
+            json.dumps(world_snapshot)
+        )
         expected_snapshot = executor.configuration_snapshot()
         self.assertTrue(expected_snapshot["models"])
         self.assertTrue(expected_snapshot["sources"])
@@ -3142,6 +3151,18 @@ class HostServerCliTests(unittest.TestCase):
                 grounder = Mock()
                 snapshot = {"models": [], "sources": [], "skills": []}
                 grounder.configuration_snapshot.return_value = snapshot
+                world_snapshot = {
+                    "models": [],
+                    "sources": [],
+                    "skills": [],
+                    "world_source_query_policy": {
+                        "schema_version": "world-source-query-v0.1",
+                        "basis": "exact_original_world_request",
+                        "max_characters": 400,
+                        "full_research_context_preserved": True,
+                    },
+                }
+                world_runner.configuration_snapshot.return_value = world_snapshot
                 stack.enter_context(patch("convexity_hunter.host_event_config.load_event_grounder_config", return_value=event_config))
                 stack.enter_context(patch("convexity_hunter.host_event.create_event_grounder", return_value=grounder))
                 stack.enter_context(patch("convexity_hunter.host_event_core.create_event_core_executor", return_value=lambda *_a, **_k: None))
@@ -3181,9 +3202,12 @@ class HostServerCliTests(unittest.TestCase):
                     callbacks = create.call_args.kwargs
                     self.assertIs(
                         callbacks["world_executor"].configuration_snapshot,
-                        grounder.configuration_snapshot,
+                        world_runner.configuration_snapshot,
                     )
-                    self.assertEqual(callbacks["world_executor"].configuration_snapshot(), snapshot)
+                    self.assertEqual(
+                        callbacks["world_executor"].configuration_snapshot(),
+                        world_snapshot,
+                    )
                     self.assertIs(callbacks["direct_executor"], direct)
                     self.assertTrue(callable(callbacks["event_grounder"]))
                     self.assertTrue(callable(callbacks["event_core_executor"]))

@@ -1,5 +1,19 @@
 # Project State
 
+## World source-query separation (2026-10-14)
+
+The two fresh bounded World runs localized an invalid native-domain input and
+then a Grounder boundary after native partial coverage. Neither proves absence
+of events. The Host-only [query contract](host-world-source-query-v0.1.md)
+is frozen and implemented in the working tree: exact original request for
+Search/Extract, complete enriched context for models/receipt, unchanged public
+Event API and budgets, and mode-checked versioned World policy metadata.
+No SQLite/catalog migration, Kernel or economic changes. Independent review
+and 170 related tests passed; complete regression passed 1,993 tests, with
+compileall, API compatibility and diff checks also passing. Deployment and
+post-fix real validation remain pending.
+See the [current checkpoint](current-checkpoint.md).
+
 ## World safe failure diagnostics (2026-10-14)
 
 World keeps its generic failure reasons and adds only finite categories for

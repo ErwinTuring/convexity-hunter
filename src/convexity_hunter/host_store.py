@@ -382,8 +382,41 @@ def _direct_report_version(profile_snapshot: Any) -> str:
     return _DIRECT_REPORT_VERSION_BY_PROFILE[profile.version]
 
 
-def _validated_event_configuration_snapshot(value: Any) -> Dict[str, Any]:
+def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[str, Any]:
     """Accept the legacy empty shell or the exact non-secret Event snapshot."""
+
+    if type(value) is dict and set(value) == (
+        _CONFIGURATION_FIELDS | {"world_source_query_policy"}
+    ):
+        if mode != "world":
+            raise ValueError("World source-query policy is permitted only in World mode")
+        policy = value["world_source_query_policy"]
+        policy_fields = {
+            "schema_version",
+            "basis",
+            "max_characters",
+            "full_research_context_preserved",
+        }
+        if (
+            type(policy) is not dict
+            or set(policy) != policy_fields
+            or type(policy["schema_version"]) is not str
+            or policy["schema_version"] != "world-source-query-v0.1"
+            or type(policy["basis"]) is not str
+            or policy["basis"] != "exact_original_world_request"
+            or type(policy["max_characters"]) is not int
+            or policy["max_characters"] != 400
+            or type(policy["full_research_context_preserved"]) is not bool
+            or policy["full_research_context_preserved"] is not True
+        ):
+            raise ValueError("World source-query policy has an invalid closed shape or value")
+        legacy = {
+            name: value[name]
+            for name in ("models", "sources", "skills")
+        }
+        validated = _validated_event_configuration_snapshot(legacy, mode=mode)
+        validated["world_source_query_policy"] = dict(policy)
+        return _canonical_value(validated, "configuration_snapshot")
 
     if type(value) is not dict or set(value) != _CONFIGURATION_FIELDS:
         raise ValueError("configuration_snapshot must contain exactly models, sources, and skills")
@@ -472,10 +505,14 @@ def _validated_event_configuration_snapshot(value: Any) -> Dict[str, Any]:
     return _canonical_value(value, "configuration_snapshot")
 
 
-def _validated_metadata(value: Any) -> Dict[str, Any]:
+def _validated_metadata(value: Any, *, mode: str) -> Dict[str, Any]:
+    if type(mode) is not str or mode not in _MODES:
+        raise ValueError("metadata validation requires a known run mode")
     if type(value) is not dict or set(value) != _METADATA_FIELDS:
         raise ValueError("metadata must contain exactly the three frozen snapshot fields")
-    configuration = _validated_event_configuration_snapshot(value["configuration_snapshot"])
+    configuration = _validated_event_configuration_snapshot(
+        value["configuration_snapshot"], mode=mode
+    )
     execution = value["execution_snapshot"]
     if type(execution) is not dict:
         raise ValueError("execution_snapshot must contain only closed configured executor records")
@@ -1909,7 +1946,7 @@ class HostStore:
             try:
                 _validated_bounds(snapshot["bounds"])
                 _validated_profile(snapshot["profile_snapshot"])
-                _validated_metadata(snapshot["metadata"])
+                _validated_metadata(snapshot["metadata"], mode=snapshot["mode"])
             except (TypeError, ValueError) as error:
                 raise StoreCorruptionError("run snapshot violates its frozen field contract") from error
             self._status_and_stages(run_id)
@@ -1970,7 +2007,7 @@ class HostStore:
         input.encode("utf-8", "strict")
         bounds_snapshot = _validated_bounds(bounds)
         profile = _validated_profile(profile_snapshot)
-        metadata_snapshot = _validated_metadata(metadata)
+        metadata_snapshot = _validated_metadata(metadata, mode=mode)
         snapshot = {
             "mode": mode,
             "input": input,

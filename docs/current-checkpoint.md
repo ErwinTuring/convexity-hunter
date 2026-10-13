@@ -2,6 +2,48 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## World query boundary correction (2026-10-14)
+
+Fresh grounding found clean aligned `f4113b9`. Deployment preserved ten archived
+runs; the previous idle Host was gracefully stopped. Initial starts failed
+while the loopback address was releasing; no listener or external operation
+was added. Host session 26069 then became READY on the same UTC evaluation date
+2026-10-13. Beijing's date was 2026-10-14; the native seven-day window remained
+UTC 2026-10-07 through 2026-10-13, not historical replay.
+
+Run 11, `01e5909b-2624-4f4d-91e8-8f46a9c7b4f0`, returned HTTP 201 / BLOCKED,
+zero cases/unavailable, with `world_last30days_failed` and
+`world_grounder_no_submission`. The runner input had 327 characters, above the
+native domain's 256 limit. A separate offline early-guard probe returned
+`INVALID_DOMAIN` with zero stage/model callbacks. It used `config=None` because
+the guard precedes config access; it is not evidence of a real-config load or
+a reconstruction of every discarded historical exception.
+
+One independent fresh run with the same intent/window and a 145-character
+request reached native lead composition: run 12,
+`ef347692-e1c8-46be-9d47-38ea5484f5f0`, HTTP 201 / BLOCKED, zero
+cases/unavailable. Reasons: `world_last30days_partial`, Reddit/Digg native
+source-not-OK, and `world_grounder_failed`. No exact native counts, provider
+request counts or charges are retained. Partial coverage is not no-events
+evidence. Both fresh guards are spent; neither run is retried.
+
+The current adapter sends lead-enriched research context as Tavily query even
+though the provider limits Search to 400 characters. This is a demonstrated
+reachable integration defect, not proof that run 12 returned HTTP 400.
+[The frozen Host-only successor](host-world-source-query-v0.1.md) separates
+the unchanged original request from complete model context. Public Event APIs,
+receipt hash meaning, budgets, EI/Core and pricing semantics stay unchanged.
+World producer provenance becomes `world-v0.2`; its exact query policy is
+retained in a World-only metadata variant without SQL/catalog migration.
+
+Implementation and independent review passed; 170 related synthetic/loopback
+tests, compileall and diff checks passed. Complete regression passed 1,993
+tests in 300.569 seconds on the reviewed code snapshot. It emitted a system
+LibreSSL/urllib3 compatibility warning but no failure; no SDK change is made.
+No live call occurred during BUILD. The running Host still uses the prior
+commit; post-fix deployment/real validation remain unclaimed. Public declared
+exports remain Event 2 / World 4; signature/default compatibility tests passed.
+
 ## World one-shot validation and closed diagnostics (2026-10-14)
 
 One normal World request used UTC window 2026-10-07 through 2026-10-13

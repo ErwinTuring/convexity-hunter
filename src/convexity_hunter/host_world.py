@@ -22,11 +22,17 @@ from .core_presentation import compact_summary
 from .event_entry import UserEventInput
 from .event_intelligence import EventIntelligenceSubmission
 from .host_grounder_runtime import HostGrounderRuntimeError
-from .host_event import HostEventGrounderConfig, create_event_grounder
+from .host_event import (
+    HostEventGrounderConfig,
+    _revalidate_config,
+    _safe_configuration_snapshot,
+    create_event_grounder,
+)
 from .host_grounder_run_input import HostGrounderRunInput, HostGrounderSubquestion
 from .host_model import ChatCompletionsClient, ModelTransportError
 from .option_chain_discovery import OptionMaturityAuthority
 from .host_profile import APPROVED_STANDARD_RESEARCH_PROFILE, create_core_research_policy
+from .host_sources import TavilyTransportError
 from .host_skill import (
     AngleInput,
     HostSkillConfig,
@@ -46,7 +52,13 @@ __all__ = (
 
 _RUN_ID_RE = re.compile(r"[A-Za-z0-9._~-]{1,128}\Z", re.ASCII)
 _WORLD_PRODUCER_ID = "convexity-hunter-world"
-_WORLD_PRODUCER_VERSION = "world-v0.1"
+_WORLD_PRODUCER_VERSION = "world-v0.2"
+_WORLD_SOURCE_QUERY_POLICY = {
+    "schema_version": "world-source-query-v0.1",
+    "basis": "exact_original_world_request",
+    "max_characters": 400,
+    "full_research_context_preserved": True,
+}
 _GROUNDING_SUBQUESTION_ID = "user_event_input"
 _SKILL_MODEL_REQUESTS_PER_ROLE = 1
 _GROUNDER_MODEL_REQUESTS_PER_ROLE = 1
@@ -102,6 +114,7 @@ _WORLD_FAILURE_DIAGNOSTICS = {
         "LAST30DAYS_OUTPUT_INVALID": "world_last30days_output_invalid",
     },
     HostSkillError: {
+        "INVALID_DOMAIN": "world_last30days_input_invalid",
         "SKILL_PIN_UNAVAILABLE": "world_last30days_skill_pin_failed",
         "INVALID_SKILL_PIN": "world_last30days_skill_pin_failed",
         "INVALID_SKILL_PIN_HASH": "world_last30days_skill_pin_failed",
@@ -127,6 +140,17 @@ _WORLD_FAILURE_DIAGNOSTICS = {
         "NO_SEARCH_RESULTS": "world_grounder_no_search_results",
         "EXTRACTION_FAILURE": "world_grounder_extraction_failed",
     },
+    TavilyTransportError: {
+        "HTTP_ERROR": "world_grounder_source_transport_failed",
+        "NETWORK_ERROR": "world_grounder_source_transport_failed",
+        "TIMEOUT": "world_grounder_source_transport_failed",
+        "TRANSPORT_FAILED": "world_grounder_source_transport_failed",
+        "UNKNOWN_RESPONSE_FIELD": "world_grounder_source_response_invalid",
+        "MALFORMED_RESPONSE": "world_grounder_source_response_invalid",
+        "MALFORMED_JSON": "world_grounder_source_response_invalid",
+        "REQUEST_BUDGET_EXHAUSTED": "world_grounder_source_budget_failed",
+        "CREDIT_BUDGET_EXHAUSTED": "world_grounder_source_budget_failed",
+    },
 }
 
 
@@ -136,6 +160,21 @@ def _world_failure_diagnostic(error: Exception) -> Optional[str]:
         return None
     code = getattr(error, "code", None)
     return diagnostics.get(code) if type(code) is str else None
+
+
+def _valid_world_source_query(value: object) -> bool:
+    if (
+        type(value) is not str
+        or not value
+        or value != value.strip()
+        or len(value) > _WORLD_SOURCE_QUERY_POLICY["max_characters"]
+    ):
+        return False
+    try:
+        value.encode("utf-8", "strict")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 @dataclass(frozen=True, repr=False)
@@ -495,6 +534,10 @@ def create_world_runner(
     ):
         raise TypeError("injected transports and test seams must be callable")
 
+    world_configuration_snapshot_bytes = _safe_configuration_snapshot(
+        _revalidate_config(config.grounder)
+    )
+
     # Each existing per-role budget is the run-wide authorization. Reserve one
     # request for Skill; Grounder discovery receives at most two only when the
     # configured total explicitly leaves that capacity. Semantic remains one.
@@ -528,6 +571,11 @@ def create_world_runner(
         discovery_transport=discovery_transport,
         semantic_transport=semantic_transport,
     )
+    world_source_query_factory = getattr(
+        grounder, "_world_source_query_factory", None
+    )
+    if not callable(world_source_query_factory):
+        raise HostWorldError("WORLD_SOURCE_QUERY_FACTORY_INVALID")
 
     def world_runner(
         raw_input: str, *, bounds: CoreOperationalBounds
@@ -538,6 +586,20 @@ def create_world_runner(
             raise TypeError("bounds must be CoreOperationalBounds")
         # Re-run the immutable value object's validation at this trust boundary.
         bounds.__post_init__()
+        if not _valid_world_source_query(raw_input):
+            policy = create_core_research_policy(
+                APPROVED_STANDARD_RESEARCH_PROFILE,
+                evaluation_date=config.evaluation_date,
+                maturity_authority=config.maturity_authority,
+                bounds=bounds,
+            )
+            result = run_world_core(
+                raw_input,
+                source_producer=_empty_batch,
+                market_bridge=market_bridge,
+                policy=policy,
+            )
+            return _append_reasons(result, ("world_source_query_invalid",))
         if not _bounds_within_cap(bounds, config.bounds):
             result = run_world_core(
                 raw_input,
@@ -571,6 +633,17 @@ def create_world_runner(
         def produce(raw_request: object) -> SourceSubmissionBatch:
             if raw_request is not raw_input:
                 raise HostWorldError("WORLD_INPUT_IDENTITY_MISMATCH")
+            try:
+                query_bound_grounder = world_source_query_factory(raw_request)
+            except HostGrounderRuntimeError as error:
+                if error.code == "SOURCE_QUERY_INVALID":
+                    reasons.append("world_source_query_invalid")
+                else:
+                    reasons.append("world_grounder_failed")
+                return _empty_batch(raw_request)
+            except Exception:
+                reasons.append("world_grounder_failed")
+                return _empty_batch(raw_request)
             web_and_leads_input = raw_request
             last30days_status = "failed"
             try:
@@ -660,7 +733,7 @@ def create_world_runner(
                 return _empty_batch(raw_request)
 
             try:
-                grounded = grounder(
+                grounded = query_bound_grounder(
                     web_and_leads_input,
                     run_id=run_id,
                     bounds=bounds,
@@ -700,4 +773,12 @@ def create_world_runner(
         )
         return _append_reasons(result, tuple(reasons))
 
+    def configuration_snapshot() -> dict:
+        snapshot = json.loads(
+            world_configuration_snapshot_bytes.decode("utf-8")
+        )
+        snapshot["world_source_query_policy"] = dict(_WORLD_SOURCE_QUERY_POLICY)
+        return snapshot
+
+    world_runner.configuration_snapshot = configuration_snapshot
     return world_runner

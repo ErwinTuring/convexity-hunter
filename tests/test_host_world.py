@@ -44,8 +44,13 @@ from convexity_hunter.host_skill import (  # noqa: E402
     Last30DaysSkillPin,
     NominationInput,
     ProviderNativeOutput,
+    run_last30days_discovery as real_run_last30days_discovery,
 )
-from convexity_hunter.host_sources import TavilyCredentialRef, TavilySourceConfig  # noqa: E402
+from convexity_hunter.host_sources import (  # noqa: E402
+    TavilyCredentialRef,
+    TavilySourceConfig,
+    TavilyTransportError,
+)
 from convexity_hunter.option_chain_discovery import OptionMaturityAuthority  # noqa: E402
 from convexity_hunter.host_server import (  # noqa: E402
     ValidatedRunRequest,
@@ -258,6 +263,7 @@ class HostWorldTests(unittest.TestCase):
             _submission("two", "https://grounded.example/two"),
         )
         self.grounder_calls = []
+        self.grounder_query_calls = []
         self.policies = []
 
     def _fake_grounder(self, _config, **_kwargs):
@@ -269,6 +275,18 @@ class HostWorldTests(unittest.TestCase):
                 build_result=SimpleNamespace(raw_input=event_input, source_batch=batch)
             )
 
+        def world_source_query_factory(query):
+            self.grounder_query_calls.append(query)
+
+            def query_bound_grounder(text, *, run_id, bounds):
+                return grounder(text, run_id=run_id, bounds=bounds)
+
+            return query_bound_grounder
+
+        grounder._world_source_query_factory = world_source_query_factory
+        grounder.configuration_snapshot = lambda: {
+            "models": [], "sources": [], "skills": []
+        }
         return grounder
 
     def _run_through_real_core(
@@ -330,10 +348,11 @@ class HostWorldTests(unittest.TestCase):
 
     def test_both_producers_reach_grounder_all_submissions_reach_core(self):
         url = "https://lead.example/a%2Fb?x=1"
+        long_topic_name = "Zeta lead " + ("x" * 450)
         result, captured, discovery_calls, semantic_calls = self._run_through_real_core(
             skill_result=_native_result(
                 [
-                    _topic("Zeta lead", "https://lead.example/z", rank=1, score=99, angle="discard angle"),
+                    _topic(long_topic_name, "https://lead.example/z", rank=1, score=99, angle="discard angle"),
                     _topic("Alpha lead", url, rank=9, score=1, angle="discard angle"),
                     _topic("alpha  lead", url, rank=2, score=88, angle="discard angle"),
                 ]
@@ -342,7 +361,8 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(len(self.grounder_calls), 1)
         text, run_id, bounds = self.grounder_calls[0]
         self.assertTrue(text.startswith(self.raw_input))
-        self.assertIn("Zeta lead", text)
+        self.assertGreater(len(text), 400)
+        self.assertIn(long_topic_name, text)
         self.assertIn("Alpha lead", text)
         self.assertIn(url, text)
         self.assertNotIn("velocity_score", text)
@@ -350,10 +370,13 @@ class HostWorldTests(unittest.TestCase):
         leads = json.loads(text.split("grounded:\n", 1)[1])
         self.assertEqual(len(leads), 2)
         self.assertIn("Alpha lead", leads[0]["topic_names"])
-        self.assertIn("Zeta lead", leads[1]["topic_names"])
+        self.assertTrue(
+            any(name.startswith("Zeta lead") for name in leads[1]["topic_names"])
+        )
         self.assertTrue(run_id)
         self.assertIs(bounds, self.post_bounds)
         self.assertEqual(len(captured), 1)
+        self.assertEqual(self.grounder_query_calls, [self.raw_input])
         policy = self.policies[-1]
         self.assertEqual(policy.evaluation_date, datetime.date(2026, 10, 7))
         self.assertIs(
@@ -380,6 +403,7 @@ class HostWorldTests(unittest.TestCase):
             {"convexity-hunter-world"},
         )
         for item in result.case_set.submissions.submissions:
+            self.assertIn("world-v0.2", item.producer_version)
             self.assertIn("web=tavily", item.producer_version)
             self.assertIn("lead=last30days@3.21.1", item.producer_version)
             self.assertIn("grounder=convexity-hunter-event-grounder@grounder-v-test", item.producer_version)
@@ -432,6 +456,10 @@ class HostWorldTests(unittest.TestCase):
 
     def test_typed_last30days_failures_add_only_closed_diagnostics(self):
         failures = (
+            (
+                HostSkillError("INVALID_DOMAIN"),
+                "world_last30days_input_invalid",
+            ),
             (
                 HostSkillError("SKILL_PIN_UNAVAILABLE"),
                 "world_last30days_skill_pin_failed",
@@ -494,6 +522,49 @@ class HostWorldTests(unittest.TestCase):
                     )
                 self.assertNotIn(str(error), repr(result.case_set.reasons))
                 self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
+
+    def test_invalid_domain_is_rejected_before_callbacks_and_empty_world_fallback(self):
+        self.raw_input = "x" * 327
+        self.submissions = ()
+        callback_calls = {"stage": 0, "model": 0}
+
+        def fail_if_called(name):
+            callback_calls[name] += 1
+            raise AssertionError("{} callback must not run".format(name))
+
+        def stage_runner(*_args, **_kwargs):
+            fail_if_called("stage")
+
+        def model_callback(*_args, **_kwargs):
+            fail_if_called("model")
+
+        with self.assertRaises(HostSkillError) as caught:
+            real_run_last30days_discovery(
+                None,
+                self.raw_input,
+                model_callback,
+                stage_runner=stage_runner,
+            )
+        self.assertEqual(len(self.raw_input), 327)
+        self.assertEqual(caught.exception.code, "INVALID_DOMAIN")
+        self.assertEqual(callback_calls, {"stage": 0, "model": 0})
+
+        result, captured, discovery_calls, semantic_calls = self._run_through_real_core(
+            skill_result=None, skill_error=caught.exception
+        )
+        self.assertEqual(result.case_set.status, "BLOCKED")
+        self.assertIs(result.case_set.raw_input, self.raw_input)
+        self.assertIn("world_last30days_failed", result.case_set.reasons)
+        self.assertIn("world_last30days_input_invalid", result.case_set.reasons)
+        self.assertIn("world_grounder_no_submission", result.case_set.reasons)
+        self.assertEqual(result.case_set.submissions.submissions, ())
+        self.assertEqual(result.case_set.cases, ())
+        self.assertEqual(result.case_set.unavailable, ())
+        self.assertEqual(captured[0].submissions, ())
+        self.assertEqual(len(self.grounder_calls), 1)
+        self.assertIs(self.grounder_calls[0][0], self.raw_input)
+        self.assertEqual(discovery_calls, [])
+        self.assertEqual(semantic_calls, [])
 
     def test_native_partial_diagnostics_preserve_generic_reasons(self):
         self.config = replace(
@@ -683,6 +754,43 @@ class HostWorldTests(unittest.TestCase):
                 HostGrounderRuntimeError("EXTRACTION_FAILURE"),
                 "world_grounder_extraction_failed",
             ),
+            (
+                TavilyTransportError("HTTP_ERROR", status=503),
+                "world_grounder_source_transport_failed",
+            ),
+            (
+                TavilyTransportError("NETWORK_ERROR"),
+                "world_grounder_source_transport_failed",
+            ),
+            (
+                TavilyTransportError("TIMEOUT"),
+                "world_grounder_source_transport_failed",
+            ),
+            (
+                TavilyTransportError("TRANSPORT_FAILED"),
+                "world_grounder_source_transport_failed",
+            ),
+            (
+                TavilyTransportError("UNKNOWN_RESPONSE_FIELD"),
+                "world_grounder_source_response_invalid",
+            ),
+            (
+                TavilyTransportError("MALFORMED_RESPONSE"),
+                "world_grounder_source_response_invalid",
+            ),
+            (
+                TavilyTransportError("MALFORMED_JSON"),
+                "world_grounder_source_response_invalid",
+            ),
+            (
+                TavilyTransportError("REQUEST_BUDGET_EXHAUSTED"),
+                "world_grounder_source_budget_failed",
+            ),
+            (
+                TavilyTransportError("CREDIT_BUDGET_EXHAUSTED"),
+                "world_grounder_source_budget_failed",
+            ),
+            (TavilyTransportError("PRIVATE_TOKEN_DO_NOT_LEAK"), None),
             (HostGrounderRuntimeError("PRIVATE_TOKEN_DO_NOT_LEAK"), None),
             (PoisonedCodeError("PRIVATE_EXCEPTION_MESSAGE"), None),
         )
@@ -704,6 +812,14 @@ class HostWorldTests(unittest.TestCase):
                         )
                     )
 
+                def world_source_query_factory(query):
+                    self.grounder_query_calls.append(query)
+                    return grounder
+
+                grounder._world_source_query_factory = world_source_query_factory
+                grounder.configuration_snapshot = lambda: {
+                    "models": [], "sources": [], "skills": []
+                }
                 return grounder
 
             def core_spy(raw_request, *, source_producer, market_bridge, policy):
@@ -742,6 +858,9 @@ class HostWorldTests(unittest.TestCase):
                             "world_grounder_output_invalid",
                             "world_grounder_no_search_results",
                             "world_grounder_extraction_failed",
+                            "world_grounder_source_transport_failed",
+                            "world_grounder_source_response_invalid",
+                            "world_grounder_source_budget_failed",
                         )
                     )
                 )
@@ -840,6 +959,104 @@ class HostWorldTests(unittest.TestCase):
 
         factory.assert_called_once()
         self.assertTrue(callable(runner))
+        snapshot = runner.configuration_snapshot()
+        self.assertEqual(
+            set(snapshot),
+            {"models", "sources", "skills", "world_source_query_policy"},
+        )
+        self.assertEqual(
+            snapshot["world_source_query_policy"],
+            {
+                "schema_version": "world-source-query-v0.1",
+                "basis": "exact_original_world_request",
+                "max_characters": 400,
+                "full_research_context_preserved": True,
+            },
+        )
+        self.assertEqual(
+            [model["request_budget"] for model in snapshot["models"]],
+            [
+                self.config.grounder.discovery_model.request_budget,
+                self.config.grounder.semantic_model.request_budget,
+            ],
+        )
+        self.assertEqual(
+            snapshot["sources"][0]["request_budget"],
+            self.config.grounder.source.request_budget,
+        )
+        self.assertEqual(
+            snapshot["sources"][0]["credit_budget"],
+            self.config.grounder.source.credit_budget,
+        )
+        allocated = factory.call_args.args[0]
+        self.assertEqual(allocated.discovery_model.request_budget, 1)
+        self.assertEqual(allocated.semantic_model.request_budget, 1)
+        snapshot["models"][0]["capabilities"].append("caller-mutation")
+        snapshot["sources"][0]["grounder_limits"]["run_input_bounds"][
+            "max_array_items"
+        ] = 999
+        snapshot["world_source_query_policy"]["max_characters"] = 401
+        fresh_snapshot = runner.configuration_snapshot()
+        self.assertEqual(fresh_snapshot["world_source_query_policy"]["max_characters"], 400)
+        self.assertNotIn("caller-mutation", fresh_snapshot["models"][0]["capabilities"])
+        self.assertNotEqual(
+            fresh_snapshot["sources"][0]["grounder_limits"]["run_input_bounds"][
+                "max_array_items"
+            ],
+            999,
+        )
+
+    def test_world_source_query_preflight_accepts_400_and_rejects_invalid_without_calls(self):
+        exactly_400 = "q" * 400
+        empty = HostSkillResult("empty", None, (), (), (), 0)
+        with mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            side_effect=self._fake_grounder,
+        ), mock.patch(
+            "convexity_hunter.host_world.run_last30days_discovery",
+            return_value=empty,
+        ):
+            runner = create_world_runner(
+                self.config, repo_root=ROOT, market_bridge=self.lazy_bridge
+            )
+            accepted = runner(exactly_400, bounds=self.post_bounds)
+            accepted_second = runner(
+                "second original request", bounds=self.post_bounds
+            )
+        self.assertNotIn("world_source_query_invalid", accepted.case_set.reasons)
+        self.assertEqual(self.grounder_calls[0][0], exactly_400)
+        self.assertNotIn(
+            "world_source_query_invalid", accepted_second.case_set.reasons
+        )
+        self.assertEqual(
+            self.grounder_query_calls,
+            [exactly_400, "second original request"],
+        )
+
+        for invalid in ("q" * 401, "request ", "\ud800"):
+            with self.subTest(length=len(invalid), invalid=repr(invalid)):
+                self.grounder_calls.clear()
+                self.grounder_query_calls.clear()
+                with mock.patch(
+                    "convexity_hunter.host_world.create_event_grounder",
+                    side_effect=self._fake_grounder,
+                ), mock.patch(
+                    "convexity_hunter.host_world.run_last30days_discovery",
+                    side_effect=AssertionError("Skill must not run"),
+                ):
+                    runner = create_world_runner(
+                        self.config,
+                        repo_root=ROOT,
+                        market_bridge=self.lazy_bridge,
+                    )
+                    result = runner(invalid, bounds=self.post_bounds)
+                self.assertIn(
+                    "world_source_query_invalid", result.case_set.reasons
+                )
+                self.assertEqual(result.case_set.submissions.submissions, ())
+                self.assertEqual(result.case_set.cases, ())
+                self.assertEqual(self.grounder_calls, [])
+                self.assertEqual(self.grounder_query_calls, [])
 
     def test_role_total_budget_preflights_before_grounder_or_skill(self):
         config = _config(model_budget=1)

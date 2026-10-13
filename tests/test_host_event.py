@@ -1164,6 +1164,172 @@ class HostEventGrounderTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "host_context_preparer"):
             create_event_grounder(config, repo_root=_ROOT, host_context_preparer=object())
 
+    def test_private_world_query_factory_preserves_full_context_and_isolates_runs(self):
+        config = _config()
+        queries = ("q" * 400, "Assess the second ACME filing.")
+        self.assertEqual(len(queries[0]), 400)
+        contexts = tuple(
+            query + "\n\nprovisional lead context:\n" + ("lead-context-" * 45)
+            for query in queries
+        )
+        self.assertTrue(all(len(context) > 400 for context in contexts))
+        bodies = dict(_BODY_BY_URL)
+        discovery_outputs = []
+        semantic_outputs = []
+        run_ids = ("world-query-run-one", "world-query-run-two")
+        for run_id, full_context in zip(run_ids, contexts):
+            discovery, semantic, _normalized = _model_outputs(
+                run_id,
+                full_context,
+                _SEARCH_ORDER,
+                bodies,
+                config,
+            )
+            discovery_outputs.append(discovery)
+            semantic_outputs.append(semantic)
+        source_transport = _SyntheticSourceTransport(body_overrides=bodies)
+        model_transport = _SyntheticModelTransport(
+            discovery_outputs, semantic_outputs
+        )
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+        self.assertEqual(
+            tuple(inspect.signature(callback).parameters),
+            ("raw_input", "run_id", "bounds"),
+        )
+        query_factory = callback._world_source_query_factory
+        bound_callbacks = tuple(query_factory(query) for query in queries)
+        self.assertTrue(
+            all(
+                tuple(inspect.signature(bound).parameters)
+                == ("raw_input", "run_id", "bounds")
+                for bound in bound_callbacks
+            )
+        )
+
+        results = tuple(
+            bound(
+                full_context,
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+            for bound, full_context, run_id in zip(
+                bound_callbacks, contexts, run_ids
+            )
+        )
+
+        self.assertEqual(
+            [payload["query"] for _url, payload in source_transport.calls],
+            [queries[0], queries[0], queries[1], queries[1]],
+        )
+        self.assertEqual(len(source_transport.calls), 4)
+        self.assertEqual(len(model_transport.calls), 4)
+        def contains_full_context(value, full_context):
+            if type(value) is str:
+                if full_context in value:
+                    return True
+                try:
+                    decoded = json.loads(value)
+                except (TypeError, ValueError):
+                    return False
+                return contains_full_context(decoded, full_context)
+            if type(value) is dict:
+                return any(
+                    contains_full_context(item, full_context)
+                    for item in value.values()
+                )
+            if type(value) in (list, tuple):
+                return any(
+                    contains_full_context(item, full_context) for item in value
+                )
+            return False
+
+        for query, full_context, run_id, result in zip(
+            queries, contexts, run_ids, results
+        ):
+            with self.subTest(run_id=run_id):
+                self.assertTrue(
+                    any(
+                        contains_full_context(call, full_context)
+                        for call in model_transport.calls
+                    )
+                )
+                self.assertEqual(
+                    result.build_result.context.raw_input.description,
+                    full_context,
+                )
+                expected_hash = HostGrounderRunInput(
+                    run_id,
+                    UserEventInput(full_context),
+                    (HostGrounderSubquestion("user_event_input", full_context),),
+                    config.run_input_bounds,
+                ).canonical_input_hash
+                self.assertEqual(
+                    result.build_result.context.canonical_input_hash,
+                    expected_hash,
+                )
+                self.assertEqual(
+                    result.build_result.semantic_validation.receipt[
+                        "canonical_input_hash"
+                    ],
+                    expected_hash,
+                )
+
+    def test_private_world_query_factory_rejects_invalid_bound_queries_before_calls(self):
+        source_transport = _SyntheticSourceTransport()
+        model_transport = _SyntheticModelTransport("{}", "{}")
+        callback = create_event_grounder(
+            _config(),
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+        for query in ("q" * 401, " q", "q ", "", None, "\ud800"):
+            with self.subTest(query=repr(query)):
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    callback._world_source_query_factory(query)
+                self.assertEqual(raised.exception.code, "SOURCE_QUERY_INVALID")
+        self.assertEqual(source_transport.calls, [])
+        self.assertEqual(model_transport.calls, [])
+
+    def test_default_event_callback_keeps_the_original_input_as_source_query(self):
+        query = "Assess the reported ACME filing."
+        config = _config()
+        bodies = dict(_BODY_BY_URL)
+        discovery, semantic, _normalized = _model_outputs(
+            "default-event-query-run",
+            query,
+            _SEARCH_ORDER,
+            bodies,
+            config,
+        )
+        source_transport = _SyntheticSourceTransport(body_overrides=bodies)
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        callback(
+            query,
+            run_id="default-event-query-run",
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        self.assertEqual(
+            [payload["query"] for _url, payload in source_transport.calls],
+            [query, query],
+        )
+
     def test_default_context_preparer_binds_unique_sec_fact_and_exact_date_evidence(self):
         snapshot, receipt, context = _source_fact_case()
         source = context.source_bodies["sec-fact"]

@@ -2319,11 +2319,12 @@ def create_event_grounder(
         """
         return json.loads(snapshot_bytes.decode("utf-8"))
 
-    def event_grounder(
+    def _run_grounder(
         raw_input: str,
         *,
         run_id: str,
         bounds: CoreOperationalBounds,
+        source_query: str,
     ) -> HostGrounderEvidenceCatalogRuntimeResult:
         if not callable(context_preparer):
             raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
@@ -2384,7 +2385,7 @@ def create_event_grounder(
             active_config.source.max_extract_urls,
             active_config.run_input_bounds.max_array_items,
         )
-        search_result = source_client.search(raw_input, max_results=max_results)
+        search_result = source_client.search(source_query, max_results=max_results)
         references = search_result.sources
         if not references:
             # No result is a stage failure, not evidence that the full source
@@ -2394,7 +2395,7 @@ def create_event_grounder(
         requested_urls = tuple(reference.url for reference in references)
         extracted = source_client.extract(
             requested_urls,
-            query=raw_input,
+            query=source_query,
             source_refs=references,
         )
         if (
@@ -2663,5 +2664,50 @@ def create_event_grounder(
             host_context_preparer=run_context_preparer,
         )
 
+    def event_grounder(
+        raw_input: str,
+        *,
+        run_id: str,
+        bounds: CoreOperationalBounds,
+    ) -> HostGrounderEvidenceCatalogRuntimeResult:
+        _ = (config, context_preparer)
+        return _run_grounder(
+            raw_input,
+            run_id=run_id,
+            bounds=bounds,
+            source_query=raw_input,
+        )
+
+    def world_source_query_factory(
+        source_query: object,
+    ) -> Callable[..., HostGrounderEvidenceCatalogRuntimeResult]:
+        if (
+            type(source_query) is not str
+            or not source_query
+            or source_query != source_query.strip()
+            or len(source_query) > 400
+        ):
+            raise HostGrounderRuntimeError("SOURCE_QUERY_INVALID")
+        try:
+            source_query.encode("utf-8", "strict")
+        except UnicodeEncodeError:
+            raise HostGrounderRuntimeError("SOURCE_QUERY_INVALID") from None
+
+        def query_bound_grounder(
+            raw_input: str,
+            *,
+            run_id: str,
+            bounds: CoreOperationalBounds,
+        ) -> HostGrounderEvidenceCatalogRuntimeResult:
+            return _run_grounder(
+                raw_input,
+                run_id=run_id,
+                bounds=bounds,
+                source_query=source_query,
+            )
+
+        return query_bound_grounder
+
     event_grounder.configuration_snapshot = configuration_snapshot
+    event_grounder._world_source_query_factory = world_source_query_factory
     return event_grounder

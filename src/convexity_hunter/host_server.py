@@ -2498,9 +2498,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                     with _discard_sdk_output():
                         return configured_world_executor(raw_input, bounds=bounds)
 
-                # Reuse the frozen shared models/source projection. skills=[]
-                # is a legacy metadata constraint, not a claim of no Skill use.
-                world_executor.configuration_snapshot = event_grounder.configuration_snapshot
+                world_executor.configuration_snapshot = (
+                    configured_world_executor.configuration_snapshot
+                )
 
         direct_executor = (
             _make_futu_direct_executor(args.futu_port)
