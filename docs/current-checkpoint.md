@@ -2,6 +2,30 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Bounded SEC primary-source acquisition — 2026-10-13
+
+Two predeclared Tavily `/search` attempts, not an Event run: request 01 used
+sandbox-default and returned `NETWORK_ERROR` with no HTTP response/usage; its
+local reservation was consumed but actual billing is unknown. Request 02 used
+one `require_escalated` attempt (`include_domains=["sec.gov"]`, Basic,
+`auto_parameters=false`, raw content/usage on, max 5): HTTP 200, 5 results,
+reported 1 credit. No retry, redirect-follow, direct fetch, Extract, model call
+or Event POST. The first two `raw_content` values (1,393/795 chars) are
+landing-page metadata, not full order text: [SR-NASDAQ-2025-109](https://www.sec.gov/rules-regulations/self-regulatory-organization-rulemaking/sr-nasdaq-2025-109)
+links the [34-105199 order PDF](https://www.sec.gov/files/rules/sro/nasdaq/2026/34-105199.pdf);
+[Release 34-105199](https://www.sec.gov/rule-release/34-105199) labels an
+accelerated-approval order and names The Nasdaq Stock Market LLC (NASDAQ) as
+SRO, with a [`/file/34-105199` resource](https://www.sec.gov/file/34-105199).
+This is exchange/SRO identity, not a listed `Nasdaq, Inc.`/`NDAQ` issuer.
+Provider `published_date` values (25 Feb and 10 Apr 2026) are page metadata;
+captured `SEC Issue Date` values are blank. No occurrence date or future 23/5
+start/effective milestone is established. Linked order resources were not
+fetched; snippets and provider `raw_content` are not verified complete order
+text. The complete 16,008-byte Tavily response JSON is preserved mode `0600` at
+`/private/tmp/ch-primary-source.meunujmj/search-02.response.body` (SHA-256
+`eae54d5807b0d9529a3c59271e8f3f012136ee5d0e01013a5b43805584e84490`); the
+directory is mode `0700`.
+
 ## Event input-preparation trace — 2026-10-13
 
 Read-only preflight at clean, freshly fetched `4955f5c` inspected the retained

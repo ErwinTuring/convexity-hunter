@@ -1,14 +1,19 @@
 # Project State
 
-Offline input-preparation trace found no Builder field-loss defect: retained
-distribution/temporal/listing fields are null and falsification conditions empty;
-the mapper would preserve supplied valid values. Description/date lack Host
-context bindings. No code or prompt change is justified merely to fill them.
-An exact retained primary-source format and lawful identity/occurrence evidence
-must precede any successor. All five retained locators are non-Nasdaq/non-SEC;
-no IR format extension is supported by this batch. Next is targeted primary
-source acquisition, not another unchanged live replay. See
-[the trace boundary](current-checkpoint.md#event-input-preparation-trace--2026-10-13).
+Bounded SEC source acquisition (2026-10-13): request 01 ended in sandbox-default
+`NETWORK_ERROR`, without provider response/usage; actual billing is unknown.
+Request 02 returned HTTP 200, five SEC-domain results and one reported credit.
+Offline review of the first two relevant `raw_content` fields found SEC
+landing/index metadata, not complete order text. They identify The Nasdaq Stock
+Market LLC as the SRO/exchange, not a listed `Nasdaq, Inc.`/`NDAQ` issuer;
+provider publication timestamps are not event-occurrence dates, and no future
+23/5 start milestone is present. No direct source fetch, Event POST or model
+call occurred. Source-format and evidence boundaries remain open; see the
+[acquisition checkpoint](current-checkpoint.md#bounded-sec-primary-source-acquisition--2026-10-13).
+
+The earlier offline input-preparation trace found no Builder field-loss defect;
+description/date still lack Host context, so no code or prompt change is
+justified. See [the trace boundary](current-checkpoint.md#event-input-preparation-trace--2026-10-13).
 
 Latest separately approved Nasdaq Event run after the root-role correction:
 HTTP 201; receipt validated; Builder completed without rejection diagnostics;
