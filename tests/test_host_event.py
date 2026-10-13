@@ -21,6 +21,7 @@ from convexity_hunter.host_event import (
     _resolve_sec_occurrence_date,
     _retain_unknown_context,
     _retain_unknown_context_v0_2,
+    _retain_unknown_context_v0_3,
     _publication_datetime,
     create_event_grounder,
 )
@@ -30,6 +31,7 @@ from convexity_hunter.host_grounder_builder import (
     HostSourceBody,
 )
 from convexity_hunter.host_grounder_evidence_catalog import (
+    _line_paragraph_spans,
     build_host_evidence_catalog,
     parse_grounder_output_v0_3,
 )
@@ -84,6 +86,28 @@ _SEC_HEADER = (
     "ACCESSION NUMBER: 0000320193-26-000123\n"
     "COMPANY CONFORMED NAME: ACME HOLDINGS, INC.\n"
     "CENTRAL INDEX KEY: 0000320193\n\n"
+)
+_SRO_ORDER_LOCATOR = "https://www.sec.gov/files/rules/sro/nasdaq/2026/34-105199.pdf"
+_SRO_ORDER_BODY = (
+    "SECURITIES AND EXCHANGE COMMISSION\n"
+    "[Release No. 34-105199; File No. SR-Nasdaq-2025-109]\n"
+    "Self-Regulatory Organizations; The Nasdaq Stock Market LLC;\n"
+    "Order Granting Accelerated Approval of a Proposed Rule Change\n"
+    "April 10, 2026.\n\n"
+    "Earlier materials include March 2, 2026, Apr. 1, 2026, and 2026-03-20.\n\n"
+    "IT IS THEREFORE ORDERED, pursuant to Section 19(b)(2) of the Act, that the proposed rule change "
+    "(SR-Nasdaq-2025-109), as modified by Amendment No. 1, be, and is hereby, "
+    "approved on an accelerated basis.\n\n"
+    "For the Commission\nSynthetic Signatory\n"
+)
+_SRO_CLAIM_TEXT = (
+    "The Securities and Exchange Commission approved the proposed rule change "
+    "(SR-Nasdaq-2025-109) on an accelerated basis."
+)
+_SRO_OPERATIVE_CLAUSE = (
+    "IT IS THEREFORE ORDERED, pursuant to Section 19(b)(2) of the Act, that the proposed rule change "
+    "(SR-Nasdaq-2025-109), as modified by Amendment No. 1, be, and is hereby, "
+    "approved on an accelerated basis."
 )
 
 
@@ -204,6 +228,8 @@ def _model_outputs(
     fact_text=None,
     event_date=None,
     additional_fact_texts=(),
+    fact_evidence_markers=None,
+    date_binding_marker=None,
     coverage_supported=False,
     covered_claim_ids=None,
 ):
@@ -233,12 +259,25 @@ def _model_outputs(
     coverage_claim_ids = []
     claim_evidence_refs = {}
     fact_texts = () if fact_text is None else (fact_text,) + tuple(additional_fact_texts)
+    evidence_markers = (
+        None if fact_evidence_markers is None else tuple(fact_evidence_markers)
+    )
+    if evidence_markers is not None and len(evidence_markers) != len(fact_texts):
+        raise ValueError("synthetic claim evidence markers must match emitted claims")
     for claim_index, claim_text in enumerate(fact_texts):
-        entry = next(
+        marker = None if evidence_markers is None else evidence_markers[claim_index]
+        matching_entries = tuple(
             entry
             for entry in catalog.entries
-            if entry.quote.rstrip("\r\n") == claim_text
+            if (
+                marker in entry.quote
+                if type(marker) is str
+                else entry.quote.rstrip("\r\n") == claim_text
+            )
         )
+        if len(matching_entries) != 1:
+            raise ValueError("synthetic claim evidence must identify one catalog paragraph")
+        entry = matching_entries[0]
         evidence_ref = {"evidence_id": entry.evidence_id}
         claim_id = "fact-{}".format(claim_index + 1)
         claim_evidence_refs[claim_id] = evidence_ref
@@ -266,10 +305,22 @@ def _model_outputs(
             }
         )
         if claim_event_date is not None:
+            binding_entries = tuple(
+                candidate
+                for candidate in catalog.entries
+                if (
+                    date_binding_marker in candidate.quote
+                    if type(date_binding_marker) is str
+                    else candidate.evidence_id == entry.evidence_id
+                )
+            )
+            if len(binding_entries) != 1:
+                raise ValueError("synthetic date evidence must identify one catalog paragraph")
+            binding_ref = {"evidence_id": binding_entries[0].evidence_id}
             producer_bindings.append(
                 {
                     "field_path": "/claims/{}/event_date".format(claim_index),
-                    "evidence_id": entry.evidence_id,
+                    "evidence_id": binding_ref["evidence_id"],
                     "semantic_role": "date",
                     "status": "supported",
                 }
@@ -279,7 +330,7 @@ def _model_outputs(
                     "index": len(producer_bindings) - 1,
                     "outcome": "supported",
                     "rationale": "Synthetic source sentence localizes the date field.",
-                    "evidence_refs": [evidence_ref],
+                    "evidence_refs": [binding_ref],
                 }
             )
         coverage_claim_ids.append(claim_id)
@@ -485,6 +536,135 @@ def _source_fact_case(
     if coverage_outcomes is not None:
         receipt_values["coverage_outcomes"] = coverage_outcomes
     receipt = MappingProxyType(receipt_values)
+    return ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash), receipt, context
+
+
+def _sro_direct_case(
+    *,
+    body=_SRO_ORDER_BODY,
+    locator=_SRO_ORDER_LOCATOR,
+    claim_text=_SRO_CLAIM_TEXT,
+    claim_quote_override=None,
+    model_date="2026-04-10",
+    binding_count=1,
+    binding_paragraph="cover",
+    binding_start_delta=0,
+    binding_end_delta=0,
+    binding_quote_override=None,
+    binding_start_override=None,
+    binding_end_override=None,
+    verified_binding_indices=None,
+    binding_status="supported",
+    binding_role="date",
+    binding_source_id=None,
+    verified_claim_ids=("fact-1",),
+    claim_id_override="fact-1",
+    receipt_body_hash=None,
+):
+    source_id = "sro-order"
+    source = HostSourceBody(body, _digest(body), locator, _NOW, "Synthetic SEC order", None)
+    paragraph_spans = tuple(_line_paragraph_spans(body))
+    clause_start = body.find("IT IS THEREFORE ORDERED")
+    claim_span = next(
+        (
+            span
+            for span in paragraph_spans
+            if clause_start >= 0 and span[0] <= clause_start < span[1]
+        ),
+        paragraph_spans[0],
+    )
+    cover_token_start = next(
+        start
+        for start, end in paragraph_spans
+        if body[start:end].startswith("SECURITIES AND EXCHANGE COMMISSION")
+    )
+    binding_span = next(
+        span
+        for span in paragraph_spans
+        if span[0] <= cover_token_start < span[1]
+    )
+    if binding_paragraph == "claim":
+        binding_span = claim_span
+    binding_start, binding_end = binding_span
+    binding_quote = body[binding_start:binding_end]
+    if binding_quote_override is not None:
+        binding_quote = binding_quote_override
+    bindings = [
+        {
+            "field_path": "/claims/0/event_date",
+            "source_id": source_id if binding_source_id is None else binding_source_id,
+            "quote": binding_quote,
+            "start": (
+                binding_start + binding_start_delta
+                if binding_start_override is None
+                else binding_start_override
+            ),
+            "end": (
+                binding_end + binding_end_delta
+                if binding_end_override is None
+                else binding_end_override
+            ),
+            "semantic_role": binding_role,
+            "status": binding_status,
+        }
+        for _ in range(binding_count)
+    ]
+    envelope = {
+        "schema_version": "grounder-output-v0.1",
+        "stage": "semantic",
+        "request_id": _RUN_ID,
+        "claims": [
+            {
+                "claim_id": claim_id_override,
+                "kind": "observed_fact",
+                "source_id": source_id,
+                "locator": locator,
+                "quote": (
+                    body[slice(*claim_span)]
+                    if claim_quote_override is None
+                    else claim_quote_override
+                ),
+                "text": claim_text,
+                "event_date": model_date,
+            }
+        ],
+        "hypotheses": [],
+        "coverage": [],
+        "field_bindings": bindings,
+    }
+    canonical_bytes = json.dumps(
+        envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    envelope_hash = _digest(canonical_bytes.decode("utf-8"))
+    context = HostBuildContext(
+        raw_input=UserEventInput(_RAW_INPUT),
+        submission_id=_RUN_ID,
+        event_id=_RUN_ID,
+        producer_id="convexity-hunter-event-grounder",
+        producer_version="v0.1",
+        observed_at=_NOW,
+        source_bodies=MappingProxyType({source_id: source}),
+        run_id=_RUN_ID,
+        canonical_input_hash="a" * 64,
+    )
+    verified_indices = (
+        tuple(range(binding_count))
+        if verified_binding_indices is None
+        else verified_binding_indices
+    )
+    receipt = MappingProxyType(
+        {
+            "schema_version": "semantic-validation-v0.2",
+            "run_id": _RUN_ID,
+            "canonical_input_hash": context.canonical_input_hash,
+            "envelope_hash": envelope_hash,
+            "source_body_hashes": (
+                (source_id, source.body_sha256 if receipt_body_hash is None else receipt_body_hash),
+            ),
+            "verified_claim_ids": verified_claim_ids,
+            "verified_binding_indices": verified_indices,
+        }
+    )
     return ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash), receipt, context
 
 
@@ -974,7 +1154,7 @@ class HostEventGrounderTests(unittest.TestCase):
         callback = create_event_grounder(config, repo_root=_ROOT)
         self.assertIs(
             inspect.getclosurevars(callback).nonlocals["context_preparer"],
-            _retain_unknown_context_v0_2,
+            _retain_unknown_context_v0_3,
         )
         self.assertEqual(
             tuple(inspect.signature(callback).parameters),
@@ -2275,6 +2455,210 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(prepared.underlying_bindings, {})
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
+
+    def test_default_pipeline_prepares_sro_date_from_catalog_paragraph_binding(self):
+        source_order = (("sro-order", _SRO_ORDER_LOCATOR),)
+        source_bodies = {_SRO_ORDER_LOCATOR: _SRO_ORDER_BODY}
+        config = _config(source_order=source_order)
+        discovery, semantic, _normalized = _model_outputs(
+            _RUN_ID,
+            _RAW_INPUT,
+            source_order,
+            source_bodies,
+            config,
+            fact_text=_SRO_CLAIM_TEXT,
+            event_date="2026-04-10",
+            fact_evidence_markers=("IT IS THEREFORE ORDERED",),
+            date_binding_marker="April 10, 2026",
+            coverage_supported=True,
+            covered_claim_ids=("fact-1",),
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=source_order,
+            body_overrides=source_bodies,
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+        result = callback(
+            _RAW_INPUT,
+            run_id=_RUN_ID,
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        prepared = result.build_result.context
+        self.assertEqual(prepared.event_description_binding, "fact-1")
+        self.assertEqual(prepared.event_date_range.start_date, datetime.date(2026, 4, 10))
+        self.assertEqual(prepared.event_date_range.end_date, datetime.date(2026, 4, 10))
+        methodology = json.loads(prepared.event_date_range.methodology)
+        self.assertEqual(
+            methodology["rule_version"],
+            "host-event-source-facts-v0.3/sec-sro-accelerated-approval-occurrence-date",
+        )
+        body = prepared.source_bodies["sro-order"].body
+        expected_body_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        self.assertEqual(methodology["body_sha256"], expected_body_hash)
+        self.assertEqual(methodology["release_no"], "34-105199")
+        self.assertEqual(methodology["file_no"], "SR-Nasdaq-2025-109")
+        self.assertEqual(methodology["sro_name"], "The Nasdaq Stock Market LLC")
+        cover_start = body.index("SECURITIES AND EXCHANGE COMMISSION")
+        cover_end = body.index("\n\n", cover_start)
+        cover_paragraph = body[cover_start : cover_end + 1]
+        date_start = body.index("April 10, 2026")
+        clause_start = body.index(_SRO_OPERATIVE_CLAUSE)
+        clause_end = clause_start + len(_SRO_OPERATIVE_CLAUSE)
+        order_start = body.rfind("\n\n", 0, clause_start) + 2
+        order_end = body.index("\n\n", clause_start)
+        order_paragraph = body[order_start : order_end + 1]
+        self.assertEqual(methodology["cover_date_quote"], "April 10, 2026")
+        self.assertEqual(methodology["cover_date_start"], date_start)
+        self.assertEqual(methodology["cover_date_end"], date_start + len("April 10, 2026"))
+        self.assertEqual(body[methodology["cover_date_start"] : methodology["cover_date_end"]], "April 10, 2026")
+        self.assertEqual(methodology["binding_quote"], cover_paragraph)
+        self.assertEqual(body[methodology["binding_start"] : methodology["binding_end"]], cover_paragraph)
+        self.assertEqual(methodology["claim_quote"], order_paragraph)
+        self.assertEqual(body[methodology["claim_start"] : methodology["claim_end"]], order_paragraph)
+        self.assertEqual(methodology["operative_clause_quote"], _SRO_OPERATIVE_CLAUSE)
+        self.assertEqual(methodology["operative_clause_start"], clause_start)
+        self.assertEqual(methodology["operative_clause_end"], clause_end)
+        self.assertEqual(body[clause_start:clause_end], _SRO_OPERATIVE_CLAUSE)
+        expected_prior_tokens = ("March 2, 2026", "Apr. 1, 2026", "2026-03-20")
+        expected_prior_spans = tuple(
+            (body.index(token), body.index(token) + len(token))
+            for token in expected_prior_tokens
+        )
+        self.assertEqual(
+            tuple(tuple(span) for span in methodology["prior_date_spans"]),
+            expected_prior_spans,
+        )
+        self.assertEqual(
+            tuple(body[start:end] for start, end in expected_prior_spans),
+            expected_prior_tokens,
+        )
+        prior_dates = (
+            datetime.date(2026, 3, 2),
+            datetime.date(2026, 4, 1),
+            datetime.date(2026, 3, 20),
+        )
+        self.assertTrue(all(value < datetime.date(2026, 4, 10) for value in prior_dates))
+
+        semantic_validation = result.build_result.semantic_validation
+        self.assertEqual(semantic_validation.receipt["verified_binding_indices"], (0,))
+        self.assertEqual(
+            semantic_validation.receipt["source_body_hashes"],
+            (("sro-order", expected_body_hash),),
+        )
+        self.assertEqual(
+            semantic_validation.receipt["envelope_hash"],
+            hashlib.sha256(semantic_validation.snapshot.canonical_bytes).hexdigest(),
+        )
+        normalized_envelope = json.loads(semantic_validation.snapshot.canonical_bytes)
+        claim = normalized_envelope["claims"][0]
+        binding = normalized_envelope["field_bindings"][0]
+        self.assertEqual(claim["quote"], methodology["claim_quote"])
+        self.assertEqual(binding["quote"], methodology["binding_quote"])
+        self.assertEqual(binding["start"], methodology["binding_start"])
+        self.assertEqual(binding["end"], methodology["binding_end"])
+        self.assertEqual(len(source_transport.calls), 2)
+        self.assertEqual(len(model_transport.calls), 2)
+
+    def test_sro_source_fact_grammar_fails_closed_on_mismatch_and_ambiguity(self):
+        same_date_body = _SRO_ORDER_BODY.replace(
+            "Apr. 1, 2026", "April 10, 2026"
+        )
+        later_date_body = _SRO_ORDER_BODY.replace(
+            "Apr. 1, 2026", "April 11, 2026"
+        )
+        invalid_date_body = _SRO_ORDER_BODY.replace(
+            "March 2, 2026", "Feb. 30, 2026"
+        )
+        labeled_body = _SRO_ORDER_BODY.replace(
+            "Earlier materials include", "Dated: April 1, 2026.\nEarlier materials include"
+        )
+        cases = (
+            ("claim-text-mismatch", {"claim_text": "The Commission conditionally approved it."}),
+            ("partial-claim-paragraph", {"claim_quote_override": _SRO_OPERATIVE_CLAUSE}),
+            ("unverified-claim", {"verified_claim_ids": ()}),
+            ("wrong-claim-id", {"claim_id_override": "fact-2"}),
+            ("zero-bindings", {"binding_count": 0}),
+            ("duplicate-binding", {"binding_count": 2}),
+            ("bool-offset", {"binding_start_override": True}),
+            ("partial-paragraph", {"binding_start_delta": 1}),
+            ("quote-span-mismatch", {"binding_quote_override": "April 10, 2026"}),
+            ("wrong-binding-role", {"binding_role": "publication"}),
+            ("wrong-binding-source", {"binding_source_id": "different-source"}),
+            ("unverified-binding", {"verified_binding_indices": ()}),
+            ("binding-paragraph-misses-cover", {"binding_paragraph": "claim"}),
+            ("body-hash-mismatch", {"receipt_body_hash": "0" * 64}),
+            ("same-day-reference", {"body": same_date_body}),
+            ("later-date-reference", {"body": later_date_body}),
+            ("invalid-recognized-date", {"body": invalid_date_body}),
+            ("line-start-date-label", {"body": labeled_body}),
+            ("wrong-release-url", {"locator": _SRO_ORDER_LOCATOR.replace("105199", "105198")}),
+            ("url-query", {"locator": _SRO_ORDER_LOCATOR + "?download=1"}),
+            ("url-userinfo", {"locator": _SRO_ORDER_LOCATOR.replace("https://www.sec.gov", "https://sec.gov@www.sec.gov")}),
+            ("url-year-mismatch", {"locator": _SRO_ORDER_LOCATOR.replace("/2026/", "/2025/")}),
+            ("duplicate-cover-heading", {"body": _SRO_ORDER_BODY + "\nSECURITIES AND EXCHANGE COMMISSION\n"}),
+            ("wrong-sro-identity", {"body": _SRO_ORDER_BODY.replace("The Nasdaq Stock Market LLC", "The New York Stock Exchange LLC")}),
+            ("wrong-order-title", {"body": _SRO_ORDER_BODY.replace("Order Granting Accelerated Approval", "Order Proposing Accelerated Approval")}),
+            ("wrong-operative-file", {"body": _SRO_ORDER_BODY.replace("(SR-Nasdaq-2025-109), as modified", "(SR-Nasdaq-2025-110), as modified")}),
+            ("conflicting-disposition", {"body": _SRO_ORDER_BODY.replace("approved on an accelerated basis.", "denied, but approved on an accelerated basis.")}),
+            ("title-only-truncation", {"body": _SRO_ORDER_BODY[:_SRO_ORDER_BODY.index("IT IS THEREFORE ORDERED")]}),
+            ("missing-signatory", {"body": _SRO_ORDER_BODY[:_SRO_ORDER_BODY.index("For the Commission")]}),
+            ("conditional-order", {"body": _SRO_ORDER_BODY.replace("is hereby, approved", "is hereby, conditionally approved")}),
+            ("claim-date-mismatch", {"model_date": "2026-04-09"}),
+            ("future-cover-date", {"model_date": "2026-10-05", "body": _SRO_ORDER_BODY.replace("April 10, 2026", "October 5, 2026", 1)}),
+        )
+        for label, options in cases:
+            with self.subTest(case=label):
+                snapshot, receipt, context = _sro_direct_case(**options)
+                prepared = _retain_unknown_context_v0_3(snapshot, receipt, context)
+                self.assertIsNone(prepared.event_date_range)
+
+    def test_sro_title_accepts_only_empty_or_official_amendment_notice_prefix(self):
+        official_prefix = "Notice of Filing of Amendment Nos. 2 and 3 and "
+        official_body = _SRO_ORDER_BODY.replace(
+            "Order Granting Accelerated Approval",
+            official_prefix + "Order Granting Accelerated Approval",
+        )
+        snapshot, receipt, context = _sro_direct_case(body=official_body)
+        prepared = _retain_unknown_context_v0_3(snapshot, receipt, context)
+        self.assertEqual(prepared.event_date_range.start_date, datetime.date(2026, 4, 10))
+
+        rejected_bodies = (
+            (
+                "draft-title-prefix",
+                _SRO_ORDER_BODY.replace(
+                    "Order Granting Accelerated Approval",
+                    "DRAFT Order Granting Accelerated Approval",
+                ),
+            ),
+            (
+                "unknown-title-prefix",
+                _SRO_ORDER_BODY.replace(
+                    "Order Granting Accelerated Approval",
+                    "Notice of Filing of Amendment Nos. 2 and 3 or "
+                    "Order Granting Accelerated Approval",
+                ),
+            ),
+            (
+                "cover-status-label",
+                _SRO_ORDER_BODY.replace(
+                    "SECURITIES AND EXCHANGE COMMISSION\n",
+                    "SECURITIES AND EXCHANGE COMMISSION\nPRELIMINARY\n",
+                ),
+            ),
+        )
+        for label, body in rejected_bodies:
+            with self.subTest(case=label):
+                snapshot, receipt, context = _sro_direct_case(body=body)
+                prepared = _retain_unknown_context_v0_3(snapshot, receipt, context)
+                self.assertIsNone(prepared.event_date_range)
 
     def test_existing_description_mismatch_does_not_receive_candidate_date(self):
         snapshot, receipt, context = _source_fact_case(description="fact-2")

@@ -1,5 +1,14 @@
 # Project State
 
+Host Event Source Facts v0.3 is implemented after contract amendment review
+and independent implementation review PASS. The narrow default resolver retains v0.2 selection and legacy behavior
+and only binds a date for the covered SEC Nasdaq SRO accelerated-approval
+grammar. Initial focused 160 tests and pre-title-fix full regression (1,984)
+passed; the review's draft-title finding was fixed and post-fix 49 Host Event
+and two catalog tests plus compileall passed. No live Event/replay, EI
+acceptance, launch date, impact end, or issuer/listing mapping is established.
+See the [implementation checkpoint](current-checkpoint.md).
+
 SEC order audit (2026-10-13): the one authorized direct GET succeeded (HTTP
 200; one request; 368,784-byte PDF). Release 34-105199 / File
 SR-Nasdaq-2025-109 is dated April 10, 2026 and grants accelerated approval.

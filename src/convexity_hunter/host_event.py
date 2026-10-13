@@ -4,10 +4,10 @@ This module performs source acquisition and the pre-Core Grounder run only. It
 does not assess EI, invoke market data, persist records, or fabricate Event
 dates/listing evidence. Its default context preparer may bind a sole verified
 observed fact, or one uniquely covered verified fact when several exist, and a
-narrowly source-bound SEC 8-K occurrence date. Unsupported dates and listing
-bindings remain unknown. This is not a complete product Grounder. Credentials
-remain external references and are resolved only by the existing clients when
-a request is made.
+narrowly source-bound SEC 8-K occurrence date or SEC Nasdaq SRO approval date.
+Unsupported dates and listing bindings remain unknown. This is not a complete
+product Grounder. Credentials remain external references and are resolved
+only by the existing clients when a request is made.
 """
 
 from __future__ import annotations
@@ -27,7 +27,10 @@ from .core_application import CoreOperationalBounds
 from .event_entry import UserEventInput
 from .event_intelligence import MethodologizedDateRange
 from .host_grounder_builder import HostBuildContext, HostSourceBody
-from .host_grounder_evidence_catalog import HostEvidenceCatalogAuditHolder
+from .host_grounder_evidence_catalog import (
+    HostEvidenceCatalogAuditHolder,
+    _line_paragraph_spans,
+)
 from .host_grounder_receipt import ValidatedEnvelopeSnapshot
 from .host_grounder_run_input import (
     HostGrounderRunInput,
@@ -112,6 +115,98 @@ _UNCERTAIN_ACTION = re.compile(
 )
 _ACTION_VERB = r"(?:entered into|completed|closed|executed|signed)"
 _ACTION_VERB_V0_2 = r"(?:entered into|completed|closed|executed|signed|announced)"
+_SRO_ASCII_WS = r"[ \t\r\n\f\v]"
+_SRO_ASCII_WS_RUN = re.compile(_SRO_ASCII_WS + r"+")
+_SRO_LOCATOR = re.compile(
+    r"https://www\.sec\.gov/files/rules/sro/nasdaq/"
+    r"(?P<year>[0-9]{4})/34-(?P<release>[0-9]+)\.pdf\Z"
+)
+_SRO_RELEASE_FILE = re.compile(
+    r"\[Release" + _SRO_ASCII_WS + r"+No\." + _SRO_ASCII_WS
+    + r"+(?P<release>34-[0-9]+);" + _SRO_ASCII_WS + r"+File"
+    + _SRO_ASCII_WS + r"+No\." + _SRO_ASCII_WS
+    + r"+(?P<file>SR-Nasdaq-[0-9]{4}-[0-9]+)\]"
+)
+_SRO_SEC_HEADING = re.compile(
+    r"SECURITIES" + _SRO_ASCII_WS + r"+AND" + _SRO_ASCII_WS
+    + r"+EXCHANGE" + _SRO_ASCII_WS + r"+COMMISSION"
+)
+_SRO_IDENTITY_HEADING = re.compile(
+    r"Self-Regulatory" + _SRO_ASCII_WS + r"+Organizations;"
+    + _SRO_ASCII_WS + r"+The" + _SRO_ASCII_WS + r"+Nasdaq"
+    + _SRO_ASCII_WS + r"+Stock" + _SRO_ASCII_WS + r"+Market"
+    + _SRO_ASCII_WS + r"+LLC;"
+)
+_SRO_AMENDMENT_NOTICE_PREFIX = re.compile(
+    r"Notice of Filing of Amendment Nos\. [1-9][0-9]* and [1-9][0-9]* and",
+    re.ASCII,
+)
+_SRO_COVER_STATUS_LABEL = re.compile(
+    r"\b(?:DRAFT|PRELIMINARY|PENDING)\b",
+    re.IGNORECASE | re.ASCII,
+)
+_SRO_TITLE = re.compile(
+    r"Order" + _SRO_ASCII_WS + r"+Granting" + _SRO_ASCII_WS
+    + r"+Accelerated" + _SRO_ASCII_WS + r"+Approval" + _SRO_ASCII_WS
+    + r"+of" + _SRO_ASCII_WS + r"+a" + _SRO_ASCII_WS
+    + r"+Proposed" + _SRO_ASCII_WS + r"+Rule" + _SRO_ASCII_WS
+    + r"+Change"
+)
+_SRO_FULL_MONTH = (
+    r"January|February|March|April|May|June|July|August|September|"
+    r"October|November|December"
+)
+_SRO_MONTH_NUMBERS = {
+    "january": 1, "jan": 1, "february": 2, "feb": 2,
+    "march": 3, "mar": 3, "april": 4, "apr": 4,
+    "may": 5, "june": 6, "jun": 6, "july": 7, "jul": 7,
+    "august": 8, "aug": 8, "september": 9, "sep": 9,
+    "october": 10, "oct": 10, "november": 11, "nov": 11,
+    "december": 12, "dec": 12,
+}
+_SRO_DATE_MONTH = (
+    _SRO_FULL_MONTH
+    + r"|Jan\.?|Feb\.?|Mar\.?|Apr\.?|May\.?|Jun\.?|Jul\.?|"
+    r"Aug\.?|Sep\.?|Oct\.?|Nov\.?|Dec\.?"
+)
+_SRO_DATE_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9-])(?P<month>" + _SRO_DATE_MONTH + r")"
+    + _SRO_ASCII_WS + r"+(?P<day>[0-9]{1,2})," + _SRO_ASCII_WS
+    + r"+(?P<year>[0-9]{4})(?![A-Za-z0-9-])"
+    r"|(?<![A-Za-z0-9-])(?P<iso>[0-9]{4}-[0-9]{2}-[0-9]{2})"
+    r"(?![A-Za-z0-9-])",
+    re.IGNORECASE | re.ASCII,
+)
+_SRO_COVER_DATE = re.compile(
+    _SRO_ASCII_WS + r"+(?P<token>(?P<month>" + _SRO_FULL_MONTH + r")"
+    + _SRO_ASCII_WS + r"+(?P<day>[0-9]{1,2})," + _SRO_ASCII_WS
+    + r"+(?P<year>[0-9]{4}))\."
+)
+_SRO_ORDER_START = re.compile(
+    r"IT" + _SRO_ASCII_WS + r"+IS" + _SRO_ASCII_WS + r"+THEREFORE"
+    + _SRO_ASCII_WS + r"+ORDERED"
+)
+_SRO_APPROVAL_END = re.compile(
+    r"be," + _SRO_ASCII_WS + r"*and" + _SRO_ASCII_WS + r"+is"
+    + _SRO_ASCII_WS + r"+hereby," + _SRO_ASCII_WS + r"*approved"
+    + _SRO_ASCII_WS + r"+on" + _SRO_ASCII_WS + r"+an"
+    + _SRO_ASCII_WS + r"+accelerated" + _SRO_ASCII_WS + r"+basis\."
+)
+_SRO_DATE_LABEL = re.compile(
+    r"^[ \t]*(?:Order date:|Approval date:|Dated:)",
+    re.IGNORECASE | re.MULTILINE | re.ASCII,
+)
+_SRO_SIGNATURE = re.compile(
+    r"^[ \t]*(?:For|By)" + _SRO_ASCII_WS + r"+the"
+    + _SRO_ASCII_WS + r"+Commission\b",
+    re.IGNORECASE | re.MULTILINE | re.ASCII,
+)
+_SRO_NONOPERATIVE = re.compile(
+    r"\b(?:conditional(?:ly)?|pending|contingent|subject\s+to|if|unless|"
+    r"not|never|denied|rejected|disapproved|withdrawn|vacated|rescinded|"
+    r"partial(?:ly)?|recommendation|recommended)\b",
+    re.IGNORECASE | re.ASCII,
+)
 _SEC_HEADER_LABELS = {
     "form": "CONFORMED SUBMISSION TYPE",
     "accession": "ACCESSION NUMBER",
@@ -675,6 +770,76 @@ def _retain_unknown_context_v0_2(
         original_context,
         event_description_binding=description,
         event_date_range=date_range,
+    )
+
+
+def _retain_unknown_context_v0_3(
+    snapshot: object,
+    receipt: object,
+    original_context: HostBuildContext,
+) -> HostBuildContext:
+    """Reuse v0.2 selection and add only the frozen Nasdaq SRO date case."""
+    prepared = _retain_unknown_context_v0_2(snapshot, receipt, original_context)
+    if prepared.event_date_range is not None:
+        return prepared
+    selected_id = prepared.event_description_binding
+    if type(selected_id) is not str:
+        return prepared
+    evidence = _preparation_evidence(snapshot, receipt, original_context)
+    if evidence is None:
+        return prepared
+    envelope, verified_claim_ids, verified_binding_indices = evidence
+    claims = envelope.get("claims")
+    if type(claims) is not list:
+        return prepared
+    selected = [
+        (index, claim)
+        for index, claim in enumerate(claims)
+        if type(claim) is dict
+        and claim.get("claim_id") == selected_id
+        and claim.get("kind") == "observed_fact"
+        and selected_id in verified_claim_ids
+    ]
+    if len(selected) != 1:
+        return prepared
+    claim_index, claim = selected[0]
+    source_id = claim.get("source_id")
+    if type(source_id) is not str or claim.get("locator") is None:
+        return prepared
+    source = original_context.source_bodies.get(source_id)
+    if type(source) is not HostSourceBody or claim.get("locator") != source.final_locator:
+        return prepared
+    occurrence = _resolve_sec_sro_approval_occurrence_date_v0_3(
+        claim_index,
+        claim,
+        source,
+        envelope,
+        verified_binding_indices,
+        original_context,
+    )
+    if occurrence is None:
+        return prepared
+    event_date, fields = occurrence
+    methodology = json.dumps(
+        {
+            "rule_version": (
+                "host-event-source-facts-v0.3/"
+                "sec-sro-accelerated-approval-occurrence-date"
+            ),
+            "source_id": source_id,
+            "body_sha256": source.body_sha256,
+            "locator": source.final_locator,
+            **fields,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return replace(
+        prepared,
+        event_date_range=MethodologizedDateRange(
+            event_date, event_date, methodology
+        ),
     )
 
 
@@ -1430,7 +1595,7 @@ def _make_listing_source_preparer(
     def prepare_listing_sources(
         snapshot: object, receipt: object, original_context: HostBuildContext
     ) -> HostBuildContext:
-        prepared = _retain_unknown_context_v0_2(snapshot, receipt, original_context)
+        prepared = _retain_unknown_context_v0_3(snapshot, receipt, original_context)
         if not listing_source_ids:
             return prepared
         composite_records = ()
@@ -1667,6 +1832,233 @@ def _resolve_sec_occurrence_date_v0_2(
         context,
         _ACTION_VERB_V0_2,
     )
+
+
+def _ascii_whitespace_fold(value: str) -> str:
+    return _SRO_ASCII_WS_RUN.sub(" ", value).strip(" ")
+
+
+def _sro_date_token_value(match):
+    try:
+        if match.group("iso") is not None:
+            return datetime.date.fromisoformat(match.group("iso"))
+        month = _SRO_MONTH_NUMBERS[match.group("month").rstrip(".").casefold()]
+        return datetime.date(int(match.group("year")), month, int(match.group("day")))
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _resolve_sec_sro_approval_occurrence_date_v0_3(
+    claim_index: int,
+    claim: dict,
+    source: HostSourceBody,
+    envelope: dict,
+    verified_binding_indices: frozenset,
+    context: HostBuildContext,
+):
+    """Resolve only the frozen SEC Nasdaq accelerated-approval order grammar."""
+    locator = _SRO_LOCATOR.fullmatch(source.final_locator)
+    if locator is None:
+        return None
+    body = source.body
+    sec_headings = tuple(_SRO_SEC_HEADING.finditer(body))
+    release_files = tuple(_SRO_RELEASE_FILE.finditer(body))
+    sro_headings = tuple(_SRO_IDENTITY_HEADING.finditer(body))
+    titles = tuple(_SRO_TITLE.finditer(body))
+    if not (
+        len(sec_headings) == len(release_files) == len(sro_headings) == len(titles) == 1
+    ):
+        return None
+
+    sec_heading = sec_headings[0]
+    release_file = release_files[0]
+    sro_heading = sro_headings[0]
+    title = titles[0]
+    cover_date_match = _SRO_COVER_DATE.match(body, title.end())
+    if (
+        not sec_heading.start() < release_file.start() < sro_heading.start() < title.start()
+        or cover_date_match is None
+    ):
+        return None
+    title_prefix = _ascii_whitespace_fold(body[sro_heading.end():title.start()])
+    if title_prefix and _SRO_AMENDMENT_NOTICE_PREFIX.fullmatch(title_prefix) is None:
+        return None
+    release_no = release_file.group("release")
+    file_no = release_file.group("file")
+    if (
+        release_no != "34-" + locator.group("release")
+        or locator.group("year") != cover_date_match.group("year")
+    ):
+        return None
+    try:
+        cover_date = datetime.date(
+            int(cover_date_match.group("year")),
+            _SRO_MONTH_NUMBERS[cover_date_match.group("month").casefold()],
+            int(cover_date_match.group("day")),
+        )
+    except (KeyError, ValueError):
+        return None
+
+    cover_start = sec_heading.start()
+    cover_end = cover_date_match.end()
+    cover_date_span = cover_date_match.span("token")
+    if any(
+        not (cover_start <= label.start() < cover_end)
+        for label in _SRO_DATE_LABEL.finditer(body)
+    ):
+        return None
+    if _SRO_COVER_STATUS_LABEL.search(body[cover_start:cover_end]) is not None:
+        return None
+
+    prior_date_spans = []
+    previous_end = -1
+    cover_token_count = 0
+    for date_match in _SRO_DATE_TOKEN.finditer(body):
+        token_start, token_end = date_match.span()
+        if token_start < previous_end:
+            return None
+        previous_end = token_end
+        parsed_date = _sro_date_token_value(date_match)
+        if parsed_date is None:
+            return None
+        if (token_start, token_end) == cover_date_span:
+            cover_token_count += 1
+        elif parsed_date >= cover_date:
+            return None
+        else:
+            prior_date_spans.append((token_start, token_end))
+    if cover_token_count != 1:
+        return None
+
+    paragraphs = tuple(_line_paragraph_spans(body))
+    order_starts = tuple(_SRO_ORDER_START.finditer(body))
+    approval_ends = tuple(_SRO_APPROVAL_END.finditer(body))
+    signatures = tuple(_SRO_SIGNATURE.finditer(body))
+    if len(order_starts) != 1 or len(approval_ends) != 1 or len(signatures) != 1:
+        return None
+    order_start = order_starts[0]
+    approval_end = approval_ends[0]
+    signature = signatures[0]
+    order_paragraph = next(
+        (
+            span
+            for span in paragraphs
+            if span[0] <= order_start.start() < span[1]
+        ),
+        None,
+    )
+    if order_paragraph is None:
+        return None
+    paragraph_start, paragraph_end = order_paragraph
+    if (
+        body[paragraph_start:order_start.start()].strip(" \t\r\n\f\v")
+        or not order_start.end() <= approval_end.start() < approval_end.end() <= paragraph_end
+        or not approval_end.end() <= signature.start()
+        or body[approval_end.end():paragraph_end].strip(" \t\r\n\f\v")
+        or body[paragraph_end:signature.start()].strip(" \t\r\n\f\v")
+    ):
+        return None
+    clause_start, clause_end = order_start.start(), approval_end.end()
+    clause = body[clause_start:clause_end]
+    file_reference = re.compile(
+        r"the" + _SRO_ASCII_WS + r"+proposed" + _SRO_ASCII_WS
+        + r"+rule" + _SRO_ASCII_WS + r"+change" + _SRO_ASCII_WS
+        + r"*\(" + re.escape(file_no) + r"\)"
+    )
+    if (
+        len(tuple(file_reference.finditer(clause))) != 1
+        or _SRO_NONOPERATIVE.search(clause) is not None
+    ):
+        return None
+
+    claim_quote = claim.get("quote")
+    claim_text = claim.get("text")
+    if type(claim_quote) is not str or not claim_quote or type(claim_text) is not str:
+        return None
+    claim_start = body.find(claim_quote)
+    if (
+        claim_start < 0
+        or body.find(claim_quote, claim_start + 1) >= 0
+        or (claim_start, claim_start + len(claim_quote)) not in paragraphs
+        or not (
+            claim_start <= clause_start
+            and clause_end <= claim_start + len(claim_quote)
+        )
+    ):
+        return None
+    canonical_claim = (
+        "The Securities and Exchange Commission approved the proposed rule "
+        "change ({}) on an accelerated basis.".format(file_no)
+    )
+    folded_claim = _ascii_whitespace_fold(claim_text)
+    if folded_claim not in (
+        _ascii_whitespace_fold(clause),
+        _ascii_whitespace_fold(canonical_claim),
+    ):
+        return None
+
+    model_date = claim.get("event_date")
+    if (
+        type(model_date) is not str
+        or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", model_date) is None
+        or model_date != cover_date.isoformat()
+        or cover_date > context.observed_at.astimezone(datetime.timezone.utc).date()
+    ):
+        return None
+
+    field_bindings = envelope.get("field_bindings")
+    if type(field_bindings) is not list:
+        return None
+    field_path = "/claims/{}/event_date".format(claim_index)
+    matching = tuple(
+        (index, binding)
+        for index, binding in enumerate(field_bindings)
+        if type(binding) is dict and binding.get("field_path") == field_path
+    )
+    if len(matching) != 1:
+        return None
+    binding_index, binding = matching[0]
+    binding_start = binding.get("start")
+    binding_end = binding.get("end")
+    binding_quote = binding.get("quote")
+    if (
+        binding_index not in verified_binding_indices
+        or binding.get("source_id") != claim.get("source_id")
+        or binding.get("status") != "supported"
+        or binding.get("semantic_role") != "date"
+        or type(binding_start) is not int
+        or type(binding_end) is not int
+        or type(binding_quote) is not str
+        or binding_start < 0
+        or binding_end <= binding_start
+        or binding_end > len(body)
+        or body[binding_start:binding_end] != binding_quote
+        or (binding_start, binding_end) not in paragraphs
+        or body.find(binding_quote) != binding_start
+        or body.find(binding_quote, binding_start + 1) >= 0
+        or not (binding_start <= cover_date_span[0] < cover_date_span[1] <= binding_end)
+    ):
+        return None
+
+    return cover_date, {
+        "release_no": release_no,
+        "file_no": file_no,
+        "sro_name": "The Nasdaq Stock Market LLC",
+        "event_date": cover_date.isoformat(),
+        "cover_date_quote": body[slice(*cover_date_span)],
+        "cover_date_start": cover_date_span[0],
+        "cover_date_end": cover_date_span[1],
+        "prior_date_spans": prior_date_spans,
+        "claim_quote": claim_quote,
+        "claim_start": claim_start,
+        "claim_end": claim_start + len(claim_quote),
+        "operative_clause_quote": clause,
+        "operative_clause_start": clause_start,
+        "operative_clause_end": clause_end,
+        "binding_quote": binding_quote,
+        "binding_start": binding_start,
+        "binding_end": binding_end,
+    }
 
 
 def _resolve_sec_occurrence_date_with_verbs(
@@ -1911,7 +2303,7 @@ def create_event_grounder(
         if transport is not None and not callable(transport):
             raise TypeError("{} must be callable or None".format(name))
     context_preparer = (
-        _retain_unknown_context_v0_2
+        _retain_unknown_context_v0_3
         if host_context_preparer is None
         else host_context_preparer
     )

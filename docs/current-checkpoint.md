@@ -2,6 +2,33 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Host Event Source Facts v0.3 implementation — 2026-10-13
+
+The frozen, independently contract-reviewed amendment is implemented in the
+working tree: the default preparer reuses v0.2 selection/legacy behavior and
+adds only the narrow SEC Nasdaq SRO accelerated-approval occurrence-date
+resolver. The synthetic positive test exercises actual catalog paragraph
+construction, producer normalization, verified date binding, and the default
+preparer; golden checks cover body hash, claim/binding paragraphs, and exact
+clause/date spans. Targeted fail-closed cases include mismatched text, dates,
+locator/identity, source/hash, paragraph spans, zero/duplicate/unverified
+bindings, partial/truncated/conditional/conflicting orders, and boolean
+offsets.
+
+Validation: the initial 48 Host Event and 112 catalog/receipt/runtime/builder
+tests passed. Independent implementation review found a prefixed `DRAFT:`
+title could pass; the finite official-prefix and draft-label guard corrected
+that finding. Targeted re-review PASS; post-fix 49 Host Event and two catalog
+tests PASS. Full regression before that title-only correction passed 1,984
+tests in 298.385s; this is not a claim of a full-suite invocation on the final
+snapshot. The first full invocation omitted `PYTHONPATH=src`, raised an import
+error and was interrupted; it is not a PASS. Final compileall, unchanged two
+public exports/signatures/config schema, local links/fences and diff checks
+PASS. No live source/model/Event operation or spent-run replay occurred during
+BUILD. This change does not establish a launch date, impact end, listing
+identity, or EI acceptance. Whole-phase coding/test/review time was not
+independently measured; no 70% implementation share is claimed.
+
 ## Exact SEC order review (2026-10-13)
 
 One separately authorized direct GET of the [SEC order PDF](https://www.sec.gov/files/rules/sro/nasdaq/2026/34-105199.pdf)
