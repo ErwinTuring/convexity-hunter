@@ -2,6 +2,49 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Fresh Event rejection-category validation — 2026-10-13
+
+The separately approved operation ran once from clean, equal HEAD/main/origin/main
+at `75c7d19`, on the unchanged READY normal Host. Fresh private directory
+`/private/tmp/ch-event-checks.yOQ2Ya/` is mode 0700; its mode-0600
+`safe-result.json` and spent guard are retained. Never reset or replay the guard.
+The byte-identical runner template used the same Nasdaq 23/5 input and evaluation
+date, not the old batch. Configured ceilings stayed at two source requests/three
+credits and two requests per model role. Actual consumption was not reported.
+
+Exactly one POST returned HTTP 201 for
+`006588c0-0593-4239-9399-c38f73c98b50`; readback completed and runner session
+`31314` exited 0. POST interval was 00:29:48.129–00:30:24.791 UTC (36.662s).
+Result: BLOCKED / GROUNDING_NO_SUBMISSION. Five source bodies, nine claims,
+one hypothesis, 26 field bindings and one coverage record were retained.
+Coverage remained model/validator unresolved with a gap. Receipt validated;
+Builder completed with two rejected claims, one rejected hypothesis and one
+NO_PROJECTABLE_HYPOTHESIS. Submission MISSING; EI NOT_RUN; Core not reached.
+Absent batch/case/unavailable values remain null, not zero.
+
+Main captured exactly one private closed-check line during the controlled
+00:29:40–00:30:30 UTC operation interval:
+`hypothesis_roots=2 verifier_unresolved=3`.
+These are check occurrences, not rejected-record counts. With one hypothesis,
+both root-check branches fired: empty/duplicated/overlapping roots, and at least
+one root outside the verified claim set. The aggregate does not distinguish
+which alternative of the first branch failed or name individual roots.
+Verifier unresolved does not establish that a source fact is false. No
+exact-reference, required-field-binding, dependency-cycle or support-source
+check was emitted; this is not proof of complete factual verification.
+Coverage-only failures are outside this telemetry.
+
+The blocking layer is now localized to semantic verification and hypothesis
+root integrity, before submission/EI, rather than inferred EI or Core failure.
+No production defect or successful real multi-fact anchor is established.
+Next safe work is an offline contract/prompt consistency inspection of root
+construction and unresolved handling; do not retry this operation, force a
+hypothesis or weaken validation. No production/configuration changes or extra
+source/model/provider calls were made. Documentation-only validation and
+proportional self-review apply, not a full suite. This is requested validation,
+not implementation: production-edit share is 0%; whole-phase timing was not
+measured and no 70% delivery claim is made.
+
 ## Private receipt-rejection checks — 2026-10-13
 
 Implemented behavior-preserving closed logging at actual receipt-conversion

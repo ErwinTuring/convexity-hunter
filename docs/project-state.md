@@ -1,5 +1,16 @@
 # Project State
 
+Latest separately approved normal Nasdaq Event validation ran exactly once
+from `75c7d19`: HTTP 201, BLOCKED / GROUNDING_NO_SUBMISSION. Five sources,
+nine claims, one hypothesis and 26 bindings were retained; coverage unresolved.
+The controlled private check log recorded `hypothesis_roots=2` and
+`verifier_unresolved=3`. These localize rejection checks, not factual truth or
+individual source/field causes. Submission MISSING, EI NOT_RUN, Core not reached.
+The new private guard `/private/tmp/ch-event-checks.yOQ2Ya/` is spent; no retry
+or production/configuration change. Next safe step is offline root-construction
+contract/prompt consistency inspection, not another identical live run. See
+[the fresh validation checkpoint](current-checkpoint.md#fresh-event-rejection-category-validation--2026-10-13).
+
 Private receipt-rejection check logging is implemented and reviewed, without
 changing evidence gates or stored schemas. It records only closed categories
 after successful receipt validation; coverage-only failures and historical
