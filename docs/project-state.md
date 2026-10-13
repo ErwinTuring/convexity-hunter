@@ -1,5 +1,21 @@
 # Project State
 
+## Latest Event run (2026-10-13)
+
+The latest Event validation used reviewed commit `bc57759`. Main verified
+normal Host session 8861 READY and
+eight prior archives preserved. The sole new normal Event run
+`6eecca55-a012-4ff6-8906-14a009a29ed8` returned HTTP 201 and
+`BLOCKED / GROUNDING_NO_SUBMISSION` (Grounder complete; submission missing;
+EI not run). The one-shot guard
+`/private/tmp/ch-event-prepared.DUUzwj/spent-once.json` is spent. Its
+normalized envelope retained 2 claims, 0 hypotheses, 4 bindings, and one
+unresolved coverage gap; diagnostics are aggregate-only.
+The run projection retains a source-body SHA-256 but no final locator, body
+length, or text, so it cannot establish exact SEC PDF coverage or a
+parent/listed-issuer relationship. Full offline trace and closed-category
+counts are in the [fresh one-shot checkpoint](current-checkpoint.md#fresh-one-shot-event-trace-2026-10-13).
+
 Host Event Source Facts v0.3 is implemented after contract amendment review
 and independent implementation review PASS. The narrow default resolver retains v0.2 selection and legacy behavior
 and only binds a date for the covered SEC Nasdaq SRO accelerated-approval

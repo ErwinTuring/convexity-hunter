@@ -2,6 +2,46 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Fresh one-shot Event trace (2026-10-13)
+
+The new run used clean, aligned commit
+`bc57759e3aeb2cd6929b8648691ff38c9f057452`. Deployment context from Main: normal
+Host session 8861 is READY; eight earlier archives remain preserved (not
+re-audited here).
+
+Exactly one normal Event request completed: HTTP 201, run
+`6eecca55-a012-4ff6-8906-14a009a29ed8`, SQLite `run_seq=9`. The read-only
+schema-v3 trace found four events for this run, with no batch archive or Direct
+case row. The one-shot runner at `/private/tmp/ch-event-prepared.DUUzwj/` is
+spent; its exclusive guard is
+`/private/tmp/ch-event-prepared.DUUzwj/spent-once.json` (mode `0600`). No
+retry was made. Final status is `BLOCKED / GROUNDING_NO_SUBMISSION`: Grounder
+`COMPLETED`, semantic receipt `RECEIPT_VALIDATED`, Builder `COMPLETED`, source
+`UNKNOWN`, submission `MISSING`, EI `NOT_RUN`. The normalized envelope had 2
+claims, 0 hypotheses, 4 field bindings, and 1 unresolved coverage row with a
+gap. The zero is the normalized-envelope hypothesis count, not evidence that
+the validator rejected all hypotheses; discarded producer wire is not
+reconstructable.
+
+Retained diagnostic counts are `CLAIM_REJECTED_BY_VALIDATOR=1`,
+`FIELD_BINDING_NOT_VERIFIED=1`, and `NO_PROJECTABLE_HYPOTHESIS=1`. The public
+projection keeps only these aggregate categories/counts, not claim or binding
+IDs or row-specific reasons. It therefore does not identify whether a missing
+LLC-to-parent/listed-issuer connection was the rejected item; that relationship
+is not established by this run projection.
+
+One source body is represented by SHA-256
+`97253c91e9758540f1bcedd75b682fd04939e35f2cd13a3e2f5fb685f9fbf28b`. The
+retained source record contains only `source_id` and hash: no final public
+locator, body character count, or body text. Its ID is not the Host's
+URL-derived ID for the supplied SEC PDF (it may be a provider ID), so exact
+source identity is unknown. Per-run text-coverage checks for Release No., File
+No., date, and the complete operative clause are therefore UNKNOWN; no raw
+source or model text was recovered. Model-call metadata records one discovery
+and one semantic call; source request/credit usage is not present in this
+projection. No network access followed the run. No production/configuration
+files or checkpoint state outside these docs were changed.
+
 ## Host Event Source Facts v0.3 implementation — 2026-10-13
 
 The frozen, independently contract-reviewed amendment is implemented in the
