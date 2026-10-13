@@ -2,6 +2,40 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## World one-shot validation and closed diagnostics (2026-10-14)
+
+One normal World request used UTC window 2026-10-07 through 2026-10-13
+and the deployed evaluation date 2026-10-13. A local-date guard first refused
+execution before any HTTP request; the released runner then used an explicit
+UTC-date guard. HTTP 201 created run `8f7eeaa4-fc64-4470-8c0f-d3a6508d484d`
+(`run_seq=10`): BLOCKED, zero cases and zero unavailable cases, with
+`HOST_BATCH_BLOCKED`, `world_last30days_failed`, and `world_grounder_failed`.
+The fresh guard at `/private/tmp/ch-world-normal-acceptance.ILkhuC53/spent-once.json`
+is spent. There was no source/model retry or historical replay.
+
+This operation used the existing pinned source allowlist, three stages with
+120-second timeouts, at most six native resume topics, and existing model,
+Tavily and Core limits. These are operational bounds, not a certified
+per-source HTTP request count or monetary ceiling; actual source request
+counts and fees are unknown. No subscription or pay-as-you-go setting changed.
+The collapsed historical reasons cannot identify the original failure and do
+not prove that there were no events or viable structures.
+
+The bounded implementation adds only allowlisted, exact-type failure
+categories to World while retaining generic reasons and fallback behavior.
+Unknown exception codes/messages remain undisclosed; arbitrary exception
+properties are not inspected. No evidence, classification, query, budget,
+schema, credential or pricing semantics change. Sixteen focused Host World
+tests, compileall and diff checks passed. Independent review's missing native
+launcher categories were corrected and targeted re-review passed. Builder
+created local code commit `1db9f47` before targeted re-review; it was not pushed
+until that review passed. No history rewrite or post-fix live operation is
+claimed.
+
+Next continuation: deploy the reviewed diagnostic-only change, then use a
+fresh separately bounded World run to identify a specific failure layer.
+Do not replay the spent guard or infer the prior batch's missing details.
+
 ## Fresh one-shot Event trace (2026-10-13)
 
 The new run used clean, aligned commit

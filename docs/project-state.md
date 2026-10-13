@@ -1,5 +1,20 @@
 # Project State
 
+## World safe failure diagnostics (2026-10-14)
+
+World keeps its generic failure reasons and adds only finite categories for
+exact allowlisted typed errors; unmatched errors remain generic. No acceptance,
+economic, request, or persistence-schema changes. Latest offline SQLite
+metadata: run sequence 10, ID `8f7eeaa4-fc64-4470-8c0f-d3a6508d484d`, created
+`2026-10-13T16:00:53.299Z`, BLOCKED at executor `2026-10-13T16:01:38.403Z`,
+finished `2026-10-13T16:01:38.405Z`. Main reported HTTP 201 / BLOCKED, 0 cases,
+0 unavailable, with generic reasons `world_last30days_failed` and
+`world_grounder_failed`; the original cause remains unknown. This records run
+metadata and the reported outcome, not a reconstruction of discarded detail.
+The 16 focused Host World tests, compileall, and diff check passed. Independent
+review found missing native launcher categories; the four-code correction and
+targeted re-review passed. No post-fix live validation is claimed.
+
 ## Latest Event run (2026-10-13)
 
 The latest Event validation used reviewed commit `bc57759`. Main verified
