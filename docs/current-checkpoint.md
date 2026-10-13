@@ -45,6 +45,17 @@ proportional self-review apply, not a full suite. This is requested validation,
 not implementation: production-edit share is 0%; whole-phase timing was not
 measured and no 70% delivery claim is made.
 
+Offline follow-up found an instruction/checker mismatch: normal Event's v0.9
+discovery prompt permits a reassessment basis observed fact in the supporting
+dependency closure, without explicitly requiring the support/contradiction/basis
+root lists to be globally disjoint. The receipt checker rejects duplicates in
+their concatenation (`host_grounder_semantic.py`, hypothesis root checks).
+That mismatch is demonstrated from code, not proven to be this run's exact
+overlap. Resolve the existing contract's intended reference reuse semantics
+before any correction; do not simply weaken the checker or force alternative
+claims. Unresolved semantic verdicts are not retried; the optional discovery
+retry is format repair only. No additional live call or code edit occurred.
+
 ## Private receipt-rejection checks — 2026-10-13
 
 Implemented behavior-preserving closed logging at actual receipt-conversion
