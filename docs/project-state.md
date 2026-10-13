@@ -1,5 +1,15 @@
 # Project State
 
+Latest separately approved Nasdaq Event run after the root-role correction:
+HTTP 201; receipt validated; Builder completed without rejection diagnostics;
+submission PRESENT; EI ASSESSED / incomplete. Final BLOCKED / HOST_BATCH_BLOCKED:
+0 cases, 1 unavailable, with explicit missing event description/date, listing,
+distribution, temporal applicability and falsification evidence. Coverage is
+supported but retains a gap. No positive Core loop or complete factual proof.
+The new `/private/tmp/ch-event-rootfix.TF92VV/` guard is spent; no retry or
+production/configuration change. See
+[the latest result](current-checkpoint.md#post-root-correction-one-shot-event-validation--2026-10-13).
+
 Reassessment root-role reuse is corrected against existing EI v0.2/Builder
 semantics: the same verified supporting fact may also be a reassessment basis.
 Uniqueness within each list, support/contradiction disjointness and all evidence,

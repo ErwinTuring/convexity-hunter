@@ -2,6 +2,48 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Post-root-correction one-shot Event validation — 2026-10-13
+
+Fresh fetch confirmed clean HEAD/main/origin/main at `36a4bd2`. The separate
+approval authorized one new Nasdaq 23/5 batch with unchanged source ceilings
+(two requests/three credits) and two requests per model role. A preflight
+initially stopped before creating any guard or POST because the worker lacked
+the known external config path; supplying that path resolved it without a
+configuration change, extra authorization or external operation.
+
+Exactly one fresh guarded POST returned HTTP 201 for
+`48078488-88e5-401c-b8fa-c9a4da599e11`, then was read back. POST interval:
+2026-10-13 05:50:24.685–05:50:55.858 UTC (31.173s); evaluation date 2026-10-13.
+Runner session `38171` exited 0. Mode-0600 sanitized `safe-result.json` and spent guard remain
+in mode-0700 `/private/tmp/ch-event-rootfix.TF92VV/`; never reset/replay them.
+No retry, extra source/model/provider operation or quote refresh occurred.
+Configured limits were checked; actual consumption is not reported.
+
+Grounder and Builder COMPLETED; receipt validated; submission PRESENT;
+EI ASSESSED / incomplete. Five source bodies, nine claims, one hypothesis,
+16 field bindings and one coverage record were retained. Coverage model and
+validator were supported, but `gap_present=true`; bounded support is not
+complete coverage or factual certainty. Builder diagnostic counts were empty;
+Main observed no new private rejection-check line. That absence is not proof
+of complete evidence or proof the prior run had exactly the corrected defect.
+Archived source status remains UNKNOWN despite retained bodies.
+
+Final result: BLOCKED / HOST_BATCH_BLOCKED, zero cases and one unavailable.
+Reasons: event_intelligence_not_accepted, missing_event_description,
+incomplete_event_date_range, missing_underlying_key, missing_distribution_mode,
+missing_distribution_hypothesis, missing_temporal_applicability,
+missing_falsification_conditions. Core case reasons are empty because no Core
+case exists; executor-stage counts/coverage are null, distinct from the actual
+top-level batch counts. This validates a real submission-to-EI check, not
+EI acceptance or a positive Core loop. Do not invent missing fields, relax EI
+or mechanically rerun. Next work must address the lawful preparation of those
+specific Core-entry dependencies, not more receipt-rejection telemetry.
+
+Only checkpoint documentation changed. Relative repository links/fences and
+diff checks apply; no full suite for this evidence record. Production editing
+share is 0% for this authorized live-validation unit; whole-phase timing is not
+measured, so no 70% delivery share is claimed.
+
 ## Reassessment root-role reuse correction — 2026-10-13
 
 Fresh fetch succeeded; HEAD/main/origin/main were equal at `eee2bd5` with a
