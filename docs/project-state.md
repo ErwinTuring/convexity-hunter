@@ -1,5 +1,15 @@
 # Project State
 
+Offline input-preparation trace found no Builder field-loss defect: retained
+distribution/temporal/listing fields are null and falsification conditions empty;
+the mapper would preserve supplied valid values. Description/date lack Host
+context bindings. No code or prompt change is justified merely to fill them.
+An exact retained primary-source format and lawful identity/occurrence evidence
+must precede any successor. All five retained locators are non-Nasdaq/non-SEC;
+no IR format extension is supported by this batch. Next is targeted primary
+source acquisition, not another unchanged live replay. See
+[the trace boundary](current-checkpoint.md#event-input-preparation-trace--2026-10-13).
+
 Latest separately approved Nasdaq Event run after the root-role correction:
 HTTP 201; receipt validated; Builder completed without rejection diagnostics;
 submission PRESENT; EI ASSESSED / incomplete. Final BLOCKED / HOST_BATCH_BLOCKED:

@@ -2,6 +2,48 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Event input-preparation trace — 2026-10-13
+
+Read-only preflight at clean, freshly fetched `4955f5c` inspected the retained
+EI submission for run `48078488-88e5-401c-b8fa-c9a4da599e11` and the actual
+Builder/context code. No live call, replay, production edit or credential read.
+Retained description, event date range, underlying key, distribution mode,
+distribution hypothesis, expected window and reassessment are null;
+falsification conditions are empty. Impact path is present, uncertainties count
+four and supporting statement IDs count nine. No missing-support/fact/
+interpretation issue was recorded; this is not proof those statements are true.
+
+The mapper copies non-null distribution values and falsification conditions;
+invalid required bindings reject a hypothesis with diagnostics. A retained
+hypothesis with zero Builder diagnostics supports null/empty input to Builder,
+not loss in conversion. Original producer-wire values cannot be reconstructed
+from counts/hashes alone. Description/date come from Host context, not from
+those hypothesis fields. No demonstrated Builder/EI defect justifies a patch.
+
+The five retained public locator hostnames are `www.freewritings.law`,
+`www.sifma.org`, `www.troutman.com`, `www.stblaw.com`, and `www.wilmerhale.com`.
+No retained locator is a Nasdaq or SEC primary address. This establishes the
+retained-source gap, not global absence of primary material. It supplies no
+already-admitted IR format for a parser extension; the SEC 8-K grammar does
+not match these addresses. Next work should acquire the exact primary
+announcement/regulatory record under a separately bounded source operation,
+before proposing a source-format successor. Do not upgrade secondary analysis
+to primary identity/occurrence authority or rerun the same broad Event input.
+
+The current prompt already distinguishes facts from explanatory interpretation.
+No prompt rewrite or mandatory field filling is justified by this trace. The
+multiple-fact description grammar rejects supported coverage with a gap;
+general IR occurrence formats remain outside the SEC-only date grammar, but
+neither is proven to be the complete cause of this run. A successor must first
+bind an exact already-admitted source format, authoritative occurrence and
+identity evidence; never infer a date from publication, a symbol from similarity
+or a maturity/impact boundary from available options. Without that concrete
+evidence, stop before production changes instead of building around nulls.
+
+This unit is read-only diagnosis, not coding or a positive Event/Core loop.
+Production-edit share is 0%; whole-phase time split was not measured. The
+70% delivery target is not achieved by relabeling this trace as implementation.
+
 ## Post-root-correction one-shot Event validation — 2026-10-13
 
 Fresh fetch confirmed clean HEAD/main/origin/main at `36a4bd2`. The separate
