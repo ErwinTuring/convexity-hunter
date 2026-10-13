@@ -1,5 +1,13 @@
 # Project State
 
+Reassessment root-role reuse is corrected against existing EI v0.2/Builder
+semantics: the same verified supporting fact may also be a reassessment basis.
+Uniqueness within each list, support/contradiction disjointness and all evidence,
+dependency/provenance gates remain enforced. Independent targeted review and
+23 focused tests passed; full regression/deployment evidence is recorded in
+[the correction checkpoint](current-checkpoint.md#reassessment-root-role-reuse-correction--2026-10-13).
+No new real Event operation, schema/prompt/budget change or historical promotion.
+
 Latest separately approved normal Nasdaq Event validation ran exactly once
 from `75c7d19`: HTTP 201, BLOCKED / GROUNDING_NO_SUBMISSION. Five sources,
 nine claims, one hypothesis and 26 bindings were retained; coverage unresolved.

@@ -2,6 +2,46 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Reassessment root-role reuse correction — 2026-10-13
+
+Fresh fetch succeeded; HEAD/main/origin/main were equal at `eee2bd5` with a
+clean tree. Read-only preflight confirmed existing EI v0.2/Builder contracts
+allow a fact to be both a supporting root and reassessment basis. The converter
+incorrectly rejected duplicate IDs across the concatenated roles. This is an
+implementation correction to existing semantics, not an evidence relaxation.
+See [the invariant clarification](host-grounder-semantic-validation-v0.1.md#hypothesis-root-role-identity-clarification--2026-10-13).
+
+The narrow replacement requires nonempty support, uniqueness within each role
+list and disjoint support/contradiction. All roots still need verification and
+complete dependencies; exact source/binding checks, verifier unresolved handling,
+Builder reassessment provenance and EI acceptance are unchanged. No wire/API,
+prompt, budget, retry or provider change. Historical receipts stay historical;
+this does not prove the precise cause of the preceding real run or real EI/Core
+success. Added five tests cover legitimate shared basis, indirect support
+closure, duplicate lists, support/contradiction overlap and rejected/unknown
+roots with independent-hypothesis survival. Independent targeted review PASS;
+23 semantic tests and two existing Builder/EI reassessment tests PASS.
+
+Full discovery ran 1,982 tests in 299.513s, ending with 29 loopback socket-binding
+PermissionErrors under sandbox; that command is not a PASS. All 51 Host server
+tests, including the affected 29, then passed outside sandbox in 1.026s. Together
+these runs cover the complete suite without a remaining reported failure;
+there is no claim of a single successful whole-suite invocation. Compileall,
+unchanged one-export/public-signature check, documentation links/fences and
+diff checks PASS. The LibreSSL warning is non-fatal.
+
+The confirmed idle Host listener was gracefully stopped and normal Host restarted
+in session `80818`, with unchanged private configuration. GET-only checks confirm
+READY and all three executors CONFIGURED; all seven archived run IDs/statuses
+are exactly preserved and no new run exists. No live source/model/provider call
+or spent-run replay is authorized by this correction. A new separately bounded
+validation approval has been requested; do not execute it until confirmed.
+Work accounting: the worker reported a 55ms patch operation and 0.018s focused
+test execution, not full coding/thinking/test-authoring intervals. Those figures
+cannot establish a phase percentage; the 70% delivery target is not claimed.
+The substantive delivery is one production gate correction, not a new positive
+three-entry live result.
+
 ## Fresh Event rejection-category validation — 2026-10-13
 
 The separately approved operation ran once from clean, equal HEAD/main/origin/main

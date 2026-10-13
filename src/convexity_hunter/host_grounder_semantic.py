@@ -486,7 +486,13 @@ def build_semantic_validation_receipt(
         reassessment = hypothesis["reassessment"]
         basis = [] if reassessment is None else reassessment["basis_claim_ids"]
         roots = support + contradiction + basis
-        if not support or len(set(roots)) != len(roots) or set(support) & set(contradiction):
+        if (
+            not support
+            or len(set(support)) != len(support)
+            or len(set(contradiction)) != len(contradiction)
+            or len(set(basis)) != len(basis)
+            or set(support) & set(contradiction)
+        ):
             _record_rejection_check(rejection_checks, "hypothesis_roots")
             failures.append("hypothesis claim roots are empty, duplicated, or overlapping")
         if any(root not in verified_claim_set for root in roots):

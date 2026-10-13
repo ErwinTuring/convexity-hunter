@@ -78,6 +78,26 @@ before making the receipt. Refs are locators, not proof. The verifier assesses
 claims in context; neither source self-labels nor producer-model statuses are
 sole authority.
 
+### Hypothesis root-role identity clarification — 2026-10-13
+
+The existing EI v0.2 and Builder contracts require nonempty support, uniqueness
+within each of supporting, contradicting and reassessment-basis lists, and
+disjoint supporting/contradicting lists. They do not require reassessment basis
+roots to be disjoint from supporting roots. A sourced observed fact may both
+support the hypothesis and justify its reassessment; basis membership in the
+supporting dependency closure remains required by the existing EI provenance
+rules. Each referenced root must still be independently verified, with complete
+dependencies and exact references/bindings. Reference reuse adds no authority.
+
+The previous receipt converter's global uniqueness check over concatenated
+roles was an implementation defect, not a stricter frozen economic policy.
+Correct it to these existing invariants without changing wire schemas, public
+signatures, verifier outcomes, budgets, retries or EI acceptance. Historical
+receipts/results are not rewritten or automatically promoted. The correction
+does not resolve unresolved verifier evidence and does not establish that it
+caused every rejection in the latest live run. Git identifies the corrected
+implementation; no schema bump is warranted for unchanged field semantics.
+
 Assess only readable Host-registered bodies acquired within the authorized
 source budget. Retain each exact UTF-8 body (or immutable body record), hash,
 source ID, final locator, and retrieval metadata. URLs, snippets, titles,

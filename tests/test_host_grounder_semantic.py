@@ -158,6 +158,106 @@ def _case():
     return envelope, verdict, {source_id: body}
 
 
+def _refresh_envelope_hash(envelope, verdict):
+    envelope = parse_model_output_envelope(
+        json.dumps(envelope, ensure_ascii=False),
+        _LIMITS["max_input_bytes"],
+        max_string_bytes=_LIMITS["max_string_bytes"],
+        max_array_items=_LIMITS["max_array_items"],
+    )
+    verdict["envelope_hash"] = _hash(
+        json.dumps(
+            envelope,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    )
+    return envelope
+
+
+def _reassessment_case(*, support=None, contradiction=None, basis=None):
+    envelope, verdict, bodies = _case()
+    source_id = "source-z"
+    body = bodies[source_id]
+    fact_quote = "The milestone is scheduled for 2026-12-31."
+    interpretation_quote = "This milestone may affect the distribution."
+    body = body + " " + fact_quote + " " + interpretation_quote
+    bodies[source_id] = body
+
+    for name in ("claims", "hypotheses", "field_bindings", "coverage"):
+        for record in verdict[name]:
+            for ref in record["evidence_refs"]:
+                ref["body_sha256"] = _hash(body)
+    verdict["source_body_hashes"][0]["sha256"] = _hash(body)
+
+    fact = envelope["claims"][0]
+    fact["quote"] = fact_quote
+    fact["text"] = fact_quote
+    envelope["claims"].append(
+        {
+            "claim_id": "claim-2",
+            "kind": "interpretation",
+            "source_id": source_id,
+            "locator": "page 1",
+            "quote": interpretation_quote,
+            "text": interpretation_quote,
+            "entity_refs": [],
+            "event_date": None,
+            "published_at": None,
+            "dependency_claim_ids": ["claim-1"],
+            "uncertainty": [],
+            "falsification_conditions": [],
+        }
+    )
+    verdict["claims"][0]["evidence_refs"] = [_ref(source_id, body, fact_quote)]
+    verdict["claims"].append(
+        {
+            "claim_id": "claim-2",
+            "outcome": "supported",
+            "rationale": "The source relates the milestone to the hypothesis.",
+            "evidence_refs": [_ref(source_id, body, interpretation_quote)],
+        }
+    )
+
+    hypothesis = envelope["hypotheses"][0]
+    hypothesis["supporting_claim_ids"] = (
+        ["claim-1", "claim-2"] if support is None else list(support)
+    )
+    hypothesis["contradicting_claim_ids"] = (
+        [] if contradiction is None else list(contradiction)
+    )
+    hypothesis["reassessment"] = {
+        "reassessment_by": "2026-12-31",
+        "methodology": "source-backed-milestone:claim-1:2026-12-31",
+        "basis_kind": "source_backed_milestone",
+        "basis_claim_ids": ["claim-1"] if basis is None else list(basis),
+    }
+    date_quote = "2026-12-31"
+    date_start = body.index(date_quote)
+    envelope["field_bindings"].append(
+        {
+            "field_path": "/hypotheses/0/reassessment/reassessment_by",
+            "source_id": source_id,
+            "quote": date_quote,
+            "start": date_start,
+            "end": date_start + len(date_quote),
+            "semantic_role": "date",
+            "status": "supported",
+        }
+    )
+    verdict["field_bindings"].append(
+        {
+            "index": 1,
+            "outcome": "supported",
+            "rationale": "The source gives the reassessment date.",
+            "evidence_refs": [_ref(source_id, body, date_quote)],
+        }
+    )
+    return _refresh_envelope_hash(envelope, verdict), verdict, bodies
+
+
 def _build(envelope, verdict, bodies, **overrides):
     args = dict(
         run_id=_RUN_ID,
@@ -188,6 +288,106 @@ class HostGrounderSemanticTests(unittest.TestCase):
         self.assertEqual(receipt["verified_hypothesis_ids"], ("hypothesis-1",))
         self.assertEqual(receipt["verified_binding_indices"], (0,))
         self.assertEqual(receipt["coverage_outcomes"][0][2], "supported")
+
+    def test_shared_support_and_basis_fact_pass_with_exact_reassessment_binding(self):
+        envelope, verdict, bodies = _reassessment_case()
+
+        receipt = _build(envelope, verdict, bodies)
+
+        self.assertEqual(receipt["verified_claim_ids"], ("claim-1", "claim-2"))
+        self.assertEqual(receipt["verified_hypothesis_ids"], ("hypothesis-1",))
+        self.assertEqual(receipt["verified_binding_indices"], (0, 1))
+        self.assertEqual(
+            envelope["hypotheses"][0]["reassessment"],
+            {
+                "reassessment_by": "2026-12-31",
+                "methodology": "source-backed-milestone:claim-1:2026-12-31",
+                "basis_kind": "source_backed_milestone",
+                "basis_claim_ids": ["claim-1"],
+            },
+        )
+
+    def test_basis_claim_in_verified_support_dependency_closure_passes(self):
+        envelope, verdict, bodies = _reassessment_case(
+            support=["claim-2"], basis=["claim-1"]
+        )
+
+        receipt = _build(envelope, verdict, bodies)
+
+        self.assertEqual(receipt["verified_hypothesis_ids"], ("hypothesis-1",))
+
+    def test_hypothesis_roots_reject_within_list_duplicates(self):
+        cases = (
+            ("support", ["claim-1", "claim-1", "claim-2"], [], ["claim-1"]),
+            ("contradiction", ["claim-2"], ["claim-1", "claim-1"], ["claim-2"]),
+            ("basis", ["claim-1", "claim-2"], [], ["claim-1", "claim-1"]),
+        )
+        for label, support, contradiction, basis in cases:
+            with self.subTest(label=label):
+                envelope, verdict, bodies = _reassessment_case(
+                    support=support,
+                    contradiction=contradiction,
+                    basis=basis,
+                )
+
+                receipt = _build(envelope, verdict, bodies)
+
+                self.assertEqual(receipt["verified_hypothesis_ids"], ())
+                self.assertIn(
+                    "hypothesis claim roots are empty, duplicated, or overlapping",
+                    receipt["rejected_hypotheses"][0][1],
+                )
+
+    def test_hypothesis_roots_still_require_support_and_disjoint_contradiction(self):
+        cases = (
+            ("empty support", [], [], ["claim-1"]),
+            ("support contradiction overlap", ["claim-1", "claim-2"], ["claim-1"], ["claim-1"]),
+        )
+        for label, support, contradiction, basis in cases:
+            with self.subTest(label=label):
+                envelope, verdict, bodies = _reassessment_case(
+                    support=support,
+                    contradiction=contradiction,
+                    basis=basis,
+                )
+
+                receipt = _build(envelope, verdict, bodies)
+
+                self.assertEqual(receipt["verified_hypothesis_ids"], ())
+                self.assertIn(
+                    "hypothesis claim roots are empty, duplicated, or overlapping",
+                    receipt["rejected_hypotheses"][0][1],
+                )
+
+    def test_unverified_shared_root_rejects_only_its_hypothesis(self):
+        envelope, verdict, bodies = _reassessment_case(
+            support=["claim-2", "missing-claim"],
+            basis=["missing-claim"],
+        )
+        unrelated = copy.deepcopy(envelope["hypotheses"][0])
+        unrelated["hypothesis_id"] = "hypothesis-2"
+        unrelated["underlying_symbol"] = None
+        unrelated["reassessment"] = None
+        unrelated["supporting_claim_ids"] = ["claim-2"]
+        unrelated["contradicting_claim_ids"] = []
+        envelope["hypotheses"].append(unrelated)
+        verdict["hypotheses"].append(
+            {
+                "hypothesis_id": "hypothesis-2",
+                "outcome": "supported",
+                "rationale": "The independent interpretation remains supported.",
+                "evidence_refs": [
+                    _ref("source-z", bodies["source-z"], "ACME")
+                ],
+            }
+        )
+        envelope = _refresh_envelope_hash(envelope, verdict)
+
+        receipt = _build(envelope, verdict, bodies)
+
+        self.assertEqual(receipt["verified_hypothesis_ids"], ("hypothesis-2",))
+        self.assertEqual(receipt["rejected_hypotheses"][0][0], "hypothesis-1")
+        self.assertIn("dependency closure is incomplete", receipt["rejected_hypotheses"][0][1])
 
     def test_explicit_v02_receipt_selector_preserves_v01_default(self):
         envelope, verdict, bodies = _case()
