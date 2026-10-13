@@ -1,5 +1,13 @@
 # Project State
 
+Private receipt-rejection check logging is implemented and reviewed, without
+changing evidence gates or stored schemas. It records only closed categories
+after successful receipt validation; coverage-only failures and historical
+discarded detail remain outside its scope. The 189 related tests, compileall
+and API checks passed. Normal Host is READY; six historical runs are preserved.
+No fresh source operation was performed. See
+[the current checkpoint](current-checkpoint.md#private-receipt-rejection-checks--2026-10-13).
+
 Latest approved normal Event validation after Source Facts v0.2 returned
 HTTP 201 / BLOCKED / GROUNDING_NO_SUBMISSION. Five source bodies, ten claims,
 one hypothesis and 21 bindings were retained; coverage remained unresolved

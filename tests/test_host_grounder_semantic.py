@@ -2,7 +2,9 @@ import copy
 import hashlib
 import json
 import unittest
+from unittest.mock import patch
 
+import convexity_hunter.host_grounder_semantic as semantic_module
 from convexity_hunter.host_grounder_schema import parse_model_output_envelope
 from convexity_hunter.host_grounder_semantic import (
     build_semantic_validation_receipt,
@@ -265,13 +267,17 @@ class HostGrounderSemanticTests(unittest.TestCase):
         envelope, verdict, bodies = _case()
         body = bodies["source-z"]
         verdict["claims"][0]["evidence_refs"] = [_ref("source-z", body, "listed issuer")]
-        receipt = _build(envelope, verdict, bodies)
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            receipt = _build(envelope, verdict, bodies)
 
         self.assertEqual(receipt["verified_claim_ids"], ())
         self.assertEqual(receipt["rejected_claims"][0][0], "claim-1")
         self.assertIn("unique exact claim quote", receipt["rejected_claims"][0][1])
         self.assertEqual(receipt["verified_hypothesis_ids"], ())
         self.assertEqual(receipt["coverage_outcomes"][0][2], "unresolved")
+        self.assertIn(
+            "missing_exact_reference=1", "\n".join(captured.output)
+        )
 
     def test_verifier_verdict_not_producer_self_label_controls_receipt(self):
         envelope, verdict, bodies = _case()
@@ -284,10 +290,15 @@ class HostGrounderSemanticTests(unittest.TestCase):
         verdict["coverage"][0]["rationale"] = "The requested claim is not established."
         verdict["coverage"][0]["evidence_refs"] = [_ref("source-z", bodies["source-z"], "ACME")]
 
-        receipt = _build(envelope, verdict, bodies)
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            receipt = _build(envelope, verdict, bodies)
         self.assertEqual(receipt["verified_claim_ids"], ())
         self.assertEqual(receipt["verified_binding_indices"], ())
         self.assertEqual(receipt["coverage_outcomes"][0][2], "unresolved")
+        event = "\n".join(captured.output)
+        self.assertIn("verifier_unresolved=2", event)
+        self.assertIn("required_field_binding=1", event)
+        self.assertNotIn("The source is ambiguous.", event)
         # The envelope itself said coverage was contradicted and binding unresolved;
         # neither those labels nor the verifier's contradiction certify truth.
 
@@ -352,13 +363,15 @@ class HostGrounderSemanticTests(unittest.TestCase):
             ).encode("utf-8")
         ).hexdigest()
 
-        receipt = _build(envelope, verdict, bodies)
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            receipt = _build(envelope, verdict, bodies)
 
         self.assertEqual(receipt["verified_claim_ids"], ())
         self.assertEqual(receipt["rejected_claims"][0][0], "claim-1")
         self.assertIn("unverified IDs", receipt["rejected_claims"][0][1])
         self.assertEqual(receipt["verified_hypothesis_ids"], ())
         self.assertIn("incomplete", receipt["rejected_hypotheses"][0][1])
+        self.assertIn("dependency_closure=1", "\n".join(captured.output))
 
     def test_instruction_like_body_text_is_opaque_to_deterministic_conversion(self):
         # This exercises deterministic parsing/conversion only; it says nothing
@@ -385,6 +398,195 @@ class HostGrounderSemanticTests(unittest.TestCase):
         self.assertEqual(receipt["verified_claim_ids"], ())
         self.assertEqual(receipt["verified_hypothesis_ids"], ())
         self.assertEqual(receipt["coverage_outcomes"][0][2], "unresolved")
+
+    def test_rejection_logging_is_closed_and_preserves_exact_receipt(self):
+        envelope, verdict, bodies = _case()
+        rationale = "LOG_SENTINEL https://private.invalid/?token=do-not-log"
+        verdict["claims"][0]["outcome"] = "unresolved"
+        verdict["claims"][0]["rationale"] = rationale
+        verdict["claims"][0]["evidence_refs"] = []
+
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            receipt = _build(envelope, verdict, bodies)
+
+        expected = {
+            "schema_version": "semantic-validation-v0.1",
+            "run_id": _RUN_ID,
+            "canonical_input_hash": _INPUT_HASH,
+            "envelope_hash": verdict["envelope_hash"],
+            "source_body_hashes": (("source-z", _hash(bodies["source-z"])),),
+            "validator_id": "configured-semantic-verifier",
+            "validator_version": "model-v1/prompt-v1",
+            "verified_claim_ids": (),
+            "rejected_claims": (("claim-1", "verifier_unresolved: " + rationale),),
+            "verified_hypothesis_ids": (),
+            "rejected_hypotheses": (
+                ("hypothesis-1", "hypothesis claim dependency closure is incomplete"),
+            ),
+            "verified_binding_indices": (0,),
+            "rejected_bindings": (),
+            "coverage_outcomes": (
+                (
+                    0,
+                    "question-1",
+                    "unresolved",
+                    "Host gate: coverage has no complete verified claim closure",
+                ),
+            ),
+        }
+        self.assertEqual(receipt, expected)
+        event = "\n".join(captured.output)
+        self.assertIn("verifier_unresolved=1", event)
+        self.assertIn("hypothesis_roots=1", event)
+        for private_value in (
+            rationale,
+            "claim-1",
+            "hypothesis-1",
+            "source-z",
+            "Acme Corp filed an 8-K.",
+            "/hypotheses/0/underlying_symbol",
+            "configured-semantic-verifier",
+            "model-v1/prompt-v1",
+        ):
+            self.assertNotIn(private_value, event)
+
+    def test_exact_reference_and_missing_binding_checks_are_logged(self):
+        envelope, verdict, bodies = _case()
+        body = bodies["source-z"]
+        verdict["claims"][0]["evidence_refs"] = [
+            _ref("source-z", body, "listed issuer")
+        ]
+        verdict["field_bindings"][0]["evidence_refs"] = [
+            _ref("source-z", body, "Acme Corp filed an 8-K.")
+        ]
+
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            receipt = _build(envelope, verdict, bodies)
+
+        event = "\n".join(captured.output)
+        self.assertIn("missing_exact_reference=2", event)
+        self.assertIn("required_field_binding=1", event)
+        self.assertEqual(
+            receipt["rejected_claims"],
+            (("claim-1", "supported verdict lacks unique exact claim quote reference"),),
+        )
+        self.assertEqual(
+            receipt["rejected_bindings"],
+            ((0, "supported verdict lacks exact field binding reference"),),
+        )
+        self.assertIn("hypothesis_roots=1", event)
+
+    def test_dependency_cycle_and_hypothesis_support_source_checks_are_logged(self):
+        envelope, verdict, bodies = _case()
+        envelope = copy.deepcopy(envelope)
+        envelope["claims"][0]["dependency_claim_ids"] = ["claim-1"]
+        verdict["envelope_hash"] = hashlib.sha256(
+            json.dumps(
+                envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode("utf-8")
+        ).hexdigest()
+        other_body = "A separate registered body."
+        bodies = dict(bodies)
+        bodies["source-other"] = other_body
+        verdict["source_body_hashes"] = [
+            {"source_id": source_id, "sha256": _hash(body)}
+            for source_id, body in sorted(bodies.items())
+        ]
+        verdict["hypotheses"][0]["outcome"] = "contradicted"
+        verdict["hypotheses"][0]["rationale"] = "Do not emit this rationale."
+        verdict["hypotheses"][0]["evidence_refs"] = [
+            _ref("source-other", other_body, "separate registered body")
+        ]
+
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            receipt = _build(envelope, verdict, bodies)
+
+        event = "\n".join(captured.output)
+        self.assertIn("dependency_cycle=1", event)
+        self.assertIn("verifier_contradicted=1", event)
+        self.assertIn("hypothesis_support_source=1", event)
+        self.assertNotIn("Do not emit this rationale.", event)
+        self.assertEqual(
+            receipt["rejected_claims"],
+            (("claim-1", "claim dependency cycle or incomplete closure"),),
+        )
+        self.assertEqual(
+            receipt["rejected_hypotheses"],
+            (
+                (
+                    "hypothesis-1",
+                    "verifier_contradicted: Do not emit this rationale.; "
+                    "hypothesis claim dependency closure is incomplete; "
+                    "hypothesis refs do not cite a supporting-closure source",
+                ),
+            ),
+        )
+
+    def test_supported_run_is_quiet_and_retains_single_receipt_validation(self):
+        envelope, verdict, bodies = _case()
+        validator = semantic_module.validate_semantic_validation_receipt
+        with patch.object(semantic_module._LOGGER, "warning") as warning, patch.object(
+            semantic_module,
+            "validate_semantic_validation_receipt",
+            wraps=validator,
+        ) as validate:
+            receipt = _build(envelope, verdict, bodies)
+
+        warning.assert_not_called()
+        validate.assert_called_once()
+        self.assertEqual(receipt["verified_claim_ids"], ("claim-1",))
+        self.assertEqual(receipt["verified_hypothesis_ids"], ("hypothesis-1",))
+
+    def test_rejection_logger_is_exact_type_safe_and_best_effort(self):
+        class HostileString(str):
+            def __str__(self):
+                raise AssertionError("hostile string coerced")
+
+            def __repr__(self):
+                raise AssertionError("hostile string represented")
+
+        class HostileObject:
+            def __str__(self):
+                raise AssertionError("hostile object coerced")
+
+            def __repr__(self):
+                raise AssertionError("hostile object represented")
+
+        checks = {}
+        semantic_module._record_rejection_check(checks, HostileString("verifier_unresolved"))
+        semantic_module._record_rejection_check(checks, HostileObject())
+        semantic_module._record_verifier_rejection(checks, HostileString("contradicted"))
+        self.assertEqual(checks, {"unknown": 3})
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            semantic_module._emit_rejection_checks(checks)
+        self.assertIn("unknown=3", "\n".join(captured.output))
+
+        envelope, verdict, bodies = _case()
+        verdict["claims"][0]["outcome"] = "unresolved"
+        verdict["claims"][0]["evidence_refs"] = []
+        expected = _build(envelope, verdict, bodies)
+
+        class FailingLogger:
+            def warning(self, *_args, **_kwargs):
+                raise RuntimeError("handler failed")
+
+        with patch.object(semantic_module, "_LOGGER", FailingLogger()):
+            self.assertEqual(_build(envelope, verdict, bodies), expected)
+
+    def test_rejection_logging_waits_for_successful_receipt_validation(self):
+        envelope, verdict, bodies = _case()
+        verdict["claims"][0]["outcome"] = "unresolved"
+        verdict["claims"][0]["evidence_refs"] = []
+
+        with patch.object(semantic_module._LOGGER, "warning") as warning, patch.object(
+            semantic_module,
+            "validate_semantic_validation_receipt",
+            side_effect=ValueError("validation failed"),
+        ):
+            with self.assertRaisesRegex(ValueError, "validation failed"):
+                _build(envelope, verdict, bodies)
+
+        warning.assert_not_called()
 
 
 if __name__ == "__main__":

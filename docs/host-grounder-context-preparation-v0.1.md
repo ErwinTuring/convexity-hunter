@@ -233,3 +233,27 @@ this work unit. This contract does not reopen any spent protocol.
 Offline tests must inject each failure, prove zero preparer/Builder calls,
 preserve legacy stage `None` and error representations, and reject arbitrary
 stage values. No fresh live experiment is part of this extension.
+
+## Private receipt-rejection check logging
+
+This behavior-preserving implementation adds no wire, receipt, stored outcome,
+public API or acceptance rule. At existing binding/claim/hypothesis rejection
+branches, collect only these literal categories:
+`verifier_contradicted`, `verifier_unresolved`, `missing_exact_reference`,
+`required_field_binding`, `dependency_closure`, `dependency_cycle`,
+`hypothesis_roots`, `hypothesis_support_source`, and safe fallback `unknown`.
+
+After final receipt validation succeeds, emit one best-effort private line
+`semantic_validation_rejection_checks` with sorted category counts. Counts are
+check occurrences, not distinct rejected records or authenticated factual
+verdicts. Coverage-only failures are explicitly excluded from this bounded
+telemetry. All-supported runs remain quiet. Failed receipt validation emits
+no such line; logger failures cannot affect the returned receipt or policy.
+
+Never parse diagnostic/rationale text to obtain a category or print identifiers,
+dynamic field paths, URLs, quotes, source bodies, model explanations or exception
+details. Preserve receipt content, public signatures and existing reason text.
+The Host archive still retains only existing diagnostic counts: these private
+logs do not restore missing historical explanations or create a durable schema.
+A runtime discarding stderr may discard this log; do not claim World archival
+coverage. A new live run requires separate bounded authorization.

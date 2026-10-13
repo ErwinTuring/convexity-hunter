@@ -2,6 +2,42 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Private receipt-rejection checks — 2026-10-13
+
+Implemented behavior-preserving closed logging at actual receipt-conversion
+binding/claim/hypothesis rejection checks. The safe aggregate is emitted only
+after final receipt validation. It separates verifier unresolved/contradicted
+from exact-reference, field-binding, dependency and hypothesis-root/source
+checks; it never parses free-form rationale. No IDs, URLs, source/model text,
+exception details or credentials are logged. Counts are check occurrences,
+not rejected-record counts. Coverage-only failures are explicitly outside this
+bounded telemetry. Logger failure cannot affect the returned receipt.
+
+Public callable signatures, one declared export, receipt schemas/content,
+reason strings, acceptance and call budgets remain unchanged. Independent
+review passed after clarifying coverage exclusion and private stderr/archive
+limits. Validation: 18 focused semantic tests and 189 related tests PASS
+(0.689s); compileall, API compatibility and diff checks PASS. No full suite
+was repeated for logging-only work; the preceding 1,971-test pass remains the
+whole-suite baseline. See
+[scope and limits](host-grounder-context-preparation-v0.1.md#private-receipt-rejection-check-logging).
+
+Normal Host restarted and is READY with all three executors configured and
+all six historical run IDs/statuses unchanged. Two initial startup attempts
+failed generically; offline config/permission check passed and subsequent
+normal startup succeeded. No exact startup cause is inferred; no database,
+lock, port policy or credential change was made. No new source/model/provider
+operation or spent-run replay occurred. Historical discarded rejection detail
+cannot be recovered; private logs are not a durable outcome schema and World
+stderr suppression may discard them. A separately bounded live-validation
+approval was requested; do not run until confirmed.
+
+Worker-measured production/design was 1m49s and test/review 2m06s: approximately
+46% / 54% of those recorded worker intervals, below the 70% target. This is
+observability delivery, not a completed positive Event/Core research path.
+Main/reviewer/deployment intervals are not fully timed, so these percentages
+are not asserted as the whole-phase split.
+
 ## Post-v0.2 one-shot normal Event validation — 2026-10-13
 
 Grounding: HEAD/main/origin/main were equal at `ec7c7ee` with a clean tree.

@@ -9,6 +9,7 @@ real-world truth.
 
 import hashlib
 import json
+import logging
 import re
 from collections import deque
 from typing import Mapping, Tuple
@@ -27,6 +28,67 @@ _OUTCOMES = frozenset(("supported", "contradicted", "unresolved"))
 _RECEIPT_SCHEMA_VERSIONS = frozenset(
     ("semantic-validation-v0.1", "semantic-validation-v0.2")
 )
+_LOGGER = logging.getLogger(__name__)
+_REJECTION_CHECKS = frozenset(
+    (
+        "dependency_closure",
+        "dependency_cycle",
+        "hypothesis_roots",
+        "hypothesis_support_source",
+        "missing_exact_reference",
+        "required_field_binding",
+        "unknown",
+        "verifier_contradicted",
+        "verifier_unresolved",
+    )
+)
+
+
+def _record_rejection_check(checks: dict, category: object) -> None:
+    """Count only closed check names; never coerce caller-controlled values."""
+    if type(checks) is not dict:
+        return
+    if type(category) is not str or category not in _REJECTION_CHECKS:
+        category = "unknown"
+    count = checks.get(category, 0)
+    if type(count) is not int or count < 0:
+        count = 0
+    checks[category] = count + 1
+
+
+def _record_verifier_rejection(checks: dict, outcome: object) -> None:
+    if type(outcome) is str and outcome == "contradicted":
+        _record_rejection_check(checks, "verifier_contradicted")
+    elif type(outcome) is str and outcome == "unresolved":
+        _record_rejection_check(checks, "verifier_unresolved")
+    else:
+        _record_rejection_check(checks, "unknown")
+
+
+def _emit_rejection_checks(checks: object) -> None:
+    """Emit counts from the closed check vocabulary, swallowing logger failures."""
+    try:
+        if type(checks) is not dict:
+            return
+        safe_counts = {}
+        for category, count in checks.items():
+            if (
+                type(category) is str
+                and category in _REJECTION_CHECKS
+                and type(count) is int
+                and count > 0
+            ):
+                safe_counts[category] = count
+        if not safe_counts:
+            return
+        fields = " ".join(
+            "{}={}".format(category, safe_counts[category])
+            for category in sorted(safe_counts)
+        )
+        _LOGGER.warning("semantic_validation_rejection_checks %s", fields)
+    except Exception:
+        # Observability must never alter receipt construction or rejection policy.
+        return
 
 
 def _limit(value: object, name: str) -> int:
@@ -319,6 +381,7 @@ def build_semantic_validation_receipt(
     for i, binding in enumerate(bindings):
         paths.setdefault(binding["field_path"], []).append(i)
 
+    rejection_checks = {}
     verified_bindings, rejected_bindings = set(), {}
     for i, binding in enumerate(bindings):
         exact = any(
@@ -329,6 +392,10 @@ def build_semantic_validation_receipt(
         if bv[i]["outcome"] == "supported" and exact:
             verified_bindings.add(i)
         else:
+            if bv[i]["outcome"] != "supported":
+                _record_verifier_rejection(rejection_checks, bv[i]["outcome"])
+            else:
+                _record_rejection_check(rejection_checks, "missing_exact_reference")
             rejected_bindings[i] = (
                 "verifier_{}: {}".format(bv[i]["outcome"], bv[i]["rationale"])
                 if bv[i]["outcome"] != "supported"
@@ -341,6 +408,7 @@ def build_semantic_validation_receipt(
         i, claim = claim_map[claim_id]
         record, failures = cv[claim_id], []
         if record["outcome"] != "supported":
+            _record_verifier_rejection(rejection_checks, record["outcome"])
             failures.append("verifier_{}: {}".format(record["outcome"], record["rationale"]))
         else:
             body = source_bodies.get(claim["source_id"])
@@ -352,10 +420,12 @@ def build_semantic_validation_receipt(
                 for r in cr[claim_id]
             )
             if not exact:
+                _record_rejection_check(rejection_checks, "missing_exact_reference")
                 failures.append("supported verdict lacks unique exact claim quote reference")
         for path in _paths_for_claim(claim, i):
             indexes = paths.get(path, ())
             if not indexes or not all(j in verified_bindings for j in indexes):
+                _record_rejection_check(rejection_checks, "required_field_binding")
                 failures.append("required field binding is not supported: {}".format(path))
         claim_failures[claim_id] = failures
 
@@ -368,6 +438,7 @@ def build_semantic_validation_receipt(
             deps = claim_map[cid][1]["dependency_claim_ids"]
             if len(set(deps)) != len(deps) or any(dep not in eligible for dep in deps):
                 eligible.remove(cid)
+                _record_rejection_check(rejection_checks, "dependency_closure")
                 claim_failures[cid].append("dependency closure contains duplicate or unverified IDs")
                 changed = True
     dependants = {cid: [] for cid in eligible}
@@ -386,6 +457,7 @@ def build_semantic_validation_receipt(
             if remaining_deps[parent] == 0:
                 queue.append(parent)
     for cid in eligible - verified_claim_set:
+        _record_rejection_check(rejection_checks, "dependency_cycle")
         claim_failures[cid].append("claim dependency cycle or incomplete closure")
     verified_claim_ids = tuple(cid for cid in claim_ids if cid in verified_claim_set)
     rejected_claims = tuple(
@@ -408,24 +480,29 @@ def build_semantic_validation_receipt(
     for i, hypothesis in enumerate(hypotheses):
         hid, record, failures = hypothesis["hypothesis_id"], hv[hypothesis["hypothesis_id"]], []
         if record["outcome"] != "supported":
+            _record_verifier_rejection(rejection_checks, record["outcome"])
             failures.append("verifier_{}: {}".format(record["outcome"], record["rationale"]))
         support, contradiction = hypothesis["supporting_claim_ids"], hypothesis["contradicting_claim_ids"]
         reassessment = hypothesis["reassessment"]
         basis = [] if reassessment is None else reassessment["basis_claim_ids"]
         roots = support + contradiction + basis
         if not support or len(set(roots)) != len(roots) or set(support) & set(contradiction):
+            _record_rejection_check(rejection_checks, "hypothesis_roots")
             failures.append("hypothesis claim roots are empty, duplicated, or overlapping")
         if any(root not in verified_claim_set for root in roots):
+            _record_rejection_check(rejection_checks, "hypothesis_roots")
             failures.append("hypothesis claim dependency closure is incomplete")
         support_closure = closure(support) if support else set()
         support_sources = {
             claim_map[cid][1]["source_id"] for cid in support_closure if cid in claim_map
         }
         if not support_sources.intersection(r["source_id"] for r in hr[hid]):
+            _record_rejection_check(rejection_checks, "hypothesis_support_source")
             failures.append("hypothesis refs do not cite a supporting-closure source")
         for path in _paths_for_hypothesis(hypothesis, i):
             indexes = paths.get(path, ())
             if not indexes or not all(j in verified_bindings for j in indexes):
+                _record_rejection_check(rejection_checks, "required_field_binding")
                 failures.append("required field binding is not supported: {}".format(path))
         if failures:
             rejected_hypotheses.append((hid, "; ".join(dict.fromkeys(failures))))
@@ -479,4 +556,5 @@ def build_semantic_validation_receipt(
         max_array_items=max_array_items,
         expected_schema_version=receipt_schema_version,
     )
+    _emit_rejection_checks(rejection_checks)
     return receipt
