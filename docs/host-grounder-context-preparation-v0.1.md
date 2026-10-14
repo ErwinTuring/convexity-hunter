@@ -191,7 +191,8 @@ No full-suite rerun or live call belongs to this diagnostic-only extension;
 the last 1,622-test full pass predates both diagnostic extensions.
 Read-only preflight found no demonstrable prompt/parser contradiction. Eight
 synthetic probes respected the existing schema. The new live trial located
-`semantic_wire_parse`, not its exact failed check; do not infer that check
+`semantic_wire_parse` and the then-current generic
+`internal_verdict_validation` label; do not infer a finer historical boundary
 retrospectively or tune prompts to force acceptance.
 
 Extend `HostGrounderRuntimeError` with keyword-only `failure_check=None`.
@@ -206,9 +207,13 @@ Permit only `None` or these exact static strings; non-null requires
 | `catalog_validation` | Registered source/catalog validation |
 | `producer_binding_alignment` | Producer ID tuple, binding count/index and supported-ref alignment |
 | `evidence_ref_expansion` | Section/ref shape, bounds, duplicates, unknown IDs and catalog expansion |
-| `internal_verdict_validation` | Normalization/cap, internal verdict parser and final normalized bytes |
+| `internal_verdict_normalization` | First canonical normalization of the expanded internal DTO |
+| `internal_verdict_validation` | Strict internal verdict parser |
+| `internal_verdict_final_normalization` | Final canonical normalization of the parsed DTO |
 
 These labels identify operations, never factual truth or detailed causes.
+Earlier runs using the former generic `internal_verdict_validation` boundary
+remain coarse and cannot be retrospectively assigned to these three rows.
 Preserve `.code`, `.args`, `str`, existing `repr` and suppressed chaining.
 Receipt-construction/validation failures have no check label. Legacy routes
 retain `None`; accepted/rejected inputs and first-failure precedence stay
@@ -223,8 +228,9 @@ public wrapper delegates without a holder. Only opt-in runtime v0.2 creates a
 holder and calls the private helper; its existing catch copies the closed
 label into the sanitized error. No generic telemetry facility or wire change.
 
-Authorized BUILD scope after review/freeze: catalog module, runtime module and
-focused tests only. Tests cover each category, first-failure precedence,
+Authorized BUILD scope for this additive refinement: catalog module, runtime
+module, Host's fixed diagnostic projection, focused tests and this contract
+table only. Tests cover each category, first-failure precedence,
 identical valid public/diagnostic bytes, legacy errors, illegal stage/check
 combinations, no payload leakage, and zero preparer/Builder calls on failure.
 No model/source requests, live trials, retries or prompt changes are part of

@@ -665,7 +665,8 @@ class HostGrounderRuntimeError(RuntimeError):
             or failure_check not in (
                 "wire_decode", "topshape", "run_binding", "catalog_validation",
                 "producer_binding_alignment", "evidence_ref_expansion",
-                "internal_verdict_validation",
+                "internal_verdict_normalization", "internal_verdict_validation",
+                "internal_verdict_final_normalization",
                 *producer_failure_checks,
                 *semantic_transport_failure_checks,
             )

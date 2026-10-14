@@ -1831,7 +1831,9 @@ class HostServerBatchTests(unittest.TestCase):
             "catalog_validation": "SEMANTIC_FAILURE_CHECK_CATALOG_VALIDATION",
             "producer_binding_alignment": "SEMANTIC_FAILURE_CHECK_PRODUCER_BINDING_ALIGNMENT",
             "evidence_ref_expansion": "SEMANTIC_FAILURE_CHECK_EVIDENCE_REF_EXPANSION",
+            "internal_verdict_normalization": "SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_NORMALIZATION",
             "internal_verdict_validation": "SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_VALIDATION",
+            "internal_verdict_final_normalization": "SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_FINAL_NORMALIZATION",
         }
         project = host_server_module._semantic_failure_diagnostic_codes
 

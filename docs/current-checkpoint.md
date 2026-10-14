@@ -2,6 +2,61 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Semantic operation boundary split (2026-10-14)
+
+The three unchanged operations formerly sharing one diagnostic marker now
+have distinct fixed markers: `internal_verdict_normalization`,
+`internal_verdict_validation`, and `internal_verdict_final_normalization`.
+No exception text is read; public parser signatures, acceptance/rejection,
+canonical bytes, budgets and EI/Core meaning are unchanged. Historical
+coarse failures cannot be retrospectively assigned to a finer operation.
+This is diagnostic localization, not a fix claiming to make malformed model
+output valid. Independent code review passed; 205 related Grounder/Event/Host
+tests, private-cache compileall and diff checks passed. An initial invocation
+without `PYTHONPATH=src` failed imports and is not counted as a pass.
+The full 1,993-test result below belongs to the earlier query-split snapshot,
+not this diagnostic-only change. No live call was made during BUILD.
+
+## Latest real three-entry evidence (2026-10-14)
+
+Code `1f167f5` is pushed; the current local Host (session 60423) is READY
+with all three executors configured and 17 archived runs. Configuration is
+external to Git. Discovery-model timeout is now 180 seconds (previously 45);
+semantic-model and source timeouts remain 45 seconds. Model/token/request
+budgets and evidence gates are unchanged. This is a bounded operational wait
+change, not proof that longer waiting resolves structured-output failures.
+
+- World run `15385058-2117-450c-8150-b1d2d15cceb2`, fresh UTC window
+  2026-10-08 through 2026-10-14: BLOCKED, zero cases. Native coverage was
+  partial (Reddit/Digg not OK); Grounder returned no submission. This is
+  neither market-no-events evidence nor a positive EI/Core loop.
+- Event run `0b5a38c0-0c1f-48ff-aab1-1037cc5a307d`: BLOCKED at discovery
+  model TIMEOUT. The approximately 305-second whole operation is not a
+  305-second model timeout; the configured model deadline was 45 seconds.
+- A new, independent RKLB Event run after deployment,
+  `c71a21d6-773a-4fdc-bc0a-4c8065b9af98`, completed in approximately
+  38 seconds but remained BLOCKED: `SEMANTIC_VERDICT_REJECTED`,
+  `SEMANTIC_FAILURE_STAGE_WIRE_PARSE`,
+  `SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_VALIDATION`. This is a wire/DTO
+  validation failure, not a factual-truth verdict or EI acceptance result.
+  The discarded wire cannot establish its finer cause. Read-only inspection
+  found no demonstrated prompt/parser contradiction. The shorter operation
+  does not establish a causal benefit from the timeout change.
+- Direct run `73bcb07d-9138-4dc5-aa21-b76519b15b6b`: COMPLETED with a full
+  Chinese report for the unchanged AMZN 2026-11-20 K255 Long Straddle,
+  one contract per leg. Fresh provider research used evaluation 2026-10-14,
+  not a cached historical report. Core classification is
+  `DATA_INSUFFICIENT_CORE`, with `unknown_required_component` and
+  `unknown_cost_component`. The approved v0.3 profile deliberately retains
+  entry/funding/exit/settlement costs as UNKNOWN; strategy intent alone does
+  not establish their numerical bounds or broker exercise protection.
+
+All four operation guards are spent; do not replay them. No source counts,
+actual charges, raw model/provider payloads or credentials are inferred or
+retained here. Direct is a real completed research/report path; World/Event
+positive submission-to-Core paths remain unproven. Optional historical
+valuation gaps are not the cause of this Direct Core classification.
+
 ## Deployed query split and model boundary (2026-10-14)
 
 Reviewed commit `7c60770` was pushed and deployed; Host session 29261 recovered

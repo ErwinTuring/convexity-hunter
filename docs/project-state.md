@@ -2,26 +2,30 @@
 
 ## Current operational boundary (2026-10-14)
 
-The query split is deployed. Its World-only policy is verified in the immutable
-journal, despite not appearing in the public projection used by the runner.
-The sole post-fix World run was blocked at native/Grounder model processing,
-not a completed positive Core loop. A minimal 69-token model probe succeeded;
-complex structured requests remain unproven. A bounded, closed transport-hint
-fix passed independent review and 20 World tests without changing budgets or
-evidence. See [the checkpoint](current-checkpoint.md).
+The query split and closed transport hints are pushed and deployed. The latest
+World run returned no submission after partial native coverage; the latest
+RKLB Event failed strict internal wire/DTO validation, before EI/Core. Neither
+is a positive real source-to-Core loop. A fresh unchanged AMZN Direct run did
+complete real provider research and Chinese reporting, classified
+`DATA_INSUFFICIENT_CORE` for required unknown costs, not optional historical
+valuation evidence. Approved cash/no-exercise intent does not establish cost
+bounds or execution protection. The current Host retains 17 runs; a local
+discovery timeout change leaves all budgets and evidence checks unchanged.
+See [the checkpoint](current-checkpoint.md) for exact run identities and limits.
 
 ## World source-query separation (2026-10-14)
 
 The two fresh bounded World runs localized an invalid native-domain input and
 then a Grounder boundary after native partial coverage. Neither proves absence
 of events. The Host-only [query contract](host-world-source-query-v0.1.md)
-is frozen and implemented in the working tree: exact original request for
+is frozen, committed and deployed: exact original request for
 Search/Extract, complete enriched context for models/receipt, unchanged public
 Event API and budgets, and mode-checked versioned World policy metadata.
 No SQLite/catalog migration, Kernel or economic changes. Independent review
 and 170 related tests passed; complete regression passed 1,993 tests, with
-compileall, API compatibility and diff checks also passing. Deployment and
-post-fix real validation remain pending.
+compileall, API compatibility and diff checks also passing on that reviewed
+snapshot. Later deployment and bounded real validation are recorded above;
+they do not establish positive World/Event Core completion.
 See the [current checkpoint](current-checkpoint.md).
 
 ## World safe failure diagnostics (2026-10-14)

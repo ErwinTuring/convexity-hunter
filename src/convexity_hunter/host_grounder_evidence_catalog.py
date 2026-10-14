@@ -661,14 +661,18 @@ def _parse_semantic_verdict_v0_3(
         internal[section] = expanded_records
 
     if progress is not None:
-        progress.failure_check = "internal_verdict_validation"
+        progress.failure_check = "internal_verdict_normalization"
     normalized = _normalized_bytes(internal, max_input_bytes, "normalized verdict")
+    if progress is not None:
+        progress.failure_check = "internal_verdict_validation"
     parsed = parse_semantic_verdict(
         normalized.decode("utf-8", errors="strict"),
         max_input_bytes,
         max_string_bytes=max_string_bytes,
         max_array_items=max_array_items,
     )
+    if progress is not None:
+        progress.failure_check = "internal_verdict_final_normalization"
     return _normalized_bytes(parsed, max_input_bytes, "normalized verdict")
 
 

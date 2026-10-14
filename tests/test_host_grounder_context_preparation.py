@@ -205,7 +205,8 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
         semantic_checks = (
             "wire_decode", "topshape", "run_binding", "catalog_validation",
             "producer_binding_alignment", "evidence_ref_expansion",
-            "internal_verdict_validation",
+            "internal_verdict_normalization", "internal_verdict_validation",
+            "internal_verdict_final_normalization",
         )
         for check in semantic_checks:
             HostGrounderRuntimeError(
@@ -877,6 +878,63 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
             preparer.assert_not_called()
             builder.assert_not_called()
 
+    def test_internal_verdict_operation_checks_are_fixed_and_sanitized(self):
+        sentinel = "PRIVATE_DIAGNOSTIC_SENTINEL"
+        real_normalized_bytes = catalog_module._normalized_bytes
+
+        def fail_first_normalization(value, limit, label):
+            if label == "normalized verdict":
+                raise ValueError(sentinel)
+            return real_normalized_bytes(value, limit, label)
+
+        def fail_final_normalization(value, limit, label):
+            if label == "normalized verdict":
+                fail_final_normalization.calls += 1
+                if fail_final_normalization.calls == 2:
+                    raise RuntimeError(sentinel)
+            return real_normalized_bytes(value, limit, label)
+
+        fail_final_normalization.calls = 0
+        cases = (
+            (
+                "internal_verdict_normalization",
+                "_normalized_bytes",
+                fail_first_normalization,
+            ),
+            (
+                "internal_verdict_validation",
+                "parse_semantic_verdict",
+                Mock(side_effect=ValueError(sentinel)),
+            ),
+            (
+                "internal_verdict_final_normalization",
+                "_normalized_bytes",
+                fail_final_normalization,
+            ),
+        )
+        for check, target, injected_failure in cases:
+            preparer = Mock()
+            with self.subTest(check=check), patch.object(
+                catalog_module, target, side_effect=injected_failure,
+            ), patch.object(runtime_module, "_build_host_grounder_v0_2") as builder:
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    self._invoke(preparer)
+            error = raised.exception
+            self.assertEqual(error.failure_stage, "semantic_wire_parse")
+            self.assertEqual(error.failure_check, check)
+            self.assertEqual(error.code, "SEMANTIC_VERDICT_REJECTED")
+            self.assertEqual(error.args, ("SEMANTIC_VERDICT_REJECTED",))
+            self.assertEqual(str(error), "SEMANTIC_VERDICT_REJECTED")
+            self.assertEqual(
+                repr(error),
+                "HostGrounderRuntimeError(code='SEMANTIC_VERDICT_REJECTED')",
+            )
+            self.assertIsNone(error.__cause__)
+            self.assertTrue(error.__suppress_context__)
+            self.assertNotIn(sentinel, str(error) + repr(error))
+            preparer.assert_not_called()
+            builder.assert_not_called()
+
     def test_public_and_diagnostic_parser_bytes_and_first_failure_are_identical(self):
         run, context = _fixture()
         catalog, producer, _, _, wire = _wire_bundle(run, context)
@@ -920,7 +978,8 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
         checks = (
             "wire_decode", "topshape", "run_binding", "catalog_validation",
             "producer_binding_alignment", "evidence_ref_expansion",
-            "internal_verdict_validation",
+            "internal_verdict_normalization", "internal_verdict_validation",
+            "internal_verdict_final_normalization",
         )
         for check in checks:
             error = HostGrounderRuntimeError("CODE", failure_stage="semantic_wire_parse", failure_check=check)
