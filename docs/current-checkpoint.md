@@ -2,6 +2,40 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Honest abstention and unresolved attribution (2026-10-15)
+
+The user confirmed that a source-backed event need not yield a supported
+economic transmission hypothesis. Philosophy and user-flow guidance now
+separate search completion, supported observations, provisional mechanism and
+EI acceptance. Do not infer absent real-world mechanisms or broken software
+from no submission; explicit transport/parser failures remain technical
+failures, and an evidence-loss allegation needs demonstrated loss.
+
+Read-only inspection found existing contracts/prompts already permit empty
+hypotheses without forced interpretation. No generation, verification, EI,
+Core, status or budget change was justified. The small Workbench presentation
+change explains why zero output alone establishes neither conclusion. The
+existing positive and negative fixtures remain in place; the UI fixture now
+separately checks four actual field bindings and eleven missing-binding
+diagnostics. These are synthetic tests, not a recreation of RKLB source text.
+
+The latest real RKLB result remains `cffaa26d-9e8f-4df9-97c2-749b69fe25ba`:
+five claims, zero hypotheses, four field bindings; five rejected-claim and
+eleven missing-binding diagnostics. It does not locate why substantive
+support or binding was insufficient. Retained aggregates lack source bodies
+and per-claim evidence needed to retrospectively settle that question. The
+older `c71a21d6` coarse failure also cannot be assigned to a finer operation.
+Historical BLOCKED/GROUNDING_NO_SUBMISSION/EI NOT_RUN results are unchanged;
+no empty EI submission or fabricated accepted hypothesis was produced.
+
+Independent review passed. Workbench/Builder/Semantic tests: 55 passed;
+HostServer: 51 passed after sandbox permission allowed local fixture sockets.
+Private-cache compileall and diff checks passed. No full regression was
+repeated for this wording/test-only behavior-preserving unit; the 2,001-test
+full pass belongs to the preceding fee-scenario implementation. No source,
+model or market-data acquisition occurred, and no spent guard was replayed.
+Local deployment/read-only verification will be recorded below.
+
 ## Conditional entry-fee presentation v0.4 (2026-10-14)
 
 The user approved [two explicitly conditional public-tariff scenarios](core-conditional-entry-fees-v0.1.md),

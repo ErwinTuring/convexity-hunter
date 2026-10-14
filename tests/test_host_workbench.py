@@ -312,8 +312,9 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     schema_version: "host-grounder-stage-outcome-v0.1",
     grounder_status: "COMPLETED", source_status: "UNKNOWN", semantic_status: "RECEIPT_VALIDATED",
     builder_status: "COMPLETED", submission_status: "MISSING", ei_status: "NOT_RUN",
-    counts: { source_body_count: 1, claim_count: 1, hypothesis_count: 0, field_binding_count: 1, coverage_count: 2 },
+    counts: { source_body_count: 1, claim_count: 1, hypothesis_count: 0, field_binding_count: 4, coverage_count: 2 },
     diagnostic_counts: [
+      { code: "FIELD_BINDING_MISSING", count: 11 },
       { code: "NO_PROJECTABLE_HYPOTHESIS", count: 1 }
     ],
     coverage: [
@@ -362,7 +363,8 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     "semantic_status：RECEIPT_VALIDATED（不是事实真理）", "builder_status：COMPLETED",
     "EI submission：MISSING", "EI：NOT_RUN", "没有 Core 结果或报告",
     "诊断计数（保留负面结果；不是评分）", "NO_PROJECTABLE_HYPOTHESIS：1",
-    "Hypothesis 边界：输出数为 0；NO_PROJECTABLE_HYPOTHESIS 是 Builder 诊断，不是 verifier 拒绝计数；零输出原因未提供。",
+    "Field binding 数：4", "FIELD_BINDING_MISSING：11",
+    "Hypothesis 边界：输出数为 0；NO_PROJECTABLE_HYPOTHESIS 是 Builder 诊断，不是 verifier 拒绝计数；未形成可投影假设不证明现实无机制；具体原因尚不能从聚合记录判定；不等于已确认程序故障。",
     "model=unresolved", "validator=contradicted", "Hypothesis 数：0", "Coverage 数：2",
     "Producer wire：grounder-output-v0.3", digest("a"), "发送字节=10", "接收字节=40"
   ]) {

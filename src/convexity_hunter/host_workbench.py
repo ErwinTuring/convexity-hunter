@@ -647,7 +647,7 @@ _DOCUMENT = r'''<!doctype html>
         && item.code === "NO_PROJECTABLE_HYPOTHESIS"
         && Number.isSafeInteger(item.count) && item.count > 0);
     if (hypothesisCount === 0 && hasNoProjectableHypothesis) {
-      lines.push("Hypothesis 边界：输出数为 0；NO_PROJECTABLE_HYPOTHESIS 是 Builder 诊断，不是 verifier 拒绝计数；零输出原因未提供。");
+      lines.push("Hypothesis 边界：输出数为 0；NO_PROJECTABLE_HYPOTHESIS 是 Builder 诊断，不是 verifier 拒绝计数；未形成可投影假设不证明现实无机制；具体原因尚不能从聚合记录判定；不等于已确认程序故障。");
     }
 
     lines.push("Coverage（逐项原顺序；状态不是评分或排名）：");

@@ -37,6 +37,17 @@ not a frontend, database or bundled autonomous search service.
 
 ## One Core, three entries
 
+Event/World may legitimately stop without a hypothesis. Search completion,
+source-backed observations, a credible provisional transmission hypothesis,
+and EI acceptance are distinct boundaries. A source need not establish an
+economic connection; a hypothesis need not imply a necessary market outcome.
+Do not invent links or retry to force a positive result. Conversely, missing
+output does not prove that the mechanism is absent: source insufficiency and
+demonstrated extraction/binding loss must be distinguished, and unresolved
+attribution stays unresolved. Existing `GROUNDING_NO_SUBMISSION`/BLOCKED
+records are not retroactively relabeled as success or software failure.
+Supported branches still require the unchanged EI gates before Core research.
+
 ```text
 uncertainty / event context
     -> exact supported Long Call / Long Put / same-strike Long Straddle set

@@ -1,5 +1,22 @@
 # Project State
 
+## Mechanism evidence and abstention (2026-10-15)
+
+The user confirmed that source facts need not yield a credible economic
+transmission hypothesis. The [research philosophy](philosophy.md#events-create-hypotheses-market-data-supports-numerical-evidence)
+now explicitly preserves honest abstention. Audit source support, extraction
+and binding separately; do not repair the system merely because no hypothesis
+was produced. Latest RKLB counts alone cannot distinguish insufficient support
+from lost evidence, so attribution remains unresolved. This approval changes
+the success criterion, not EI gates, Core classification or archived statuses.
+Existing refusal/support fixtures and Chinese outcome interpretation were
+checked. The Workbench zero-hypothesis note now preserves unresolved
+attribution, explicitly rejecting both "no real mechanism" and "confirmed
+software defect" conclusions from counts alone. Independent review, 106
+focused tests, private-cache compileall and diff checks passed. No domain
+logic, EI/state/API contract or provider/model budget changed; no live call
+was made. Deployment is tracked in the checkpoint.
+
 ## Approved conditional entry-fee successor (2026-10-14)
 
 The user approved parallel public-tariff research scenarios, not a guessed
@@ -28,7 +45,8 @@ from diagnostic labels. A fresh unchanged AMZN Direct run did
 complete real provider research and Chinese reporting, classified
 `DATA_INSUFFICIENT_CORE` for required unknown costs, not optional historical
 valuation evidence. Approved cash/no-exercise intent does not establish cost
-bounds or execution protection. The current Host retains 18 runs; a local
+bounds or execution protection. This pre-v0.4 checkpoint retained 18 runs;
+the later v0.4 validation above records nineteen. A local
 discovery timeout change leaves all budgets and evidence checks unchanged.
 See [the checkpoint](current-checkpoint.md) for exact run identities and limits.
 

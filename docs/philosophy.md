@@ -22,6 +22,21 @@ use AI, search, knowledge sources, and mature Skills to form an auditable
 event-to-underlying distribution-change hypothesis. Narratives never become
 proof.
 
+A public event does not necessarily support an event-to-underlying economic
+transmission hypothesis. A mechanism may be unsupported, uncertain or absent;
+the system must not manufacture a connection or keep retrying merely to obtain
+an accepted hypothesis. Proposed transmission is an interpretation to test,
+not a necessary market outcome or proof that volatility will occur.
+
+A missing submission establishes neither a software defect nor absence of a
+real mechanism. Distinguish insufficient substantive support, demonstrated
+loss of supporting evidence in extraction/binding, and unresolved attribution.
+An evidence-loss defect requires evidence of the second, not mere missing
+output. Explicit transport/parser failures remain technical failures.
+Acceptance tests must preserve both honest abstention and lawful supported
+paths; zero hypotheses is not itself failure. Existing machine statuses and
+historical results are not reclassified by this principle.
+
 The direct-user path begins with a structure the user wants to investigate and
 does not require an Event Intelligence hypothesis. The approved Discovery,
 Event, and Direct entries converge on one exact structure standard and the
