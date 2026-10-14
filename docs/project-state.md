@@ -1,5 +1,15 @@
 # Project State
 
+## Current operational boundary (2026-10-14)
+
+The query split is deployed. Its World-only policy is verified in the immutable
+journal, despite not appearing in the public projection used by the runner.
+The sole post-fix World run was blocked at native/Grounder model processing,
+not a completed positive Core loop. A minimal 69-token model probe succeeded;
+complex structured requests remain unproven. A bounded, closed transport-hint
+fix passed independent review and 20 World tests without changing budgets or
+evidence. See [the checkpoint](current-checkpoint.md).
+
 ## World source-query separation (2026-10-14)
 
 The two fresh bounded World runs localized an invalid native-domain input and

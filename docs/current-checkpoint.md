@@ -2,6 +2,39 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Deployed query split and model boundary (2026-10-14)
+
+Reviewed commit `7c60770` was pushed and deployed; Host session 29261 recovered
+the twelve existing runs and became READY. One fresh guarded World run,
+`80b710cc-7ded-42cb-822e-54944327582d`, returned HTTP 201 / BLOCKED with zero
+cases/unavailable. Closed reasons included `world_last30days_model_failed`
+and `world_grounder_model_call_failed`. It did not reach Core research.
+The guard at `/private/tmp/ch-world-postfix.E8KRs274/` is spent.
+
+The runner's policy Boolean was false because it looked for metadata absent
+from the public projection. A separate read-only SQL check of the immutable
+run-start record verified World mode and all four exact policy values/types.
+The query policy was persisted correctly; the projection Boolean is not a
+negative audit result. No records were rewritten.
+
+One separately guarded minimal discovery-model call returned the requested
+synthetic JSON (63 prompt / 6 completion / 69 total tokens). Its guard at
+`/private/tmp/ch-model-probe.BmH2W1C8/` is spent. This demonstrates one small
+request's connectivity/format success, not complex Grounder reliability, EI
+acceptance or a real research case. No source or trading call accompanied it.
+
+The additional diagnostic-only fix retains generic reasons and extracts a
+literal transport category through at most four exact-type exception contexts.
+Unknown codes/types, exception text and payloads remain undisclosed; poisoned
+properties, cycles and constructor-bypass missing codes are covered. Independent
+review, 20 World tests, compileall (private temporary cache) and diff checks
+passed. An initial compile attempt failed only on the system's unwritable
+external cache; it is not recorded as a pass. No query, fee/request/token
+budget, evidence or classification change accompanies this fix.
+
+UTC is now 2026-10-14. Any next live validation must use a fresh current
+window/evaluation date and new guard, not the spent 2026-10-13 operations.
+
 ## World query boundary correction (2026-10-14)
 
 Fresh grounding found clean aligned `f4113b9`. Deployment preserved ten archived

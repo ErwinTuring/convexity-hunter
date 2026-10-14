@@ -1,9 +1,11 @@
 # Host World source-query separation v0.1
 
-Status: CONTRACT_FROZEN / IMPLEMENTED / VALIDATED; live deployment is pending.
+Status: CONTRACT_FROZEN / IMPLEMENTED / VALIDATED / DEPLOYED.
 Independent contract review passed on 2026-10-14.
 Independent implementation review, 170 related tests, the 1,993-test complete
 regression, compileall and diff checks passed on 2026-10-14.
+One post-fix World operation persisted the policy successfully but was blocked
+at model processing; deployment does not establish EI/Core or investment success.
 
 This bounded Host-only amendment supersedes the context-preparation contract's
 unchanged-source-request restriction solely for the World composition below.

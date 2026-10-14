@@ -31,7 +31,11 @@ import convexity_hunter.host_event as host_event_module  # noqa: E402
 import convexity_hunter.host_world as host_world_module  # noqa: E402
 from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError  # noqa: E402
 from convexity_hunter.host_grounder_run_input import HostGrounderRunInputBounds  # noqa: E402
-from convexity_hunter.host_model import ModelCredential, ModelRuntimeConfig  # noqa: E402
+from convexity_hunter.host_model import (  # noqa: E402
+    ModelCredential,
+    ModelRuntimeConfig,
+    ModelTransportError,
+)
 from convexity_hunter.host_profile import (  # noqa: E402
     APPROVED_STANDARD_RESEARCH_PROFILE,
     STANDARD_RESEARCH_PROFILE,
@@ -61,6 +65,7 @@ from convexity_hunter.host_world import (  # noqa: E402
     HostWorldConfig,
     HostWorldError,
     _model_json_object,
+    _world_model_transport_diagnostic,
     create_world_runner,
 )
 
@@ -523,6 +528,105 @@ class HostWorldTests(unittest.TestCase):
                 self.assertNotIn(str(error), repr(result.case_set.reasons))
                 self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
 
+    def test_hidden_skill_model_transport_context_is_closed_and_query_is_unchanged(self):
+        def hidden_skill_error(code, *, status=None):
+            try:
+                raise ModelTransportError(code, status=status)
+            except ModelTransportError:
+                try:
+                    raise HostGrounderRuntimeError("DISCOVERY_CALL_FAILED") from None
+                except HostGrounderRuntimeError:
+                    try:
+                        raise HostSkillError("MODEL_CALLBACK_FAILED") from None
+                    except HostSkillError as error:
+                        return error
+
+        error = hidden_skill_error("HTTP_ERROR", status=503)
+        self.assertTrue(error.__suppress_context__)
+        self.assertIs(type(error.__context__), HostGrounderRuntimeError)
+        self.assertTrue(error.__context__.__suppress_context__)
+        self.assertIs(type(error.__context__.__context__), ModelTransportError)
+
+        result, captured, discovery_calls, semantic_calls = self._run_through_real_core(
+            skill_result=None, skill_error=error
+        )
+        self.assertIn("world_last30days_failed", result.case_set.reasons)
+        self.assertIn("world_last30days_model_failed", result.case_set.reasons)
+        self.assertIn("world_model_http_error", result.case_set.reasons)
+        self.assertNotIn("503", repr(result.case_set.reasons))
+        self.assertEqual(self.grounder_query_calls, [self.raw_input])
+        self.assertIs(self.grounder_query_calls[0], self.raw_input)
+        self.assertIs(self.grounder_calls[0][0], self.raw_input)
+        self.assertIs(captured[0].raw_input, self.raw_input)
+        self.assertEqual(discovery_calls, [])
+        self.assertEqual(semantic_calls, [])
+
+        self.grounder_query_calls.clear()
+        self.grounder_calls.clear()
+        unknown = hidden_skill_error("PRIVATE_TOKEN_DO_NOT_LEAK")
+        result, _, _, _ = self._run_through_real_core(
+            skill_result=None, skill_error=unknown
+        )
+        self.assertIn("world_last30days_failed", result.case_set.reasons)
+        self.assertIn("world_last30days_model_failed", result.case_set.reasons)
+        self.assertFalse(any(reason.startswith("world_model_") for reason in result.case_set.reasons))
+        self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
+        self.assertEqual(self.grounder_query_calls, [self.raw_input])
+        self.assertIs(self.grounder_calls[0][0], self.raw_input)
+
+    def test_model_transport_context_diagnostics_are_exact_type_closed_and_bounded(self):
+        expected = {
+            "REQUEST_TOO_LARGE": "world_model_request_too_large",
+            "RESPONSE_TOO_LARGE": "world_model_response_too_large",
+            "TRUNCATED_RESPONSE": "world_model_truncated_response",
+            "TOKEN_BUDGET_EXCEEDED": "world_model_token_budget_exceeded",
+            "TIMEOUT": "world_model_timeout",
+            "NETWORK_ERROR": "world_model_network_error",
+            "HTTP_ERROR": "world_model_http_error",
+            "AUTHENTICATION_FAILED": "world_model_authentication_failed",
+            "MALFORMED_JSON": "world_model_malformed_json",
+            "MALFORMED_RESPONSE": "world_model_malformed_response",
+        }
+        for code, diagnostic in expected.items():
+            with self.subTest(code=code):
+                outer = HostSkillError("MODEL_CALLBACK_FAILED")
+                outer.__context__ = ModelTransportError(code)
+                self.assertEqual(
+                    _world_model_transport_diagnostic(outer), diagnostic
+                )
+
+        class PoisonedModelTransportError(ModelTransportError):
+            def __getattribute__(self, name):
+                if name in {"code", "__context__"}:
+                    raise AssertionError("untrusted exception attribute was accessed")
+                return super().__getattribute__(name)
+
+        poisoned = HostSkillError("MODEL_CALLBACK_FAILED")
+        poisoned.__context__ = PoisonedModelTransportError("HTTP_ERROR")
+        self.assertIsNone(_world_model_transport_diagnostic(poisoned))
+
+        missing_code = ModelTransportError.__new__(ModelTransportError)
+        outer = HostSkillError("MODEL_CALLBACK_FAILED")
+        outer.__context__ = missing_code
+        self.assertIsNone(_world_model_transport_diagnostic(outer))
+
+        first = HostSkillError("MODEL_CALLBACK_FAILED")
+        second = HostGrounderRuntimeError("DISCOVERY_CALL_FAILED")
+        first.__context__ = second
+        second.__context__ = first
+        self.assertIsNone(_world_model_transport_diagnostic(first))
+
+        bounded_chain = [
+            HostSkillError("MODEL_CALLBACK_FAILED"),
+            HostGrounderRuntimeError("DISCOVERY_CALL_FAILED"),
+            HostGrounderRuntimeError("DISCOVERY_CALL_FAILED"),
+            HostGrounderRuntimeError("DISCOVERY_CALL_FAILED"),
+            ModelTransportError("HTTP_ERROR"),
+        ]
+        for outer, inner in zip(bounded_chain, bounded_chain[1:]):
+            outer.__context__ = inner
+        self.assertIsNone(_world_model_transport_diagnostic(bounded_chain[0]))
+
     def test_invalid_domain_is_rejected_before_callbacks_and_empty_world_fallback(self):
         self.raw_input = "x" * 327
         self.submissions = ()
@@ -739,6 +843,19 @@ class HostWorldTests(unittest.TestCase):
             def code(self):
                 raise AssertionError("unallowlisted code property was accessed")
 
+        hidden_grounder_failure = None
+        try:
+            raise ModelTransportError("RESPONSE_TOO_LARGE", status=413)
+        except ModelTransportError:
+            try:
+                raise HostGrounderRuntimeError("DISCOVERY_CALL_FAILED") from None
+            except HostGrounderRuntimeError as caught_grounder_failure:
+                hidden_grounder_failure = caught_grounder_failure
+                self.assertTrue(caught_grounder_failure.__suppress_context__)
+                self.assertIs(
+                    type(caught_grounder_failure.__context__), ModelTransportError
+                )
+
         failures = (
             ("empty", None),
             ("failed", None),
@@ -746,6 +863,7 @@ class HostWorldTests(unittest.TestCase):
                 HostGrounderRuntimeError("SEMANTIC_CALL_FAILED"),
                 "world_grounder_model_call_failed",
             ),
+            (hidden_grounder_failure, "world_model_response_too_large"),
             (
                 HostGrounderRuntimeError("NO_SEARCH_RESULTS"),
                 "world_grounder_no_search_results",
@@ -796,6 +914,7 @@ class HostWorldTests(unittest.TestCase):
         )
         for failure, diagnostic in failures:
             self.grounder_calls.clear()
+            self.grounder_query_calls.clear()
 
             def fake_factory(_config, **_kwargs):
                 def grounder(text, *, run_id, bounds):
@@ -847,9 +966,15 @@ class HostWorldTests(unittest.TestCase):
                 result.case_set.reasons,
             )
             self.assertIs(result.case_set.raw_input, self.raw_input)
+            self.assertEqual(self.grounder_query_calls, [self.raw_input])
+            self.assertIs(self.grounder_query_calls[0], self.raw_input)
             if diagnostic is not None:
                 self.assertIn(diagnostic, result.case_set.reasons)
-            elif isinstance(failure, Exception):
+            if failure is hidden_grounder_failure:
+                self.assertIn(
+                    "world_grounder_model_call_failed", result.case_set.reasons
+                )
+            elif diagnostic is None and isinstance(failure, Exception):
                 self.assertFalse(
                     any(
                         reason in result.case_set.reasons

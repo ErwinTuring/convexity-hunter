@@ -153,6 +153,19 @@ _WORLD_FAILURE_DIAGNOSTICS = {
     },
 }
 
+_WORLD_MODEL_TRANSPORT_DIAGNOSTICS = {
+    "REQUEST_TOO_LARGE": "world_model_request_too_large",
+    "RESPONSE_TOO_LARGE": "world_model_response_too_large",
+    "TRUNCATED_RESPONSE": "world_model_truncated_response",
+    "TOKEN_BUDGET_EXCEEDED": "world_model_token_budget_exceeded",
+    "TIMEOUT": "world_model_timeout",
+    "NETWORK_ERROR": "world_model_network_error",
+    "HTTP_ERROR": "world_model_http_error",
+    "AUTHENTICATION_FAILED": "world_model_authentication_failed",
+    "MALFORMED_JSON": "world_model_malformed_json",
+    "MALFORMED_RESPONSE": "world_model_malformed_response",
+}
+
 
 def _world_failure_diagnostic(error: Exception) -> Optional[str]:
     diagnostics = _WORLD_FAILURE_DIAGNOSTICS.get(type(error))
@@ -160,6 +173,35 @@ def _world_failure_diagnostic(error: Exception) -> Optional[str]:
         return None
     code = getattr(error, "code", None)
     return diagnostics.get(code) if type(code) is str else None
+
+
+def _world_model_transport_diagnostic(error: BaseException) -> Optional[str]:
+    """Extract one closed model-transport hint from a short typed context chain."""
+    current = error
+    visited = set()
+    for _ in range(4):
+        current_type = type(current)
+        if not (
+            current_type is HostSkillError
+            or current_type is HostGrounderRuntimeError
+            or current_type is ModelTransportError
+        ):
+            return None
+        identity = id(current)
+        if identity in visited:
+            return None
+        visited.add(identity)
+        if current_type is ModelTransportError:
+            code = getattr(current, "code", None)
+            return (
+                _WORLD_MODEL_TRANSPORT_DIAGNOSTICS.get(code)
+                if type(code) is str
+                else None
+            )
+        current = current.__context__
+        if current is None:
+            return None
+    return None
 
 
 def _valid_world_source_query(value: object) -> bool:
@@ -721,6 +763,9 @@ def create_world_runner(
                 diagnostic = _world_failure_diagnostic(error)
                 if diagnostic is not None:
                     reasons.append(diagnostic)
+                transport_diagnostic = _world_model_transport_diagnostic(error)
+                if transport_diagnostic is not None:
+                    reasons.append(transport_diagnostic)
             except Exception:
                 last30days_status = "failed"
                 reasons.append("world_last30days_failed")
@@ -743,6 +788,9 @@ def create_world_runner(
                 diagnostic = _world_failure_diagnostic(error)
                 if diagnostic is not None:
                     reasons.append(diagnostic)
+                transport_diagnostic = _world_model_transport_diagnostic(error)
+                if transport_diagnostic is not None:
+                    reasons.append(transport_diagnostic)
                 return _empty_batch(raw_request)
 
             build_result = getattr(grounded, "build_result", None)
