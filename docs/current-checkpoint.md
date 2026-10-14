@@ -34,7 +34,15 @@ Private-cache compileall and diff checks passed. No full regression was
 repeated for this wording/test-only behavior-preserving unit; the 2,001-test
 full pass belongs to the preceding fee-scenario implementation. No source,
 model or market-data acquisition occurred, and no spent guard was replayed.
-Local deployment/read-only verification will be recorded below.
+Code `e6ac426` was pushed and deployed in owned Host session 63501. Startup
+checks reported READY without loading credential values. Read-only HTTP checks
+confirmed Host READY, three configured executors, nineteen retained runs,
+zero active runs and the new three-part abstention note in the served page.
+The explicit UTC evaluation date remains 2026-10-14 (the client date is
+2026-10-15 Beijing); no date, archived result or guard was rolled forward.
+There was no POST, quote refresh or paid API call. This is UI deployment
+evidence and controlled fixture validation, not new real-world mechanism
+evidence or positive EI acceptance.
 
 ## Conditional entry-fee presentation v0.4 (2026-10-14)
 
