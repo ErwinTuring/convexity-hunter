@@ -26,7 +26,25 @@ not a real three-entry acceptance claim.
 Timing: BUILD dispatched 14:40 UTC; focused checks recorded 14:52:06–14:52:11.
 The first full suite overlapped coding/review. These are partial wall-clock
 windows, not measured active-work shares; do not claim a 70/30 split from them.
-Deployment and a new one-shot Direct validation remain to be recorded below.
+Code `7b5440a` was pushed and deployed in owned Host session 91614, UTC
+evaluation 2026-10-14. Offline startup checks were READY without loading
+secret values; read-only checks confirmed three configured executors, eighteen
+recovered archives and zero active runs. The retained AMZN v0.3 report SHA-256
+remained `0adb9667893a536d3e027f0ac6df1b808f492fb980ae6f55cf0a426623d0f135`.
+
+One fresh Direct batch, `ae306aef-b538-413d-99dc-c1c185ebd9d7`, researched the
+unchanged AMZN 2026-11-20 K255 Long Straddle, one contract per leg. The v0.4
+Chinese report is present and verifies conditional entry fees USD 5.015
+(FIXED) / 5.615 (TIER_FIRST_50), partial subtotals and explicit UNKNOWN costs
+and unestablished survival. Classification remains `DATA_INSUFFICIENT_CORE`,
+reasons `unknown_cost_component` / `unknown_required_component`. Immutable
+run-start metadata verifies profile v0.4. The guard
+`/private/tmp/ch-direct-amzn-v04.H5U7Z9/spent-once.json` is spent. No second
+batch, model/search or trading call was made. Host retains nineteen runs.
+This proves real fee-scenario presentation, not actual account costs or
+positive World/Event acceptance. No further human fee-package choice is needed
+to display these conditional scenarios; authoritative lifecycle bounds remain
+separate evidence requirements, never silently defaulted.
 
 ## Fresh post-deployment Event result (2026-10-14)
 

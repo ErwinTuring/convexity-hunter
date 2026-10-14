@@ -10,7 +10,11 @@ qualified research presentation, with survival not established. No inferred
 security type, actual account package, new provider or SQL schema is required.
 Independent review, 27 focused tests and final 2,001-test regression passed;
 compileall/documentation/diff checks passed. Deployment and one bounded real
-Direct validation are tracked in the checkpoint, not inferred from tests.
+Direct validation passed: the unchanged AMZN pair produced a v0.4 Chinese
+report with both fee scenarios while retaining `DATA_INSUFFICIENT_CORE` and
+UNKNOWN costs. Eighteen old archives recovered, the old report hash was
+unchanged, and the sole new run brought the total to nineteen. Exact evidence
+is in the checkpoint; this does not imply positive World/Event acceptance.
 
 ## Current operational boundary (2026-10-14)
 
