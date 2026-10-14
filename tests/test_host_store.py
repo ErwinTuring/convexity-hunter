@@ -1455,7 +1455,8 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(case_id, result.kernel_request.case_id)
         archive = self.store.get_direct_case(run_id, case_id)
         self.assertEqual(archive["schema_version"], "host-direct-case-v0.1")
-        self.assertEqual(archive["report_cache"]["renderer_version"], "core-presentation-direct-v0.3")
+        self.assertEqual(archive["report_cache"]["renderer_version"], "core-presentation-direct-v0.4")
+        self.assertIn("条件化买入开仓费用情景", archive["report_cache"]["text"])
         self.assertIn("策略治理意图（非执行控制）", archive["report_cache"]["text"])
         self.assertEqual(archive["profile_snapshot"], STANDARD_RESEARCH_PROFILE.snapshot())
         self.assertEqual(archive["disclosures"], {
@@ -1541,6 +1542,33 @@ class HostStoreTests(unittest.TestCase):
             "core-presentation-direct-v0.2",
         )
 
+    def test_v03_direct_report_cache_keeps_historical_renderer_without_fee_scenarios(self):
+        historical = StandardResearchProfile(version="v0.3")
+        run_id = self.store.create_run(
+            "direct", "historical v0.3 direct", BOUNDS, historical.snapshot(), _run_start_metadata()
+        )
+        result = make_direct_result(profile=historical)
+        case_id = self.store.save_direct_result(run_id, result)
+        archived = self.store.get_direct_case(run_id, case_id)
+        old_text = archived["report_cache"]["text"]
+        self.assertEqual(archived["profile_snapshot"], historical.snapshot())
+        self.assertEqual(
+            archived["report_cache"]["renderer_version"],
+            "core-presentation-direct-v0.3",
+        )
+        self.assertIn("策略治理意图（非执行控制）", old_text)
+        self.assertNotIn("条件化买入开仓费用情景", old_text)
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        restored_archive = reopened.get_direct_case(run_id, case_id)
+        self.assertEqual(restored_archive["report_cache"]["text"], old_text)
+        self.assertEqual(
+            restored_archive["report_cache"]["renderer_version"],
+            "core-presentation-direct-v0.3",
+        )
+
     def test_v01_direct_preserves_previously_accepted_unmarked_custom_request(self):
         legacy = StandardResearchProfile(version="v0.1")
         run_id = self.store.create_run(
@@ -1578,6 +1606,7 @@ class HostStoreTests(unittest.TestCase):
         profiles = (
             StandardResearchProfile(version="v0.1"),
             StandardResearchProfile(version="v0.2"),
+            StandardResearchProfile(version="v0.3"),
             STANDARD_RESEARCH_PROFILE,
         )
         for archive_profile in profiles:
@@ -1602,10 +1631,11 @@ class HostStoreTests(unittest.TestCase):
                         )
                     self.assertEqual(self.store.list_direct_cases(run_id), [])
 
-    def test_store_accepts_only_the_three_registered_profile_snapshots(self):
+    def test_store_accepts_only_the_four_registered_profile_snapshots(self):
         profiles = (
             StandardResearchProfile(version="v0.1"),
             StandardResearchProfile(version="v0.2"),
+            StandardResearchProfile(version="v0.3"),
             STANDARD_RESEARCH_PROFILE,
         )
         for profile in profiles:
@@ -1627,6 +1657,16 @@ class HostStoreTests(unittest.TestCase):
         altered_governance = STANDARD_RESEARCH_PROFILE.snapshot()
         altered_governance["strategy_governance"]["automatic_exercise_protection"] = "PROTECTED"
         altered_snapshots.append(altered_governance)
+        aliased_fee_limit = STANDARD_RESEARCH_PROFILE.snapshot()
+        aliased_fee_limit["conditional_entry_fee_policy"]["scenarios"][1][
+            "maximum_total_order_quantity"
+        ] = True
+        altered_snapshots.append(aliased_fee_limit)
+        changed_fee_rate = STANDARD_RESEARCH_PROFILE.snapshot()
+        changed_fee_rate["conditional_entry_fee_policy"]["commission"][
+            "ask_threshold"
+        ] = "0.100"
+        altered_snapshots.append(changed_fee_rate)
         for altered in altered_snapshots:
             with self.subTest(snapshot=altered), self.assertRaises(ValueError):
                 self.store.create_run(

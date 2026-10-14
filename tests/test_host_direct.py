@@ -237,7 +237,7 @@ class HostDirectExecutionTests(unittest.TestCase):
                 self.assertIs(result.kernel_result.request, result.kernel_request)
                 self.assertEqual(
                     result.kernel_request.risk_policy.methodology,
-                    "approved-standard-research-profile-v0.3",
+                    "approved-standard-research-profile-v0.4",
                 )
                 self.assertIn(
                     "profile_snapshot=" + STANDARD_RESEARCH_PROFILE.snapshot_json(),

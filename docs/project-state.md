@@ -1,5 +1,17 @@
 # Project State
 
+## Approved conditional entry-fee successor (2026-10-14)
+
+The user approved parallel public-tariff research scenarios, not a guessed
+total-cost bound. [The minimal contract](core-conditional-entry-fees-v0.1.md)
+is frozen after read-only preflight. Implemented Profile v0.4 keeps v0.3 Core
+economics and four UNKNOWN costs; conditional entry subtotals appear only as
+qualified research presentation, with survival not established. No inferred
+security type, actual account package, new provider or SQL schema is required.
+Independent review, 27 focused tests and final 2,001-test regression passed;
+compileall/documentation/diff checks passed. Deployment and one bounded real
+Direct validation are tracked in the checkpoint, not inferred from tests.
+
 ## Current operational boundary (2026-10-14)
 
 The query split, closed transport hints and semantic operation markers are

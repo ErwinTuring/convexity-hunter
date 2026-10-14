@@ -33,7 +33,12 @@ from .core_application import (
 )
 from .core_research import CoreDisposition, CoreLeg, CoreReasonCode
 from .host_direct import HostDirectBoundsError, HostDirectInputError
-from .host_profile import PROFILE_ID, PROFILE_VERSION, STANDARD_RESEARCH_PROFILE
+from .host_profile import (
+    PROFILE_ID,
+    PROFILE_VERSION,
+    STANDARD_RESEARCH_PROFILE,
+    _STANDARD_RESEARCH_PROFILE_V0_3,
+)
 
 
 LOOPBACK_HOST = "127.0.0.1"
@@ -585,7 +590,7 @@ def _public_direct_case_detail(value: Any, requested_case_id: str) -> Dict[str, 
     else:
         raise ValueError("stored Direct report cache is malformed")
     fee_illustration = None
-    if value.get("profile_snapshot") == STANDARD_RESEARCH_PROFILE.snapshot():
+    if value.get("profile_snapshot") == _STANDARD_RESEARCH_PROFILE_V0_3.snapshot():
         core_snapshot = value.get("core_snapshot")
         if (
             type(core_snapshot) is not dict

@@ -2842,15 +2842,10 @@ class HostServerDirectStoreIntegrationTests(unittest.TestCase):
         self.assertEqual(public_case["case_id"], case_id)
         self.assertEqual(public_case["report"], retained_report)
         self.assertEqual(retained_archive["report_cache"]["text"], retained_report)
-        fee_illustration = public_case["conditional_entry_fee_illustration"]
-        self.assertIsInstance(fee_illustration, str)
-        self.assertIn("固定式情景：平台费 USD 0.30/张；未取整算术合计 USD 2.5075", fee_illustration)
-        self.assertIn("阶梯式首50张公开档位情景", fee_illustration)
-        self.assertIn("未取整算术合计 USD 2.8075", fee_illustration)
-        self.assertIn("非报告缓存、非CoreCostLedger输入", fee_illustration)
-        self.assertIn("不是实际费用", fee_illustration)
-        self.assertIn("不是实际费用、完整交易费用、费用上界", fee_illustration)
-        self.assertNotIn("公开费率条件化买入开仓示例", public_case["report"])
+        self.assertIsNone(public_case["conditional_entry_fee_illustration"])
+        self.assertIn("条件化买入开仓费用情景", public_case["report"])
+        self.assertIn("FIXED: entry_fee_USD=2.5075", public_case["report"])
+        self.assertIn("TIER_FIRST_50: entry_fee_USD=2.8075", public_case["report"])
         core_result = self.store.load_core_result(run_id, case_id)
         from convexity_hunter.core_research import CoreCostComponentStatus
 
@@ -3046,15 +3041,16 @@ class HostServerRetainedFeeIllustrationOfflineTests(unittest.TestCase):
             "direct",
             "offline retained-fee-illustration validation",
             BOUNDS,
-            STANDARD_RESEARCH_PROFILE.snapshot(),
+            StandardResearchProfile(version="v0.3").snapshot(),
             _run_start_metadata(),
         )
-        result = make_direct_result()
+        historical_v03 = StandardResearchProfile(version="v0.3")
+        result = make_direct_result(profile=historical_v03)
         case_id = store.save_direct_result(run_id, result)
         retained_report = store.get_direct_case(run_id, case_id)["report_cache"]["text"]
         self.assertEqual(retained_report, result.full_report)
         historical_records = []
-        for version in ("v0.1", "v0.2"):
+        for version in ("v0.1", "v0.2", "v0.4"):
             profile = StandardResearchProfile(version=version)
             historical_run_id = store.create_run(
                 "direct",
@@ -3088,12 +3084,13 @@ class HostServerRetainedFeeIllustrationOfflineTests(unittest.TestCase):
             self.assertEqual(archive["report_cache"]["text"], retained_report)
             self.assertNotIn("公开费率条件化买入开仓示例", detail["report"])
             fee_appendix = detail["conditional_entry_fee_illustration"]
+            self.assertIsInstance(fee_appendix, str)
             self.assertIn("未取整算术合计 USD 2.5075", fee_appendix)
             self.assertIn("未取整算术合计 USD 2.8075", fee_appendix)
             self.assertIn("非报告缓存、非CoreCostLedger输入", fee_appendix)
             self.assertNotIn("core_snapshot", detail)
 
-            for version, record in zip(("v0.1", "v0.2"), historical_records):
+            for version, record in zip(("v0.1", "v0.2", "v0.4"), historical_records):
                 historical_run_id, historical_case_id, renderer, historical_report = record
                 historical_archive = reopened.get_direct_case(
                     historical_run_id, historical_case_id
@@ -3102,13 +3099,15 @@ class HostServerRetainedFeeIllustrationOfflineTests(unittest.TestCase):
                     historical_archive, historical_case_id
                 )
                 self.assertEqual(historical_detail["report"], historical_report)
-                self.assertIsNone(
-                    historical_detail["conditional_entry_fee_illustration"]
-                )
+                self.assertIsNone(historical_detail["conditional_entry_fee_illustration"])
                 self.assertEqual(
                     historical_archive["report_cache"]["renderer_version"], renderer
                 )
                 self.assertEqual(renderer, "core-presentation-direct-{}".format(version))
+                if version == "v0.4":
+                    self.assertIn("条件化买入开仓费用情景", historical_detail["report"])
+                else:
+                    self.assertNotIn("条件化买入开仓费用情景", historical_detail["report"])
 
             restored = reopened.load_core_result(run_id, case_id)
             from convexity_hunter.core_research import CoreCostComponentStatus

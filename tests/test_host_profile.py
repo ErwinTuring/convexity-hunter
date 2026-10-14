@@ -13,7 +13,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from convexity_hunter import core_research
-from convexity_hunter.core_application import CoreDirectResult, CoreOperationalBounds
+from convexity_hunter.core_application import (
+    CoreCaseContext,
+    CoreCaseRecord,
+    CoreDirectResult,
+    CoreOperationalBounds,
+)
 from convexity_hunter.core_presentation import report
 from convexity_hunter.host_profile import (
     APPROVED_STANDARD_RESEARCH_PROFILE,
@@ -22,6 +27,7 @@ from convexity_hunter.host_profile import (
     SENSITIVITY_GAP,
     STANDARD_RESEARCH_PROFILE,
     StandardResearchProfile,
+    _profile_for_snapshot,
     create_core_research_policy,
 )
 from convexity_hunter.option_chain_discovery import OptionMaturityAuthority
@@ -30,18 +36,18 @@ from convexity_hunter.option_chain_discovery import OptionMaturityAuthority
 D = decimal.Decimal
 
 
-def make_structure(multiplier=137):
+def make_structure(multiplier=137, *, quantity=1, ask="1.25", currency="USD"):
     provenance = core_research.CoreProvenance(None, "test structure provenance")
     leg = core_research.CoreLeg(
         leg_id="call-1",
         underlying="XYZ",
-        currency="USD",
+        currency=currency,
         option_type=core_research.CoreOptionType.CALL,
         strike=D("100"),
         expiration=datetime.date(2031, 1, 15),
-        quantity=1,
+        quantity=quantity,
         contract_multiplier=multiplier,
-        ask_per_underlying_unit=D("1.25"),
+        ask_per_underlying_unit=D(ask),
         ask_authority=core_research.CoreAskAuthority.INDICATIVE_ONLY,
         description="verified structure leg",
         provenance=provenance,
@@ -116,7 +122,7 @@ class StandardResearchProfileTests(unittest.TestCase):
         self.assertIs(profile, APPROVED_STANDARD_RESEARCH_PROFILE)
         self.assertIsInstance(profile, StandardResearchProfile)
         self.assertEqual(profile.profile_id, "standard-research-profile")
-        self.assertEqual(profile.version, "v0.3")
+        self.assertEqual(profile.version, "v0.4")
         self.assertEqual(profile.currency, "USD")
         self.assertEqual(profile.portfolio_value, D("100000"))
         self.assertEqual(profile.maximum_single_loss_fraction, D("0.005"))
@@ -146,6 +152,7 @@ class StandardResearchProfileTests(unittest.TestCase):
                 "payoff_approval",
                 "cash_sensitivity_policy",
                 "strategy_governance",
+                "conditional_entry_fee_policy",
             },
         )
         self.assertEqual(snapshot["portfolio_value"], "100000")
@@ -153,7 +160,7 @@ class StandardResearchProfileTests(unittest.TestCase):
         self.assertEqual(snapshot["maximum_repeated_loss_fraction"], "0.015")
         self.assertEqual(snapshot["repeat_count"], 3)
         self.assertEqual(snapshot["quantity"], 1)
-        self.assertEqual(snapshot["version"], "v0.3")
+        self.assertEqual(snapshot["version"], "v0.4")
         self.assertEqual(
             snapshot["cash_sensitivity_policy"],
             {
@@ -191,12 +198,328 @@ class StandardResearchProfileTests(unittest.TestCase):
                 "automatic_exercise_protection": "NOT_ESTABLISHED",
             },
         )
+        self.assertEqual(
+            snapshot["conditional_entry_fee_policy"],
+            {
+                "policy_id": "conditional-entry-fee-scenarios",
+                "version": "v0.1",
+                "source_url": "https://www.futuhk.com/hans/support/topic2_283",
+                "verified_on": "2026-10-14",
+                "currency": "USD",
+                "scope": "US_LISTED_EQUITY_OPTIONS_ONLY",
+                "applicability": "CONDITIONAL_NOT_VERIFIED",
+                "account_tariff": "UNKNOWN",
+                "security_type": "NOT_VERIFIED",
+                "order_assumption": "one_buy_order_per_leg_wholly_filled_within_one_trading_day",
+                "scenarios": [
+                    {"scenario_id": "FIXED", "platform_fee_per_contract": "0.30"},
+                    {
+                        "scenario_id": "TIER_FIRST_50",
+                        "platform_fee_per_contract": "0.60",
+                        "prior_monthly_contracts": 0,
+                        "maximum_total_order_quantity": 50,
+                    },
+                ],
+                "commission": {
+                    "minimum_per_leg": "1.99",
+                    "ask_threshold": "0.10",
+                    "rate_above_threshold_per_contract": "0.65",
+                    "rate_at_or_below_threshold_per_contract": "0.15",
+                },
+                "other_buy_fees_per_contract": "0.2175",
+                "partial_subtotal": "existing_1.10_conditional_premium_budget_plus_scenario_entry_fees",
+                "rounding_rule": "NOT_VERIFIED",
+                "not_included": [
+                    "sell_side_charges",
+                    "promotions",
+                    "extra_services",
+                    "index_option_surcharges",
+                    "currency_conversion",
+                    "future_tariff_changes",
+                ],
+            },
+        )
         self.assertEqual(snapshot["authorized_source"]["frozen_commit"], "1adc636")
         self.assertNotIn("credential", encoded.lower())
         self.assertNotIn("token", encoded.lower())
         self.assertEqual(
             json.loads(STANDARD_RESEARCH_PROFILE.snapshot_json()), snapshot
         )
+
+    def test_v03_snapshot_and_report_remain_historical(self):
+        historical = StandardResearchProfile(version="v0.3")
+        expected = StandardResearchProfile(version="v0.2").snapshot()
+        expected["version"] = "v0.3"
+        expected["strategy_governance"] = {
+            "version": "v0.1",
+            "funding_rule": "OWN_CASH_PREMIUM; MARGIN_FINANCING_PROHIBITED",
+            "lifecycle_intent": "CLOSE_OR_ABANDON_BEFORE_EXPIRY",
+            "exercise_rule": "EXERCISE_TO_STOCK_PROHIBITED",
+            "execution_enforcement": "NOT_ESTABLISHED",
+            "automatic_exercise_protection": "NOT_ESTABLISHED",
+        }
+        self.assertEqual(historical.snapshot(), expected)
+        self.assertNotIn("conditional_entry_fee_policy", historical.snapshot())
+
+        structure = make_straddle(quantity=1)
+        request = historical.request_factory(
+            case_id="case-v03-historical-report", structure=structure, context=None
+        )
+        result = core_research.evaluate_core_research(request)
+        rendered = report(
+            CoreDirectResult(
+                raw_input=None,
+                core_structure=structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=request,
+                kernel_result=result,
+                reasons=(),
+                full_report="",
+            )
+        )
+        self.assertIn("profile=standard-research-profile:v0.3", rendered)
+        self.assertIn("策略治理意图（非执行控制）", rendered)
+        self.assertIn(
+            "actual_tariff=unknown; funding_strategy=not_assumed; no zero-cost inference",
+            rendered,
+        )
+        self.assertNotIn("条件化买入开仓费用情景", rendered)
+
+    def test_v04_conditional_entry_fee_golden_is_private_report_only(self):
+        structure = make_straddle(quantity=1)
+        request = STANDARD_RESEARCH_PROFILE.request_factory(
+            case_id="case-v04-fee-golden", structure=structure, context=None
+        )
+        result = core_research.evaluate_core_research(request)
+        direct_text = report(
+            CoreDirectResult(
+                raw_input=None,
+                core_structure=structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=request,
+                kernel_result=result,
+                reasons=(),
+                full_report="",
+            )
+        )
+        context = CoreCaseContext(
+            raw_input=None,
+            maturity_authority=OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
+            core_structure=structure,
+            kernel_request=request,
+            kernel_result=result,
+        )
+        case_text = report(CoreCaseRecord(request.case_id, context, request, result, ()))
+        fee_section = tuple(
+            line
+            for line in direct_text.splitlines()
+            if line.startswith(("条件化买入开仓费用情景", "FIXED:", "TIER_FIRST_50:"))
+        )
+        self.assertEqual(
+            fee_section,
+            (
+                "条件化买入开仓费用情景（仅v0.4详情展示，不写入CoreCostLedger）",
+                "FIXED: entry_fee_USD=5.015; partial_subtotal_USD=225.015",
+                "TIER_FIRST_50: entry_fee_USD=5.615; partial_subtotal_USD=225.615",
+            ),
+        )
+        self.assertEqual(
+            fee_section,
+            tuple(
+                line
+                for line in case_text.splitlines()
+                if line.startswith(
+                    ("条件化买入开仓费用情景", "FIXED:", "TIER_FIRST_50:")
+                )
+            ),
+        )
+        self.assertIn("CONDITIONAL/NOT_VERIFIED", direct_text)
+        self.assertIn(
+            "own_cash_funding_research_intent=ADOPTED; funding_cost=UNKNOWN; no_zero_cost_or_execution_control_inference",
+            direct_text,
+        )
+        self.assertIn("指数附加费未纳入，实际品种适用性未验证", direct_text)
+        self.assertIn(
+            "a=CoreLeg.ask_per_underlying_unit，单位USD/标的单位；不是头寸权利金或每张合约现金额。",
+            direct_text,
+        )
+        self.assertIn("Q=sum(q_i)=2（不乘合约乘数）", direct_text)
+        self.assertIn("entry_fees及资金/退出/结算仍为UNKNOWN", direct_text)
+        self.assertIn("生存/可负担性未建立", direct_text)
+        self.assertIn("处置: DATA_INSUFFICIENT_CORE", direct_text)
+        self.assertIsNone(result.cash_ledger.conditional_total_upper_bound)
+        self.assertEqual(
+            tuple(item.component_id for item in request.cost_ledger.impact_components),
+            (
+                "entry_fees",
+                "strategy_dependent_funding",
+                "strategy_dependent_exit",
+                "strategy_dependent_settlement",
+            ),
+        )
+        self.assertTrue(
+            all(
+                item.status is core_research.CoreCostComponentStatus.UNKNOWN
+                and item.upper_bound is None
+                for item in request.cost_ledger.impact_components
+            )
+        )
+
+    def test_v04_fee_threshold_quantity_and_low_precision_boundaries(self):
+        threshold_structure = make_straddle(
+            call_ask="0.10", put_ask="0.1001", quantity=4
+        )
+        threshold_request = STANDARD_RESEARCH_PROFILE.request_factory(
+            case_id="case-v04-fee-threshold",
+            structure=threshold_structure,
+            context=None,
+        )
+        threshold_text = report(
+            CoreDirectResult(
+                raw_input=None,
+                core_structure=threshold_structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=threshold_request,
+                kernel_result=core_research.evaluate_core_research(threshold_request),
+                reasons=(),
+                full_report="",
+            )
+        )
+        self.assertIn("FIXED: entry_fee_USD=8.73;", threshold_text)
+        self.assertIn("Q=sum(q_i)=8（不乘合约乘数）", threshold_text)
+
+        over_tier_structure = make_structure(quantity=51, ask="0.10", multiplier=100)
+        over_tier_request = STANDARD_RESEARCH_PROFILE.request_factory(
+            case_id="case-v04-fee-over-tier",
+            structure=over_tier_structure,
+            context=None,
+        )
+        over_tier_text = report(
+            CoreDirectResult(
+                raw_input=None,
+                core_structure=over_tier_structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=over_tier_request,
+                kernel_result=core_research.evaluate_core_research(over_tier_request),
+                reasons=(),
+                full_report="",
+            )
+        )
+        self.assertIn("Q=sum(q_i)=51（不乘合约乘数）", over_tier_text)
+        self.assertIn(
+            "TIER_FIRST_50: unavailable[total_order_quantity_exceeds_50]",
+            over_tier_text,
+        )
+
+        precise_structure = make_structure(
+            multiplier=100,
+            ask="0.12345678901234567890123456789",
+        )
+        with decimal.localcontext() as context:
+            context.prec = 2
+            precise_request = STANDARD_RESEARCH_PROFILE.request_factory(
+                case_id="case-v04-low-precision",
+                structure=precise_structure,
+                context=None,
+            )
+            precise_text = report(
+                CoreDirectResult(
+                    raw_input=None,
+                    core_structure=precise_structure,
+                    exact_verifications=(),
+                    native_quotes=(),
+                    provider_references=(),
+                    kernel_request=precise_request,
+                    kernel_result=core_research.evaluate_core_research(precise_request),
+                    reasons=(),
+                    full_report="",
+                )
+            )
+        self.assertIn(
+            "FIXED: entry_fee_USD=2.5075; partial_subtotal_USD=16.0877467913580246791358024679",
+            precise_text,
+        )
+
+    def test_v04_fee_unavailable_invalid_boolean_asks_and_forged_marker(self):
+        missing_structure = make_straddle(put_ask=None, quantity=1)
+        missing_request = STANDARD_RESEARCH_PROFILE.request_factory(
+            case_id="case-v04-missing-ask", structure=missing_structure, context=None
+        )
+        missing_text = report(
+            CoreDirectResult(
+                raw_input=None,
+                core_structure=missing_structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=missing_request,
+                kernel_result=core_research.evaluate_core_research(missing_request),
+                reasons=(),
+                full_report="",
+            )
+        )
+        self.assertIn("FIXED: unavailable[invalid_or_missing_ask]", missing_text)
+        self.assertNotIn("entry_fee_USD=", missing_text)
+
+        valid_structure = make_structure()
+        valid_request = STANDARD_RESEARCH_PROFILE.request_factory(
+            case_id="case-v04-boolean-ask", structure=valid_structure, context=None
+        )
+        object.__setattr__(valid_structure.legs[0], "ask_per_underlying_unit", True)
+        from convexity_hunter.core_presentation import _conditional_entry_fee_scenario_view
+
+        invalid_view = _conditional_entry_fee_scenario_view(
+            valid_request, STANDARD_RESEARCH_PROFILE
+        )
+        self.assertEqual(invalid_view.fixed.unavailable_reason, "invalid_or_missing_ask")
+        self.assertIsNone(invalid_view.fixed.entry_fee)
+
+        forged_snapshot = STANDARD_RESEARCH_PROFILE.snapshot()
+        forged_snapshot["conditional_entry_fee_policy"]["scenarios"][1][
+            "maximum_total_order_quantity"
+        ] = True
+        with self.assertRaises(ValueError):
+            _profile_for_snapshot(forged_snapshot)
+        altered = STANDARD_RESEARCH_PROFILE.snapshot()
+        altered["conditional_entry_fee_policy"]["commission"][
+            "ask_threshold"
+        ] = "0.100"
+        with self.assertRaises(ValueError):
+            _profile_for_snapshot(altered)
+
+        good_request = STANDARD_RESEARCH_PROFILE.request_factory(
+            case_id="case-v04-forged-marker", structure=make_structure(), context=None
+        )
+        forged_request = replace(
+            good_request,
+            provenance=replace(
+                good_request.provenance,
+                description="core-request; profile_snapshot={}",
+            ),
+        )
+        forged_result = core_research.evaluate_core_research(forged_request)
+        forged_text = report(
+            CoreDirectResult(
+                raw_input=None,
+                core_structure=forged_request.structure,
+                exact_verifications=(),
+                native_quotes=(),
+                provider_references=(),
+                kernel_request=forged_request,
+                kernel_result=forged_result,
+                reasons=(),
+                full_report="",
+            )
+        )
+        self.assertNotIn("条件化买入开仓费用情景", forged_text)
 
     def test_v02_snapshot_factory_and_cash_report_remain_historical(self):
         historical = StandardResearchProfile(version="v0.2")

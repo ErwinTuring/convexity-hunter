@@ -1,6 +1,16 @@
 # Core Convexity MVP User Flow v0.1
 
-Current normal Host Profile v0.3 adds the approved
+The approved [conditional entry-fee successor](core-conditional-entry-fees-v0.1.md)
+adds two neutral research scenarios to v0.4 detail reports: fixed pricing and
+the first-50-contract tier under explicit order/month assumptions. The partial
+subtotal combines the existing conditional premium budget and illustrative
+entry fees, not UNKNOWN funding/exit/settlement amounts. Actual package and
+product applicability are unverified. These scenarios do not change Core
+classification or establish survival, total cost, maximum loss or executability.
+Implementation and independent review passed; deployment and actual provider
+validation are recorded separately in the checkpoint.
+
+Historical Host Profile v0.3 added the approved
 [strategy-governance scope](core-strategy-governance-v0.1.md) without changing
 the preceding cash/sensitivity arithmetic. Research intent is not execution
 or automatic-exercise protection; unknown costs and historical versions remain.

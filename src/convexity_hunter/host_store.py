@@ -28,6 +28,7 @@ from .host_profile import (
     _PROFILE_VERSION_V0_1,
     _PROFILE_VERSION_V0_2,
     _PROFILE_VERSION_V0_3,
+    _PROFILE_VERSION_V0_4,
     _profile_for_snapshot,
     _request_has_conflicting_registered_profile,
 )
@@ -123,6 +124,7 @@ _DIRECT_REPORT_VERSION_BY_PROFILE = {
     _PROFILE_VERSION_V0_1: "core-presentation-direct-v0.1",
     _PROFILE_VERSION_V0_2: "core-presentation-direct-v0.2",
     _PROFILE_VERSION_V0_3: "core-presentation-direct-v0.3",
+    _PROFILE_VERSION_V0_4: "core-presentation-direct-v0.4",
 }
 _GROUNDER_STAGE_OUTCOME_VERSION = "host-grounder-stage-outcome-v0.1"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-stage-outcome-v0.2"
@@ -2244,7 +2246,11 @@ class HostStore:
         if profile.version == _PROFILE_VERSION_V0_1:
             if _request_has_conflicting_registered_profile(core.request, profile.version):
                 raise ValueError("v0.1 run contains registered successor-profile provenance")
-        elif profile.version in (_PROFILE_VERSION_V0_2, _PROFILE_VERSION_V0_3):
+        elif profile.version in (
+            _PROFILE_VERSION_V0_2,
+            _PROFILE_VERSION_V0_3,
+            _PROFILE_VERSION_V0_4,
+        ):
             expected_request = profile.request_factory(
                 case_id=case_id, structure=core.request.structure, context=None
             )

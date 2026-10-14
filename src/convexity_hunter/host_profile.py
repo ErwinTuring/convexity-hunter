@@ -1,9 +1,9 @@
 """Host-owned approved Standard Research Profile versions.
 
-The v0.1 and v0.2 factories remain available for historical records. The v0.2
-profile adds the frozen conditional cash and descriptive sensitivity
-assumptions; v0.3 adds only strategy-governance research intent. None provides
-provider data, tariffs, execution authority, or broker controls.
+Historical v0.1-v0.3 factories remain exact. The v0.4 profile adds only a
+conditional, presentation-only entry-fee scenario policy; none provides
+provider data, a confirmed account tariff, execution authority, or broker
+controls.
 """
 
 from __future__ import annotations
@@ -41,11 +41,13 @@ PROFILE_ID = "standard-research-profile"
 _PROFILE_VERSION_V0_1 = "v0.1"
 _PROFILE_VERSION_V0_2 = "v0.2"
 _PROFILE_VERSION_V0_3 = "v0.3"
-PROFILE_VERSION = _PROFILE_VERSION_V0_3
+_PROFILE_VERSION_V0_4 = "v0.4"
+PROFILE_VERSION = _PROFILE_VERSION_V0_4
 _REGISTERED_PROFILE_VERSIONS = (
     _PROFILE_VERSION_V0_1,
     _PROFILE_VERSION_V0_2,
     _PROFILE_VERSION_V0_3,
+    _PROFILE_VERSION_V0_4,
 )
 AUTHORIZED_SOURCE_ID = "standalone-mvp-architecture-v0.1"
 AUTHORIZED_SOURCE_VERSION = "v0.1"
@@ -120,6 +122,52 @@ def _strategy_governance_snapshot() -> Dict[str, str]:
         "exercise_rule": "EXERCISE_TO_STOCK_PROHIBITED",
         "execution_enforcement": "NOT_ESTABLISHED",
         "automatic_exercise_protection": "NOT_ESTABLISHED",
+    }
+
+
+def _conditional_entry_fee_policy_snapshot() -> Dict[str, Any]:
+    """Closed v0.4 presentation assumptions; these are not user parameters."""
+
+    return {
+        "policy_id": "conditional-entry-fee-scenarios",
+        "version": "v0.1",
+        "source_url": "https://www.futuhk.com/hans/support/topic2_283",
+        "verified_on": "2026-10-14",
+        "currency": "USD",
+        "scope": "US_LISTED_EQUITY_OPTIONS_ONLY",
+        "applicability": "CONDITIONAL_NOT_VERIFIED",
+        "account_tariff": "UNKNOWN",
+        "security_type": "NOT_VERIFIED",
+        "order_assumption": "one_buy_order_per_leg_wholly_filled_within_one_trading_day",
+        "scenarios": [
+            {
+                "scenario_id": "FIXED",
+                "platform_fee_per_contract": "0.30",
+            },
+            {
+                "scenario_id": "TIER_FIRST_50",
+                "platform_fee_per_contract": "0.60",
+                "prior_monthly_contracts": 0,
+                "maximum_total_order_quantity": 50,
+            },
+        ],
+        "commission": {
+            "minimum_per_leg": "1.99",
+            "ask_threshold": "0.10",
+            "rate_above_threshold_per_contract": "0.65",
+            "rate_at_or_below_threshold_per_contract": "0.15",
+        },
+        "other_buy_fees_per_contract": "0.2175",
+        "partial_subtotal": "existing_1.10_conditional_premium_budget_plus_scenario_entry_fees",
+        "rounding_rule": "NOT_VERIFIED",
+        "not_included": [
+            "sell_side_charges",
+            "promotions",
+            "extra_services",
+            "index_option_surcharges",
+            "currency_conversion",
+            "future_tariff_changes",
+        ],
     }
 
 
@@ -202,10 +250,18 @@ class StandardResearchProfile:
                 "limitations": list(self.payoff_limitations),
             },
         }
-        if self.version in (_PROFILE_VERSION_V0_2, _PROFILE_VERSION_V0_3):
+        if self.version in (
+            _PROFILE_VERSION_V0_2,
+            _PROFILE_VERSION_V0_3,
+            _PROFILE_VERSION_V0_4,
+        ):
             snapshot["cash_sensitivity_policy"] = _cash_sensitivity_policy_snapshot()
-        if self.version == _PROFILE_VERSION_V0_3:
+        if self.version in (_PROFILE_VERSION_V0_3, _PROFILE_VERSION_V0_4):
             snapshot["strategy_governance"] = _strategy_governance_snapshot()
+        if self.version == _PROFILE_VERSION_V0_4:
+            snapshot["conditional_entry_fee_policy"] = (
+                _conditional_entry_fee_policy_snapshot()
+            )
         return snapshot
 
     def snapshot_json(self) -> str:
@@ -243,7 +299,11 @@ class StandardResearchProfile:
         )
         cost_ledger = None
         sensitivity = None
-        if self.version in (_PROFILE_VERSION_V0_2, _PROFILE_VERSION_V0_3) and _supported_cash_structure(structure):
+        if self.version in (
+            _PROFILE_VERSION_V0_2,
+            _PROFILE_VERSION_V0_3,
+            _PROFILE_VERSION_V0_4,
+        ) and _supported_cash_structure(structure):
             asks = tuple(leg.ask_per_underlying_unit for leg in structure.legs)
             if all(ask is not None for ask in asks):
                 observed_position_ask = _decimal_sum(
@@ -283,18 +343,20 @@ class StandardResearchProfile:
 
 _STANDARD_RESEARCH_PROFILE_V0_1 = StandardResearchProfile(version=_PROFILE_VERSION_V0_1)
 _STANDARD_RESEARCH_PROFILE_V0_2 = StandardResearchProfile(version=_PROFILE_VERSION_V0_2)
+_STANDARD_RESEARCH_PROFILE_V0_3 = StandardResearchProfile(version=_PROFILE_VERSION_V0_3)
 STANDARD_RESEARCH_PROFILE = StandardResearchProfile()
 APPROVED_STANDARD_RESEARCH_PROFILE = STANDARD_RESEARCH_PROFILE
 
 
 def _profile_for_snapshot(snapshot: object) -> StandardResearchProfile:
-    """Resolve only the two exact, registered profile snapshots."""
+    """Resolve only exact, registered profile snapshots."""
 
     if type(snapshot) is not dict:
         raise TypeError("profile snapshot must be an exact registered mapping")
     for profile in (
         _STANDARD_RESEARCH_PROFILE_V0_1,
         _STANDARD_RESEARCH_PROFILE_V0_2,
+        _STANDARD_RESEARCH_PROFILE_V0_3,
         STANDARD_RESEARCH_PROFILE,
     ):
         expected = profile.snapshot()

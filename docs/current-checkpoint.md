@@ -2,6 +2,32 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Conditional entry-fee presentation v0.4 (2026-10-14)
+
+The user approved [two explicitly conditional public-tariff scenarios](core-conditional-entry-fees-v0.1.md),
+not an invented complete cost bound. Read-only preflight and contract review
+passed. Profile v0.4 adds a closed policy snapshot and private structured
+scenario view to the shared detail renderer. FIXED and TIER_FIRST_50 retain
+neutral order; quote units, aggregate contract count, order/month assumptions,
+unverified applicability and excluded costs are explicit. No security type
+is inferred from symbols. Neither scenario enters CoreCostLedger or upgrades
+four UNKNOWN costs, survival, classification or underpricing authority.
+No public DTO/API fields or SQL schema changed; v0.1–v0.3 remain registered
+with historical factories/caches, including the separate legacy v0.3 appendix.
+
+Independent implementation review passed after the ask-unit presentation fix.
+27 focused tests passed. The initial full suite failed three obsolete current
+profile assertions; after correction, final full regression passed 2,001 tests
+in 301.744 seconds. Compileall/private cache, Markdown link/fence and diff
+checks passed. The environment's existing urllib3/LibreSSL warning persists.
+No provider/model calls were made during BUILD; tests are synthetic/loopback,
+not a real three-entry acceptance claim.
+
+Timing: BUILD dispatched 14:40 UTC; focused checks recorded 14:52:06–14:52:11.
+The first full suite overlapped coding/review. These are partial wall-clock
+windows, not measured active-work shares; do not claim a 70/30 split from them.
+Deployment and a new one-shot Direct validation remain to be recorded below.
+
 ## Fresh post-deployment Event result (2026-10-14)
 
 Reviewed code `60d59ea` is pushed and deployed in Host session 8370. Offline
