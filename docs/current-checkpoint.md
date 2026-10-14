@@ -2,6 +2,33 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Fresh post-deployment Event result (2026-10-14)
+
+Reviewed code `60d59ea` is pushed and deployed in Host session 8370. Offline
+configuration checking reported READY without loading secret values; read-only
+Host checking confirmed READY, three configured executors, 17 prior archives
+and zero active runs before release.
+
+The sole new RKLB Event run `cffaa26d-9e8f-4df9-97c2-749b69fe25ba` returned
+HTTP 201 / BLOCKED in approximately 21 seconds. Grounder and builder completed;
+semantic receipt was validated. The safe aggregate retained five source
+bodies, five claims, zero hypotheses, four field bindings and one coverage
+record. Diagnostics: `CLAIM_REJECTED_BY_VALIDATOR=5`,
+`FIELD_BINDING_MISSING=11`, `NO_PROJECTABLE_HYPOTHESIS=1`.
+Coverage was model-supported but validator-unresolved, with a gap present.
+Final reason: `GROUNDING_NO_SUBMISSION`; submission MISSING and EI NOT_RUN.
+Source status remains UNKNOWN in the public outcome; body count alone does
+not certify source authority or complete verification.
+
+This run passed wire/receipt boundaries that the prior run did not; it does
+not establish that the diagnostic-only patch caused better model output, that
+the five claims are false, or that a usable EI/Core case exists. No dates,
+identities or impact links were filled merely to create a submission. The
+guard `/private/tmp/ch-event-rklb-semantic-diag.pxZIC5/spent-once.json` is
+spent. Original source/model budgets were retained; no second batch followed.
+The Host now preserves 18 runs. No raw model/source/provider content or
+credentials are included in this checkpoint.
+
 ## Semantic operation boundary split (2026-10-14)
 
 The three unchanged operations formerly sharing one diagnostic marker now

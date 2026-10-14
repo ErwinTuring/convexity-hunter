@@ -2,14 +2,17 @@
 
 ## Current operational boundary (2026-10-14)
 
-The query split and closed transport hints are pushed and deployed. The latest
-World run returned no submission after partial native coverage; the latest
-RKLB Event failed strict internal wire/DTO validation, before EI/Core. Neither
-is a positive real source-to-Core loop. A fresh unchanged AMZN Direct run did
+The query split, closed transport hints and semantic operation markers are
+pushed and deployed. The latest World run returned no submission after partial
+native coverage. The latest RKLB Event passed semantic receipt validation but
+returned no projectable hypothesis: five claims rejected by validation,
+eleven missing field bindings, EI not run. This supersedes the earlier Event
+wire/DTO failure, without proving source-to-Core completion or a causal effect
+from diagnostic labels. A fresh unchanged AMZN Direct run did
 complete real provider research and Chinese reporting, classified
 `DATA_INSUFFICIENT_CORE` for required unknown costs, not optional historical
 valuation evidence. Approved cash/no-exercise intent does not establish cost
-bounds or execution protection. The current Host retains 17 runs; a local
+bounds or execution protection. The current Host retains 18 runs; a local
 discovery timeout change leaves all budgets and evidence checks unchanged.
 See [the checkpoint](current-checkpoint.md) for exact run identities and limits.
 
