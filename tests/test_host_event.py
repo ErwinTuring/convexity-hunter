@@ -81,6 +81,10 @@ _SEC_LOCATOR = (
 _SEC_SENTENCE = (
     "On October 3, 2026, ACME HOLDINGS, INC. completed its acquisition of Example Corp."
 )
+_V04_SEC_SENTENCE = (
+    "On September 21, 2026, Example Holdings, Inc. (the “Company”) announced "
+    "its agreement with Example Corp."
+)
 _SEC_HEADER = (
     "CONFORMED SUBMISSION TYPE: 8-K\n"
     "ACCESSION NUMBER: 0000320193-26-000123\n"
@@ -813,6 +817,139 @@ def _sec_primary_raw_cover_html(symbol="ACME", share_class="Common Stock"):
         "<tr><td>" + share_class + "</td><td></td><td>" + symbol + "</td><td></td>"
         "<td>The Nasdaq&#13;Capital Market</td></tr></table></body></html>"
     ).encode("utf-8")
+
+
+def _sec_v04_admission(
+    paragraphs, *, registrant="Example Holdings, Inc.", admit=True
+):
+    cover = _sec_primary_raw_cover_html().replace(
+        b"Example Holdings, Inc.", registrant.encode("utf-8")
+    )
+    addition = "".join("<p>{}</p>".format(value) for value in paragraphs).encode("utf-8")
+    raw_html = cover.replace(b"</body></html>", addition + b"</body></html>")
+
+    def transport(locator, _address, _timeout, _max_bytes):
+        if locator == _SEC_LOCATOR:
+            return _Reply(
+                200, {"Content-Type": "text/html; charset=UTF-8"}, raw_html
+            )
+        return _Reply(404, {"Content-Type": "text/plain"}, b"synthetic absent")
+
+    client = _SourceAdmissionClient(
+        timeout_seconds=2.0,
+        max_response_bytes=200_000,
+        byte_budget=1_000_000,
+        _transport=transport,
+        _resolver=lambda _host, _port: ("93.184.216.34",),
+        _clock=lambda: _NOW,
+    )
+    if not admit:
+        return client, None
+    batch = client.admit_candidates((_SEC_LOCATOR,))
+    if len(batch.admissions) != 1:
+        raise AssertionError("synthetic v0.4 SEC HTML admission did not succeed")
+    return client, batch.admissions[0]
+
+
+def _sec_v04_fact_case(
+    *,
+    paragraph=_V04_SEC_SENTENCE,
+    extra_paragraphs=(),
+    claim_text=None,
+    model_date="2026-09-21",
+    binding_role="date",
+    binding_status="supported",
+    binding_start_override=None,
+    binding_end_override=None,
+    verified_claim=True,
+    verified_binding=True,
+    include_admission=True,
+    admission_override=None,
+):
+    _client, authentic_admission = _sec_v04_admission(
+        (paragraph,) + tuple(extra_paragraphs)
+    )
+    body = authentic_admission.parsed_body
+    source_id = authentic_admission.source_id
+    source = HostSourceBody(
+        body=body,
+        body_sha256=authentic_admission.parsed_body_sha256,
+        final_locator=authentic_admission.final_locator,
+        retrieved_at=authentic_admission.retrieved_at,
+    )
+    paragraph_span = next(
+        span
+        for span in _line_paragraph_spans(body)
+        if paragraph in body[slice(*span)]
+    )
+    quote = body[slice(*paragraph_span)]
+    selected_text = paragraph if claim_text is None else claim_text
+    binding = {
+        "field_path": "/claims/0/event_date",
+        "source_id": source_id,
+        "quote": quote,
+        "start": paragraph_span[0],
+        "end": paragraph_span[1],
+        "semantic_role": binding_role,
+        "status": binding_status,
+    }
+    if binding_start_override is not None:
+        binding["start"] = binding_start_override
+    if binding_end_override is not None:
+        binding["end"] = binding_end_override
+    envelope = {
+        "schema_version": "grounder-output-v0.1",
+        "stage": "semantic",
+        "request_id": "v04-sec-html-case",
+        "claims": [
+            {
+                "claim_id": "fact-1",
+                "kind": "observed_fact",
+                "source_id": source_id,
+                "locator": source.final_locator,
+                "quote": quote,
+                "text": selected_text,
+                "event_date": model_date,
+            }
+        ],
+        "hypotheses": [],
+        "coverage": [],
+        "field_bindings": [binding],
+    }
+    canonical_bytes = json.dumps(
+        envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    envelope_hash = _digest(canonical_bytes.decode("utf-8"))
+    context = HostBuildContext(
+        raw_input=UserEventInput(_RAW_INPUT),
+        submission_id="v04-sec-html-case",
+        event_id="v04-sec-html-case",
+        producer_id="convexity-hunter-event-grounder",
+        producer_version="v0.1",
+        observed_at=_NOW,
+        source_bodies=MappingProxyType({source_id: source}),
+        run_id="v04-sec-html-case",
+        canonical_input_hash="b" * 64,
+    )
+    receipt = MappingProxyType(
+        {
+            "schema_version": "semantic-validation-v0.2",
+            "run_id": context.run_id,
+            "canonical_input_hash": context.canonical_input_hash,
+            "envelope_hash": envelope_hash,
+            "source_body_hashes": ((source_id, source.body_sha256),),
+            "verified_claim_ids": ("fact-1",) if verified_claim else (),
+            "verified_binding_indices": (0,) if verified_binding else (),
+        }
+    )
+    snapshot = ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash)
+    records = (
+        authentic_admission if admission_override is None else admission_override,
+    ) if include_admission else ()
+    preparer = _make_listing_source_preparer(
+        (source_id,), admission_records=records
+    )
+    return preparer(snapshot, receipt, context), context, authentic_admission
 
 
 def _sec_primary_composite_records(
@@ -2529,6 +2666,238 @@ class HostEventGrounderTests(unittest.TestCase):
                     prepared.source_bodies["sec-fact"].title,
                     "Synthetic SEC filing",
                 )
+
+    def test_default_host_route_resolves_v04_from_admitted_primary_html(self):
+        run_id = "default-v04-sec-html-run"
+        _fixture_client, admission = _sec_v04_admission(
+            (
+                "Earlier filing: March 2, 2026.",
+                _V04_SEC_SENTENCE,
+                "Filing date: October 1, 2026.",
+                "Response deadline: December 31, 2026.",
+            )
+        )
+        untrusted_locator = "https://source.example/unverified-extract"
+        model_sources = (
+            ("source-sec", untrusted_locator),
+            (admission.source_id, _SEC_LOCATOR),
+        )
+        model_bodies = {
+            untrusted_locator: "Tavily text is not admitted SEC evidence.\n",
+            _SEC_LOCATOR: admission.parsed_body,
+        }
+        config = _config(source_order=(("source-sec", _SEC_LOCATOR),))
+        discovery, semantic, _normalized = _model_outputs(
+            run_id,
+            _RAW_INPUT,
+            model_sources,
+            model_bodies,
+            config,
+            fact_text=_V04_SEC_SENTENCE,
+            event_date="2026-09-21",
+            date_binding_marker="September 21, 2026",
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=(("source-sec", _SEC_LOCATOR),),
+            body_overrides={
+                _SEC_LOCATOR: "Tavily text is not admitted SEC evidence.\n"
+            },
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        route_client, _route_admission = _sec_v04_admission(
+            (
+                "Earlier filing: March 2, 2026.",
+                _V04_SEC_SENTENCE,
+                "Filing date: October 1, 2026.",
+                "Response deadline: December 31, 2026.",
+            ),
+            admit=False,
+        )
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+        with patch(
+            "convexity_hunter.host_event._create_source_admission_client",
+            return_value=route_client,
+        ):
+            result = callback(
+                _RAW_INPUT,
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        prepared = result.build_result.context
+        self.assertEqual(prepared.event_description_binding, "fact-1")
+        self.assertEqual(
+            prepared.event_date_range.start_date, datetime.date(2026, 9, 21)
+        )
+        self.assertEqual(
+            prepared.event_date_range.end_date, datetime.date(2026, 9, 21)
+        )
+        methodology = json.loads(prepared.event_date_range.methodology)
+        source = prepared.source_bodies[admission.source_id]
+        self.assertNotIn("CONFORMED SUBMISSION TYPE", source.body)
+        self.assertEqual(
+            methodology["rule_version"],
+            "host-event-source-facts-v0.4/sec-primary-html-occurrence-date",
+        )
+        self.assertEqual(methodology["action_role"], "announcement")
+        self.assertEqual(methodology["registrant"], "Example Holdings, Inc.")
+        self.assertEqual(methodology["cik"], "320193")
+        self.assertEqual(methodology["accession"], "000032019326000123")
+        self.assertEqual(methodology["admission_provenance"]["parser_id"], "sec-edgar-cover-layout-v4")
+        self.assertEqual(
+            source.body[
+                methodology["paragraph_start"]:methodology["paragraph_end"]
+            ],
+            methodology["paragraph_quote"],
+        )
+        self.assertEqual(
+            source.body[
+                methodology["statement_start"]:methodology["statement_end"]
+            ],
+            _V04_SEC_SENTENCE,
+        )
+        self.assertEqual(
+            source.body[
+                methodology["date_token_start"]:methodology["date_token_end"]
+            ],
+            "September 21, 2026",
+        )
+        self.assertEqual(len(source_transport.calls), 2)
+        self.assertEqual(len(model_transport.calls), 2)
+
+    def test_v04_rejects_frozen_occurrence_and_provenance_counterexamples(self):
+        duplicate = _V04_SEC_SENTENCE.replace(
+            "September 21", "September 22"
+        )
+        cases = (
+            ("url only", {"include_admission": False}),
+            ("unverified fact", {"verified_claim": False}),
+            ("unverified date binding", {"verified_binding": False}),
+            ("wrong date role", {"binding_role": "published_at"}),
+            ("wrong binding status", {"binding_status": "unresolved"}),
+            ("string offset", {"binding_start_override": "0"}),
+            ("boolean offset", {"binding_end_override": True}),
+            ("paraphrased claim", {"claim_text": "The company announced an agreement."}),
+            ("inconsistent model date", {"model_date": "2026-09-20"}),
+            (
+                "modal act",
+                {
+                    "paragraph": _V04_SEC_SENTENCE.replace(
+                        "its agreement", "it will complete its agreement"
+                    )
+                },
+            ),
+            (
+                "negated act",
+                {
+                    "paragraph": _V04_SEC_SENTENCE.replace(
+                        "its agreement", "it did not complete its agreement"
+                    )
+                },
+            ),
+            (
+                "future event",
+                {
+                    "paragraph": _V04_SEC_SENTENCE.replace(
+                        "September 21, 2026", "September 21, 2027"
+                    ),
+                    "model_date": "2027-09-21",
+                },
+            ),
+            (
+                "second date in selected paragraph",
+                {
+                    "paragraph": _V04_SEC_SENTENCE + " Filing date: October 1, 2026.",
+                    "claim_text": _V04_SEC_SENTENCE,
+                },
+            ),
+            (
+                "inner act date",
+                {
+                    "paragraph": _V04_SEC_SENTENCE.replace(
+                        "its agreement with Example Corp.",
+                        "it completed an agreement dated October 1, 2026",
+                    ),
+                },
+            ),
+            (
+                "inner abbreviated date with period",
+                {
+                    "paragraph": _V04_SEC_SENTENCE.replace(
+                        "its agreement with Example Corp.",
+                        "the review was dated Sep. 18, 2026",
+                    ),
+                },
+            ),
+            (
+                "inner abbreviated date without period",
+                {
+                    "paragraph": _V04_SEC_SENTENCE.replace(
+                        "its agreement with Example Corp.",
+                        "the review was dated Sep 18, 2026",
+                    ),
+                },
+            ),
+            (
+                "duplicate same act elsewhere",
+                {"extra_paragraphs": (duplicate,)},
+            ),
+            (
+                "correction label",
+                {"extra_paragraphs": ("Corrected event date: September 22, 2026.",)},
+            ),
+            (
+                "correction sentence",
+                {"extra_paragraphs": ("The foregoing statement is corrected.",)},
+            ),
+            (
+                "embedded denial prefix",
+                {
+                    "paragraph": "It is not true that " + _V04_SEC_SENTENCE,
+                    "claim_text": _V04_SEC_SENTENCE,
+                },
+            ),
+            (
+                "publication-only date",
+                {
+                    "paragraph": "This filing was published on September 21, 2026.",
+                    "claim_text": "This filing was published on September 21, 2026.",
+                },
+            ),
+        )
+        for label, options in cases:
+            with self.subTest(case=label):
+                prepared, _context, _admission = _sec_v04_fact_case(**options)
+                self.assertIsNone(prepared.event_date_range)
+
+        _client, wrong_cover = _sec_v04_admission(
+            (_V04_SEC_SENTENCE,), registrant="Different Holdings, Inc."
+        )
+        mismatched, _context, _admission = _sec_v04_fact_case(
+            admission_override=wrong_cover
+        )
+        self.assertIsNone(mismatched.event_date_range)
+
+        press_release = (
+            "On September 21, 2026, Example Holdings, Inc. issued a press release "
+            "describing its agreement with Example Corp."
+        )
+        accepted, _context, _admission = _sec_v04_fact_case(
+            paragraph=press_release, model_date="2026-09-21"
+        )
+        self.assertEqual(
+            accepted.event_date_range.start_date, datetime.date(2026, 9, 21)
+        )
+        self.assertEqual(
+            json.loads(accepted.event_date_range.methodology)["action_role"],
+            "announcement",
+        )
 
     def test_casevariant_duplicate_sec_headers_are_rejected(self):
         duplicate_fields = (

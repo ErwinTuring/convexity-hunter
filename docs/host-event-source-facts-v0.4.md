@@ -1,6 +1,6 @@
 # Host Event Source Facts v0.4
 
-Status: FROZEN / INDEPENDENT CONTRACT REVIEW PASS / NOT IMPLEMENTED.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT CONTRACT AND IMPLEMENTATION REVIEW PASS.
 
 ## Bounded correction
 
@@ -41,7 +41,10 @@ modal, planned, conditional or hypothetical acts; reject another date in the
 same statement, ambiguous subjects/actions and compound acts. A statement
 containing an inner act with a second date is always unresolved in v0.4,
 even if a human could distinguish its role. It cannot substitute that inner
-date for the outer announcement date.
+date for the outer announcement date. Ambiguity detection covers full English
+months and standard three-letter abbreviations (optional period), ISO dates
+and slash dates. These formats only reject ambiguity; they do not broaden the
+outer occurrence-date authority beyond the full-month grammar above.
 
 Folded claim text must equal the matched complete original statement. This is
 not a paraphrase/date inference rule. The selected quote must be the complete
@@ -95,3 +98,16 @@ multiple/conflicting/corrected dates, wrong date role and inner-act attribution.
 Keep legacy helper behavior and supplied-context identity unchanged. Review
 actual implementation independently before one new normal Event operation
 under the [existing fixed budget](normal-event-closure-2026-10-16.md).
+
+## Implementation validation
+
+The shared listing-source preparer now attempts this private successor only
+when the selected fact has no date and the exact admitted primary body is
+available. Legacy helpers, source admission, listing and EI remain unchanged.
+Independent review's abbreviated-second-date finding was corrected and passed
+targeted re-review. The default factory test uses synthetic admitted HTML,
+catalog normalization and a validated receipt; it is not a live acceptance
+claim. All 54 Host Event tests and 252 related admission/Builder/receipt/
+catalog/Host/Core tests passed. Compileall and the unchanged two-export API
+check passed. Sandbox-denied loopback tests passed only after rerunning with
+the necessary local-port permission. No full-suite result is claimed here.

@@ -8,11 +8,18 @@ Core behavior, with negative evidence checks preserved. No production defect
 was established. A concrete frozen source-date restriction can leave a verified
 event fact undated when SEC SGML headers are absent or unrelated dates coexist;
 the resulting EI date issue blocks Core. A bounded authenticated-primary-HTML
-date-rule extension is user-approved, with its exact v0.4 contract under
-independent review and production implementation not yet started.
-No new Event/source/model/market operation was released. The
-[work plan](normal-event-closure-2026-10-16.md) fixes one normal operation's
-budget and immediate EI→Core continuation; Direct v0.4 is unchanged.
+date-rule extension is user-approved. Its exact v0.4 contract passed independent
+contract/implementation review, including the abbreviated-date correction.
+The shared preparer is implemented; 306 focused/related tests, compileall and
+the unchanged two-export API check passed.
+The [sole normal Event operation](normal-event-closure-2026-10-16.md) completed:
+eight claims, one hypothesis and 27 bindings; zero claims rejected, but one
+hypothesis/two bindings rejected for model semantic uncertainty, supporting-
+source closure and mechanism-field support. Original item reasons were saved
+privately. No submission, EI/Core execution or Futu acquisition resulted; the
+new date rule was not proven live because description/context remained
+unresolved. No retry or positive three-entry closure is claimed. Direct v0.4
+is unchanged; World shares the preparer correction, not a new live success.
 
 ## Attribution diagnostic inconclusive (2026-10-15)
 

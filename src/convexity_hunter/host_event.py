@@ -1596,6 +1596,10 @@ def _make_listing_source_preparer(
         snapshot: object, receipt: object, original_context: HostBuildContext
     ) -> HostBuildContext:
         prepared = _retain_unknown_context_v0_3(snapshot, receipt, original_context)
+        if prepared.event_date_range is None:
+            prepared = _retain_unknown_context_v0_4(
+                snapshot, receipt, original_context, prepared, admission_by_id
+            )
         if not listing_source_ids:
             return prepared
         composite_records = ()
@@ -2171,6 +2175,377 @@ def _resolve_sec_occurrence_date_with_verbs(
     ):
         return None
     return event_date, start, end, match.group("verb")
+
+
+def _ascii_whitespace_pattern(value: str) -> str:
+    return (_SRO_ASCII_WS + "+").join(
+        re.escape(part)
+        for part in re.split(_SRO_ASCII_WS + "+", value)
+    )
+
+
+_SEC_V04_SLASH_DATE_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9-])[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}(?![A-Za-z0-9-])",
+    re.ASCII,
+)
+
+
+def _sec_v04_ambiguity_date_tokens(text: str):
+    return tuple(
+        sorted(
+            (
+                *_SRO_DATE_TOKEN.finditer(text),
+                *_SEC_V04_SLASH_DATE_TOKEN.finditer(text),
+            ),
+            key=lambda match: match.start(),
+        )
+    )
+
+
+def _sec_primary_html_occurrence_pattern(registrant: str):
+    whitespace = _SRO_ASCII_WS + "+"
+    verbs = (
+        "entered into",
+        "completed",
+        "closed",
+        "executed",
+        "signed",
+        "announced",
+        "issued a press release",
+    )
+    verb_pattern = "|".join(_ascii_whitespace_pattern(verb) for verb in verbs)
+    alias_pattern = (
+        r"(?:" + whitespace + r"\(" + _ascii_whitespace_pattern("the")
+        + whitespace + r"(?:“Company”|\"Company\")\))?"
+    )
+    return re.compile(
+        r"(?<![A-Za-z0-9])On" + whitespace
+        + r"(?P<month>(?ai:" + _ENGLISH_MONTHS + r"))" + whitespace
+        + r"(?P<day>[0-9]{1,2})," + whitespace
+        + r"(?P<year>[0-9]{4})," + whitespace
+        + _ascii_whitespace_pattern(registrant)
+        + alias_pattern + whitespace
+        + r"(?P<verb>" + verb_pattern + r")" + whitespace
+        + r"(?P<object>[^.!?]{1,240}?)\."
+        + r"(?=$|[ \t\r\n\f\v])"
+    )
+
+
+def _sec_primary_html_occurrence_date_v0_4(
+    claim_index: int,
+    claim: dict,
+    source: HostSourceBody,
+    envelope: dict,
+    verified_binding_indices: frozenset,
+    context: HostBuildContext,
+    admission: object,
+):
+    """Resolve one exact occurrence sentence from its authenticated SEC HTML body."""
+    if type(admission) is not SourceAdmission:
+        return None
+    try:
+        parsed_size = len(admission.parsed_body.encode("utf-8", errors="strict"))
+    except (AttributeError, UnicodeEncodeError):
+        return None
+    checked_admission = _revalidate_source_admission(
+        admission,
+        max_raw_bytes=admission.raw_body_bytes,
+        max_parsed_bytes=parsed_size,
+    )
+    if (
+        checked_admission is None
+        or checked_admission.family != "sec"
+        or checked_admission.parser_id != "sec-edgar-cover-layout-v4"
+        or checked_admission.parser_version != "4"
+        or checked_admission.content_type != "text/html"
+        or checked_admission.source_id != claim.get("source_id")
+        or checked_admission.source_id != admission.source_id
+        or checked_admission.final_locator != source.final_locator
+        or checked_admission.parsed_body != source.body
+        or checked_admission.parsed_body_sha256 != source.body_sha256
+        or checked_admission.retrieved_at != source.retrieved_at
+        or hashlib.sha256(source.body.encode("utf-8", errors="strict")).hexdigest()
+        != source.body_sha256
+    ):
+        return None
+    initial_parts = _sec_locator_parts(checked_admission.initial_locator)
+    locator_parts = _sec_locator_parts(source.final_locator)
+    if locator_parts is None or initial_parts != locator_parts:
+        return None
+
+    registrant_anchors = tuple(
+        anchor
+        for anchor in checked_admission.raw_anchors
+        if anchor.field == "sec_cover.registrant"
+    )
+    if len(registrant_anchors) != 1:
+        return None
+    registrant_anchor = registrant_anchors[0]
+    if (
+        type(registrant_anchor.parsed_start) is not int
+        or type(registrant_anchor.parsed_end) is not int
+        or not 0 <= registrant_anchor.parsed_start < registrant_anchor.parsed_end
+        <= len(source.body)
+    ):
+        return None
+    registrant = source.body[
+        registrant_anchor.parsed_start:registrant_anchor.parsed_end
+    ]
+    if _sec_cover_layout_v4_fold(registrant) is None:
+        return None
+
+    claim_id = claim.get("claim_id")
+    quote = claim.get("quote")
+    claim_text = claim.get("text")
+    if (
+        type(claim_id) is not str
+        or type(quote) is not str
+        or not quote
+        or type(claim_text) is not str
+    ):
+        return None
+    paragraph_spans = tuple(_line_paragraph_spans(source.body))
+    paragraph_matches = tuple(
+        span for span in paragraph_spans if source.body[slice(*span)] == quote
+    )
+    if len(paragraph_matches) != 1:
+        return None
+    paragraph_start, paragraph_end = paragraph_matches[0]
+    quote_start = source.body.find(quote)
+    if quote_start != paragraph_start or source.body.find(quote, quote_start + 1) >= 0:
+        return None
+
+    statement_pattern = _sec_primary_html_occurrence_pattern(registrant)
+    paragraph_matches = tuple(statement_pattern.finditer(quote))
+    if len(paragraph_matches) != 1:
+        return None
+    statement = paragraph_matches[0]
+    prefix = quote[:statement.start()]
+    if prefix.strip(" \t\r\n\f\v") and re.search(
+        r"[.!?][ \t\r\n\f\v]*\Z", prefix
+    ) is None:
+        return None
+    statement_text = statement.group(0)
+    statement_start = paragraph_start + statement.start()
+    statement_end = paragraph_start + statement.end()
+    date_start = paragraph_start + statement.start("month")
+    date_end = paragraph_start + statement.end("year")
+    paragraph_date_tokens = _sec_v04_ambiguity_date_tokens(quote)
+    if (
+        len(paragraph_date_tokens) != 1
+        or paragraph_date_tokens[0].span()
+        != (statement.start("month"), statement.end("year"))
+    ):
+        return None
+    if any(
+        statement_start <= match.start() < statement_end
+        and match.span() != (
+            date_start,
+            date_end,
+        )
+        for match in _sec_v04_ambiguity_date_tokens(source.body)
+    ):
+        return None
+    if _ascii_whitespace_fold(claim_text) != _ascii_whitespace_fold(statement_text):
+        return None
+
+    object_text = statement.group("object").strip(" \t\r\n\f\v")
+    negation = re.compile(
+        r"\b(?:not|never|neither|nor|no|without|failed\s+to|cannot|can't|"
+        r"won't|didn't|doesn't|hasn't|haven't|hadn't)\b",
+        re.IGNORECASE | re.ASCII,
+    )
+    if (
+        not object_text
+        or len(object_text) > 240
+        or _UNCERTAIN_ACTION.search(object_text) is not None
+        or negation.search(object_text) is not None
+    ):
+        return None
+
+    body = source.body
+    correction_label = re.compile(
+        r"^[ \t]*(?:Correction|Corrected event date|Withdrawal|Retraction):",
+        re.IGNORECASE | re.ASCII | re.MULTILINE,
+    )
+    correction_sentence = re.compile(
+        r"(?ai)(?<![A-Za-z0-9])The" + _SRO_ASCII_WS + r"+foregoing"
+        + _SRO_ASCII_WS + r"+statement" + _SRO_ASCII_WS + r"+is"
+        + _SRO_ASCII_WS
+        + r"+(?:incorrect|corrected|withdrawn|retracted)\."
+    )
+    if correction_label.search(body) is not None or correction_sentence.search(body) is not None:
+        return None
+
+    selected_key = (
+        _ascii_whitespace_fold(registrant),
+        _ascii_whitespace_fold(statement.group("verb")),
+        _ascii_whitespace_fold(object_text),
+    )
+    duplicate_matches = tuple(
+        match
+        for match in statement_pattern.finditer(body)
+        if (
+            _ascii_whitespace_fold(registrant),
+            _ascii_whitespace_fold(match.group("verb")),
+            _ascii_whitespace_fold(
+                match.group("object").strip(" \t\r\n\f\v")
+            ),
+        ) == selected_key
+    )
+    if len(duplicate_matches) != 1 or (
+        duplicate_matches[0].start(), duplicate_matches[0].end()
+    ) != (statement_start, statement_end):
+        return None
+
+    try:
+        event_date = datetime.date(
+            int(statement.group("year")),
+            _ENGLISH_MONTH_NUMBERS[statement.group("month").title()],
+            int(statement.group("day")),
+        )
+    except (KeyError, ValueError):
+        return None
+    model_date = claim.get("event_date")
+    if (
+        type(model_date) is not str
+        or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", model_date) is None
+        or model_date != event_date.isoformat()
+        or event_date > context.observed_at.astimezone(datetime.timezone.utc).date()
+    ):
+        return None
+
+    field_bindings = envelope.get("field_bindings")
+    if type(field_bindings) is not list:
+        return None
+    field_path = "/claims/{}/event_date".format(claim_index)
+    matching_bindings = tuple(
+        (index, binding)
+        for index, binding in enumerate(field_bindings)
+        if type(binding) is dict and binding.get("field_path") == field_path
+    )
+    if len(matching_bindings) != 1:
+        return None
+    binding_index, binding = matching_bindings[0]
+    binding_start = binding.get("start")
+    binding_end = binding.get("end")
+    if (
+        binding_index not in verified_binding_indices
+        or binding.get("source_id") != claim.get("source_id")
+        or binding.get("source_id") != checked_admission.source_id
+        or type(binding_start) is not int
+        or type(binding_end) is not int
+        or binding_start != paragraph_start
+        or binding_end != paragraph_end
+        or binding.get("quote") != quote
+        or source.body[binding_start:binding_end] != quote
+        or binding.get("semantic_role") != "date"
+        or binding.get("status") != "supported"
+    ):
+        return None
+
+    action_role = (
+        "announcement"
+        if _ascii_whitespace_fold(statement.group("verb"))
+        in ("announced", "issued a press release")
+        else "completed_act"
+    )
+    return event_date, {
+        "admission_provenance": checked_admission.provenance(),
+        "registrant": registrant,
+        "cik": locator_parts[0],
+        "accession": locator_parts[1],
+        "source_id": checked_admission.source_id,
+        "body_sha256": source.body_sha256,
+        "locator": source.final_locator,
+        "action_role": action_role,
+        "action_verb": _ascii_whitespace_fold(statement.group("verb")),
+        "matched_statement": statement_text,
+        "statement_start": statement_start,
+        "statement_end": statement_end,
+        "paragraph_start": paragraph_start,
+        "paragraph_end": paragraph_end,
+        "paragraph_quote": quote,
+        "binding_start": binding_start,
+        "binding_end": binding_end,
+        "date_token_start": date_start,
+        "date_token_end": date_end,
+        "date_token": body[date_start:date_end],
+    }
+
+
+def _retain_unknown_context_v0_4(
+    snapshot: object,
+    receipt: object,
+    original_context: HostBuildContext,
+    prepared_context: HostBuildContext,
+    admission_by_id: dict,
+) -> HostBuildContext:
+    """Apply the frozen authenticated SEC primary-HTML occurrence-date rule."""
+    if prepared_context.event_date_range is not None:
+        return prepared_context
+    selected_id = prepared_context.event_description_binding
+    if type(selected_id) is not str:
+        return prepared_context
+    evidence = _preparation_evidence(snapshot, receipt, original_context)
+    if evidence is None:
+        return prepared_context
+    envelope, verified_claim_ids, verified_binding_indices = evidence
+    claims = envelope.get("claims")
+    if type(claims) is not list:
+        return prepared_context
+    selected = tuple(
+        (index, claim)
+        for index, claim in enumerate(claims)
+        if type(claim) is dict and claim.get("claim_id") == selected_id
+    )
+    if len(selected) != 1:
+        return prepared_context
+    claim_index, claim = selected[0]
+    if (
+        claim.get("kind") != "observed_fact"
+        or selected_id not in verified_claim_ids
+        or type(claim.get("source_id")) is not str
+    ):
+        return prepared_context
+    source_id = claim["source_id"]
+    source = original_context.source_bodies.get(source_id)
+    admission = admission_by_id.get(source_id)
+    if (
+        type(source) is not HostSourceBody
+        or claim.get("locator") != source.final_locator
+        or type(admission) is not SourceAdmission
+    ):
+        return prepared_context
+    occurrence = _sec_primary_html_occurrence_date_v0_4(
+        claim_index,
+        claim,
+        source,
+        envelope,
+        verified_binding_indices,
+        original_context,
+        admission,
+    )
+    if occurrence is None:
+        return prepared_context
+    event_date, fields = occurrence
+    methodology = json.dumps(
+        {
+            "rule_version": (
+                "host-event-source-facts-v0.4/"
+                "sec-primary-html-occurrence-date"
+            ),
+            **fields,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return replace(
+        prepared_context,
+        event_date_range=MethodologizedDateRange(event_date, event_date, methodology),
+    )
 
 
 def _publication_datetime(value: Optional[str]) -> Optional[datetime.datetime]:

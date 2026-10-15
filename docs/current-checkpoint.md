@@ -2,7 +2,7 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## Normal Event closure: concrete source-date rule decision (2026-10-16)
+## Normal Event closure: approved source-date correction (2026-10-16)
 
 The user stopped historical-A reconstruction and further A/B work. Eleven
 targeted existing fixed-sample tests passed: lawful fact → interpretation →
@@ -21,13 +21,22 @@ cause. Primary HTML/multiple dates cannot be silently accepted by deleting
 guards or equating filing/publication with occurrence.
 
 The user approved the bounded extension for independently admitted SEC primary
-HTML. The [v0.4 contract](host-event-source-facts-v0.4.md) is under independent
-contract review before BUILD. The new
+HTML. The [v0.4 contract](host-event-source-facts-v0.4.md) passed independent
+contract and implementation review, including the abbreviated-date correction.
+The successor is implemented; 306 focused/related tests, compileall and the
+unchanged two-export API check passed. The new
 [normal Event work plan](normal-event-closure-2026-10-16.md) fixes the TMQ NOI
-case and one operation's budget. No Tavily/model/Futu operation has been
-released in this unit; those budgets are unused. Once authorized/fixed, the
-normal path must immediately take a lawful submission through EI and accepted
-hypotheses through the shared Core, without another selection checkpoint.
+case and the completed sole operation. Run `565811a7-a568-47ff-bc94-afb0f88e72c2`
+returned HTTP 201 / BLOCKED / GROUNDING_NO_SUBMISSION: eight claims, one
+hypothesis, 27 bindings; zero claims rejected, one hypothesis/two bindings
+rejected. Its original item reasons are privately retained, not lost aggregate
+counts. Model unresolved mechanism judgment, a separate supporting-source
+closure mismatch and unresolved mechanism fields prevented projection; EI and
+Core were NOT RUN. Description/date/listing context remained unresolved, so
+this run does not establish live success of the new date rule. The sole guard
+is spent; no retry, Futu acquisition or positive three-entry closure occurred.
+The normal path still immediately takes any lawful submission through EI and
+accepted hypotheses through shared Core, without another selection checkpoint.
 World reuses the shared correction; Direct Profile v0.4 remains untouched.
 
 ## Rejection attribution stopped before usable capture (2026-10-15)
