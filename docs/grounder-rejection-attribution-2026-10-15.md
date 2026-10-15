@@ -1,7 +1,7 @@
 # Grounder rejection attribution — 2026-10-15
 
-Status: preregistered; OFFLINE preparation only until recording tests and
-independent review pass. This is a new single-input diagnostic work unit,
+Status: released once after offline tests/review; result INCONCLUSIVE. No
+further live request is permitted within this unit. This is a single-input diagnostic work unit,
 not a third arm/repair/replay of the closed
 [source control](grounder-mechanism-control-2026-10-15.md).
 
@@ -99,5 +99,78 @@ Pre-release SHA-256 identities:
 - tests: `76df9de038f18a502459ff4c1602b2ac2eb677cb508a79e6a13561a834c8e95d`
 
 Final independent script review passed, including the targeted fixes. The
-prepared script has not yet been released at this checkpoint; synthetic tests
-do not prove live attribution.
+prepared script was unreleased when these identities were recorded; synthetic
+tests do not prove live attribution. The subsequent result is recorded below.
+
+## Sole real execution — INCONCLUSIVE
+
+Main released the reviewed script once. Runtime exited 2 and safely saved the
+complete derived summary before short stdout output; this is a complete
+recording of an inconclusive execution, not a complete semantic assessment.
+
+- Host-generated diagnostic run: `29ae8ae7-9a92-4a8d-8ee6-9c2252b0951e`.
+- Source request/credit reservations: 1/1; discovery/semantic reservations: 1/1.
+- Model total: 2, KNOWN reservations, not confirmed provider billing or success.
+- Source-body and question hashes match the earlier control's retained hashes.
+- Runtime: INCONCLUSIVE / HOST_GROUNDER_RUNTIME_REJECTED.
+- Emitter calls/completions: 0/0; capture state NOT_CAPTURED; no collection,
+  thread or emitter-replacement error was recorded.
+- Semantic receipt completion was NOT_OBSERVED. Zero-filled category counters
+  are **not observed zero rejections** and cannot identify a rejection cause.
+- Producer, verified, projected and Builder counts are null/unavailable, not 0.
+  EI was not assessed. Listing enrichment/origin admission and Core were NOT_RUN.
+
+Safe summary:
+`/Users/erwinlee/convexity-hunter/research/grounder-rejection-audit-2026-10-15/capture-414598f3d72a49bbae8ed0f12a17f930/summary.json`.
+SHA-256: `e36d4a558bd548c2f3c24796048c620033115628f0127085b2bbe3a430598bf5`.
+The private `.single-arm-release-once` guard is spent. Released collector,
+runner and tests were additionally preserved in `released-536a7777/`; do not
+modify them or replay the guard. No raw body, model rationale or credential
+was saved. Cumulative reservations across the closed control and this unit
+are 3 source requests/3 credits/10 model requests, not confirmed charges.
+
+The inherited `_one_arm` catches HostGrounderRuntimeError and returns only the
+generic runtime reason, discarding its existing code/stage/check attributes.
+This is a demonstrated external-wrapper observability limitation. It does not
+identify this run's precise operation, prove a production defect or recover
+the earlier A rejection causes. In particular, a reserved semantic request is
+not proof of a successful response or malformed model JSON.
+
+The code provides one narrower bound without another call: client initialization
+does not consume a request; the semantic reservation shows that role was
+entered. The rejection emitter is invoked after successful semantic receipt
+validation, before context preparation/Builder. With no observed emitter call
+or collector error, the retained evidence bounds this attempt to the segment
+from semantic-client reservation to receipt completion, not source extraction
+or a validated economic abstention. Reservation precedes credential resolution
+and transport; it does not prove an HTTP request was sent or a response received.
+The capture cannot distinguish local credential/request preparation, transport,
+response validation, wire parsing or receipt construction within that segment. This
+new technical failure must not be substituted for the earlier A's completed
+receipt/rejected-claim result.
+
+No retry, second input, changed model/prompt or production fix followed. Only
+offline preservation of the existing closed runtime-error markers may be
+prepared next; it must not be described as recovery of the lost live markers.
+
+## Post-run offline hardening, not a new release
+
+Prepared `runtime_failure_capture.py` and its three passing focused tests in
+the same private research directory. The isolated wrapper observes only the
+existing allowlisted runtime code/stage/check before the inherited helper
+catches the exception, re-raises the exact same exception and restores the
+runtime function afterward. It never parses exception/rationale text, forwards
+no payload to logs and adds no provider call. Unknown metadata remains absent.
+Main inspected this small helper; the real-result interpretation above was
+independently reviewed. This helper has no release command and was not wired
+into or used to rerun the spent script. It is not a production deployment,
+retroactive attribution, or live proof of the hardening.
+
+- helper SHA-256: `c79414ddac7b2b868d137c61ab5d033fb4b1fbc57ae5d962b29936ac0ac4e345`
+- tests SHA-256: `14a4d96c79e51e19ffeab080fade6b355d99c4b0ca40773022ff56bddd3a4bb4`
+
+Repository changes are documentation only; new local-link/fence checks and
+`git diff --check` passed. The 16 pre-release and three post-run tests are
+offline synthetic evidence, not a new full regression or successful product
+closure. Production remains unchanged; no acceptance/prompt change or new
+positive World/Event-to-Core result is justified by this unit.

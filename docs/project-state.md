@@ -1,5 +1,19 @@
 # Project State
 
+## Attribution diagnostic inconclusive (2026-10-15)
+
+The [single-input attribution diagnostic](grounder-rejection-attribution-2026-10-15.md)
+completed its sole allowed attempt after offline tests/review, but stopped with
+a generic runtime rejection before usable rejection-check capture. NOT_CAPTURED
+is not zero rejected evidence; null producer counts are not an empty producer.
+The inherited external helper discards existing detailed runtime-error markers.
+That recording limitation is established; the actual runtime failure and prior
+A's substantive rejection causes remain unresolved. No acceptance relaxation,
+production change, new deployment, retry or positive three-entry closure is
+claimed. Safe results and cumulative reservation ceilings are in the checkpoint.
+The external wrapper's closed-error-marker preservation is prepared and
+tested offline (three tests), not deployed or verified by another live call.
+
 ## Source-control attribution result (2026-10-15)
 
 The [bounded IREN control](grounder-mechanism-control-2026-10-15.md) completed:

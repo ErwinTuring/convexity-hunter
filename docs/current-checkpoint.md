@@ -2,6 +2,28 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Rejection attribution stopped before usable capture (2026-10-15)
+
+One separately registered [single-input diagnostic](grounder-rejection-attribution-2026-10-15.md)
+ran after 16 offline tests and independent script review. Source extraction
+succeeded with the same body hash; one request/credit and two model requests
+were reserved. It returned INCONCLUSIVE / HOST_GROUNDER_RUNTIME_REJECTED.
+No completed semantic-receipt marker was observed: emitter calls/completions
+were 0/0, capture NOT_CAPTURED. Its zero-filled counters are not evidence of
+zero rejections. Producer/verified counts are null/unavailable; EI was not
+assessed. The old helper discarded existing detailed runtime-error attributes,
+so neither this run's exact failure nor earlier A's rejection causes are known.
+This is an external recording limitation, not a proven production acceptance
+defect. No retry or guard replay followed. Cumulative reservations including
+the prior control are three source requests/three credits/ten model requests,
+not confirmed charges. Safe summary and released script identities are in the
+linked document. No Core/market-data/Host archive operation or deployment
+occurred; the earlier nineteen-archive observation was not refreshed here.
+An external offline-only wrapper now preserves allowlisted runtime-error
+code/stage/check without altering/replacing the exception; three focused tests
+passed. It is not deployed or connected to the spent runner and cannot restore
+the lost markers. No further live request followed.
+
 ## Bounded source control completed (2026-10-15)
 
 The [IREN source control](grounder-mechanism-control-2026-10-15.md) separates
