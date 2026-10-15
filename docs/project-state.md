@@ -1,5 +1,18 @@
 # Project State
 
+## Source-control attribution result (2026-10-15)
+
+The [bounded IREN control](grounder-mechanism-control-2026-10-15.md) completed:
+A produced one hypothesis but no claims passed validation; B verified four
+claims and produced no hypothesis. Neither entered EI. This localizes
+A's stop to the validation chain without proving its rejection correct or
+defective, and supports only evidence-limited abstention for B. The incomplete
+first recording remains incomplete; one preregistered repair round saved full
+sanitized statistics. Independent review passed. No production, acceptance,
+economic policy or deployment changed. No new Host archive or positive
+three-entry closure is claimed. Rejection attribution remains unresolved;
+no third live round belongs to this completed control.
+
 ## Mechanism evidence and abstention (2026-10-15)
 
 The user confirmed that source facts need not yield a credible economic

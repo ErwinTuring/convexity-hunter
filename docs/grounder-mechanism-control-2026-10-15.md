@@ -1,7 +1,7 @@
 # Grounder evidence control — 2026-10-15
 
-Status: round 1 PARTIAL_CAPTURE; one recording-repair round pre-registered
-below, not yet executed. This is a bounded source-to-Grounder
+Status: round 1 PARTIAL_CAPTURE; the separately pre-registered recording-repair
+round completed with full sanitized capture. This is a bounded source-to-Grounder
 control, not a new discovery batch, historical as-of replay, or investment case.
 No outcome is required to be ACCEPTED.
 
@@ -142,3 +142,80 @@ fallback source, refreshed quotes or retry follows, regardless of outcome.
 Offline recording tests and independent safety review precede Main's sole
 release. A failed or unsupported result remains valid evidence, not a reason
 for another run. This repair does not change production code or EI semantics.
+
+## Corrective round: complete sanitized results
+
+Main released the repaired recorder exactly once after offline recording tests
+and independent safety review. Each sanitized arm and final summary were saved
+privately and atomically with file/directory fsync; no raw source/model text,
+secrets or free-text diagnostic messages were retained. Script SHA-256:
+`584983b8e77a6ff86a0d9273cd53b27356cf27b6e98d015cb96009f8ad026c2f`.
+The `/private/tmp/iren-safe-capture.HpOMVQ/.run-once` guard is spent.
+
+| Recorded field | A: API-returned text | B: restricted identity excerpt |
+| --- | ---: | ---: |
+| Producer-envelope claims | 12 | 4 |
+| Producer-envelope hypotheses | 1 | 0 |
+| Producer-envelope bindings | 32 | 7 |
+| Verified claims | 0 | 4 |
+| CLAIM_REJECTED_BY_VALIDATOR | 12 | 0 |
+| HYPOTHESIS_REJECTED_BY_VALIDATOR | 1 | 0 |
+| FIELD_BINDING_NOT_VERIFIED | 28 | 0 |
+| FIELD_BINDING_MISSING | 0 | 0 |
+| NO_PROJECTABLE_HYPOTHESIS | 1 | 1 |
+| Total Builder diagnostics | 42 | 1 |
+| Unrecognized diagnostic codes | 0 | 0 |
+| Submission present | false | false |
+| EI assessed | false | false |
+| Projected submission hypothesis count | null | null |
+
+Both runtimes completed. A run: `b835e995-ff50-4631-8a2b-fa48ed6e6e46`;
+B: `56cabd9c-30b8-483c-b897-8fdcf9dfe42b`. Other diagnostic categories
+were zero. Each arm reserved one discovery and one semantic request. Round 2
+reserved one source request/credit and four model requests. Across both rounds:
+two source requests, two credits and eight model requests **reserved**, not
+independently confirmed usage/billing. No third round follows.
+
+Source body, question and B excerpt hashes/offsets match round 1. A literal
+fact-family presence checks passed for F1–F5/F7; F6 did not match every chosen
+literal string, not proof the filing lacks guarantee conditions. A verified
+anchor coverage is zero because no claims verified, not independent proof of
+extraction loss. B's three identity-anchor spans were covered; no financing
+spans were present. Literal matching is not proposition-level verification.
+
+Safe artifact SHA-256 values:
+
+- summary: `93560471335e8c9f4d0d4f981eed9ef9c37da5593c7ae92959d6450e682a1a90`
+- A: `ced2ab7ed3616e91f7b87b895050c89887175baff126b0bd796622271b6ad215`
+- B: `9e0597b479b94e3b15973fff04872028bb8a316b05fb646e5a96cf40f7e1ab36`
+
+Scripts, spent guards and sanitized JSON are preserved outside Git under
+`/Users/erwinlee/convexity-hunter/research/grounder-source-control-2026-10-15/`,
+in separate round-1/round-2 directories. Missing round-1 results remain missing.
+Round-2 files are summary.json, arm-A.json and arm-B.json; backup-root/file
+permissions are 700/600 respectively.
+
+## Interpretation and remaining boundary
+
+B supports narrow abstention: four claims verified and no hypothesis
+manufactured from restricted evidence. It does not establish absence of a
+real-world mechanism. A produced one hypothesis; its failure is in the
+validation chain, not zero producer output. This chain includes model judgments
+and deterministic reference/dependency checks. Statistics alone cannot decide
+whether rejection was correct, overly strict, a reference mismatch or dependency
+propagation. Raw rejection rationales were not retained. No production defect
+or remedy is demonstrated; do not relax gates or tune for acceptance.
+
+Listing enrichment and normal Event Search/origin admission were NOT_RUN.
+Neither arm entered EI, Core or ordinary Host archives. This is not positive
+standalone World/Event closure or current economic evidence. Partial round 1
+cannot establish semantic improvement between rounds. Only the external
+recording/count-label defect was corrected; production, prompts, models and
+acceptance rules remain unchanged. Independent read-only review confirmed the
+statistics and attribution limits. Any further rationale investigation needs
+a separate bounded evidence-retention plan, not another live run here.
+
+Final repository scope is three Markdown documents only. Fence checks, new
+local-link checks and `git diff --check` passed; no full suite was repeated.
+An unchanged historical absolute `/private/tmp/` link in the older checkpoint
+is unavailable locally; this is not a claim that all historical links passed.

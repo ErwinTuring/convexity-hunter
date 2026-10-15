@@ -2,6 +2,28 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Bounded source control completed (2026-10-15)
+
+The [IREN source control](grounder-mechanism-control-2026-10-15.md) separates
+producer output from validation and EI. Round 1 is PARTIAL_CAPTURE; one
+separately registered recording-repair round preserved complete sanitized
+results. A produced 12 claims/1 hypothesis/32 bindings, with zero verified
+claims; B produced 4 claims/0 hypotheses/7 bindings, with four verified claims.
+Neither constructed a submission; EI was not assessed. A's rejection rationale
+remains unresolved, not proof of no mechanism or a software defect. B supports
+only abstention on restricted evidence. Independent review confirmed
+counts and interpretation limits. No production fix is justified by these data.
+
+Cumulative reservations: two source requests/two credits/eight model requests,
+not confirmed billing. No third round, market-data request or Host study run
+followed. Safe artifacts and spent guards were preserved outside Git. Listing
+enrichment/origin admission were NOT_RUN: ordinary World/Event-to-Core closure
+is not proven. Nineteen Host archives is the previously verified state, not a
+new count check; this documentation unit required no deployment. The next
+unresolved boundary is the substantive/reference basis
+for A's validation rejections, requiring a separate bounded retention plan,
+without forcing hypotheses or weakening acceptance.
+
 ## Honest abstention and unresolved attribution (2026-10-15)
 
 The user confirmed that a source-backed event need not yield a supported
