@@ -1,5 +1,19 @@
 # Project State
 
+## Normal Event: approved bounded rule correction (2026-10-16)
+
+Historical-A reconstruction and A/B repetition are retired. Eleven existing
+fixed-sample checks confirm lawful semantic/Builder/EI acceptance and shared
+Core behavior, with negative evidence checks preserved. No production defect
+was established. A concrete frozen source-date restriction can leave a verified
+event fact undated when SEC SGML headers are absent or unrelated dates coexist;
+the resulting EI date issue blocks Core. A bounded authenticated-primary-HTML
+date-rule extension is user-approved, with its exact v0.4 contract under
+independent review and production implementation not yet started.
+No new Event/source/model/market operation was released. The
+[work plan](normal-event-closure-2026-10-16.md) fixes one normal operation's
+budget and immediate EI→Core continuation; Direct v0.4 is unchanged.
+
 ## Attribution diagnostic inconclusive (2026-10-15)
 
 The [single-input attribution diagnostic](grounder-rejection-attribution-2026-10-15.md)

@@ -2,6 +2,34 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Normal Event closure: concrete source-date rule decision (2026-10-16)
+
+The user stopped historical-A reconstruction and further A/B work. Eleven
+targeted existing fixed-sample tests passed: lawful fact → interpretation →
+hypothesis can form a submission accepted by EI; separate application tests
+confirm the common Core. Negative semantic/reference/binding/dependency cases
+remain fail-closed. No implementation departure or reason to weaken EI was
+established, and no test was added just to increase counts.
+
+A concrete normal-path rule limitation is now identified: source-facts v0.1/
+v0.2 require SGML headers, a narrow exact occurrence sentence and only one date
+across the entire body. The existing extra-date test deliberately verifies
+that a supported fact stays verified while event_date_range remains absent.
+An otherwise complete submission then has INCOMPLETE_EVENT_DATE_RANGE and
+cannot enter Core. This is a frozen rule issue, not proof of a historical A
+cause. Primary HTML/multiple dates cannot be silently accepted by deleting
+guards or equating filing/publication with occurrence.
+
+The user approved the bounded extension for independently admitted SEC primary
+HTML. The [v0.4 contract](host-event-source-facts-v0.4.md) is under independent
+contract review before BUILD. The new
+[normal Event work plan](normal-event-closure-2026-10-16.md) fixes the TMQ NOI
+case and one operation's budget. No Tavily/model/Futu operation has been
+released in this unit; those budgets are unused. Once authorized/fixed, the
+normal path must immediately take a lawful submission through EI and accepted
+hypotheses through the shared Core, without another selection checkpoint.
+World reuses the shared correction; Direct Profile v0.4 remains untouched.
+
 ## Rejection attribution stopped before usable capture (2026-10-15)
 
 One separately registered [single-input diagnostic](grounder-rejection-attribution-2026-10-15.md)
