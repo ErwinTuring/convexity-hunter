@@ -25,8 +25,10 @@ Fixed categories: dependency_closure, dependency_cycle, hypothesis_roots,
 hypothesis_support_source, missing_exact_reference, required_field_binding,
 unknown, verifier_contradicted, verifier_unresolved. These count triggered
 checks across object types, not unique rejected claims or economic causes.
-No free-text rationales, IDs, source/model bodies, credentials or account data
-may be serialized or logged. They are not needed to distinguish these checks.
+No free-text rationales, model/source/subject IDs, source/model bodies,
+credentials or account data may be serialized or logged. A Host-generated
+run UUID may identify the diagnostic execution, never a model-supplied ID.
+Such payload details are not needed to distinguish these checks.
 
 ## One independent release, no retries
 
@@ -77,3 +79,25 @@ which remains unknown. No mandatory positive hypothesis, EI ACCEPTED target,
 production patch or further live run follows merely from low output. If a
 concrete implementation defect is independently established, fix only that
 defect with proportional review/tests in a separate implementation step.
+
+## Offline preparation evidence
+
+The external collector and single-arm runner live in
+`/Users/erwinlee/convexity-hunter/research/grounder-rejection-audit-2026-10-15/`.
+Sixteen focused synthetic tests passed, covering unchanged receipts, existing
+rejection branches, disabled logging, hostile values, exception restoration,
+thread/nested interference, safe projection and unknown reservation counts.
+Direct `--check` passed without network, credential/config loading or guard
+consumption. No production file or repository test was changed. Independent
+review identified an entry-cleanup gap; the collector now restores the emitter
+even if entry fails after installation, and requires a closed/complete capture.
+
+Pre-release SHA-256 identities:
+
+- collector: `dfd6aa5be49df97878f2e0f278e103393e63bb29a11b0fe758372b687c8b2a9d`
+- runner: `536a777712b92dcaa379508ee0b06ed60b67f437aacefd7e9b97a4dfa2c6e32b`
+- tests: `76df9de038f18a502459ff4c1602b2ac2eb677cb508a79e6a13561a834c8e95d`
+
+Final independent script review passed, including the targeted fixes. The
+prepared script has not yet been released at this checkpoint; synthetic tests
+do not prove live attribution.
