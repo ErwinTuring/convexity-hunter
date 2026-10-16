@@ -1456,7 +1456,10 @@ class HostServerBatchTests(unittest.TestCase):
 
     def test_normal_event_runtime_v09_negative_and_positive_archives_survive_restart(self):
         from convexity_hunter.host_event import create_event_grounder
-        from convexity_hunter.host_grounder_runtime import _DISCOVERY_SYSTEM_PROMPT_V0_9
+        from convexity_hunter.host_grounder_runtime import (
+            _DISCOVERY_SYSTEM_PROMPT_V0_9,
+            SEMANTIC_SYSTEM_PROMPT_V0_8,
+        )
         from convexity_hunter.host_store import HostStore
         from tests.test_host_event import (
             _NoNetworkAdmissionClient,
@@ -1555,6 +1558,12 @@ class HostServerBatchTests(unittest.TestCase):
                         ],
                         "host-grounder-discovery-prompt-v0.9",
                     )
+                    self.assertEqual(
+                        json.loads(runtime_result.audit.sidecar_utf8.decode("utf-8"))[
+                            "validator_version"
+                        ],
+                        "host-grounder-semantic-verifier-prompt-v0.8",
+                    )
                     discovery_request = next(
                         call for call in model_transport.calls
                         if call["model"] == "fixture-discovery"
@@ -1562,6 +1571,14 @@ class HostServerBatchTests(unittest.TestCase):
                     self.assertEqual(
                         discovery_request["messages"][0]["content"],
                         _DISCOVERY_SYSTEM_PROMPT_V0_9,
+                    )
+                    semantic_request = next(
+                        call for call in model_transport.calls
+                        if call["model"] == "fixture-semantic"
+                    )
+                    self.assertEqual(
+                        semantic_request["messages"][0]["content"],
+                        SEMANTIC_SYSTEM_PROMPT_V0_8,
                     )
                     self.assertEqual(len(model_transport.calls), 2)
                     if has_submission:
@@ -1579,6 +1596,10 @@ class HostServerBatchTests(unittest.TestCase):
                     self.assertEqual(
                         outcome["provenance"]["producer_prompt_version"],
                         "host-grounder-discovery-prompt-v0.9",
+                    )
+                    self.assertEqual(
+                        outcome["provenance"]["validator_version"],
+                        "host-grounder-semantic-verifier-prompt-v0.8",
                     )
                     self.assertEqual(
                         outcome["schema_version"],
@@ -1618,6 +1639,12 @@ class HostServerBatchTests(unittest.TestCase):
                                 "producer_prompt_version"
                             ],
                             "host-grounder-discovery-prompt-v0.9",
+                        )
+                        self.assertEqual(
+                            recovered_run["events"][1]["outcome"]["provenance"][
+                                "validator_version"
+                            ],
+                            "host-grounder-semantic-verifier-prompt-v0.8",
                         )
                     finally:
                         recovered.close()

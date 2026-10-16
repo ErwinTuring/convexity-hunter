@@ -42,6 +42,7 @@ from convexity_hunter.host_grounder_runtime import (
     SEMANTIC_SYSTEM_PROMPT_V0_5,
     SEMANTIC_SYSTEM_PROMPT_V0_6,
     SEMANTIC_SYSTEM_PROMPT_V0_7,
+    SEMANTIC_SYSTEM_PROMPT_V0_8,
     HostGrounderRuntimeError,
     run_host_grounder_same_run_evidence_catalog_v0_1,
     run_host_grounder_same_run_evidence_catalog_v0_2,
@@ -1017,6 +1018,10 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         )
 
     def test_semantic_v07_preserves_v06_and_requires_compact_complete_verdicts(self):
+        self.assertEqual(
+            hashlib.sha256(SEMANTIC_SYSTEM_PROMPT_V0_7.encode("utf-8")).hexdigest(),
+            "61c603b3b66ba8e9ac38a8ba1f53cf2acfc81aa3507195414429483572d14e9a",
+        )
         v06_header = "host-grounder-semantic-verifier-prompt-v0.6."
         v07_header = "host-grounder-semantic-verifier-prompt-v0.7."
         self.assertIn(v07_header, SEMANTIC_SYSTEM_PROMPT_V0_7)
@@ -1035,6 +1040,26 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             "Preserve relevant qualifications and contrary evidence, and do not overstate "
             "what the evidence establishes.",
         )
+
+    def test_semantic_v08_preserves_v07_and_clarifies_facts_vs_inference(self):
+        v07_header = "host-grounder-semantic-verifier-prompt-v0.7."
+        v08_header = "host-grounder-semantic-verifier-prompt-v0.8."
+        self.assertIn(v07_header, SEMANTIC_SYSTEM_PROMPT_V0_7)
+        self.assertNotIn(v08_header, SEMANTIC_SYSTEM_PROMPT_V0_7)
+        v07_as_v08 = SEMANTIC_SYSTEM_PROMPT_V0_7.replace(v07_header, v08_header, 1)
+        self.assertTrue(SEMANTIC_SYSTEM_PROMPT_V0_8.startswith(v07_as_v08))
+        additions = SEMANTIC_SYSTEM_PROMPT_V0_8[len(v07_as_v08):]
+        for requirement in (
+            "Observed facts must faithfully reflect what the original source states",
+            "An interpretation or hypothesis is an inference, not a source-reported fact",
+            "Require concrete supported premises, an explicit transmission link",
+            "Do not mark a hypothesis supported merely because an event occurred",
+            "A source need not state a future security-return direction",
+            "inference wording need not be a literal source quotation",
+            "Supported remains fallible evidence support, not causal proof",
+            "Preserve contradicted and unresolved outcomes, including legitimate empty output",
+        ):
+            self.assertIn(requirement, additions)
 
     def test_audit_holder_pins_only_closed_producer_prompt_versions(self):
         run_input, context = _fixture()
@@ -1100,6 +1125,37 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 )
                 self.assertEqual(holder._semantic_prompt_version, version)
 
+        v08_holder = HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        )
+        v08_holder._begin(
+            run_input.run_id,
+            run_input.canonical_input_hash,
+            catalog.canonical_utf8,
+            catalog.catalog_sha256,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.9",
+            semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.8",
+        )
+        self.assertEqual(
+            v08_holder._semantic_prompt_version,
+            "host-grounder-semantic-verifier-prompt-v0.8",
+        )
+        wrong_pair_holder = HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        )
+        with self.assertRaises(ValueError):
+            wrong_pair_holder._begin(
+                run_input.run_id,
+                run_input.canonical_input_hash,
+                catalog.canonical_utf8,
+                catalog.catalog_sha256,
+                producer_prompt_version="host-grounder-discovery-prompt-v0.8",
+                semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.8",
+            )
+        self.assertFalse(wrong_pair_holder.finalized)
+
         for invalid in (
             "host-grounder-discovery-prompt-v0.10", "", True, 1, [], {}, object()
         ):
@@ -1119,7 +1175,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertFalse(holder.finalized)
 
         for invalid in (
-            "host-grounder-semantic-verifier-prompt-v0.8", "", True, 1, [], {}, object()
+            "host-grounder-semantic-verifier-prompt-v0.9", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_semantic_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1242,13 +1298,13 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
                 self.assertEqual(calls[0][1], expected_prompt)
                 expected_semantic_prompt = (
-                    SEMANTIC_SYSTEM_PROMPT_V0_7
-                    if route
-                    in (
+                    SEMANTIC_SYSTEM_PROMPT_V0_8
+                    if route is runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9
+                    else SEMANTIC_SYSTEM_PROMPT_V0_7
+                    if route in (
                         run_host_grounder_same_run_evidence_catalog_v0_5,
                         run_host_grounder_same_run_evidence_catalog_v0_6,
                         runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
-                        runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9,
                     )
                     else SEMANTIC_SYSTEM_PROMPT_V0_5
                 )
@@ -1270,7 +1326,9 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         result.build_result.semantic_validation.receipt["validator_version"],
-                        "host-grounder-semantic-verifier-prompt-v0.7",
+                        "host-grounder-semantic-verifier-prompt-v0.8"
+                        if route is runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9
+                        else "host-grounder-semantic-verifier-prompt-v0.7",
                     )
                 else:
                     self.assertNotIn("producer_binding_evidence_map", verifier_payload)
@@ -1284,13 +1342,13 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     json.loads(result.audit.sidecar_utf8)["validator_version"],
-                    "host-grounder-semantic-verifier-prompt-v0.7"
-                    if route
-                    in (
+                    "host-grounder-semantic-verifier-prompt-v0.8"
+                    if route is runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9
+                    else "host-grounder-semantic-verifier-prompt-v0.7"
+                    if route in (
                         run_host_grounder_same_run_evidence_catalog_v0_5,
                         run_host_grounder_same_run_evidence_catalog_v0_6,
                         runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8,
-                        runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9,
                     )
                     else "host-grounder-semantic-verifier-prompt-v0.5",
                 )
@@ -2180,7 +2238,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 max_catalog_entries=64,
                 max_catalog_bytes=32_768,
                 max_catalog_paragraphs=128,
-                semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.8",
+                semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.9",
             )
         self.assertEqual(invalid_version.exception.code, "SEMANTIC_PROMPT_VERSION_INVALID")
         self.assertEqual(calls, [])

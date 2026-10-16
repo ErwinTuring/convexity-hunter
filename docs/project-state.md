@@ -1,5 +1,17 @@
 # Project State
 
+## Provisional mechanism role clarification (2026-10-16)
+
+Verifier v0.8 is implemented on the normal producer-v0.9 path after independent
+contract/implementation review; old prompts/archive recovery and deterministic
+gates remain. 305 related tests, compile/API compatibility and diff checks pass.
+The [sole new CIFR Event](host-grounder-provisional-mechanism-v0.1.md) completed
+with eight of nine claims surviving, one dependent hypothesis rejected and
+zero bindings rejected. It stayed BLOCKED before EI/Core, without Futu or a
+retry. Evidence now separates semantic interpretation refusal from dependency
+propagation; no positive live closure or new implementation defect is claimed.
+Direct v0.4 remains unchanged; World reuses the shared correction.
+
 ## Normal Event: approved bounded rule correction (2026-10-16)
 
 Historical-A reconstruction and A/B repetition are retired. Eleven existing
@@ -25,7 +37,8 @@ Follow-up offline probes confirm a closure error can be mechanically derived
 from an unresolved verdict's empty references. The live reference list was not
 retained, so it is not established as an independent cause in this run. The
 [role-specific verifier clarification](host-grounder-provisional-mechanism-v0.1.md)
-is under contract review; no acceptance change or new live success is claimed.
+is implemented and independently reviewed. No acceptance change or new live
+success is claimed.
 
 ## Attribution diagnostic inconclusive (2026-10-15)
 

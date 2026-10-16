@@ -43,6 +43,7 @@ from .host_grounder_evidence_catalog import (
     _VERIFIER_PROMPT_VERSION as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
     _VERIFIER_PROMPT_VERSION_V0_6 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
     _VERIFIER_PROMPT_VERSION_V0_7 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
+    _VERIFIER_PROMPT_VERSION_V0_8 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
     build_host_evidence_catalog,
     parse_grounder_output_v0_3,
     _parse_grounder_output_v0_3_with_progress,
@@ -607,6 +608,37 @@ SEMANTIC_SYSTEM_PROMPT_V0_7 = _replace_prompt_fragment(
     "restate source wording in rationale; evidence_refs identify the cited text. "
     "Preserve relevant qualifications and contrary evidence, and do not overstate "
     "what the evidence establishes."
+)
+SEMANTIC_SYSTEM_PROMPT_V0_8 = _replace_prompt_fragment(
+    SEMANTIC_SYSTEM_PROMPT_V0_7,
+    "host-grounder-semantic-verifier-prompt-v0.7.",
+    "host-grounder-semantic-verifier-prompt-v0.8.",
+) + (
+    "\n\nRole-specific assessment (v0.8): Observed facts must faithfully reflect "
+    "what the original source states, including attribution, actor, polarity, "
+    "time role, and scope. An interpretation or hypothesis is an inference, not "
+    "a source-reported fact, and cannot authorize rewriting an inference as a "
+    "literal fact. Assess interpretations and provisional hypotheses as "
+    "conditional, source-grounded explanations rather than as source-reported "
+    "market predictions. Require concrete supported premises, an explicit "
+    "transmission link to the identified entity or exposure, preserved declared "
+    "dependencies, uncertainty, and inspected counterevidence. Do not mark a "
+    "hypothesis supported merely because an event occurred, an interpretation "
+    "was proposed, or a generic mechanism is imaginable. Missing premises or "
+    "economic/entity dependence remain unresolved. A source need not state a "
+    "future security-return direction, numerical magnitude, probability, or "
+    "precise impact end to support a qualified explanation; this does not supply "
+    "any of those values. Any claimed direction or mode needs its own defensible "
+    "support. Leave unsupported identity, dates/windows, and reassessment "
+    "missing. For a hypothesis-role field binding, assess whether the exact "
+    "bound paragraph grounds the stated conditional link in its declared claim "
+    "context; inference wording need not be a literal source quotation. Exact "
+    "catalog ID, paragraph, and span correspondence remains mandatory. Declared "
+    "dependencies do not rescue an unrelated paragraph or replace missing "
+    "premises. Supported remains fallible evidence support, not causal proof, "
+    "EI acceptance, an opportunity, a recommendation, or positive expected "
+    "return. Preserve contradicted and unresolved outcomes, including legitimate "
+    "empty output."
 )
 
 
@@ -1683,6 +1715,8 @@ def _run_host_grounder_same_run_evidence_catalog(
         semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_6
     elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7:
         semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_7
+    elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8:
+        semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_8
     else:
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     if discovery_client is semantic_client:
@@ -1977,6 +2011,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     if semantic_prompt_version in (
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
+        _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
     ):
         verifier_input["producer_binding_evidence_map"] = producer_binding_evidence_map
     verifier_prompt = _canonical_json(verifier_input, "SEMANTIC_PROMPT_INVALID")
@@ -2474,7 +2509,7 @@ def _run_host_grounder_same_run_evidence_catalog_v0_9(
         max_catalog_bytes=max_catalog_bytes,
         max_catalog_paragraphs=max_catalog_paragraphs,
         producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_9,
-        semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
+        semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
         context_preparer=host_context_preparer,
         producer_diagnostics_v0_3=True,
         producer_format_repair_enabled=True,

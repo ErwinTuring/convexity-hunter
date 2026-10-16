@@ -2,6 +2,20 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Provisional mechanism assessment (2026-10-16)
+
+The [role clarification](host-grounder-provisional-mechanism-v0.1.md) passed
+independent contract/implementation review. Normal producer v0.9 now selects
+verifier v0.8; old routes/archives and all deterministic EI/Core gates remain.
+305 related tests, compileall, public signature/export compatibility and diff
+checks passed. The new normal CIFR run `e14c5a39-4eda-46a1-b903-203c97592d1f`
+used v0.8 and completed: nine claims/one hypothesis/21 bindings; one
+interpretation and its dependent hypothesis rejected, no bindings rejected.
+No supporting-source-reference error was recorded. Original reasons are
+privately retained. HTTP 201 / BLOCKED / GROUNDING_NO_SUBMISSION; EI/Core NOT
+RUN, no Futu call or retry. Do not promote the hypothesis or infer a software
+defect from refusal. Positive three-entry live closure remains incomplete.
+
 ## Normal Event closure: approved source-date correction (2026-10-16)
 
 The user stopped historical-A reconstruction and further A/B work. Eleven
@@ -44,7 +58,7 @@ the closure failure; supported+wrong-source refs fails closure independently,
 and supported+correct-source refs passes. The live sidecar lacks the ref list,
 so the recorded closure reason is not established as a separate original
 cause. No gate or historical status changes. A minimal role-specific verifier
-clarification is under contract review in
+clarification is implemented and independently reviewed in
 [provisional mechanism assessment](host-grounder-provisional-mechanism-v0.1.md).
 
 ## Rejection attribution stopped before usable capture (2026-10-15)

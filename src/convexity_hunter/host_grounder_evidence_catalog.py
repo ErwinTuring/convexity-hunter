@@ -58,13 +58,24 @@ _VERIFIER_WIRE_VERSION = "semantic-verdict-v0.3"
 _VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.5"
 _VERIFIER_PROMPT_VERSION_V0_6 = "host-grounder-semantic-verifier-prompt-v0.6"
 _VERIFIER_PROMPT_VERSION_V0_7 = "host-grounder-semantic-verifier-prompt-v0.7"
+_VERIFIER_PROMPT_VERSION_V0_8 = "host-grounder-semantic-verifier-prompt-v0.8"
 _VERIFIER_PROMPT_VERSIONS = frozenset(
     (
         _VERIFIER_PROMPT_VERSION,
         _VERIFIER_PROMPT_VERSION_V0_6,
         _VERIFIER_PROMPT_VERSION_V0_7,
+        _VERIFIER_PROMPT_VERSION_V0_8,
     )
 )
+
+
+def _valid_prompt_pair(producer_prompt_version: str, semantic_prompt_version: str) -> bool:
+    return (
+        semantic_prompt_version != _VERIFIER_PROMPT_VERSION_V0_8
+        or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
+    )
+
+
 _RESOLVER_VERSION = "host-evidence-catalog-resolver-v0.1"
 _SHA256 = frozenset("0123456789abcdef")
 _OUTPUT_TOP = frozenset(
@@ -855,6 +866,7 @@ class HostEvidenceCatalogAuditHolder:
                 or producer_prompt_version not in _PRODUCER_PROMPT_VERSIONS
                 or type(semantic_prompt_version) is not str
                 or semantic_prompt_version not in _VERIFIER_PROMPT_VERSIONS
+                or not _valid_prompt_pair(producer_prompt_version, semantic_prompt_version)
             ):
                 raise ValueError("audit holder is not fresh for this run/catalog")
             object.__setattr__(self, "_catalog_utf8", bytes(catalog_utf8))
@@ -920,6 +932,12 @@ class HostEvidenceCatalogAuditHolder:
                 or type(expected_semantic_prompt_version) is not str
                 or expected_semantic_prompt_version not in _VERIFIER_PROMPT_VERSIONS
                 or self._semantic_prompt_version != expected_semantic_prompt_version
+                or not _valid_prompt_pair(
+                    self._producer_prompt_version, self._semantic_prompt_version
+                )
+                or not _valid_prompt_pair(
+                    expected_producer_prompt_version, expected_semantic_prompt_version
+                )
             ):
                 raise ValueError("audit holder cannot be finalized")
             if self._producer_attempts and (

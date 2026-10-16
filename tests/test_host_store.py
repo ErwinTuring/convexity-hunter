@@ -512,6 +512,10 @@ class HostStoreTests(unittest.TestCase):
         outcome = run["events"][-1]["outcome"]
         self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.1")
         self.assertEqual(
+            outcome["provenance"]["validator_version"],
+            "host-grounder-semantic-verifier-prompt-v0.7",
+        )
+        self.assertEqual(
             [outcome[name] for name in (
                 "grounder_status", "source_status", "semantic_status", "builder_status",
                 "submission_status", "ei_status",
@@ -566,6 +570,10 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(reopened_run["status"], "BLOCKED")
         self.assertEqual(
             reopened_outcome["schema_version"], "host-grounder-stage-outcome-v0.1"
+        )
+        self.assertEqual(
+            reopened_outcome["provenance"]["validator_version"],
+            "host-grounder-semantic-verifier-prompt-v0.7",
         )
         self.assertNotIn("producer_attempts", reopened_outcome["provenance"])
 
@@ -711,6 +719,24 @@ class HostStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "audit versions do not identify"):
             _grounder_stage_outcome(
                 replace(result, audit=unsupported_audit),
+                run_id,
+                "synthetic fixture event",
+            )
+
+        wrong_pair_sidecar = dict(sidecar)
+        wrong_pair_sidecar["producer_prompt_version"] = "host-grounder-discovery-prompt-v0.8"
+        wrong_pair_sidecar["validator_version"] = "host-grounder-semantic-verifier-prompt-v0.8"
+        wrong_pair_wire = json.dumps(
+            wrong_pair_sidecar, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        wrong_pair_audit = replace(
+            result.audit,
+            sidecar_utf8=wrong_pair_wire,
+            sidecar_sha256=hashlib.sha256(wrong_pair_wire).hexdigest(),
+        )
+        with self.assertRaisesRegex(ValueError, "audit versions do not identify"):
+            _grounder_stage_outcome(
+                replace(result, audit=wrong_pair_audit),
                 run_id,
                 "synthetic fixture event",
             )

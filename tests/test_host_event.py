@@ -3646,7 +3646,7 @@ class HostEventGrounderTests(unittest.TestCase):
             any("host-grounder-discovery-prompt-v0.9" in prompt for prompt in system_prompts)
         )
         self.assertTrue(
-            any("host-grounder-semantic-verifier-prompt-v0.7" in prompt for prompt in system_prompts)
+            any("host-grounder-semantic-verifier-prompt-v0.8" in prompt for prompt in system_prompts)
         )
 
     def test_event_v06_explicit_budget_two_repairs_format_on_same_source_snapshot(self):
