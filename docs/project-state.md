@@ -21,6 +21,12 @@ new date rule was not proven live because description/context remained
 unresolved. No retry or positive three-entry closure is claimed. Direct v0.4
 is unchanged; World shares the preparer correction, not a new live success.
 
+Follow-up offline probes confirm a closure error can be mechanically derived
+from an unresolved verdict's empty references. The live reference list was not
+retained, so it is not established as an independent cause in this run. The
+[role-specific verifier clarification](host-grounder-provisional-mechanism-v0.1.md)
+is under contract review; no acceptance change or new live success is claimed.
+
 ## Attribution diagnostic inconclusive (2026-10-15)
 
 The [single-input attribution diagnostic](grounder-rejection-attribution-2026-10-15.md)

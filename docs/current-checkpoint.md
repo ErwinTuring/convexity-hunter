@@ -30,14 +30,22 @@ case and the completed sole operation. Run `565811a7-a568-47ff-bc94-afb0f88e72c2
 returned HTTP 201 / BLOCKED / GROUNDING_NO_SUBMISSION: eight claims, one
 hypothesis, 27 bindings; zero claims rejected, one hypothesis/two bindings
 rejected. Its original item reasons are privately retained, not lost aggregate
-counts. Model unresolved mechanism judgment, a separate supporting-source
-closure mismatch and unresolved mechanism fields prevented projection; EI and
+counts. Model unresolved mechanism judgment, a recorded supporting-source
+closure failure and unresolved mechanism fields prevented projection; EI and
 Core were NOT RUN. Description/date/listing context remained unresolved, so
 this run does not establish live success of the new date rule. The sole guard
 is spent; no retry, Futu acquisition or positive three-entry closure occurred.
 The normal path still immediately takes any lawful submission through EI and
 accepted hypotheses through shared Core, without another selection checkpoint.
 World reuses the shared correction; Direct Profile v0.4 remains untouched.
+
+Follow-up offline attribution: unresolved+empty refs mechanically also triggers
+the closure failure; supported+wrong-source refs fails closure independently,
+and supported+correct-source refs passes. The live sidecar lacks the ref list,
+so the recorded closure reason is not established as a separate original
+cause. No gate or historical status changes. A minimal role-specific verifier
+clarification is under contract review in
+[provisional mechanism assessment](host-grounder-provisional-mechanism-v0.1.md).
 
 ## Rejection attribution stopped before usable capture (2026-10-15)
 

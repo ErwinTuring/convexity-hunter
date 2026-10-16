@@ -163,9 +163,14 @@ Attribution is now concrete and must not be conflated:
   connection. It also referred to absent direction, magnitude or window.
   Those words are the model's rationale, not new EI requirements, and do not
   prove that a credible provisional interpretation is impossible.
-- Exact supporting-source closure: the independent deterministic check also
+- Exact supporting-source closure: the deterministic check also
   rejected h1 with `hypothesis refs do not cite a supporting-closure source`.
-  This is a reference/closure failure, not proof all supporting facts failed.
+  This is a recorded reference/closure failure, not proof all supporting facts
+  failed or an independently established original cause. A later offline
+  three-way probe confirmed unresolved+empty refs necessarily also triggers
+  this check, whereas supported+wrong-source refs independently fails it and
+  supported+correct-source refs passes. The retained live sidecar has no
+  verdict ref list, so empty versus wrong-source refs cannot be recovered.
 - Field binding: `/hypotheses/0/impact_path` and
   `/hypotheses/0/distribution_hypothesis` were unresolved; both exact original
   reasons are privately retained. No claim dependency rejection was recorded.
