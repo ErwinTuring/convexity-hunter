@@ -383,6 +383,26 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   if (innerHtmlWrites !== 0) throw new Error("Grounder outcome reached innerHTML");
   if (grounder.calls.some((call) => call.path.includes("/cases/"))) throw new Error("Grounder stage rendering triggered an extra detail request");
 
+  const anchoredStage = await scenario({
+    mode: "event", cases: [], runStatus: "BLOCKED",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: {
+      ...grounderOutcome,
+      schema_version: "host-grounder-stage-outcome-v0.3",
+      event_fact_anchor: { subquestion_id: "event_fact_anchor_v0_1", selected_claim_id: "claim-anchor-7" }
+    } }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await anchoredStage.clickRun();
+  const anchoredStageText = anchoredStage.elements.get("run-events").textContent;
+  if (!anchoredStageText.includes('本轮独立事实锚点："claim-anchor-7"（已通过本轮核验）')
+      || !anchoredStageText.includes("事实锚点不等于研究假设，也不表示 EI 通过")) {
+    throw new Error("v0.3 Grounder stage fact anchor was not displayed with its boundary");
+  }
+  if (!anchoredStage.elements.get("run-status").textContent.includes("阻断（BLOCKED）")) {
+    throw new Error("v0.3 fact anchor changed the run status");
+  }
+  if (innerHtmlWrites !== 0) throw new Error("v0.3 Grounder stage outcome reached innerHTML");
+
   const historicalOutcome = { ...grounderOutcome };
   delete historicalOutcome.diagnostic_counts;
   delete historicalOutcome.coverage;
@@ -479,6 +499,27 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   if (positive.calls.some((call) => call.method !== "GET" || !allowedPositiveReads.includes(call.path))) {
     throw new Error("positive Grounder rendering triggered an extra or non-GET request");
   }
+
+  const anchoredSubmission = await scenario({
+    mode: "event", cases: [], runStatus: "RUNNING",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: {
+      ...positiveOutcome,
+      schema_version: "host-grounder-submission-stage-outcome-v0.3",
+      event_fact_anchor: { subquestion_id: "event_fact_anchor_v0_1", selected_claim_id: null }
+    } }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await anchoredSubmission.clickRun();
+  const anchoredSubmissionText = anchoredSubmission.elements.get("run-events").textContent;
+  if (!anchoredSubmissionText.includes("本次未新增独立事实锚点")
+      || !anchoredSubmissionText.includes("事实锚点不等于研究假设，也不表示 EI 通过")
+      || !anchoredSubmissionText.includes("EI 确定性评估：INCOMPLETE")) {
+    throw new Error("v0.3 submission fact anchor or unchanged EI status was not displayed");
+  }
+  if (anchoredSubmissionText.includes("EI 确定性评估：ACCEPTED")) {
+    throw new Error("v0.3 fact anchor was promoted to EI acceptance");
+  }
+  if (innerHtmlWrites !== 0) throw new Error("v0.3 submission outcome reached innerHTML");
 
   const accepted = await scenario({
     mode: "event", cases: [], runStatus: "RUNNING",

@@ -709,6 +709,32 @@ _DOCUMENT = r'''<!doctype html>
     } else {
       lines.push("  调用字节计数：接口未提供可识别列表");
     }
+    if ([
+      "host-grounder-stage-outcome-v0.3",
+      "host-grounder-submission-stage-outcome-v0.3"
+    ].includes(outcome.schema_version)) {
+      const anchor = outcome.event_fact_anchor;
+      const validAnchor = isRecord(anchor)
+        && Object.keys(anchor).length === 2
+        && Object.prototype.hasOwnProperty.call(anchor, "subquestion_id")
+        && Object.prototype.hasOwnProperty.call(anchor, "selected_claim_id")
+        && anchor.subquestion_id === "event_fact_anchor_v0_1"
+        && (anchor.selected_claim_id === null
+          || (typeof anchor.selected_claim_id === "string"
+            && anchor.selected_claim_id.length > 0
+            && anchor.selected_claim_id.length <= 4096));
+      const selectedClaimId = validAnchor
+        ? anchor.selected_claim_id
+        : undefined;
+      if (selectedClaimId === null) {
+        lines.push("本次未新增独立事实锚点。");
+      } else if (typeof selectedClaimId === "string") {
+        lines.push("本轮独立事实锚点：" + JSON.stringify(selectedClaimId) + "（已通过本轮核验）");
+      } else {
+        lines.push("本轮独立事实锚点：字段缺失或不可识别");
+      }
+      lines.push("边界：事实锚点不等于研究假设，也不表示 EI 通过。");
+    }
     return lines;
   }
 
@@ -750,12 +776,12 @@ _DOCUMENT = r'''<!doctype html>
 
   function renderKnownStageOutcome(outcome, stageName) {
     if (!isRecord(outcome)) return [];
-    if (["host-grounder-submission-stage-outcome-v0.1", "host-grounder-submission-stage-outcome-v0.2"].includes(outcome.schema_version)) {
+    if (["host-grounder-submission-stage-outcome-v0.1", "host-grounder-submission-stage-outcome-v0.2", "host-grounder-submission-stage-outcome-v0.3"].includes(outcome.schema_version)) {
       return stageName === "grounder"
         ? renderGrounderSubmissionStageOutcome(outcome)
         : ["阶段结果与阶段类型不匹配；其他字段未显示。"];
     }
-    if (["host-grounder-stage-outcome-v0.1", "host-grounder-stage-outcome-v0.2"].includes(outcome.schema_version)) {
+    if (["host-grounder-stage-outcome-v0.1", "host-grounder-stage-outcome-v0.2", "host-grounder-stage-outcome-v0.3"].includes(outcome.schema_version)) {
       return stageName === "grounder"
         ? renderGrounderStageOutcome(outcome)
         : ["阶段结果与阶段类型不匹配；其他字段未显示。"];

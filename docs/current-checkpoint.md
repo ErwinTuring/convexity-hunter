@@ -2,6 +2,44 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Corrected World run and v0.3 display compatibility (2026-10-22 Beijing)
+
+Input-boundary correction `12e186b` was deployed and tested with one new
+normal World POST, preserving the original request and caps. Run
+`196ffa06-9643-4b8a-99bb-60a35043fac8` finished BLOCKED; reasons were
+`world_last30days_partial`, `world_last30days_native_source_reddit_not_ok`,
+`world_last30days_native_source_digg_not_ok`, and
+`world_grounder_no_submission`. The prior input-invalid and no-search-result
+reasons did not recur. This demonstrates passage beyond the fixed local
+input guard, not complete source coverage or a qualified research hypothesis.
+The archive records zero cases/unavailable rows and zero EI submissions;
+native hypothesis counts and actual request/model totals were not retained.
+Do not infer zero candidates, failed account authorization, or absent market
+events from those unknowns. No submitted hypothesis reached EI/Core research.
+
+The workbench now has twenty-one runs, zero active, with the prior twenty
+records and three Direct archives preserved. Observed Host PID 40113/session
+52920 is transient; recheck after the display deployment. The consumed guard
+and private plan are under
+`/private/tmp/.ch-world-domain400-20261022-once/`. Do not replay either World
+guard or the separate BRZE Event guard.
+
+A further presentation-only omission was corrected: the existing webpage
+recognized Grounder v0.1/v0.2 but not the new v0.3 stage/submission outcomes.
+Both v0.3 variants now use the existing renderer; the anchor ID/null is shown
+neutrally via textContent, with an explicit non-EI-acceptance disclosure. Null
+means no newly added anchor, not invalidity of a preserved description. Old
+variants and machine/EI/Core statuses are unchanged. Independent review and
+63 related UI/HostServer tests, compileall, JavaScript syntax and diff checks
+passed. The preceding full 2,023-test pass covers the backend input fix; it is
+not a new full-suite run on this presentation-only correction.
+
+Next: commit/deploy the display correction and verify only local GET/history/
+cache compatibility. No more research POSTs are part of this unit. Three
+entries are configured and callable, but a real positive accepted-hypothesis
+Event/World-to-Core case remains unproven; the negative/partial outcomes do
+not justify invented evidence, relaxed gates or repeated batches for success.
+
 ## World input-boundary correction (2026-10-22 Beijing)
 
 One normal World POST created run `ab18d4ff-0e41-4e08-a913-8f0be4cba1d1`:

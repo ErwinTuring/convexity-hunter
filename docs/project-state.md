@@ -1,5 +1,17 @@
 # Project State
 
+## Real World advanced beyond input guard; display fixed (2026-10-22 Beijing)
+
+The input fix is deployed. A new normal World run returned partial native
+coverage (Reddit/Digg not-OK) and no projectable submission, not the former
+input-invalid failure. There are twenty-one historical runs and zero active;
+Direct records remain. This is not evidence of zero market events or positive
+EI/Core research. Existing v0.3 Grounder outcomes are now supported by the
+web renderer after independent review and 63 relevant tests; backend full
+regression remains 2,023 passed. Only local deployment/GET verification is next;
+no additional research call or change to evidence standards is implied.
+See the [checkpoint](current-checkpoint.md) for precise attribution limits.
+
 ## World request boundary aligned (2026-10-22 Beijing)
 
 A real normal World run exposed a local 256-character Skill guard rejecting
