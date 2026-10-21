@@ -2,17 +2,35 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## Host Event Source Facts v0.5 contract (2026-10-21)
+## Event-fact anchor v0.5 implemented (2026-10-22 Beijing)
 
-Contract is frozen after independent review PASS; see
-[host-event-source-facts-v0.5.md](host-event-source-facts-v0.5.md). Its
-two-question anchor and v0.3 audit apply only to the default normal preparer;
-custom preparers retain the legacy single-question/outcome path. Audit records
-only a v5 fill of an originally absent description binding; existing nonempty
-bindings remain unchanged and audit as `null`. Runtime is not implemented.
-Main will commit the contract; then the already-authorized minimal
-`host_event`/`host_store` implementation and focused tests may proceed without
-further user approval.
+The [frozen contract](host-event-source-facts-v0.5.md), committed before BUILD
+as `d0bff34`, is implemented and passed independent implementation review.
+The default normal route separately verifies `event_fact_anchor_v0_1`; its
+unique sourced fact may bind a description while broader research coverage
+remains unresolved. There is no fallback to that broader coverage or to the
+global fact count. Custom preparers and historical helpers remain unchanged.
+Only a newly selected anchor may invoke the existing v0.4 date rule; review's
+pre-existing-description date-mutation counterexample was fixed and retested.
+No identity, distribution, reassessment or expected-window input is invented.
+
+Closed v0.3 archives retain the selected claim ID (or null), reuse the existing
+base validator without repair provenance and the full v0.2 checks with it,
+and preserve old archives. Public exports, public signatures and the runtime
+result's four constructor parameters are unchanged. Final focused modules
+passed: Event 58, Store 54, HostServer 53. Final full regression passed 2,022
+tests in 300.275 seconds with `PYTHONPATH=src`; compileall and diff checks
+passed. The initial command omitted that import path; an interim 2,021-test
+run then found only two stale normal-route archive-version assertions. Neither
+is the final validation result. Independent review and its targeted re-review
+passed after those corrections.
+
+Next: ordinary commit/push, deployment with history/cache preservation, then
+one separately guarded normal Event under the existing budget, immediately
+continuing lawful submissions through EI/common Core. No new live acceptance
+is claimed by BUILD; do not replay a spent guard or change Direct/Core policy.
+The resumed Builder window 22:04:37–22:08:15 UTC combined code and checks;
+their active work times were not separated, so no measured 70/30 split is claimed.
 
 ## BRZE normal Event: correction exercised, EI incomplete (2026-10-21)
 

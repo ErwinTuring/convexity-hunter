@@ -1,14 +1,17 @@
 # Project State
 
-## Host Event Source Facts v0.5 (2026-10-21)
+## Independent event-fact anchor implemented (2026-10-22 Beijing)
 
-The contract is frozen after independent review PASS
-([contract](host-event-source-facts-v0.5.md)); runtime implementation is
-absent. Its dual-question anchor/v0.3 audit is default-normal-only; custom
-preparers keep the legacy route. Audit selection records only a v5 fill of an
-originally absent description binding. Main will commit the contract, after
-which the standing authorization allows minimal `host_event`/`host_store`
-implementation and focused tests, with no further approval step.
+[Source facts v0.5](host-event-source-facts-v0.5.md) is implemented and passed
+independent implementation review and targeted re-review. The default normal
+route distinguishes verified event identity from research-answer completeness;
+v0.3 archives retain that selection without upgrading unresolved research.
+Old/custom routes, public APIs, request budgets and EI/Core/Direct policies
+remain unchanged. Final full regression passed 2,022 tests; focused modules,
+compile and API/diff checks passed. See the [checkpoint](current-checkpoint.md)
+for the resolved date-preservation finding and exact validation scope.
+Deployment and the authorized one-shot real Event are next; no new positive
+EI/Core result is claimed by the implementation tests.
 
 ## Real BRZE Event: partial pipeline advance (2026-10-21)
 

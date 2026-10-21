@@ -1,10 +1,13 @@
 # Host Event Source Facts v0.5
 
-Status: FROZEN / SUBSEQUENT_BUILD_READY / INDEPENDENT CONTRACT REVIEW PASS.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT CONTRACT AND IMPLEMENTATION REVIEW PASS.
 
-Checkpoint: contract approved; runtime implementation is absent. BUILD awaits
-Main's contract commit; then the standing authorization permits implementation
-without another user approval.
+The contract was committed before BUILD. The default normal route and closed
+v0.3 audit are implemented; old/custom routes and public interfaces remain
+compatible. Final full regression passed 2,022 tests; Event 58, Store 54 and
+HostServer 53 focused checks passed. Review's pre-existing-binding date
+mutation was corrected and passed targeted re-review. This is implementation
+validation, not evidence of a new live EI/Core acceptance.
 
 ## Scope and compatibility
 
@@ -120,10 +123,13 @@ binding is unchanged and audit selection is null; for an original absent
 binding with a passing gate, audit ID, gate ID, and prepared binding are equal;
 for an original absent binding without a passing gate, audit selection is
 null and the prepared binding remains absent. A claim ID may not be asserted
-merely from model output. The v0.3 validators inherit and run all v0.2
-closed-schema, integrity, and consistency validation, then validate only the
-new closed anchor object and this conditional correspondence. Do not duplicate
-the v0.2 validation path. Existing v0.1/v0.2 outcome validators and archives
+merely from model output. The v0.3 validators preserve the existing base
+validation path indicated by archived producer-attempt provenance: without
+`producer_attempts`, run the unchanged v0.1 validator; with `producer_attempts`,
+run the unchanged v0.2 validator, including its attempt-sequence and
+repair-identity checks. Then validate only the new closed anchor object and the
+creation-time conditional correspondence. Do not duplicate or weaken either
+base validation path. Existing v0.1/v0.2 outcome validators and archives
 remain readable and unchanged. No diagnostic framework or free-form reason is
 added.
 

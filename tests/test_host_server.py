@@ -1627,7 +1627,10 @@ class HostServerBatchTests(unittest.TestCase):
             temporary_directory.cleanup()
 
     def test_normal_event_runtime_v09_negative_and_positive_archives_survive_restart(self):
-        from convexity_hunter.host_event import create_event_grounder
+        from convexity_hunter.host_event import (
+            _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+            create_event_grounder,
+        )
         from convexity_hunter.host_grounder_runtime import (
             _DISCOVERY_SYSTEM_PROMPT_V0_9,
             SEMANTIC_SYSTEM_PROMPT_V0_8,
@@ -1775,10 +1778,19 @@ class HostServerBatchTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         outcome["schema_version"],
-                        "host-grounder-submission-stage-outcome-v0.1"
+                        "host-grounder-submission-stage-outcome-v0.3"
                         if has_submission
-                        else "host-grounder-stage-outcome-v0.1",
+                        else "host-grounder-stage-outcome-v0.3",
                     )
+                    expected_anchor = {
+                        "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                        "selected_claim_id": (
+                            "claim-generated-{}".format(run_id)
+                            if has_submission
+                            else None
+                        ),
+                    }
+                    self.assertEqual(outcome["event_fact_anchor"], expected_anchor)
                     if has_submission:
                         self.assertEqual(outcome["submission_status"], "PRESENT")
                         self.assertEqual(outcome["ei_status"], "ASSESSED")
@@ -1801,6 +1813,10 @@ class HostServerBatchTests(unittest.TestCase):
                         )
                         self.assertEqual(
                             recovered_run["events"][1], prior_stage_event
+                        )
+                        self.assertEqual(
+                            recovered_run["events"][1]["outcome"]["event_fact_anchor"],
+                            expected_anchor,
                         )
                         self.assertEqual(
                             (len(source_transport.calls), len(model_transport.calls)),

@@ -819,12 +819,55 @@ class HostGrounderEvidenceCatalogRuntimeResult:
     discovery_call: HostGrounderCallSummary
     semantic_call: HostGrounderCallSummary
     audit: HostEvidenceCatalogAudit = field(repr=False)
+    _event_fact_anchor_outcome: Optional["_EventFactAnchorOutcome"] = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __repr__(self) -> str:
         return "HostGrounderEvidenceCatalogRuntimeResult(has_submission={!r}, sidecar_sha256={!r})".format(
             self.build_result.submission is not None,
             self.audit.sidecar_sha256,
         )
+
+
+@dataclass(frozen=True, repr=False)
+class _EventFactAnchorOutcome:
+    """Private normal-recipe evidence for the closed v0.3 stage projection."""
+
+    subquestion_ids: tuple
+    original_description_binding: Optional[str]
+    selected_claim_id: Optional[str]
+
+    def __post_init__(self) -> None:
+        if self.subquestion_ids != ("user_event_input", "event_fact_anchor_v0_1"):
+            raise ValueError("Event fact-anchor outcome has an unregistered recipe")
+        for name in ("original_description_binding", "selected_claim_id"):
+            value = getattr(self, name)
+            if type(value) not in (str, type(None)):
+                raise TypeError("Event fact-anchor outcome text fields are invalid")
+            if type(value) is str and not value:
+                raise ValueError("Event fact-anchor outcome text fields cannot be empty")
+
+
+def _stamp_event_fact_anchor_outcome(
+    result: HostGrounderEvidenceCatalogRuntimeResult,
+    outcome: _EventFactAnchorOutcome,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Clone an exact runtime result and attach private default-route provenance."""
+    if (
+        type(result) is not HostGrounderEvidenceCatalogRuntimeResult
+        or result._event_fact_anchor_outcome is not None
+        or type(outcome) is not _EventFactAnchorOutcome
+    ):
+        raise TypeError("Event fact-anchor provenance cannot be stamped on this result")
+    stamped = HostGrounderEvidenceCatalogRuntimeResult(
+        result.build_result,
+        result.discovery_call,
+        result.semantic_call,
+        result.audit,
+    )
+    object.__setattr__(stamped, "_event_fact_anchor_outcome", outcome)
+    return stamped
 
 
 def _positive_int(value: object, code: str) -> int:

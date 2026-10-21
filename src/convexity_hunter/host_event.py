@@ -40,7 +40,9 @@ from .host_grounder_run_input import (
 from .host_grounder_runtime import (
     HostGrounderEvidenceCatalogRuntimeResult,
     HostGrounderRuntimeError,
+    _EventFactAnchorOutcome,
     _run_host_grounder_same_run_evidence_catalog_v0_9,
+    _stamp_event_fact_anchor_outcome,
     run_host_grounder_same_run_evidence_catalog_v0_6,
 )
 from .market_data import UnderlyingKey, UnderlyingSecurityType
@@ -73,6 +75,16 @@ __all__ = ("HostEventGrounderConfig", "create_event_grounder")
 _PRODUCER_ID = "convexity-hunter-event-grounder"
 _PRODUCER_VERSION = "v0.1"
 _SUBQUESTION_ID = "user_event_input"
+_EVENT_FACT_ANCHOR_SUBQUESTION_ID = "event_fact_anchor_v0_1"
+_EVENT_FACT_ANCHOR_QUESTION = (
+    "Does exactly one registered source-backed observed_fact directly state "
+    "the event described by the user's event input? Assess only event identity "
+    "and direct relevance. Do not assess economic materiality, market impact, "
+    "transmission mechanism, underlying or listing identity, event timing, or "
+    "completeness of the broader research answer. Identify exactly one "
+    "claim_id only when that fact is uniquely supported and unambiguous; "
+    "otherwise leave this subquestion unresolved and state the gap."
+)
 _FORBIDDEN_CREDENTIAL_BASENAME = "futu_api_config.properties"
 _APPROVED_MODEL_PROVIDER = "deepseek"
 _APPROVED_MODEL_BASE_ENDPOINT = "https://api.deepseek.com"
@@ -663,6 +675,112 @@ def _covered_event_fact(
     if len(covered_candidates) != 1:
         return None
     return covered_candidates[0]
+
+
+def _event_fact_anchor_claim_id(
+    snapshot: object,
+    receipt: object,
+    context: HostBuildContext,
+) -> Optional[str]:
+    """Return only the uniquely verified claim named by the fixed anchor row."""
+    evidence = _preparation_evidence(snapshot, receipt, context)
+    if evidence is None:
+        return None
+    envelope, verified_claim_ids, _verified_binding_indices = evidence
+    coverage = envelope.get("coverage")
+    claims = envelope.get("claims")
+    if type(coverage) is not list or type(claims) is not list or len(coverage) != 2:
+        return None
+    expected_ids = (_SUBQUESTION_ID, _EVENT_FACT_ANCHOR_SUBQUESTION_ID)
+    if any(
+        type(row) is not dict or row.get("subquestion_id") != expected
+        for row, expected in zip(coverage, expected_ids)
+    ):
+        return None
+    anchor = coverage[1]
+    claim_ids = anchor.get("claim_ids")
+    if (
+        anchor.get("status") != "supported"
+        or "gap" not in anchor
+        or anchor["gap"] is not None
+        or type(claim_ids) is not list
+        or len(claim_ids) != 1
+        or type(claim_ids[0]) is not str
+        or not claim_ids[0]
+        or claim_ids[0] not in verified_claim_ids
+    ):
+        return None
+
+    outcomes = receipt.get("coverage_outcomes")
+    if type(outcomes) is not tuple or len(outcomes) != 2:
+        return None
+    for index, (outcome, expected_id) in enumerate(zip(outcomes, expected_ids)):
+        if (
+            type(outcome) is not tuple
+            or len(outcome) != 4
+            or type(outcome[0]) is not int
+            or outcome[0] != index
+            or type(outcome[1]) is not str
+            or outcome[1] != expected_id
+            or type(outcome[2]) is not str
+            or outcome[2] not in ("supported", "unresolved", "contradicted")
+            or type(outcome[3]) is not str
+            or not outcome[3]
+        ):
+            return None
+    if outcomes[1][2] != "supported":
+        return None
+
+    claim_id = claim_ids[0]
+    matches = [
+        claim for claim in claims
+        if type(claim) is dict and claim.get("claim_id") == claim_id
+    ]
+    if len(matches) != 1:
+        return None
+    claim = matches[0]
+    source_id = claim.get("source_id")
+    source = context.source_bodies.get(source_id) if type(source_id) is str else None
+    quote = claim.get("quote")
+    if (
+        claim.get("kind") != "observed_fact"
+        or type(source) is not HostSourceBody
+        or claim.get("locator") != source.final_locator
+        or type(quote) is not str
+        or not quote
+    ):
+        return None
+    quote_start = source.body.find(quote)
+    if quote_start < 0 or source.body.find(quote, quote_start + 1) >= 0:
+        return None
+    return claim_id
+
+
+def _retain_unknown_context_v0_5(
+    snapshot: object,
+    receipt: object,
+    original_context: HostBuildContext,
+    admission_by_id: dict,
+) -> tuple[HostBuildContext, Optional[str]]:
+    """Apply the independent anchor gate, then only v0.4 date derivation."""
+    if type(original_context) is not HostBuildContext:
+        raise TypeError("original_context must be HostBuildContext")
+    selected_claim_id = None
+    prepared = original_context
+    if original_context.event_description_binding is None:
+        selected_claim_id = _event_fact_anchor_claim_id(
+            snapshot, receipt, original_context
+        )
+        if selected_claim_id is not None:
+            prepared = replace(
+                original_context,
+                event_description_binding=selected_claim_id,
+            )
+    if selected_claim_id is not None and prepared.event_date_range is None:
+        prepared = _retain_unknown_context_v0_4(
+            snapshot, receipt, original_context, prepared, admission_by_id
+        )
+    return prepared, selected_claim_id
 
 
 def _retain_unknown_context_v0_2(
@@ -1537,6 +1655,7 @@ def _make_listing_source_preparer(
     *,
     admission_records: tuple = (),
     sec_composite=None,
+    _event_fact_anchor_capture: Optional[list] = None,
 ) -> Callable[[object, object, HostBuildContext], HostBuildContext]:
     """Create an opt-in preparer over an exact, trusted source-ID tuple."""
     if type(authorized_source_ids) is not tuple:
@@ -1559,6 +1678,8 @@ def _make_listing_source_preparer(
         type(item) is not SourceAdmission for item in admission_records
     ):
         raise TypeError("admission_records must be a tuple of successful Host admissions")
+    if _event_fact_anchor_capture is not None and type(_event_fact_anchor_capture) is not list:
+        raise TypeError("private event fact-anchor capture must be an exact list")
     admission_by_id = {item.source_id: item for item in admission_records}
     if (
         len(admission_by_id) != len(admission_records)
@@ -1595,10 +1716,22 @@ def _make_listing_source_preparer(
     def prepare_listing_sources(
         snapshot: object, receipt: object, original_context: HostBuildContext
     ) -> HostBuildContext:
-        prepared = _retain_unknown_context_v0_3(snapshot, receipt, original_context)
-        if prepared.event_date_range is None:
-            prepared = _retain_unknown_context_v0_4(
-                snapshot, receipt, original_context, prepared, admission_by_id
+        if _event_fact_anchor_capture is None:
+            prepared = _retain_unknown_context_v0_3(snapshot, receipt, original_context)
+            if prepared.event_date_range is None:
+                prepared = _retain_unknown_context_v0_4(
+                    snapshot, receipt, original_context, prepared, admission_by_id
+                )
+        else:
+            prepared, selected_claim_id = _retain_unknown_context_v0_5(
+                snapshot, receipt, original_context, admission_by_id
+            )
+            _event_fact_anchor_capture.append(
+                _EventFactAnchorOutcome(
+                    (_SUBQUESTION_ID, _EVENT_FACT_ANCHOR_SUBQUESTION_ID),
+                    original_context.event_description_binding,
+                    selected_claim_id,
+                )
             )
         if not listing_source_ids:
             return prepared
@@ -2718,10 +2851,22 @@ def create_event_grounder(
         active_config = _revalidate_config(config)
         user_input = UserEventInput(raw_input)
         subquestion = HostGrounderSubquestion(_SUBQUESTION_ID, raw_input)
+        default_recipe = host_context_preparer is None
+        subquestions = (
+            (
+                subquestion,
+                HostGrounderSubquestion(
+                    _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                    _EVENT_FACT_ANCHOR_QUESTION,
+                ),
+            )
+            if default_recipe
+            else (subquestion,)
+        )
         run_input = HostGrounderRunInput(
             run_id,
             user_input,
-            (subquestion,),
+            subquestions,
             active_config.run_input_bounds,
         )
 
@@ -2991,6 +3136,7 @@ def create_event_grounder(
             admitted_sources = ()
 
         run_context_preparer = context_preparer
+        event_fact_anchor_capture = [] if default_recipe else None
         if host_context_preparer is None:
             run_context_preparer = _make_listing_source_preparer(
                 tuple(source.source_id for source in admitted_sources),
@@ -3006,6 +3152,7 @@ def create_event_grounder(
                     if sec_composite_records and admission_client is not None
                     else None
                 ),
+                _event_fact_anchor_capture=event_fact_anchor_capture,
             )
 
         context = HostBuildContext(
@@ -3025,7 +3172,7 @@ def create_event_grounder(
             run_id=run_id,
             canonical_input_hash=run_input.canonical_input_hash,
         )
-        return _run_host_grounder_same_run_evidence_catalog_v0_9(
+        result = _run_host_grounder_same_run_evidence_catalog_v0_9(
             run_input,
             context,
             discovery_client=discovery_client,
@@ -3037,6 +3184,13 @@ def create_event_grounder(
             max_catalog_bytes=active_config.max_catalog_bytes,
             max_catalog_paragraphs=active_config.max_catalog_paragraphs,
             host_context_preparer=run_context_preparer,
+        )
+        if event_fact_anchor_capture is None:
+            return result
+        if len(event_fact_anchor_capture) != 1:
+            raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED")
+        return _stamp_event_fact_anchor_outcome(
+            result, event_fact_anchor_capture[0]
         )
 
     def event_grounder(

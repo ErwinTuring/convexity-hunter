@@ -16,8 +16,12 @@ from convexity_hunter.core_application import CoreOperationalBounds
 from convexity_hunter.event_entry import UserEventInput
 from convexity_hunter.event_intelligence import MethodologizedDateRange
 from convexity_hunter.host_event import (
+    _EVENT_FACT_ANCHOR_QUESTION,
+    _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
     HostEventGrounderConfig,
     _make_listing_source_preparer,
+    _event_fact_anchor_claim_id,
+    _retain_unknown_context_v0_5,
     _resolve_sec_occurrence_date,
     _retain_unknown_context,
     _retain_unknown_context_v0_2,
@@ -189,12 +193,19 @@ def _digest(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _context_and_run_input(run_id, raw_input, source_order, bodies_by_url, bounds):
+def _context_and_run_input(
+    run_id, raw_input, source_order, bodies_by_url, bounds, *, normal_recipe=True
+):
     user_input = UserEventInput(raw_input)
+    subquestions = (HostGrounderSubquestion("user_event_input", raw_input),)
+    if normal_recipe:
+        subquestions += (HostGrounderSubquestion(
+            _EVENT_FACT_ANCHOR_SUBQUESTION_ID, _EVENT_FACT_ANCHOR_QUESTION
+        ),)
     run_input = HostGrounderRunInput(
         run_id,
         user_input,
-        (HostGrounderSubquestion("user_event_input", raw_input),),
+        subquestions,
         bounds,
     )
     source_bodies = {
@@ -236,6 +247,9 @@ def _model_outputs(
     date_binding_marker=None,
     coverage_supported=False,
     covered_claim_ids=None,
+    anchor_supported=None,
+    research_coverage_supported=None,
+    normal_recipe=True,
 ):
     run_input, context = _context_and_run_input(
         run_id,
@@ -243,6 +257,7 @@ def _model_outputs(
         source_order,
         bodies_by_url,
         config.run_input_bounds,
+        normal_recipe=normal_recipe,
     )
 
 
@@ -345,20 +360,34 @@ def _model_outputs(
     )
     if any(claim_id not in claim_evidence_refs for claim_id in selected_coverage_ids):
         raise ValueError("synthetic coverage must reference an emitted claim")
+    research_supported = (
+        coverage_supported
+        if research_coverage_supported is None
+        else research_coverage_supported
+    )
+    if anchor_supported is None:
+        anchor_supported = bool(fact_text) or coverage_supported
+    anchor_claim_id = next(iter(selected_coverage_ids), None)
+    coverage_rows = [{
+        "subquestion_id": "user_event_input",
+        "status": "supported" if research_supported else "unresolved",
+        "claim_ids": selected_coverage_ids if research_supported else [],
+        "gap": None if research_supported else "Synthetic fixture supplies no supported hypothesis.",
+    }]
+    if normal_recipe:
+        coverage_rows.append({
+            "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+            "status": "supported" if anchor_supported and anchor_claim_id else "unresolved",
+            "claim_ids": [anchor_claim_id] if anchor_supported and anchor_claim_id else [],
+            "gap": None if anchor_supported and anchor_claim_id else "Synthetic fixture has no unique event anchor.",
+        })
     producer = {
         "schema_version": "grounder-output-v0.3",
         "stage": "semantic",
         "request_id": run_id,
         "claims": producer_claims,
         "hypotheses": [],
-        "coverage": [
-            {
-                "subquestion_id": "user_event_input",
-                "status": "supported" if coverage_supported else "unresolved",
-                "claim_ids": selected_coverage_ids,
-                "gap": None if coverage_supported else "Synthetic fixture supplies no supported hypothesis.",
-            }
-        ],
+        "coverage": coverage_rows,
         "field_bindings": producer_bindings,
     }
     normalized, normalized_bytes = parse_grounder_output_v0_3(
@@ -386,11 +415,17 @@ def _model_outputs(
             {
                 "index": 0,
                 "subquestion_id": "user_event_input",
-                "outcome": "supported" if coverage_supported else "unresolved",
-                "rationale": "Synthetic verifier supports the covered event fact." if coverage_supported else "The synthetic fixture does not establish an answer.",
-                "evidence_refs": [claim_evidence_refs[claim_id] for claim_id in selected_coverage_ids] if coverage_supported else [],
+                "outcome": "supported" if research_supported else "unresolved",
+                "rationale": "Synthetic verifier supports the covered event fact." if research_supported else "The synthetic fixture does not establish an answer.",
+                "evidence_refs": [claim_evidence_refs[claim_id] for claim_id in selected_coverage_ids] if research_supported else [],
             }
-        ],
+        ] + ([{
+            "index": 1,
+            "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+            "outcome": "supported" if anchor_supported and anchor_claim_id else "unresolved",
+            "rationale": "Synthetic verifier supports the unique event anchor." if anchor_supported and anchor_claim_id else "The synthetic fixture has no unique event anchor.",
+            "evidence_refs": [claim_evidence_refs[anchor_claim_id]] if anchor_supported and anchor_claim_id else [],
+        }] if normal_recipe else []),
     }
     return (
         json.dumps(producer, sort_keys=True, separators=(",", ":")),
@@ -865,6 +900,7 @@ def _sec_v04_fact_case(
     verified_binding=True,
     include_admission=True,
     admission_override=None,
+    return_inputs=False,
 ):
     _client, authentic_admission = _sec_v04_admission(
         (paragraph,) + tuple(extra_paragraphs)
@@ -949,7 +985,10 @@ def _sec_v04_fact_case(
     preparer = _make_listing_source_preparer(
         (source_id,), admission_records=records
     )
-    return preparer(snapshot, receipt, context), context, authentic_admission
+    prepared = preparer(snapshot, receipt, context)
+    if return_inputs:
+        return prepared, context, authentic_admission, snapshot, receipt, records
+    return prepared, context, authentic_admission
 
 
 def _sec_primary_composite_records(
@@ -1036,13 +1075,16 @@ def _sec_primary_listing_case(
     return snapshot, receipt, context, client, records, calls, hypothesis_id, run_input
 
 
-def _listing_runtime_wires(run_id, symbol, source_order, bodies_by_url, config):
+def _listing_runtime_wires(
+    run_id, symbol, source_order, bodies_by_url, config, *, normal_recipe=True
+):
     run_input, context = _context_and_run_input(
         run_id,
         "Assess a synthetic listing event.",
         source_order,
         bodies_by_url,
         config.run_input_bounds,
+        normal_recipe=normal_recipe,
     )
     catalog = build_host_evidence_catalog(
         run_id,
@@ -1068,6 +1110,19 @@ def _listing_runtime_wires(run_id, symbol, source_order, bodies_by_url, config):
         for entry in catalog.entries
         if entry.source_id == sec_source_id and symbol in entry.quote
     )
+    coverage = [{
+        "subquestion_id": "user_event_input",
+        "status": "supported",
+        "claim_ids": [claim_id],
+        "gap": None,
+    }]
+    if normal_recipe:
+        coverage.append({
+            "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+            "status": "supported",
+            "claim_ids": [claim_id],
+            "gap": None,
+        })
     producer = {
         "schema_version": "grounder-output-v0.3",
         "stage": "semantic",
@@ -1102,14 +1157,7 @@ def _listing_runtime_wires(run_id, symbol, source_order, bodies_by_url, config):
                 "falsification_conditions": [],
             }
         ],
-        "coverage": [
-            {
-                "subquestion_id": "user_event_input",
-                "status": "supported",
-                "claim_ids": [claim_id],
-                "gap": None,
-            }
-        ],
+        "coverage": coverage,
         "field_bindings": [
             {
                 "field_path": "/hypotheses/0/underlying_symbol",
@@ -1171,7 +1219,13 @@ def _listing_runtime_wires(run_id, symbol, source_order, bodies_by_url, config):
                 "rationale": "Synthetic registered text addresses the prompt.",
                 "evidence_refs": [event_ref],
             }
-        ],
+        ] + ([{
+            "index": 1,
+            "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+            "outcome": "supported",
+            "rationale": "Synthetic registered text uniquely identifies the event fact.",
+            "evidence_refs": [event_ref],
+        }] if normal_recipe else []),
     }
     return (
         json.dumps(producer, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
@@ -1297,9 +1351,110 @@ class HostEventGrounderTests(unittest.TestCase):
             tuple(inspect.signature(callback).parameters),
             ("raw_input", "run_id", "bounds"),
         )
+        self.assertEqual(
+            str(inspect.signature(HostGrounderEvidenceCatalogRuntimeResult)),
+            "(build_result: 'HostBuildResult', discovery_call: 'HostGrounderCallSummary', "
+            "semantic_call: 'HostGrounderCallSummary', audit: 'HostEvidenceCatalogAudit') -> None",
+        )
         self.assertNotIn("SYNTHETIC", repr(config))
         with self.assertRaisesRegex(TypeError, "host_context_preparer"):
             create_event_grounder(config, repo_root=_ROOT, host_context_preparer=object())
+
+    def test_independent_anchor_gate_selects_only_its_supported_fact_row(self):
+        coverage = [
+            {
+                "subquestion_id": "user_event_input",
+                "status": "unresolved",
+                "claim_ids": [],
+                "gap": "Economic materiality remains unresolved.",
+            },
+            {
+                "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                "status": "supported",
+                "claim_ids": ["fact-1"],
+                "gap": None,
+            },
+        ]
+        outcomes = (
+            (0, "user_event_input", "unresolved", "Research question remains incomplete."),
+            (1, _EVENT_FACT_ANCHOR_SUBQUESTION_ID, "supported", "Unique source-backed event fact."),
+        )
+        snapshot, receipt, context = _source_fact_case(
+            extra_claim=True,
+            coverage_items=coverage,
+            coverage_outcomes=outcomes,
+        )
+
+        self.assertEqual(
+            _event_fact_anchor_claim_id(snapshot, receipt, context), "fact-1"
+        )
+        prepared, selected = _retain_unknown_context_v0_5(
+            snapshot, receipt, context, {}
+        )
+        self.assertEqual(selected, "fact-1")
+        self.assertEqual(prepared.event_description_binding, "fact-1")
+        self.assertIsNone(prepared.event_date_range)
+        self.assertIs(prepared.source_bodies["sec-fact"], context.source_bodies["sec-fact"])
+        bad_index_receipt = dict(receipt)
+        bad_index_receipt["coverage_outcomes"] = (
+            outcomes[0],
+            (True, _EVENT_FACT_ANCHOR_SUBQUESTION_ID, "supported", "Unique source-backed event fact."),
+        )
+        self.assertIsNone(
+            _event_fact_anchor_claim_id(
+                snapshot, MappingProxyType(bad_index_receipt), context
+            )
+        )
+
+    def test_independent_anchor_gate_does_not_use_singleton_or_research_fallback(self):
+        coverage = [
+            {
+                "subquestion_id": "user_event_input",
+                "status": "supported",
+                "claim_ids": ["fact-1"],
+                "gap": None,
+            },
+            {
+                "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                "status": "unresolved",
+                "claim_ids": [],
+                "gap": "No unique event anchor.",
+            },
+        ]
+        outcomes = (
+            (0, "user_event_input", "supported", "Research coverage supports the fact."),
+            (1, _EVENT_FACT_ANCHOR_SUBQUESTION_ID, "unresolved", "No unique event anchor."),
+        )
+        snapshot, receipt, context = _source_fact_case(
+            coverage_items=coverage,
+            coverage_outcomes=outcomes,
+        )
+        prepared, selected = _retain_unknown_context_v0_5(
+            snapshot, receipt, context, {}
+        )
+        self.assertIsNone(selected)
+        self.assertIsNone(prepared.event_description_binding)
+        self.assertIsNone(_event_fact_anchor_claim_id(snapshot, receipt, context))
+
+    def test_independent_anchor_gate_preserves_preexisting_binding_without_audit_selection(self):
+        coverage = [
+            {"subquestion_id": "user_event_input", "status": "unresolved", "claim_ids": [], "gap": "gap"},
+            {"subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID, "status": "supported", "claim_ids": ["fact-1"], "gap": None},
+        ]
+        outcomes = (
+            (0, "user_event_input", "unresolved", "gap"),
+            (1, _EVENT_FACT_ANCHOR_SUBQUESTION_ID, "supported", "supported"),
+        )
+        snapshot, receipt, context = _source_fact_case(
+            description="caller-owned-description",
+            coverage_items=coverage,
+            coverage_outcomes=outcomes,
+        )
+        prepared, selected = _retain_unknown_context_v0_5(
+            snapshot, receipt, context, {}
+        )
+        self.assertIsNone(selected)
+        self.assertEqual(prepared.event_description_binding, "caller-owned-description")
 
     def test_private_world_query_factory_preserves_full_context_and_isolates_runs(self):
         config = _config()
@@ -1403,7 +1558,13 @@ class HostEventGrounderTests(unittest.TestCase):
                 expected_hash = HostGrounderRunInput(
                     run_id,
                     UserEventInput(full_context),
-                    (HostGrounderSubquestion("user_event_input", full_context),),
+                    (
+                        HostGrounderSubquestion("user_event_input", full_context),
+                        HostGrounderSubquestion(
+                            _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                            _EVENT_FACT_ANCHOR_QUESTION,
+                        ),
+                    ),
                     config.run_input_bounds,
                 ).canonical_input_hash
                 self.assertEqual(
@@ -2116,7 +2277,8 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         config = _config(source_order=source_order)
         discovery, semantic, _normalized = _listing_runtime_wires(
-            run_id, symbol, source_order, bodies_by_url, config
+            run_id, symbol, source_order, bodies_by_url, config,
+            normal_recipe=False,
         )
         source_transport = _SyntheticSourceTransport(
             search_order=source_order,
@@ -2771,6 +2933,41 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
 
+    def test_v05_prebound_description_does_not_trigger_v04_date_derivation(self):
+        from convexity_hunter.host_event import _retain_unknown_context_v0_4
+
+        _resolved, original_context, admission, snapshot, receipt, _records = (
+            _sec_v04_fact_case(return_inputs=True)
+        )
+        prebound_context = replace(
+            original_context, event_description_binding="fact-1"
+        )
+        admission_by_id = {admission.source_id: admission}
+        legal_v04_control = _retain_unknown_context_v0_4(
+            snapshot,
+            receipt,
+            prebound_context,
+            prebound_context,
+            admission_by_id,
+        )
+        self.assertEqual(
+            legal_v04_control.event_date_range.start_date,
+            datetime.date(2026, 9, 21),
+        )
+
+        with patch(
+            "convexity_hunter.host_event._retain_unknown_context_v0_4",
+            wraps=_retain_unknown_context_v0_4,
+        ) as date_helper:
+            prepared, selected_claim_id = _retain_unknown_context_v0_5(
+                snapshot, receipt, prebound_context, admission_by_id
+            )
+
+        self.assertIsNone(selected_claim_id)
+        self.assertEqual(prepared.event_description_binding, "fact-1")
+        self.assertIsNone(prepared.event_date_range)
+        date_helper.assert_not_called()
+
     def test_v04_rejects_frozen_occurrence_and_provenance_counterexamples(self):
         duplicate = _V04_SEC_SENTENCE.replace(
             "September 21", "September 22"
@@ -2979,19 +3176,90 @@ class HostEventGrounderTests(unittest.TestCase):
 
         prepared = result.build_result.context
         self.assertEqual(prepared.event_description_binding, "fact-1")
-        self.assertEqual(prepared.event_date_range.start_date, datetime.date(2026, 10, 3))
-        self.assertEqual(prepared.event_date_range.end_date, datetime.date(2026, 10, 3))
-        methodology = json.loads(prepared.event_date_range.methodology)
+        self.assertIsNone(prepared.event_date_range)
         self.assertEqual(
-            methodology["rule_version"],
-            "host-event-source-facts-v0.2/sec-8-k-occurrence-date",
+            result._event_fact_anchor_outcome.selected_claim_id, "fact-1"
         )
-        self.assertEqual(methodology["verb"], "completed")
+        from convexity_hunter.host_store import (
+            _grounder_stage_outcome,
+            _validate_grounder_stage_outcome,
+        )
+
+        archived = _grounder_stage_outcome(result, _RUN_ID, _RAW_INPUT)
+        self.assertEqual(
+            archived["schema_version"], "host-grounder-stage-outcome-v0.3"
+        )
+        self.assertEqual(
+            archived["event_fact_anchor"],
+            {
+                "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                "selected_claim_id": "fact-1",
+            },
+        )
+        forged = json.loads(json.dumps(archived))
+        forged["event_fact_anchor"]["subquestion_id"] = "wrong-question"
+        with self.assertRaises(ValueError):
+            _validate_grounder_stage_outcome(forged)
+        from convexity_hunter.core_application import SourceSubmissionBatch
+        from convexity_hunter.event_intelligence import (
+            EventIntelligenceSubmission,
+            EventSourceReference,
+            EventStatement,
+            EventStatementKind,
+            EventUnderlyingHypothesis,
+        )
+        from convexity_hunter.host_grounder_runtime import _stamp_event_fact_anchor_outcome
+        from convexity_hunter.host_store import _grounder_public_stage_outcome
+
+        now = prepared.observed_at
+        submission = EventIntelligenceSubmission(
+            submission_id="anchor-submission",
+            event_id=prepared.event_id,
+            producer_id=prepared.producer_id,
+            producer_version=prepared.producer_version,
+            observed_at=now,
+            event_description=prepared.raw_input.description,
+            event_date_range=None,
+            sources=(EventSourceReference(
+                "source-1", "https://source.example/private-path", "fixture", now
+            ),),
+            statements=(EventStatement(
+                "statement-1", EventStatementKind.OBSERVED_FACT,
+                "fixture statement", ("source-1",), (),
+            ),),
+            hypotheses=(EventUnderlyingHypothesis(
+                "hypothesis-1", None, None, None, None, None,
+                supporting_statement_ids=("statement-1",),
+                uncertainties=("fixture uncertainty",),
+            ),),
+        )
+        batch = SourceSubmissionBatch(prepared.raw_input, (submission,))
+        submission_result = _stamp_event_fact_anchor_outcome(
+            replace(
+                result,
+                build_result=replace(
+                    result.build_result, submission=submission, source_batch=batch
+                ),
+            ),
+            result._event_fact_anchor_outcome,
+        )
+        submission_archived = _grounder_stage_outcome(
+            submission_result, _RUN_ID, _RAW_INPUT, require_submission=True
+        )
+        self.assertEqual(
+            submission_archived["schema_version"],
+            "host-grounder-submission-stage-outcome-v0.3",
+        )
+        public_submission = _grounder_public_stage_outcome(submission_archived)
+        self.assertEqual(
+            public_submission["event_fact_anchor"]["selected_claim_id"], "fact-1"
+        )
+        self.assertNotIn("submission", public_submission)
         self.assertEqual(prepared.underlying_bindings, {})
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
 
-    def test_default_pipeline_prepares_sro_date_from_catalog_paragraph_binding(self):
+    def test_custom_preparer_preserves_sro_date_from_catalog_paragraph_binding(self):
         source_order = (("sro-order", _SRO_ORDER_LOCATOR),)
         source_bodies = {_SRO_ORDER_LOCATOR: _SRO_ORDER_BODY}
         config = _config(source_order=source_order)
@@ -3007,6 +3275,7 @@ class HostEventGrounderTests(unittest.TestCase):
             date_binding_marker="April 10, 2026",
             coverage_supported=True,
             covered_claim_ids=("fact-1",),
+            normal_recipe=False,
         )
         source_transport = _SyntheticSourceTransport(
             search_order=source_order,
@@ -3019,6 +3288,7 @@ class HostEventGrounderTests(unittest.TestCase):
             source_transport=source_transport,
             discovery_transport=model_transport,
             semantic_transport=model_transport,
+            host_context_preparer=_retain_unknown_context_v0_3,
         )
         result = callback(
             _RAW_INPUT,
@@ -3575,7 +3845,8 @@ class HostEventGrounderTests(unittest.TestCase):
     def test_synthetic_transport_wiring_returns_exact_runtime_and_fresh_budgets(self):
         config = _config()
         discovery_content, semantic_content, _normalized = _model_outputs(
-            _RUN_ID, _RAW_INPUT, _SEARCH_ORDER, _BODY_BY_URL, config
+            _RUN_ID, _RAW_INPUT, _SEARCH_ORDER, _BODY_BY_URL, config,
+            normal_recipe=False,
         )
         source_transport = _SyntheticSourceTransport()
         model_transport = _SyntheticModelTransport(discovery_content, semantic_content)
@@ -3656,7 +3927,8 @@ class HostEventGrounderTests(unittest.TestCase):
             discovery_model=replace(config.discovery_model, request_budget=2),
         )
         discovery_content, semantic_content, _normalized = _model_outputs(
-            _RUN_ID, _RAW_INPUT, _SEARCH_ORDER, _BODY_BY_URL, config
+            _RUN_ID, _RAW_INPUT, _SEARCH_ORDER, _BODY_BY_URL, config,
+            normal_recipe=False,
         )
         malformed = "EVENT_REPAIR_SENTINEL_MUST_NOT_BE_ECHOED"
         source_transport = _SyntheticSourceTransport()
