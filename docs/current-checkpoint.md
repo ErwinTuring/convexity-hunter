@@ -2,6 +2,47 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Approved binding-omission correction (2026-10-21)
+
+The user approved one constrained correction inside the existing producer
+request allowance. The [amendment](local-event-delivery-v0.1.md#approved-binding-omission-correction--2026-10-21)
+passed independent contract and final implementation review. Only absent required
+paths in a strictly parsed first output may trigger it, before semantic
+verification. The replacement preserves all original claims/hypotheses and
+existing bindings, appending only missing bindings; all semantic/Builder/EI
+checks remain. It cannot manufacture a hypothesis or repair semantic refusal.
+Format repair and omission correction share the same second request. Old
+routes/archives, Direct Profile v0.4 and financial policy remain unchanged.
+This is a newly authorized behavior, not a correction of historical results
+or permission to replay the IRDM run. No new live operation is part of BUILD.
+The implementation preserves both attempts, enforces the append-only delta
+before accepting a replacement, and retains partial evidence without a spare
+request. Review fixes restricted correction to the exact normal route and
+bound new failure archives to its producer/verifier pair; the shared World
+wrapper now preserves these new failures through the Host batch-error path.
+Legacy paths/archives and legitimate empty results keep their existing meaning.
+Focused checks and compile/API compatibility passed. Final full regression
+passed 2,018 tests in 299.046 seconds with loopback permission, including the
+HTTP fixtures blocked by the default sandbox. The existing LibreSSL warning
+was non-failing. The earlier 2,013-test pass preceded the failure-retention
+fixes and is not the final validation result. Public call/constructor signatures
+and explicit exports are unchanged across all five touched production modules;
+there is no SQL migration, Core policy change or new provider/model.
+
+Recorded implementation windows were 12:51:00–13:01:15, 13:08:51–13:13:44 and
+13:19:29–13:21:58 UTC. These include focused checks and do not measure active
+work allocation; do not infer a 70/30 split from elapsed windows or line counts.
+
+The reviewed tree was loaded by the existing local launcher with evaluation
+date 2026-10-21. The initial restart failed before listening; authorized
+operational recovery succeeded without code/config changes. GET status,
+profile, runs and cached Direct detail returned 200: three configured entries,
+Profile v0.4, 19 runs and zero active. Research/archive counts and both database
+digests matched the pre-restart baseline; the saved Direct report digest was
+unchanged. No POST, research rerun, source/model/market request or old-guard
+replay occurred. This proves deployment/cache compatibility, not real positive
+Event/World EI-to-Core acceptance. Recheck actual service state on reuse.
+
 ## One fresh normal Event outcome (2026-10-21)
 
 The user requested continued execution; one new IRDM results-announcement

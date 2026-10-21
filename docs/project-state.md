@@ -1,5 +1,22 @@
 # Project State
 
+## Binding-omission correction approved (2026-10-21)
+
+The [bounded amendment](local-event-delivery-v0.1.md#approved-binding-omission-correction--2026-10-21)
+is implemented and passed independent contract/final implementation review.
+Final full regression passed 2,018 tests; compile/API compatibility and diff
+checks passed. The normal
+Grounder may spend its existing second producer request on structural binding
+omissions only, with an enforced append-only replacement and unchanged
+semantic/Builder/EI gates. No hypothesis rewrite, semantic retry, new source
+budget, changed Core policy or historical-result upgrade is authorized.
+New failure audits bind the exact normal route, including the shared World
+failure path; old archives and ordinary empty/error handling stay supported.
+The reviewed tree is deployed in the existing local workbench. Read-only
+three-entry/profile/history/detail checks passed, with the 19-run archive and
+saved Direct report unchanged. No live research/API run or new positive
+Event/World EI-to-Core acceptance is claimed by this work unit.
+
 ## Fresh normal Event: producer binding omission (2026-10-21)
 
 One preregistered IRDM Event run completed with five claims but zero field

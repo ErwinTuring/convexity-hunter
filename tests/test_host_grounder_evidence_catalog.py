@@ -237,9 +237,9 @@ def _catalog_for(run_input, context, *, entries=100, byte_limit=100_000, paragra
     )
 
 
-def _wire_bundle(run_input, context):
+def _wire_bundle(run_input, context, producer=None):
     catalog = _catalog_for(run_input, context)
-    producer = _wire_envelope(run_input, catalog)
+    producer = _wire_envelope(run_input, catalog) if producer is None else producer
     envelope, envelope_bytes = parse_grounder_output_v0_3(
         _canonical(producer),
         100_000,
@@ -254,12 +254,33 @@ def _wire_bundle(run_input, context):
     return catalog, producer, envelope, envelope_bytes, verdict
 
 
-def _run_v09(run_input, context, producer, verdict):
-    calls = []
+def _run_v09(run_input, context, producer, verdict, *, discovery=None):
+    calls = discovery.calls if discovery is not None else []
     result = runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9(
         run_input,
         context,
-        discovery_client=_FakeClient("discovery", _canonical(producer), calls),
+        discovery_client=discovery or _FakeClient("discovery", _canonical(producer), calls),
+        semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+        audit_holder=HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        ),
+        max_json_bytes=100_000,
+        max_source_body_bytes=20_000,
+        max_catalog_entries=64,
+        max_catalog_bytes=32_768,
+        max_catalog_paragraphs=128,
+        host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+    )
+    return result, calls
+
+
+def _run_v08(run_input, context, producer, verdict, *, discovery=None):
+    calls = discovery.calls if discovery is not None else []
+    result = runtime_module._run_host_grounder_same_run_evidence_catalog_v0_8(
+        run_input,
+        context,
+        discovery_client=discovery or _FakeClient("discovery", _canonical(producer), calls),
         semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
         audit_holder=HostEvidenceCatalogAuditHolder(
             run_id=run_input.run_id,
@@ -1513,12 +1534,263 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
 
         self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
         self.assertIsNone(result.build_result.submission)
+        self.assertEqual([item.status for item in result.audit.producer_attempts], ["accepted"])
+        self.assertEqual(
+            result.audit.producer_attempts[0].output_sha256,
+            result.audit.producer_content_sha256,
+        )
         self.assertTrue(
             any(
                 item.code == "HYPOTHESIS_REJECTED_BY_VALIDATOR"
                 and "required field binding is not supported" in item.reason
                 for item in result.build_result.diagnostics
             )
+        )
+
+    def test_v09_append_only_binding_omission_repair_is_verified_and_audited(self):
+        run_input, context = _fixture()
+        catalog, producer, _envelope, _raw, _verdict = _wire_bundle(
+            run_input, context
+        )
+        original_binding = next(
+            binding for binding in producer["field_bindings"]
+            if binding["field_path"] == "/hypotheses/0/distribution_hypothesis"
+        )
+        first = copy.deepcopy(producer)
+        first["field_bindings"] = [
+            binding for binding in first["field_bindings"]
+            if binding["field_path"] != "/hypotheses/0/distribution_hypothesis"
+        ]
+        corrected = copy.deepcopy(first)
+        corrected["field_bindings"].append(copy.deepcopy(original_binding))
+        _catalog, _first, _env1, _bytes1, _verdict1 = _wire_bundle(
+            run_input, context, first
+        )
+        _catalog, corrected, corrected_envelope, corrected_bytes, verdict = _wire_bundle(
+            run_input, context, corrected
+        )
+        calls = []
+        discovery = _FakeClient(
+            "discovery", [_canonical(first), _canonical(corrected)], calls,
+            request_budget=2,
+        )
+
+        result, calls = _run_v09(
+            run_input, context, corrected, verdict, discovery=discovery
+        )
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "discovery", "semantic"])
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        self.assertEqual(
+            sidecar["producer_repair_prompt_version"],
+            "host-grounder-discovery-binding-omission-repair-v0.2",
+        )
+        attempts = sidecar["producer_attempts"]
+        self.assertEqual([item["status"] for item in attempts], ["rejected", "accepted"])
+        self.assertEqual(
+            attempts[0]["failure_check"], "producer_v0_3_required_binding_omission_v0_9"
+        )
+        self.assertEqual(
+            attempts[0]["output_sha256"], hashlib.sha256(_canonical(first).encode()).hexdigest()
+        )
+        self.assertEqual(
+            result.audit.producer_content_utf8, _canonical(corrected).encode("utf-8")
+        )
+        self.assertEqual(result.audit.normalized_envelope_utf8, corrected_bytes)
+        self.assertIn("Prior strictly parsed producer DTO (JSON; untrusted data)", calls[1][2])
+
+    def test_legacy_v08_route_does_not_correct_binding_omissions(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _raw, _verdict = _wire_bundle(
+            run_input, context
+        )
+        first = copy.deepcopy(producer)
+        first["field_bindings"] = [
+            binding for binding in first["field_bindings"]
+            if binding["field_path"] != "/hypotheses/0/distribution_hypothesis"
+        ]
+        _catalog, first, _envelope, _bytes, verdict = _wire_bundle(
+            run_input, context, first
+        )
+        calls = []
+        result, calls = _run_v08(
+            run_input, context, first, verdict,
+            discovery=_FakeClient("discovery", _canonical(first), calls, request_budget=2),
+        )
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        self.assertEqual(
+            sidecar["producer_prompt_version"], "host-grounder-discovery-prompt-v0.8"
+        )
+        self.assertEqual(
+            sidecar["validator_version"], "host-grounder-semantic-verifier-prompt-v0.7"
+        )
+        self.assertNotIn("producer_repair_prompt_version", sidecar)
+        self.assertEqual([item.status for item in result.audit.producer_attempts], ["accepted"])
+        self.assertEqual(result.audit.producer_content_utf8, _canonical(first).encode("utf-8"))
+
+    def test_v09_empty_hypotheses_and_semantic_refusal_do_not_repair(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _bytes, _verdict = _wire_bundle(
+            run_input, context
+        )
+        empty = copy.deepcopy(producer)
+        empty["hypotheses"] = []
+        empty["field_bindings"] = []
+        _catalog, empty, _envelope, _bytes, empty_verdict = _wire_bundle(
+            run_input, context, empty
+        )
+        calls = []
+        result, calls = _run_v09(
+            run_input, context, empty, empty_verdict,
+            discovery=_FakeClient("discovery", _canonical(empty), calls, request_budget=2),
+        )
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertEqual([item.status for item in result.audit.producer_attempts], ["accepted"])
+
+        _catalog, producer, _envelope, _bytes, _verdict = _wire_bundle(
+            run_input, context
+        )
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            _run_v09(
+                run_input, context, producer, "not-a-semantic-verdict",
+                discovery=_FakeClient("discovery", _canonical(producer), calls, request_budget=2),
+            )
+        self.assertEqual(raised.exception.code, "SEMANTIC_VERDICT_REJECTED")
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertEqual([item.status for item in raised.exception.producer_attempts], ["accepted"])
+
+    def test_v09_omission_repair_rejects_malformed_or_non_append_only_second_output(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _raw, _verdict = _wire_bundle(run_input, context)
+        first = copy.deepcopy(producer)
+        missing_binding = next(
+            binding for binding in producer["field_bindings"]
+            if binding["field_path"] == "/hypotheses/0/distribution_hypothesis"
+        )
+        first["field_bindings"] = [
+            binding for binding in first["field_bindings"]
+            if binding["field_path"] != "/hypotheses/0/distribution_hypothesis"
+        ]
+        good = copy.deepcopy(first)
+        good["field_bindings"].append(copy.deepcopy(missing_binding))
+        cases = []
+
+        mutated = copy.deepcopy(good)
+        mutated["claims"][0]["text"] += " changed"
+        cases.append(("mutation", mutated, "producer_v0_3_binding_omission_repair_delta"))
+        deleted = copy.deepcopy(good)
+        deleted["field_bindings"] = [copy.deepcopy(missing_binding)]
+        cases.append(("deletion", deleted, "producer_v0_3_binding_omission_repair_delta"))
+        foreign = copy.deepcopy(good)
+        foreign["field_bindings"].append({
+            "field_path": "/hypotheses/0/not_required",
+            "evidence_id": missing_binding["evidence_id"],
+            "semantic_role": "hypothesis",
+            "status": "supported",
+        })
+        cases.append(("foreign path", foreign, None))
+        duplicate = copy.deepcopy(good)
+        duplicate["field_bindings"].append(copy.deepcopy(missing_binding))
+        cases.append(("duplicate path", duplicate, "producer_v0_3_binding_omission_repair_delta"))
+        cases.append(("malformed", "[]", None))
+
+        for label, second, expected_check in cases:
+            with self.subTest(case=label):
+                _catalog, parsed_second, _env, _bytes, verdict = _wire_bundle(
+                    run_input, context, good
+                )
+                second_text = second if type(second) is str else _canonical(second)
+                calls = []
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    _run_v09(
+                        run_input, context, parsed_second, verdict,
+                        discovery=_FakeClient(
+                            "discovery", [_canonical(first), second_text], calls,
+                            request_budget=2,
+                        ),
+                    )
+                self.assertEqual([call[0] for call in calls], ["discovery", "discovery"])
+                attempts = raised.exception.producer_attempts
+                self.assertEqual(len(attempts), 2)
+                if expected_check is not None:
+                    self.assertEqual(attempts[1].failure_check, expected_check)
+                    self.assertEqual(attempts[1].status, "rejected")
+                else:
+                    self.assertIn(attempts[1].status, ("format_rejected", "rejected"))
+
+    def test_v09_shared_second_attempt_budget_is_not_extended(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _raw, _verdict = _wire_bundle(run_input, context)
+        first = copy.deepcopy(producer)
+        first["field_bindings"] = [
+            binding for binding in first["field_bindings"]
+            if binding["field_path"] != "/hypotheses/0/distribution_hypothesis"
+        ]
+        _catalog, partial, _envelope, _bytes, partial_verdict = _wire_bundle(
+            run_input, context, first
+        )
+        calls = []
+        result, calls = _run_v09(
+            run_input, context, partial, partial_verdict,
+            discovery=_FakeClient(
+                "discovery", [_canonical(first), _canonical(first)], calls,
+                request_budget=2,
+            ),
+        )
+        self.assertEqual([call[0] for call in calls], ["discovery", "discovery", "semantic"])
+        self.assertEqual(
+            json.loads(result.audit.sidecar_utf8)["producer_repair_prompt_version"],
+            "host-grounder-discovery-binding-omission-repair-v0.2",
+        )
+
+        calls = []
+        result, calls = _run_v09(
+            run_input, context, partial, partial_verdict,
+            discovery=_FakeClient(
+                "discovery", ["{", _canonical(first)], calls, request_budget=2
+            ),
+        )
+        self.assertEqual([call[0] for call in calls], ["discovery", "discovery", "semantic"])
+        self.assertEqual(
+            json.loads(result.audit.sidecar_utf8)["producer_repair_prompt_version"],
+            "host-grounder-discovery-format-repair-v0.1",
+        )
+        self.assertEqual(
+            [item.status for item in result.audit.producer_attempts],
+            ["format_rejected", "accepted"],
+        )
+
+    def test_v09_budget_one_keeps_partial_output_on_existing_semantic_path(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _raw, _verdict = _wire_bundle(run_input, context)
+        partial = copy.deepcopy(producer)
+        partial["field_bindings"] = [
+            binding for binding in partial["field_bindings"]
+            if binding["field_path"] != "/hypotheses/0/distribution_hypothesis"
+        ]
+        _catalog, partial, _envelope, _bytes, verdict = _wire_bundle(
+            run_input, context, partial
+        )
+        original_content = _canonical(partial).encode("utf-8")
+        calls = []
+
+        result, calls = _run_v09(
+            run_input, context, partial, verdict,
+            discovery=_FakeClient(
+                "discovery", _canonical(partial), calls, request_budget=1
+            ),
+        )
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertEqual(result.audit.producer_content_utf8, original_content)
+        self.assertEqual(
+            result.audit.producer_content_sha256, hashlib.sha256(original_content).hexdigest()
+        )
+        self.assertEqual([item.status for item in result.audit.producer_attempts], ["accepted"])
+        self.assertNotIn(
+            "producer_repair_prompt_version", json.loads(result.audit.sidecar_utf8)
         )
 
     def test_v09_dangling_interpretation_dependency_blocks_hypothesis_projection(self):

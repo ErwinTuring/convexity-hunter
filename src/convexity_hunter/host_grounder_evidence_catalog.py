@@ -36,6 +36,9 @@ EVIDENCE_CATALOG_GENERATOR_VERSION = "host-evidence-paragraph-generator-v0.1"
 _AUDIT_SCHEMA_VERSION = "host-grounder-quote-localization-audit-v0.3"
 _AUDIT_SCHEMA_VERSION_V0_4 = "host-grounder-quote-localization-audit-v0.4"
 _REPAIR_PROMPT_VERSION = "host-grounder-discovery-format-repair-v0.1"
+_BINDING_OMISSION_REPAIR_PROMPT_VERSION = (
+    "host-grounder-discovery-binding-omission-repair-v0.2"
+)
 _PRODUCER_WIRE_VERSION = "grounder-output-v0.3"
 _PRODUCER_PROMPT_VERSION_V0_4 = "host-grounder-discovery-prompt-v0.4"
 _PRODUCER_PROMPT_VERSION_V0_5 = "host-grounder-discovery-prompt-v0.5"
@@ -59,6 +62,20 @@ _VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.5"
 _VERIFIER_PROMPT_VERSION_V0_6 = "host-grounder-semantic-verifier-prompt-v0.6"
 _VERIFIER_PROMPT_VERSION_V0_7 = "host-grounder-semantic-verifier-prompt-v0.7"
 _VERIFIER_PROMPT_VERSION_V0_8 = "host-grounder-semantic-verifier-prompt-v0.8"
+_BINDING_OMISSION_FIRST_FAILURE_CHECK = (
+    "producer_v0_3_required_binding_omission_v0_9"
+)
+_BINDING_OMISSION_DELTA_FAILURE_CHECK = (
+    "producer_v0_3_binding_omission_repair_delta"
+)
+_BINDING_OMISSION_FAILURE_ROUTE = (
+    _PRODUCER_PROMPT_VERSION_V0_9,
+    _VERIFIER_PROMPT_VERSION_V0_8,
+)
+_BINDING_OMISSION_FAILURE_MARKERS = frozenset((
+    _BINDING_OMISSION_FIRST_FAILURE_CHECK,
+    _BINDING_OMISSION_DELTA_FAILURE_CHECK,
+))
 _VERIFIER_PROMPT_VERSIONS = frozenset(
     (
         _VERIFIER_PROMPT_VERSION,
@@ -74,6 +91,28 @@ def _valid_prompt_pair(producer_prompt_version: str, semantic_prompt_version: st
         semantic_prompt_version != _VERIFIER_PROMPT_VERSION_V0_8
         or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
     )
+
+
+def _producer_repair_prompt_version(
+    first_status: str,
+    first_failure_check: Optional[str],
+    producer_prompt_version: str,
+    semantic_prompt_version: str,
+) -> Optional[str]:
+    """Return the repair identity authorized by a first attempt and route."""
+    if (
+        first_status == "format_rejected"
+        and first_failure_check in ("producer_v0_3_json_format", "producer_v0_3_closed_shape")
+    ):
+        return _REPAIR_PROMPT_VERSION
+    if (
+        first_status == "rejected"
+        and first_failure_check == _BINDING_OMISSION_FIRST_FAILURE_CHECK
+        and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
+        and semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_8
+    ):
+        return _BINDING_OMISSION_REPAIR_PROMPT_VERSION
+    return None
 
 
 _RESOLVER_VERSION = "host-evidence-catalog-resolver-v0.1"
@@ -111,6 +150,8 @@ _PRODUCER_ATTEMPT_FAILURE_CHECKS = frozenset((
     "producer_v0_3_canonical_size", "producer_v0_3_internal_v0_1_schema",
     "producer_v0_3_recanonicalization", "producer_v0_3_json_format",
     "producer_v0_3_closed_shape",
+    _BINDING_OMISSION_FIRST_FAILURE_CHECK,
+    _BINDING_OMISSION_DELTA_FAILURE_CHECK,
 ))
 _PRODUCER_ATTEMPT_FAILURE_CODES = frozenset((
     "DISCOVERY_CALL_FAILED", "DISCOVERY_RESPONSE_INVALID",
@@ -901,7 +942,15 @@ class HostEvidenceCatalogAuditHolder:
                 or type(attempt) is not HostEvidenceCatalogProducerAttempt
                 or len(self._producer_attempts) >= 2
                 or attempt.index != len(self._producer_attempts) + 1
-                or (attempt.index == 2 and self._producer_attempts[0].status != "format_rejected")
+                or (
+                    attempt.index == 2
+                    and _producer_repair_prompt_version(
+                        self._producer_attempts[0].status,
+                        self._producer_attempts[0].failure_check,
+                        self._producer_prompt_version,
+                        self._semantic_prompt_version,
+                    ) is None
+                )
             ):
                 raise ValueError("audit holder cannot append producer attempt")
             object.__setattr__(
@@ -944,8 +993,15 @@ class HostEvidenceCatalogAuditHolder:
                 self._producer_attempts[-1].status != "accepted"
                 or self._producer_attempts[-1].output_sha256
                 != hashlib.sha256(self._producer_content_utf8).hexdigest()
-                or (len(self._producer_attempts) == 2
-                    and self._producer_attempts[0].status != "format_rejected")
+                or (
+                    len(self._producer_attempts) == 2
+                    and _producer_repair_prompt_version(
+                        self._producer_attempts[0].status,
+                        self._producer_attempts[0].failure_check,
+                        self._producer_prompt_version,
+                        self._semantic_prompt_version,
+                    ) is None
+                )
             ):
                 raise ValueError("audit holder producer attempts are incomplete")
             normalized_copy = bytes(normalized_envelope_utf8)
@@ -973,12 +1029,18 @@ class HostEvidenceCatalogAuditHolder:
                 "catalog_sha256": catalog.catalog_sha256,
             }
             if retry_attempted:
+                repair_prompt_version = _producer_repair_prompt_version(
+                    self._producer_attempts[0].status,
+                    self._producer_attempts[0].failure_check,
+                    self._producer_prompt_version,
+                    self._semantic_prompt_version,
+                )
+                if repair_prompt_version is None:
+                    raise ValueError("audit holder producer repair identity is invalid")
                 sidecar["producer_attempts"] = [
                     attempt.to_json() for attempt in self._producer_attempts
                 ]
-                sidecar["producer_repair_prompt_version"] = (
-                    _REPAIR_PROMPT_VERSION if retry_attempted else None
-                )
+                sidecar["producer_repair_prompt_version"] = repair_prompt_version
             sidecar_utf8 = _canonical_bytes(sidecar)
             audit = HostEvidenceCatalogAudit(
                 catalog_utf8=bytes(self._catalog_utf8),

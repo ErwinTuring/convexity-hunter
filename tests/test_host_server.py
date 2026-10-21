@@ -1,6 +1,7 @@
 """Synthetic, stdlib-only loopback tests for the bounded Host HTTP shell."""
 
 import contextlib
+import copy
 import datetime
 import hashlib
 import http.client
@@ -70,6 +71,95 @@ def valid_payload():
             "quote_timeout_seconds": 2.5,
         },
     }
+
+
+def _normal_v09_omission_failure(kind, *, run_id="catalog-run-1", raw_input="fixture event"):
+    from convexity_hunter.host_grounder_evidence_catalog import HostEvidenceCatalogAuditHolder
+    from convexity_hunter.host_grounder_runtime import (
+        HostGrounderRuntimeError,
+        _run_host_grounder_same_run_evidence_catalog_v0_9,
+    )
+    from convexity_hunter.host_model import ModelTransportError
+    from tests.test_host_grounder_evidence_catalog import (
+        _FakeClient,
+        _canonical,
+        _fixture,
+        _wire_bundle,
+    )
+
+    template_input, template_context = _fixture()
+    run_input = replace(
+        template_input,
+        run_id=run_id,
+        user_input=UserEventInput(description=raw_input),
+    )
+    context = replace(
+        template_context,
+        raw_input=run_input.user_input,
+        run_id=run_id,
+        canonical_input_hash=run_input.canonical_input_hash,
+    )
+    _catalog, producer, _envelope, _raw, _verdict = _wire_bundle(run_input, context)
+    omitted_binding = next(
+        item for item in producer["field_bindings"]
+        if item["field_path"] == "/hypotheses/0/distribution_hypothesis"
+    )
+    first = copy.deepcopy(producer)
+    first["field_bindings"] = [
+        item for item in first["field_bindings"]
+        if item["field_path"] != "/hypotheses/0/distribution_hypothesis"
+    ]
+    _catalog, first, _envelope, _first_bytes, partial_verdict = _wire_bundle(
+        run_input, context, first
+    )
+    corrected = copy.deepcopy(first)
+    corrected["field_bindings"].append(copy.deepcopy(omitted_binding))
+    _catalog, corrected, _envelope, _corrected_bytes, _corrected_verdict = _wire_bundle(
+        run_input, context, corrected
+    )
+    if kind == "delta":
+        second = copy.deepcopy(first)
+        second["coverage"][0]["gap"] += " changed"
+        _wire_bundle(run_input, context, second)
+        second_response = _canonical(second)
+        semantic_response = _canonical(partial_verdict)
+    elif kind == "malformed":
+        second_response = "[]"
+        semantic_response = _canonical(partial_verdict)
+    elif kind == "transport":
+        second_response = ModelTransportError("HTTP_ERROR")
+        semantic_response = _canonical(partial_verdict)
+    elif kind == "semantic":
+        second_response = _canonical(corrected)
+        semantic_response = "{}"
+    else:
+        raise ValueError("unknown omission failure fixture")
+
+    calls = []
+    discovery = _FakeClient(
+        "discovery", [_canonical(first), second_response], calls, request_budget=2
+    )
+    semantic = _FakeClient("semantic", semantic_response, calls)
+    try:
+        _run_host_grounder_same_run_evidence_catalog_v0_9(
+            run_input,
+            context,
+            discovery_client=discovery,
+            semantic_client=semantic,
+            audit_holder=HostEvidenceCatalogAuditHolder(
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+            ),
+            max_json_bytes=100_000,
+            max_source_body_bytes=20_000,
+            max_catalog_entries=64,
+            max_catalog_bytes=32_768,
+            max_catalog_paragraphs=128,
+            host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+        )
+    except HostGrounderRuntimeError as error:
+        return error, calls
+    raise AssertionError("fixture did not produce a Grounder failure")
 
 
 def make_world_batch_result(
@@ -1002,6 +1092,88 @@ class HostServerGrounderProjectionTests(unittest.TestCase):
         leaked = dict(outcome, raw_model_body="must-not-be-projected")
         self.assertIsNone(host_server_module._public_outcome(leaked))
 
+        from tests.test_host_store import make_grounder_binding_omission_result
+
+        omission_result, _ = make_grounder_binding_omission_result("grounder-omission-run")
+        omission_outcome = {
+            "schema_version": "host-grounder-producer-failure-audit-v0.2",
+            "status": "FAILED",
+            "producer_attempts": [
+                item.to_json() for item in omission_result.audit.producer_attempts
+            ],
+            "producer_prompt_version": "host-grounder-discovery-prompt-v0.9",
+            "verifier_prompt_version": "host-grounder-semantic-verifier-prompt-v0.8",
+        }
+        self.assertEqual(
+            host_server_module._public_outcome(omission_outcome), omission_outcome
+        )
+        legacy_omission = dict(
+            omission_outcome,
+            schema_version="host-grounder-producer-failure-audit-v0.1",
+        )
+        legacy_omission.pop("producer_prompt_version")
+        legacy_omission.pop("verifier_prompt_version")
+        self.assertIsNone(host_server_module._public_outcome(legacy_omission))
+
+    def test_v09_omission_failures_stamp_private_route_for_each_terminal_path(self):
+        from convexity_hunter.host_grounder_evidence_catalog import (
+            _BINDING_OMISSION_FAILURE_ROUTE,
+        )
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+
+        for kind in ("malformed", "delta", "transport", "semantic"):
+            with self.subTest(kind=kind):
+                error, _calls = _normal_v09_omission_failure(kind)
+                self.assertIs(type(error), HostGrounderRuntimeError)
+                self.assertEqual(error._producer_failure_route, _BINDING_OMISSION_FAILURE_ROUTE)
+                self.assertEqual(
+                    error.producer_attempts[0].failure_check,
+                    "producer_v0_3_required_binding_omission_v0_9",
+                )
+                self.assertNotIn("v0.9", repr(error))
+                if kind == "semantic":
+                    self.assertEqual(error.code, "SEMANTIC_VERDICT_REJECTED")
+                    self.assertEqual(
+                        [attempt.status for attempt in error.producer_attempts],
+                        ["rejected", "accepted"],
+                    )
+                elif kind == "delta":
+                    self.assertEqual(
+                        error.producer_attempts[1].failure_check,
+                        "producer_v0_3_binding_omission_repair_delta",
+                    )
+
+                route = error._producer_failure_route
+                for unbound in (
+                    None,
+                    ["host-grounder-discovery-prompt-v0.9", "host-grounder-semantic-verifier-prompt-v0.8"],
+                    ("host-grounder-discovery-prompt-v0.8", "host-grounder-semantic-verifier-prompt-v0.7"),
+                    ("host-grounder-discovery-prompt-v0.9", "host-grounder-semantic-verifier-prompt-v0.7"),
+                    ("host-grounder-discovery-prompt-v0.8", "host-grounder-semantic-verifier-prompt-v0.8"),
+                ):
+                    error._producer_failure_route = unbound
+                    self.assertIsNone(
+                        host_server_module._grounder_producer_failure_audit(error, "FAILED")
+                    )
+                error._producer_failure_route = route
+                self.assertEqual(
+                    host_server_module._grounder_producer_failure_audit(error, "FAILED")[
+                        "schema_version"
+                    ],
+                    "host-grounder-producer-failure-audit-v0.2",
+                )
+
+        class ForgedGrounderError(HostGrounderRuntimeError):
+            pass
+
+        forged = ForgedGrounderError(
+            error.code, producer_attempts=error.producer_attempts
+        )
+        forged._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE
+        self.assertIsNone(
+            host_server_module._grounder_producer_failure_audit(forged, "FAILED")
+        )
+
 
 class HostServerBatchTests(unittest.TestCase):
     def setUp(self):
@@ -1693,6 +1865,107 @@ class HostServerBatchTests(unittest.TestCase):
             self.assertNotIn(b"PRIVATE_EXCEPTION_PATH_SENTINEL", unexpected_response[2])
         finally:
             self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
+    def test_normal_v09_omission_failure_archive_is_route_bound_and_survives_history(self):
+        from types import SimpleNamespace
+        from convexity_hunter.host_store import HostStore
+
+        temporary_directory, store = self._new_grounder_store(
+            "grounder-omission-failure.sqlite3"
+        )
+        database_path = pathlib.Path(temporary_directory.name) / "grounder-omission-failure.sqlite3"
+        raw_input = "synthetic binding omission failure"
+        bounds = CoreOperationalBounds(2, 3, 20, 8, 2.5)
+        run_id = store.create_run(
+            mode="event",
+            input=raw_input,
+            bounds=bounds,
+            profile_snapshot=STANDARD_RESEARCH_PROFILE.snapshot(),
+            metadata=host_server_module._run_start_metadata(
+                event_configured=True,
+                configuration_snapshot=self._event_configuration_snapshot_accessor()(),
+            ),
+        )
+        stage_id = store.start_stage(run_id, "grounder")
+        core_calls = []
+
+        def grounder(actual_input, *, run_id, bounds):
+            del bounds
+            error, calls = _normal_v09_omission_failure(
+                "delta", run_id=run_id, raw_input=actual_input
+            )
+            self.assertEqual([call[0] for call in calls], ["discovery", "discovery"])
+            raise error
+
+        def core_executor(*_args, **_kwargs):
+            core_calls.append("called")
+            self.fail("Core must not run after a rejected omission correction")
+
+        class HandlerHarness:
+            _post_grounded_event_run = host_server_module.HostRequestHandler._post_grounded_event_run
+            _complete_terminal_run = host_server_module.HostRequestHandler._complete_terminal_run
+
+            def __init__(self):
+                self.server = SimpleNamespace(journal=store)
+                self.response = None
+
+            def _send_json(self, status, payload):
+                self.response = status, payload
+
+        handler = HandlerHarness()
+        try:
+            handler._post_grounded_event_run(
+                host_server_module.ValidatedRunRequest("event", raw_input, bounds),
+                run_id,
+                stage_id,
+                grounder,
+                core_executor,
+            )
+            self.assertEqual(
+                handler.response,
+                (201, {
+                    "run_id": run_id,
+                    "status": "BLOCKED",
+                    "reason": "PRODUCER_ENVELOPE_INVALID",
+                }),
+            )
+            run = store.get_run(run_id)
+            outcome = run["events"][1]["outcome"]
+            self.assertEqual(run["status"], "BLOCKED")
+            self.assertEqual(
+                outcome["schema_version"],
+                "host-grounder-producer-failure-audit-v0.2",
+            )
+            self.assertEqual(
+                (outcome["producer_prompt_version"], outcome["verifier_prompt_version"]),
+                (
+                    "host-grounder-discovery-prompt-v0.9",
+                    "host-grounder-semantic-verifier-prompt-v0.8",
+                ),
+            )
+            self.assertEqual(
+                [item["failure_check"] for item in outcome["producer_attempts"]],
+                [
+                    "producer_v0_3_required_binding_omission_v0_9",
+                    "producer_v0_3_binding_omission_repair_delta",
+                ],
+            )
+            self.assertEqual(core_calls, [])
+            self.assertNotIn("A possible distribution shift", json.dumps(run))
+
+            store.close()
+            store = HostStore(database_path)
+            self.journal = store
+            recovered_run = store.get_run(run_id)
+            recovered_outcome = recovered_run["events"][1]["outcome"]
+            self.assertEqual(recovered_outcome, outcome)
+            self.assertEqual(
+                host_server_module._public_outcome(recovered_outcome), outcome
+            )
+            self.assertNotIn("A possible distribution shift", json.dumps(recovered_run))
+        finally:
             store.close()
             temporary_directory.cleanup()
 

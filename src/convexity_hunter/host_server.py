@@ -424,6 +424,57 @@ def _semantic_failure_diagnostic_codes(error: Exception) -> Tuple[str, ...]:
     return tuple(codes)
 
 
+def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[Dict[str, Any]]:
+    """Build only route-bound omission audits; retain legacy format audits as v0.1."""
+
+    from .host_grounder_evidence_catalog import (
+        HostEvidenceCatalogProducerAttempt,
+        _BINDING_OMISSION_FAILURE_MARKERS,
+        _BINDING_OMISSION_FAILURE_ROUTE,
+        _BINDING_OMISSION_FIRST_FAILURE_CHECK,
+    )
+    from .host_grounder_runtime import HostGrounderRuntimeError
+    from .host_store import (
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION,
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
+        _validate_grounder_producer_failure_audit,
+    )
+
+    attempts = getattr(error, "producer_attempts", None)
+    if (
+        type(error) is not HostGrounderRuntimeError
+        or type(attempts) is not tuple
+        or not 1 <= len(attempts) <= 2
+        or any(type(item) is not HostEvidenceCatalogProducerAttempt for item in attempts)
+    ):
+        return None
+    checks = tuple(item.failure_check for item in attempts)
+    has_omission_marker = any(check in _BINDING_OMISSION_FAILURE_MARKERS for check in checks)
+    outcome = {
+        "schema_version": _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION,
+        "status": status,
+        "producer_attempts": [item.to_json() for item in attempts],
+    }
+    if has_omission_marker:
+        route = getattr(error, "_producer_failure_route", None)
+        if (
+            attempts[0].status != "rejected"
+            or attempts[0].failure_check != _BINDING_OMISSION_FIRST_FAILURE_CHECK
+            or type(route) is not tuple
+            or route != _BINDING_OMISSION_FAILURE_ROUTE
+        ):
+            return None
+        outcome.update({
+            "schema_version": _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
+            "producer_prompt_version": route[0],
+            "verifier_prompt_version": route[1],
+        })
+    try:
+        return _validate_grounder_producer_failure_audit(outcome)
+    except (TypeError, ValueError):
+        return None
+
+
 def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
     if type(value) is str:
         return {"status": value} if value in _RUN_STATUSES else None
@@ -500,7 +551,10 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
             }
         except (AttributeError, TypeError, ValueError):
             return None
-    if value.get("schema_version") == "host-grounder-producer-failure-audit-v0.1":
+    if value.get("schema_version") in (
+        "host-grounder-producer-failure-audit-v0.1",
+        "host-grounder-producer-failure-audit-v0.2",
+    ):
         try:
             from .host_store import _validate_grounder_producer_failure_audit
 
@@ -1850,12 +1904,40 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                     bounds=request.bounds,
                     source_batch=source_batch,
                 )
-        except Exception:
+        except Exception as error:
+            outcome: Any = "FAILED"
+            from .host_grounder_evidence_catalog import (
+                HostEvidenceCatalogProducerAttempt,
+                _BINDING_OMISSION_FAILURE_MARKERS,
+            )
+            from .host_grounder_runtime import HostGrounderRuntimeError
+
+            if type(error) is HostGrounderRuntimeError:
+                attempts = error.producer_attempts
+                if (
+                    type(attempts) is tuple
+                    and 1 <= len(attempts) <= 2
+                    and all(
+                        type(item) is HostEvidenceCatalogProducerAttempt
+                        for item in attempts
+                    )
+                    and any(
+                        item.failure_check in _BINDING_OMISSION_FAILURE_MARKERS
+                        for item in attempts
+                    )
+                ):
+                    failure_audit = _grounder_producer_failure_audit(error, "FAILED")
+                    if (
+                        type(failure_audit) is dict
+                        and failure_audit.get("schema_version")
+                        == "host-grounder-producer-failure-audit-v0.2"
+                    ):
+                        outcome = failure_audit
             if not self._complete_terminal_run(
                 run_id,
                 stage_id,
                 status="FAILED",
-                outcome="FAILED",
+                outcome=outcome,
                 diagnostics=("HOST_BATCH_EXECUTOR_FAILED",),
             ):
                 return
@@ -1969,18 +2051,9 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             status, diagnostic = _grounder_failure_status(error)
             diagnostics = (diagnostic,) + _semantic_failure_diagnostic_codes(error)
             outcome = status
-            from .host_grounder_runtime import HostGrounderRuntimeError
-            if (
-                type(error) is HostGrounderRuntimeError
-                and error.producer_attempts
-            ):
-                outcome = {
-                    "schema_version": "host-grounder-producer-failure-audit-v0.1",
-                    "status": status,
-                    "producer_attempts": [
-                        attempt.to_json() for attempt in error.producer_attempts
-                    ],
-                }
+            failure_audit = _grounder_producer_failure_audit(error, status)
+            if failure_audit is not None:
+                outcome = failure_audit
             if not self._complete_terminal_run(
                 run_id,
                 grounder_stage_id,

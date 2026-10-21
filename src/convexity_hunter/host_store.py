@@ -131,6 +131,11 @@ _GROUNDER_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-stage-outcome-v0.2"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION = "host-grounder-submission-stage-outcome-v0.1"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-submission-stage-outcome-v0.2"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION = "host-grounder-producer-failure-audit-v0.1"
+_GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2 = "host-grounder-producer-failure-audit-v0.2"
+_GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS = frozenset((
+    _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION,
+    _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
+))
 _GROUNDER_STAGE_DIAGNOSTIC = "GROUNDING_NO_SUBMISSION"
 _GROUNDER_STAGE_OUTCOME_VERSIONS = frozenset((
     _GROUNDER_STAGE_OUTCOME_VERSION,
@@ -564,6 +569,7 @@ def _validate_grounder_producer_attempts(value: Any, *, successful: bool) -> Lis
     from .host_grounder_evidence_catalog import (
         HostEvidenceCatalogCallAudit,
         HostEvidenceCatalogProducerAttempt,
+        _producer_repair_prompt_version,
     )
 
     if type(value) is not list or not 1 <= len(value) <= 2:
@@ -622,11 +628,17 @@ def _validate_grounder_producer_attempts(value: Any, *, successful: bool) -> Lis
         if canonical != raw:
             raise ValueError("Grounder producer attempt is not a canonical closed record")
         normalized.append(canonical)
-    if len(normalized) == 2 and normalized[0]["status"] != "format_rejected":
-        raise ValueError("Grounder second producer attempt lacks an eligible first format failure")
+    if len(normalized) == 2 and not (
+        normalized[0]["status"] == "format_rejected"
+        or (
+            normalized[0]["status"] == "rejected"
+            and normalized[0]["failure_check"]
+            == "producer_v0_3_required_binding_omission_v0_9"
+        )
+    ):
+        raise ValueError("Grounder second producer attempt lacks an eligible first failure")
     if successful and (
         normalized[-1]["status"] != "accepted"
-        or (len(normalized) == 2 and normalized[0]["status"] != "format_rejected")
         or any(item["call"] is None for item in normalized)
     ):
         raise ValueError("successful Grounder producer attempt sequence is invalid")
@@ -636,23 +648,66 @@ def _validate_grounder_producer_attempts(value: Any, *, successful: bool) -> Lis
 def _validate_grounder_producer_failure_audit(
     value: Any, *, expected_status: Optional[str] = None
 ) -> Dict[str, Any]:
-    fields = {"schema_version", "status", "producer_attempts"}
+    from .host_grounder_evidence_catalog import (
+        _BINDING_OMISSION_DELTA_FAILURE_CHECK,
+        _BINDING_OMISSION_FAILURE_MARKERS,
+        _BINDING_OMISSION_FAILURE_ROUTE,
+        _BINDING_OMISSION_FIRST_FAILURE_CHECK,
+    )
+
+    version = value.get("schema_version") if type(value) is dict else None
+    base_fields = {"schema_version", "status", "producer_attempts"}
+    if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION:
+        fields = base_fields
+    elif version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2:
+        fields = base_fields | {"producer_prompt_version", "verifier_prompt_version"}
+    else:
+        fields = set()
     if (
         type(value) is not dict or set(value) != fields
-        or value.get("schema_version") != _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION
         or type(value.get("status")) is not str
         or value["status"] not in ("FAILED", "BLOCKED")
         or (expected_status is not None and value["status"] != expected_status)
     ):
         raise ValueError("Grounder producer failure audit has an invalid closed shape")
+    if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2:
+        route = (value["producer_prompt_version"], value["verifier_prompt_version"])
+        if (
+            any(type(item) is not str for item in route)
+            or route != _BINDING_OMISSION_FAILURE_ROUTE
+        ):
+            raise ValueError("Grounder producer failure audit has an unsupported route")
     attempts = _validate_grounder_producer_attempts(
         value["producer_attempts"], successful=False
     )
+    checks = [item["failure_check"] for item in attempts]
+    has_omission_marker = any(
+        check in _BINDING_OMISSION_FAILURE_MARKERS for check in checks
+    )
+    if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION:
+        if has_omission_marker:
+            raise ValueError("legacy Grounder producer failure audit cannot carry omission markers")
+    else:
+        if (
+            not has_omission_marker
+            or attempts[0]["status"] != "rejected"
+            or attempts[0]["failure_check"] != _BINDING_OMISSION_FIRST_FAILURE_CHECK
+            or any(check == _BINDING_OMISSION_FIRST_FAILURE_CHECK for check in checks[1:])
+            or any(
+                check == _BINDING_OMISSION_DELTA_FAILURE_CHECK
+                and (index != 1 or attempts[index]["status"] != "rejected")
+                for index, check in enumerate(checks)
+            )
+        ):
+            raise ValueError("Grounder producer failure audit has an invalid omission sequence")
     result = {
-        "schema_version": _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION,
+        "schema_version": version,
         "status": value["status"],
         "producer_attempts": attempts,
     }
+    if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2:
+        result["producer_prompt_version"] = value["producer_prompt_version"]
+        result["verifier_prompt_version"] = value["verifier_prompt_version"]
     if len(_canonical_json(result, "Grounder producer failure audit").encode("utf-8")) > 100_000:
         raise ValueError("Grounder producer failure audit exceeds its archive bound")
     return result
@@ -676,7 +731,10 @@ def _grounder_stage_outcome(
         SemanticValidationRecord,
         HostSourceBody,
     )
-    from .host_grounder_evidence_catalog import HostEvidenceCatalogAudit
+    from .host_grounder_evidence_catalog import (
+        HostEvidenceCatalogAudit,
+        _producer_repair_prompt_version,
+    )
     from .event_entry import UserEventInput
     from .host_grounder_receipt import ValidatedEnvelopeSnapshot
     from .host_grounder_runtime import (
@@ -831,9 +889,11 @@ def _grounder_stage_outcome(
             and (
                 sidecar.get("producer_attempts") != attempts_json
                 or sidecar.get("producer_repair_prompt_version")
-                != (
-                    "host-grounder-discovery-format-repair-v0.1"
-                    if len(attempts_json) == 2 else None
+                != _producer_repair_prompt_version(
+                    attempts_json[0]["status"],
+                    attempts_json[0]["failure_check"],
+                    sidecar.get("producer_prompt_version"),
+                    sidecar.get("validator_version"),
                 )
             )
         )
@@ -1133,9 +1193,9 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
         previous_code = item["code"]
 
     provenance_fields = {"receipt_schema_version", "audit_schema_version", "producer_wire_version", "producer_prompt_version", "verifier_wire_version", "validator_version", "localizer_version", "catalog_schema_version", "catalog_generator_version", "canonical_input_sha256", "host_raw_input_sha256", "audit_sha256", "catalog_sha256", "producer_content_sha256", "normalized_envelope_sha256", "source_body_hashes", "model_calls"}
+    provenance = value["provenance"]
     if version_v0_2:
         provenance_fields.add("producer_attempts")
-    provenance = value["provenance"]
     if type(provenance) is not dict or set(provenance) != provenance_fields:
         raise ValueError("Grounder provenance has an invalid closed field set")
     expected_versions = {
@@ -1210,11 +1270,19 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
         ):
             raise ValueError("Grounder model-call summary is malformed")
     if version_v0_2:
+        from .host_grounder_evidence_catalog import _producer_repair_prompt_version
+
         attempts = _validate_grounder_producer_attempts(
             provenance["producer_attempts"], successful=True
         )
         if attempts[-1]["call"] != calls[0]:
             raise ValueError("Grounder accepted producer attempt does not match its call summary")
+        repair_identity = _producer_repair_prompt_version(
+            attempts[0]["status"], attempts[0]["failure_check"],
+            provenance["producer_prompt_version"], provenance["validator_version"],
+        )
+        if repair_identity is None:
+            raise ValueError("Grounder provenance repair identity is invalid for its attempt sequence")
     elif "producer_attempts" in provenance:
         raise ValueError("legacy Grounder provenance cannot contain producer attempts")
     if len(_canonical_json(value, "Grounder stage outcome").encode("utf-8")) > _GROUNDER_STAGE_MAX_BYTES:
@@ -1302,7 +1370,7 @@ def _grounder_public_stage_outcome(value: Any) -> Dict[str, Any]:
         _GROUNDER_STAGE_OUTCOME_VERSION, _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
     ):
         return _validate_grounder_stage_outcome(value)
-    if value.get("schema_version") == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION:
+    if value.get("schema_version") in _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS:
         return _validate_grounder_producer_failure_audit(value)
     if value.get("schema_version") not in _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSIONS:
         return value
@@ -1335,7 +1403,10 @@ def _validate_shell_outcome(value: Any) -> Any:
         return _validate_grounder_submission_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2:
         return _validate_grounder_submission_stage_outcome(value)
-    if type(value) is dict and value.get("schema_version") == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION:
+    if (
+        type(value) is dict
+        and value.get("schema_version") in _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS
+    ):
         return _validate_grounder_producer_failure_audit(value)
     batch_fields = {"schema_version", "case_count", "unavailable_count", "status"}
     if type(value) is dict and set(value) == batch_fields:
@@ -1887,7 +1958,7 @@ class HostStore:
                             or (
                                 type(payload["outcome"]) is dict
                                 and payload["outcome"].get("schema_version")
-                                == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION
+                                in _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS
                                 and payload["outcome"].get("status") == event["status"]
                             )
                         )
@@ -2127,7 +2198,7 @@ class HostStore:
                         or (
                             type(normalized_outcome) is dict
                             and normalized_outcome.get("schema_version")
-                            == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION
+                            in _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS
                             and normalized_outcome.get("status") == status
                         )
                     )

@@ -168,7 +168,11 @@ def make_direct_result(
     return replace(result, full_report=report(result)) if cached_report else result
 
 
-def make_grounder_no_submission_result(run_id="grounder-run"):
+def make_grounder_no_submission_result(
+    run_id="grounder-run", *,
+    producer_prompt_version="host-grounder-discovery-prompt-v0.6",
+    validator_version="host-grounder-semantic-verifier-prompt-v0.7",
+):
     """Synthetic typed fixture for the future stage journal API; never a live run."""
 
     from types import MappingProxyType
@@ -231,7 +235,7 @@ def make_grounder_no_submission_result(run_id="grounder-run"):
         "envelope_hash": envelope_hash,
         "source_body_hashes": (("source-1", body_hash),),
         "validator_id": "fixture-validator",
-        "validator_version": "host-grounder-semantic-verifier-prompt-v0.7",
+        "validator_version": validator_version,
         "verified_claim_ids": ("claim-private",),
         "rejected_claims": (),
         "verified_hypothesis_ids": (),
@@ -252,12 +256,12 @@ def make_grounder_no_submission_result(run_id="grounder-run"):
         "run_id": run_id,
         "canonical_input_hash": context.canonical_input_hash,
         "producer_wire_version": "grounder-output-v0.3",
-        "producer_prompt_version": "host-grounder-discovery-prompt-v0.6",
+        "producer_prompt_version": producer_prompt_version,
         "producer_content_sha256": hashlib.sha256(producer_bytes).hexdigest(),
         "normalized_envelope_sha256": envelope_hash,
         "source_body_hashes": source_hashes,
         "verifier_wire_version": "semantic-verdict-v0.3",
-        "validator_version": "host-grounder-semantic-verifier-prompt-v0.7",
+        "validator_version": validator_version,
         "localizer_version": "host-evidence-catalog-resolver-v0.1",
         "catalog_schema_version": "host-grounder-evidence-catalog-v0.1",
         "catalog_generator_version": "host-evidence-paragraph-generator-v0.1",
@@ -347,6 +351,65 @@ def make_grounder_retry_result(run_id="grounder-run"):
         producer_attempts=attempts,
     )
     return replace(result, audit=audit), malformed
+
+
+def make_grounder_binding_omission_result(run_id="grounder-run"):
+    from convexity_hunter.host_grounder_evidence_catalog import (
+        HostEvidenceCatalogCallAudit,
+        HostEvidenceCatalogProducerAttempt,
+    )
+
+    result = make_grounder_no_submission_result(
+        run_id,
+        producer_prompt_version="host-grounder-discovery-prompt-v0.9",
+        validator_version="host-grounder-semantic-verifier-prompt-v0.8",
+    )
+    omitted = b"STORE_BINDING_OMISSION_FIRST_ATTEMPT"
+
+    def call_audit(bytes_received):
+        return HostEvidenceCatalogCallAudit(
+            provider=result.discovery_call.provider,
+            requested_model=result.discovery_call.requested_model,
+            returned_model=result.discovery_call.returned_model,
+            finish_reason=result.discovery_call.finish_reason,
+            bytes_sent=result.discovery_call.bytes_sent,
+            bytes_received=bytes_received,
+        )
+
+    attempts = (
+        HostEvidenceCatalogProducerAttempt(
+            index=1,
+            status="rejected",
+            output_sha256=hashlib.sha256(omitted).hexdigest(),
+            failure_check="producer_v0_3_required_binding_omission_v0_9",
+            failure_code=None,
+            call=call_audit(len(omitted)),
+        ),
+        HostEvidenceCatalogProducerAttempt(
+            index=2,
+            status="accepted",
+            output_sha256=result.audit.producer_content_sha256,
+            failure_check=None,
+            failure_code=None,
+            call=call_audit(result.discovery_call.bytes_received),
+        ),
+    )
+    sidecar = json.loads(result.audit.sidecar_utf8)
+    sidecar["schema_version"] = "host-grounder-quote-localization-audit-v0.4"
+    sidecar["producer_attempts"] = [attempt.to_json() for attempt in attempts]
+    sidecar["producer_repair_prompt_version"] = (
+        "host-grounder-discovery-binding-omission-repair-v0.2"
+    )
+    sidecar_wire = json.dumps(
+        sidecar, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    audit = replace(
+        result.audit,
+        sidecar_utf8=sidecar_wire,
+        sidecar_sha256=hashlib.sha256(sidecar_wire).hexdigest(),
+        producer_attempts=attempts,
+    )
+    return replace(result, audit=audit), omitted
 
 
 def make_grounder_submission_result(run_id="grounder-run"):
@@ -613,6 +676,199 @@ class HostStoreTests(unittest.TestCase):
                 for item in reopened_outcome["provenance"]["producer_attempts"])
         )
         self.assertNotIn(malformed.decode("utf-8"), json.dumps(reopened_run))
+
+    def test_grounder_binding_omission_archive_reopens_versioned_attempt_receipts(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result, omitted = make_grounder_binding_omission_result(run_id)
+        expected_hashes = [item.output_sha256 for item in result.audit.producer_attempts]
+
+        self.store.save_grounder_stage_result(run_id, stage_id, result)
+        outcome = self.store.get_run(run_id)["events"][1]["outcome"]
+        provenance = outcome["provenance"]
+        self.assertEqual(
+            (provenance["producer_prompt_version"], provenance["validator_version"]),
+            (
+                "host-grounder-discovery-prompt-v0.9",
+                "host-grounder-semantic-verifier-prompt-v0.8",
+            ),
+        )
+        self.assertEqual(
+            provenance["producer_attempts"][0]["failure_check"],
+            "producer_v0_3_required_binding_omission_v0_9",
+        )
+        self.assertEqual(
+            [item["output_sha256"] for item in provenance["producer_attempts"]],
+            expected_hashes,
+        )
+        self.store.close()
+
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        reopened_run = reopened.get_run(run_id)
+        reopened_provenance = reopened_run["events"][1]["outcome"]["provenance"]
+        self.assertEqual(reopened_run["status"], "BLOCKED")
+        self.assertEqual(
+            reopened_provenance["producer_attempts"][0]["failure_check"],
+            "producer_v0_3_required_binding_omission_v0_9",
+        )
+        self.assertEqual(
+            [item["output_sha256"] for item in reopened_provenance["producer_attempts"]],
+            expected_hashes,
+        )
+        self.assertNotIn(omitted.decode("utf-8"), json.dumps(reopened_run))
+
+    def test_grounder_binding_omission_archive_rejects_forged_repair_route(self):
+        from convexity_hunter.host_store import (
+            _grounder_stage_outcome,
+            _validate_grounder_stage_outcome,
+        )
+
+        result, _omitted = make_grounder_binding_omission_result()
+        run_id = result.build_result.context.run_id
+        good = _grounder_stage_outcome(result, run_id, "synthetic fixture event")
+        self.assertEqual(
+            good["provenance"]["producer_attempts"][0]["failure_check"],
+            "producer_v0_3_required_binding_omission_v0_9",
+        )
+        legacy_route = json.loads(json.dumps(good))
+        legacy_route["provenance"]["producer_prompt_version"] = (
+            "host-grounder-discovery-prompt-v0.8"
+        )
+        legacy_route["provenance"]["validator_version"] = (
+            "host-grounder-semantic-verifier-prompt-v0.7"
+        )
+        with self.assertRaises(ValueError):
+            _validate_grounder_stage_outcome(legacy_route)
+        for label, changes in (
+            ("wrong repair identity", {
+                "producer_repair_prompt_version": "host-grounder-discovery-format-repair-v0.1",
+            }),
+            ("wrong producer route", {
+                "producer_prompt_version": "host-grounder-discovery-prompt-v0.7",
+            }),
+            ("historical v0.8/v0.7 pair", {
+                "producer_prompt_version": "host-grounder-discovery-prompt-v0.8",
+                "validator_version": "host-grounder-semantic-verifier-prompt-v0.7",
+            }),
+        ):
+            with self.subTest(route=label):
+                sidecar = json.loads(result.audit.sidecar_utf8)
+                sidecar.update(changes)
+                wire = json.dumps(
+                    sidecar, ensure_ascii=False, allow_nan=False,
+                    separators=(",", ":"), sort_keys=True,
+                ).encode("utf-8")
+                bad_audit = replace(
+                    result.audit, sidecar_utf8=wire,
+                    sidecar_sha256=hashlib.sha256(wire).hexdigest(),
+                )
+                with self.assertRaises(ValueError):
+                    _grounder_stage_outcome(
+                        replace(result, audit=bad_audit),
+                        run_id,
+                        "synthetic fixture event",
+                    )
+
+    def test_grounder_binding_omission_failure_audit_reopens_closed_checks(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result, omitted = make_grounder_binding_omission_result(run_id)
+        first, accepted = result.audit.producer_attempts
+        second_rejected = replace(
+            accepted,
+            status="rejected",
+            failure_check="producer_v0_3_binding_omission_repair_delta",
+        )
+        legacy_failure_outcome = {
+            "schema_version": "host-grounder-producer-failure-audit-v0.1",
+            "status": "FAILED",
+            "producer_attempts": [first.to_json(), second_rejected.to_json()],
+        }
+        from convexity_hunter.host_store import _validate_grounder_producer_failure_audit
+        with self.assertRaises(ValueError):
+            _validate_grounder_producer_failure_audit(legacy_failure_outcome)
+        failure_outcome = {
+            "schema_version": "host-grounder-producer-failure-audit-v0.2",
+            "status": "FAILED",
+            "producer_attempts": [first.to_json(), second_rejected.to_json()],
+            "producer_prompt_version": "host-grounder-discovery-prompt-v0.9",
+            "verifier_prompt_version": "host-grounder-semantic-verifier-prompt-v0.8",
+        }
+        self.store.finish_stage(
+            run_id, stage_id, "FAILED", failure_outcome,
+            ("PRODUCER_ENVELOPE_INVALID",),
+        )
+        self.store.finish_run(run_id, "FAILED", ("PRODUCER_ENVELOPE_INVALID",))
+        expected_hashes = [item["output_sha256"] for item in failure_outcome["producer_attempts"]]
+        self.store.close()
+
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        audit = reopened.get_run(run_id)["events"][1]["outcome"]
+        self.assertEqual(reopened.get_run(run_id)["status"], "FAILED")
+        self.assertEqual(
+            [item["output_sha256"] for item in audit["producer_attempts"]],
+            expected_hashes,
+        )
+        self.assertEqual(
+            [item["failure_check"] for item in audit["producer_attempts"]],
+            [
+                "producer_v0_3_required_binding_omission_v0_9",
+                "producer_v0_3_binding_omission_repair_delta",
+            ],
+        )
+        self.assertNotIn(omitted.decode("utf-8"), json.dumps(audit))
+
+    def test_grounder_binding_omission_failure_audit_rejects_unbound_or_forged_routes(self):
+        from convexity_hunter.host_store import _validate_grounder_producer_failure_audit
+
+        result, _omitted = make_grounder_binding_omission_result()
+        first, accepted = result.audit.producer_attempts
+        second_rejected = replace(
+            accepted,
+            status="rejected",
+            failure_check="producer_v0_3_binding_omission_repair_delta",
+        )
+        valid = {
+            "schema_version": "host-grounder-producer-failure-audit-v0.2",
+            "status": "FAILED",
+            "producer_attempts": [first.to_json(), second_rejected.to_json()],
+            "producer_prompt_version": "host-grounder-discovery-prompt-v0.9",
+            "verifier_prompt_version": "host-grounder-semantic-verifier-prompt-v0.8",
+        }
+        self.assertEqual(_validate_grounder_producer_failure_audit(valid), valid)
+
+        cases = (
+            ("historical pair", {
+                "producer_prompt_version": "host-grounder-discovery-prompt-v0.8",
+                "verifier_prompt_version": "host-grounder-semantic-verifier-prompt-v0.7",
+            }),
+            ("mixed verifier", {
+                "producer_prompt_version": "host-grounder-discovery-prompt-v0.9",
+                "verifier_prompt_version": "host-grounder-semantic-verifier-prompt-v0.7",
+            }),
+            ("mixed producer", {
+                "producer_prompt_version": "host-grounder-discovery-prompt-v0.8",
+                "verifier_prompt_version": "host-grounder-semantic-verifier-prompt-v0.8",
+            }),
+        )
+        for label, route in cases:
+            with self.subTest(route=label):
+                forged = dict(valid)
+                forged.update(route)
+                with self.assertRaises(ValueError):
+                    _validate_grounder_producer_failure_audit(forged)
+        for missing in ("producer_prompt_version", "verifier_prompt_version"):
+            with self.subTest(missing=missing):
+                forged = dict(valid)
+                del forged[missing]
+                with self.assertRaises(ValueError):
+                    _validate_grounder_producer_failure_audit(forged)
+        unbound_marker = dict(valid)
+        unbound_marker["producer_attempts"] = [accepted.to_json()]
+        with self.assertRaises(ValueError):
+            _validate_grounder_producer_failure_audit(unbound_marker)
 
     def test_grounder_retry_failure_archive_reopens_completed_attempts_without_raw_text(self):
         run_id = self.create_run("event", "synthetic fixture event")

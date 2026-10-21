@@ -62,6 +62,71 @@ GROUNDING_NO_SUBMISSION / EI NOT_RUN. The source and structured-output success
 is not EI acceptance; see the [sanitized checkpoint](current-checkpoint.md#producer-format-repair--implemented-and-validated).
 No semantic retry or repeat batch is authorized by the format-repair policy.
 
+### Approved binding-omission correction — 2026-10-21
+
+Status: IMPLEMENTED / INDEPENDENT CONTRACT AND FINAL IMPLEMENTATION REVIEW PASS;
+final full regression PASS (2,018 tests). This
+explicit exception to the historical format-only boundary is not a retrospective
+parser defect. The normal v0.9 producer/v0.8 verifier route may use its existing
+second producer request when a strictly parsed first output omits a binding
+path required for a consumed non-null value. Reuse the semantic validator's
+required-path grammar. Presence is structural, not support: an unresolved,
+contradicted, wrong-reference or duplicate binding is not an omission. Null
+values, omitted entity items and an honestly empty hypothesis set do not
+create missing paths. Do not retry semantic refusal, absence of a hypothesis,
+or EI rejection. Historical runtime routes retain their behavior.
+
+Perform this check before any semantic request. A declared one-request budget
+or exhausted allowance retains the existing partial-evidence validation path.
+JSON/shape repair and omission correction share one second attempt; neither
+permits a third request. Reuse the exact original run input, admitted sources,
+catalog, model and budgets; do not refresh evidence or use a model fallback.
+
+For omission correction only, the already strictly parsed first producer DTO
+may be supplied as bounded, explicitly untrusted data, never instructions.
+Keep the old malformed-output repair notice unchanged. Use a separately
+versioned binding-omission notice and audit identity. The replacement must
+preserve every original non-binding field and the existing binding array as
+an exact prefix. Only append unique bindings for previously absent required
+paths, using the same catalog. It may leave a path missing if no evidence can
+support it; the unchanged validator then rejects the affected record. It
+cannot rewrite claims/hypotheses, delete entities or add a hypothesis.
+
+The Host checks this structural delta, not the truth of added bindings. All
+replacement bindings still pass the strict catalog parser, independent semantic
+verifier, exact-reference/dependency checks, Builder and EI. Unauthorized
+mutation, invalid replacement, transport failure or size-limit failure ends
+the operation, with no fallback/retry. No Host-synthesized binding, authority,
+date, identity, hypothesis or financial input is permitted.
+
+Retain both attempt hashes and closed non-payload outcomes in the existing
+audit path; identify omission correction separately from historical format
+repair. Accepted parsing/audit never means semantic or EI acceptance. Preserve
+old archive recovery and public APIs; allow the new audit identity only for
+the exact normal route and omission attempt sequence. No new live operation
+or replay of the spent IRDM guard is authorized by this implementation unit.
+
+Implementation identifiers: `host-grounder-discovery-binding-omission-repair-v0.2`;
+first-attempt check `producer_v0_3_required_binding_omission_v0_9`;
+unauthorized-replacement check `producer_v0_3_binding_omission_repair_delta`.
+Base producer v0.9 and verifier v0.8 prompts stay unchanged. Historical
+`host-grounder-discovery-format-repair-v0.1` remains a distinct repair identity.
+
+Failure retention must also carry route authority. Use
+`host-grounder-producer-failure-audit-v0.2` only for omission sequences, with
+the exact closed fields `schema_version`, `status`, `producer_attempts`,
+`producer_prompt_version` and `verifier_prompt_version`. The last two must be
+the actual normal v0.9/v0.8 pair, retained by the trusted runtime path without
+changing public signatures or exception identity/code/stage/check. Reject
+missing/mixed/legacy pairs. Historical failure-audit v0.1 stays readable but
+cannot carry omission attempts; completed audits retain their separate
+repair identity above. No new SQL schema or general telemetry is required.
+The shared World wrapper must propagate only this exact trusted new omission
+failure to the Host batch-error boundary for the same v0.2 retention, rather
+than converting it to an unaudited empty batch. Keep the existing batch-error
+FAILED response and all ordinary World error/legitimate-empty handling; do
+not change Core records or introduce a separate diagnostic transport.
+
 ### Preceding compatibility checkpoint (historical)
 
 The preceding committed change preserves exact trusted `ModelTransportError` closed codes

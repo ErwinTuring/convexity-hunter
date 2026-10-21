@@ -57,7 +57,10 @@ from convexity_hunter.host_sources import (  # noqa: E402
 )
 from convexity_hunter.option_chain_discovery import OptionMaturityAuthority  # noqa: E402
 from convexity_hunter.host_server import (  # noqa: E402
+    HostRequestHandler,
     ValidatedRunRequest,
+    _public_run,
+    _run_start_metadata,
     _validate_batch_result,
 )
 from convexity_hunter.host_store import HostStore  # noqa: E402
@@ -270,6 +273,7 @@ class HostWorldTests(unittest.TestCase):
         self.grounder_calls = []
         self.grounder_query_calls = []
         self.policies = []
+        self.grounder_query_error = None
 
     def _fake_grounder(self, _config, **_kwargs):
         def grounder(text, *, run_id, bounds):
@@ -284,6 +288,8 @@ class HostWorldTests(unittest.TestCase):
             self.grounder_query_calls.append(query)
 
             def query_bound_grounder(text, *, run_id, bounds):
+                if self.grounder_query_error is not None:
+                    raise self.grounder_query_error
                 return grounder(text, run_id=run_id, bounds=bounds)
 
             return query_bound_grounder
@@ -350,6 +356,158 @@ class HostWorldTests(unittest.TestCase):
             )
             result = runner(self.raw_input, bounds=bounds or self.post_bounds)
         return result, captured, discovery_calls, semantic_calls
+
+    def test_only_stamped_v09_v08_omission_failures_escape_world_catch(self):
+        from tests.test_host_server import _normal_v09_omission_failure
+
+        empty_skill = HostSkillResult("empty", None, (), (), (), 0)
+        omission_error, _calls = _normal_v09_omission_failure("delta")
+        self.grounder_query_error = omission_error
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            self._run_through_real_core(skill_result=empty_skill)
+        self.assertIs(raised.exception, omission_error)
+
+        invalid_routes = (None, (
+            "host-grounder-discovery-prompt-v0.8",
+            "host-grounder-semantic-verifier-prompt-v0.7",
+        ))
+        for route in invalid_routes:
+            with self.subTest(route=route):
+                error, _calls = _normal_v09_omission_failure("delta")
+                if route is None:
+                    del error._producer_failure_route
+                else:
+                    error._producer_failure_route = route
+                self.grounder_query_error = error
+                result, captured, _discovery, _semantic = self._run_through_real_core(
+                    skill_result=empty_skill
+                )
+                self.assertIn("world_grounder_failed", result.case_set.reasons)
+                self.assertEqual(captured[0].submissions, ())
+
+    def test_world_batch_failure_is_archived_with_v02_attempt_hashes(self):
+        from tests.test_host_server import _normal_v09_omission_failure
+
+        omission_error, _calls = _normal_v09_omission_failure("delta")
+        self.grounder_query_error = omission_error
+        empty_skill = HostSkillResult("empty", None, (), (), (), 0)
+        observed_world_errors = []
+
+        def world_executor(_raw_input, *, bounds):
+            try:
+                self._run_through_real_core(skill_result=empty_skill, bounds=bounds)
+            except HostGrounderRuntimeError as error:
+                observed_world_errors.append(error)
+                raise
+
+        request = ValidatedRunRequest("world", self.raw_input, self.post_bounds)
+        with tempfile.TemporaryDirectory(
+            dir=pathlib.Path(tempfile.gettempdir()).resolve()
+        ) as temp_dir:
+            store = HostStore(pathlib.Path(temp_dir) / "world-omission.sqlite3")
+            try:
+                run_id = store.create_run(
+                    "world",
+                    self.raw_input,
+                    self.post_bounds,
+                    STANDARD_RESEARCH_PROFILE.snapshot(),
+                    _run_start_metadata(world_configured=True),
+                )
+                stage_id = store.start_stage(run_id, "executor")
+
+                class HandlerHarness:
+                    _post_batch_run = HostRequestHandler._post_batch_run
+                    _complete_terminal_run = HostRequestHandler._complete_terminal_run
+
+                    def __init__(self, journal):
+                        self.server = SimpleNamespace(journal=journal)
+                        self.responses = []
+
+                    def _send_json(self, status, payload):
+                        self.responses.append((status, payload))
+
+                handler = HandlerHarness(store)
+                handler._post_batch_run(
+                    request, run_id, stage_id, world_executor
+                )
+
+                self.assertEqual(observed_world_errors, [omission_error])
+                self.assertIs(observed_world_errors[0], omission_error)
+                self.assertEqual(
+                    handler.responses,
+                    [(
+                        201,
+                        {
+                            "run_id": run_id,
+                            "status": "FAILED",
+                            "reason": "HOST_BATCH_EXECUTOR_FAILED",
+                        },
+                    )],
+                )
+                stored = store.get_run(run_id)
+                self.assertEqual(stored["status"], "FAILED")
+                stored_outcome = stored["events"][1]["outcome"]
+                self.assertEqual(
+                    stored_outcome["schema_version"],
+                    "host-grounder-producer-failure-audit-v0.2",
+                )
+                self.assertEqual(stored_outcome["status"], "FAILED")
+                self.assertEqual(
+                    stored_outcome["producer_prompt_version"],
+                    "host-grounder-discovery-prompt-v0.9",
+                )
+                self.assertEqual(
+                    stored_outcome["verifier_prompt_version"],
+                    "host-grounder-semantic-verifier-prompt-v0.8",
+                )
+                expected_attempts = [item.to_json() for item in omission_error.producer_attempts]
+                self.assertEqual(stored_outcome["producer_attempts"], expected_attempts)
+                self.assertEqual(
+                    [item["output_sha256"] for item in stored_outcome["producer_attempts"]],
+                    [item.output_sha256 for item in omission_error.producer_attempts],
+                )
+
+                public = _public_run(stored)
+                public_outcome = public["events"][1]["outcome"]
+                self.assertEqual(public_outcome, stored_outcome)
+                self.assertEqual(
+                    [item["output_sha256"] for item in public_outcome["producer_attempts"]],
+                    [item.output_sha256 for item in omission_error.producer_attempts],
+                )
+
+                ordinary_run_id = store.create_run(
+                    "world",
+                    self.raw_input,
+                    self.post_bounds,
+                    STANDARD_RESEARCH_PROFILE.snapshot(),
+                    _run_start_metadata(world_configured=True),
+                )
+                ordinary_stage_id = store.start_stage(ordinary_run_id, "executor")
+
+                def ordinary_executor(*_args, **_kwargs):
+                    raise RuntimeError("PRIVATE_ORDINARY_BATCH_FAILURE")
+
+                ordinary_handler = HandlerHarness(store)
+                ordinary_handler._post_batch_run(
+                    request, ordinary_run_id, ordinary_stage_id, ordinary_executor
+                )
+                self.assertEqual(
+                    ordinary_handler.responses,
+                    [(
+                        201,
+                        {
+                            "run_id": ordinary_run_id,
+                            "status": "FAILED",
+                            "reason": "HOST_BATCH_EXECUTOR_FAILED",
+                        },
+                    )],
+                )
+                self.assertEqual(
+                    store.get_run(ordinary_run_id)["events"][1]["outcome"],
+                    "FAILED",
+                )
+            finally:
+                store.close()
 
     def test_both_producers_reach_grounder_all_submissions_reach_core(self):
         url = "https://lead.example/a%2Fb?x=1"

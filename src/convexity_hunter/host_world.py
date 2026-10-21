@@ -21,6 +21,12 @@ from .core_futu import FutuMarketBridge
 from .core_presentation import compact_summary
 from .event_entry import UserEventInput
 from .event_intelligence import EventIntelligenceSubmission
+from .host_grounder_evidence_catalog import (
+    HostEvidenceCatalogProducerAttempt,
+    _BINDING_OMISSION_FAILURE_MARKERS,
+    _BINDING_OMISSION_FAILURE_ROUTE,
+    _BINDING_OMISSION_FIRST_FAILURE_CHECK,
+)
 from .host_grounder_runtime import HostGrounderRuntimeError
 from .host_event import (
     HostEventGrounderConfig,
@@ -784,6 +790,27 @@ def create_world_runner(
                     bounds=bounds,
                 )
             except Exception as error:
+                if type(error) is HostGrounderRuntimeError:
+                    attempts = error.producer_attempts
+                    route = getattr(error, "_producer_failure_route", None)
+                    if (
+                        type(attempts) is tuple
+                        and 1 <= len(attempts) <= 2
+                        and all(
+                            type(item) is HostEvidenceCatalogProducerAttempt
+                            for item in attempts
+                        )
+                        and attempts[0].status == "rejected"
+                        and attempts[0].failure_check
+                        == _BINDING_OMISSION_FIRST_FAILURE_CHECK
+                        and any(
+                            item.failure_check in _BINDING_OMISSION_FAILURE_MARKERS
+                            for item in attempts
+                        )
+                        and type(route) is tuple
+                        and route == _BINDING_OMISSION_FAILURE_ROUTE
+                    ):
+                        raise
                 reasons.append("world_grounder_failed")
                 diagnostic = _world_failure_diagnostic(error)
                 if diagnostic is not None:
