@@ -2,6 +2,34 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## World input-boundary correction (2026-10-22 Beijing)
+
+One normal World POST created run `ab18d4ff-0e41-4e08-a913-8f0be4cba1d1`:
+HTTP 201 / BLOCKED, with `world_last30days_failed`,
+`world_last30days_input_invalid`, `world_grounder_failed`, and
+`world_grounder_no_search_results`. Its valid batch archive contains zero
+cases/unavailable rows and zero EI submissions. This is not a completed
+zero-candidate discovery result or proof that no market events exist.
+Native/model usage counters were not retained. The workbench gained exactly
+one run (nineteen to twenty); three Direct archives still validate.
+The consumed guard is
+`/private/tmp/.ch-world-normal-20261022-v05-once/spent-once`; do not replay it.
+
+A concrete local defect is established: the exact request is 313 characters,
+within the approved World 400-character boundary, but HostSkill rejected it
+at its private 256-character guard before native execution. Pinned native
+3.21.1's discovery parser imposes no narrower domain limit. The minimal
+correction aligns that one guard to 400, preserving the entire request and
+all character/flag guards, source/model budgets, Skill version and evidence
+standards. It does not change query logic to fix the separate no-search-result
+outcome. Independent review passed; 38 related tests and final full regression
+(2,023 tests in 303.947 seconds), compileall and diff checks passed.
+
+Next: commit/deploy this correction and perform one separately guarded normal
+World validation with the same request and caps. This is prospective validation
+of changed code, not a replay or rewrite of the prior run. Actual source/Skill
+coverage and EI/Core outcomes must still be recorded without forcing positives.
+
 ## Deployed v0.5 and one real Event (2026-10-22 Beijing)
 
 Implementation `32596e7` is deployed. The first ordinary launcher attempt

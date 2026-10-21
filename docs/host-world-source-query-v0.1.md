@@ -25,6 +25,8 @@ integration defect, not proof of the cause of a discarded historical failure.
   any Skill subprocess, source/model call or transport-budget reservation.
   The private Grounder factory independently revalidates its bound query
   before its own calls. Never split, truncate or rewrite the request.
+- HostSkill applies the same 400-character ceiling to the unchanged discovery
+  argument; the pinned last30days 3.21.1 CLI imposes no narrower domain limit.
 - Keep World's existing non-string/empty/whitespace-only `ValueError` guard
   first and unchanged. Additional query-invalid inputs return the existing
   structured empty Core run with closed reason `world_source_query_invalid`,

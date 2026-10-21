@@ -822,7 +822,7 @@ def run_last30days_discovery(
     if not callable(model_callback):
         raise HostSkillError("MODEL_CALLBACK_REQUIRED")
     if domain is not None:
-        _require_text(domain, "INVALID_DOMAIN", max_chars=256)
+        _require_text(domain, "INVALID_DOMAIN", max_chars=400)
         if domain.startswith("-"):
             raise HostSkillError("INVALID_DOMAIN")
     root = _verify_skill_pin(config.skill_pin)

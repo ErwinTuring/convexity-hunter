@@ -786,7 +786,7 @@ class HostWorldTests(unittest.TestCase):
         self.assertIsNone(_world_model_transport_diagnostic(bounded_chain[0]))
 
     def test_invalid_domain_is_rejected_before_callbacks_and_empty_world_fallback(self):
-        self.raw_input = "x" * 327
+        self.raw_input = "x" * 401
         self.submissions = ()
         callback_calls = {"stage": 0, "model": 0}
 
@@ -807,10 +807,13 @@ class HostWorldTests(unittest.TestCase):
                 model_callback,
                 stage_runner=stage_runner,
             )
-        self.assertEqual(len(self.raw_input), 327)
+        self.assertEqual(len(self.raw_input), 401)
         self.assertEqual(caught.exception.code, "INVALID_DOMAIN")
         self.assertEqual(callback_calls, {"stage": 0, "model": 0})
 
+        # Exercise World's HostSkill error mapping with an otherwise valid
+        # source query; the 401-character case was already rejected above.
+        self.raw_input = "x" * 313
         result, captured, discovery_calls, semantic_calls = self._run_through_real_core(
             skill_result=None, skill_error=caught.exception
         )
@@ -1290,30 +1293,45 @@ class HostWorldTests(unittest.TestCase):
         )
 
     def test_world_source_query_preflight_accepts_400_and_rejects_invalid_without_calls(self):
+        exactly_313 = "q" * 313
         exactly_400 = "q" * 400
         empty = HostSkillResult("empty", None, (), (), (), 0)
+        skill_queries = []
+
+        def capture_skill_query(_config, *, domain, **_kwargs):
+            skill_queries.append(domain)
+            return empty
+
         with mock.patch(
             "convexity_hunter.host_world.create_event_grounder",
             side_effect=self._fake_grounder,
         ), mock.patch(
             "convexity_hunter.host_world.run_last30days_discovery",
-            return_value=empty,
+            side_effect=capture_skill_query,
         ):
             runner = create_world_runner(
                 self.config, repo_root=ROOT, market_bridge=self.lazy_bridge
             )
+            accepted_313 = runner(exactly_313, bounds=self.post_bounds)
             accepted = runner(exactly_400, bounds=self.post_bounds)
             accepted_second = runner(
                 "second original request", bounds=self.post_bounds
             )
+        self.assertNotIn("world_source_query_invalid", accepted_313.case_set.reasons)
         self.assertNotIn("world_source_query_invalid", accepted.case_set.reasons)
-        self.assertEqual(self.grounder_calls[0][0], exactly_400)
+        self.assertEqual(self.grounder_query_calls[0], exactly_313)
+        self.assertEqual(self.grounder_calls[0][0], exactly_313)
+        self.assertEqual(self.grounder_calls[1][0], exactly_400)
         self.assertNotIn(
             "world_source_query_invalid", accepted_second.case_set.reasons
         )
         self.assertEqual(
             self.grounder_query_calls,
-            [exactly_400, "second original request"],
+            [exactly_313, exactly_400, "second original request"],
+        )
+        self.assertEqual(
+            skill_queries,
+            [exactly_313, exactly_400, "second original request"],
         )
 
         for invalid in ("q" * 401, "request ", "\ud800"):

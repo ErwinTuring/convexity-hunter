@@ -301,6 +301,40 @@ class HostSkillTests(unittest.TestCase):
             clock=lambda: NOW,
         )
 
+    def test_domain_length_matches_world_400_character_boundary(self):
+        for size in (256, 257, 313, 400):
+            with self.subTest(length=size):
+                domain = "q" * size
+                runner = SyntheticSkillRunner(empty=True)
+                result = run_last30days_discovery(
+                    self.config(),
+                    domain,
+                    lambda *_args, **_kwargs: self.fail(
+                        "empty nomination must not call the model"
+                    ),
+                    stage_runner=runner,
+                    clock=lambda: NOW,
+                )
+                self.assertEqual(result.status, "empty")
+                self.assertEqual(len(runner.requests), 1)
+                argv = runner.requests[0].argv
+                self.assertEqual(argv[argv.index("--discover") + 1], domain)
+
+        invalid_domain = "q" * 401
+        runner = SyntheticSkillRunner(empty=True)
+        with self.assertRaises(HostSkillError) as caught:
+            run_last30days_discovery(
+                self.config(),
+                invalid_domain,
+                lambda *_args, **_kwargs: self.fail(
+                    "invalid domain must not call the model"
+                ),
+                stage_runner=runner,
+                clock=lambda: NOW,
+            )
+        self.assertEqual(caught.exception.code, "INVALID_DOMAIN")
+        self.assertEqual(runner.requests, [])
+
     def test_three_legs_use_same_dir_fixed_current_window_and_full_ids(self):
         runner = SyntheticSkillRunner()
         callback_phases = []

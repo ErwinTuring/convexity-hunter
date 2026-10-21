@@ -1,5 +1,15 @@
 # Project State
 
+## World request boundary aligned (2026-10-22 Beijing)
+
+A real normal World run exposed a local 256-character Skill guard rejecting
+an otherwise valid 313-character request. The guard now matches the existing
+400-character World policy without rewriting input or changing sources,
+budgets or evidence standards. Independent review, 38 related tests and
+2,023 full regression tests passed. Prior BLOCKED records remain unchanged;
+deployment and a new once-guarded validation are next. See the
+[checkpoint](current-checkpoint.md) for the exact run and attribution limits.
+
 ## v0.5 deployed; real anchor separation demonstrated (2026-10-22 Beijing)
 
 Implementation `32596e7` is deployed with three configured entries, Profile
