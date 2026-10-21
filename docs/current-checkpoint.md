@@ -2,6 +2,21 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Final deployed checkpoint (2026-10-22 Beijing)
+
+Display implementation `19f1399` is running through the original launcher,
+not a tracing wrapper. Final local GET checks passed: root contains v0.3
+anchor disclosures; Host/journal/UI READY; three configured entries; Profile
+v0.4; twenty-one runs, zero active, three Direct archives preserved. Observed
+PID 40976/session 13857 is transient. Startup recovery required another
+ordinary attempt; the original exception class/errno was not captured and
+TIME_WAIT/errno 48 was not observed. Do not assert a permission or socket
+root cause. No research POST/source/model/provider call accompanied the final
+display deployment. The implementation work is validated and deployed;
+positive real accepted-hypothesis Event/World-to-Core research remains
+unproven. No further field filling, gate relaxation or success-seeking replay
+is justified by the recorded negative/partial results.
+
 ## Corrected World run and v0.3 display compatibility (2026-10-22 Beijing)
 
 Input-boundary correction `12e186b` was deployed and tested with one new
@@ -34,8 +49,8 @@ variants and machine/EI/Core statuses are unchanged. Independent review and
 passed. The preceding full 2,023-test pass covers the backend input fix; it is
 not a new full-suite run on this presentation-only correction.
 
-Next: commit/deploy the display correction and verify only local GET/history/
-cache compatibility. No more research POSTs are part of this unit. Three
+The display correction is committed/deployed and local GET/history checks
+passed, as recorded above. No more research POSTs are part of this unit. Three
 entries are configured and callable, but a real positive accepted-hypothesis
 Event/World-to-Core case remains unproven; the negative/partial outcomes do
 not justify invented evidence, relaxed gates or repeated batches for success.

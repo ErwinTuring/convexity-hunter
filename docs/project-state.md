@@ -1,5 +1,15 @@
 # Project State
 
+## Final local deployment verified (2026-10-22 Beijing)
+
+The original launcher serves the reviewed backend and v0.3 display at
+`http://127.0.0.1:8080/`. Read-only checks passed: three configured entries,
+Profile v0.4, twenty-one runs, zero active and three preserved Direct archives.
+No new research accompanied this final deployment. This is operational and
+presentation acceptance, not proof of a positive real Event/World EI-to-Core
+case. Remaining source-coverage/hypothesis gaps and the limits of startup
+attribution are recorded in the [checkpoint](current-checkpoint.md).
+
 ## Real World advanced beyond input guard; display fixed (2026-10-22 Beijing)
 
 The input fix is deployed. A new normal World run returned partial native
