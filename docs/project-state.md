@@ -1,5 +1,15 @@
 # Project State
 
+## Host Event Source Facts v0.5 (2026-10-21)
+
+The contract is frozen after independent review PASS
+([contract](host-event-source-facts-v0.5.md)); runtime implementation is
+absent. Its dual-question anchor/v0.3 audit is default-normal-only; custom
+preparers keep the legacy route. Audit selection records only a v5 fill of an
+originally absent description binding. Main will commit the contract, after
+which the standing authorization allows minimal `host_event`/`host_store`
+implementation and focused tests, with no further approval step.
+
 ## Real BRZE Event: partial pipeline advance (2026-10-21)
 
 The new binding-omission correction ran in a preregistered real operation:

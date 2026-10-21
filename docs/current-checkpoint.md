@@ -2,6 +2,18 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Host Event Source Facts v0.5 contract (2026-10-21)
+
+Contract is frozen after independent review PASS; see
+[host-event-source-facts-v0.5.md](host-event-source-facts-v0.5.md). Its
+two-question anchor and v0.3 audit apply only to the default normal preparer;
+custom preparers retain the legacy single-question/outcome path. Audit records
+only a v5 fill of an originally absent description binding; existing nonempty
+bindings remain unchanged and audit as `null`. Runtime is not implemented.
+Main will commit the contract; then the already-authorized minimal
+`host_event`/`host_store` implementation and focused tests may proceed without
+further user approval.
+
 ## BRZE normal Event: correction exercised, EI incomplete (2026-10-21)
 
 One fresh operation ran on `c8c2b38`, with a new preregistered input and spent
