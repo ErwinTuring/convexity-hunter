@@ -2,6 +2,56 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Deployed v0.5 and one real Event (2026-10-22 Beijing)
+
+Implementation `32596e7` is deployed. The first ordinary launcher attempt
+returned its generic startup failure; the same launcher subsequently started
+under the authorized operational recovery, without code/config changes. This
+does not identify the hidden original exception. GET status/profile/history
+and cached Direct reports passed: three configured entries, Profile v0.4,
+nineteen runs, zero active; the existing database counts/digests and all three
+Direct report digests were unchanged. Observed listener PID 38621/session
+79839 is transient operational state; recheck on reuse.
+
+One new guarded BRZE operation used the original neutral query/leads, normal
+factory, and a separate private archive: run
+`12928971-df72-430a-aee0-295faf4606fa`, HTTP 201 / BLOCKED. Research evaluation
+date was explicitly 2026-10-21 UTC, not the Beijing calendar date. The default
+v0.3 audit records anchor `c2`: its fact-only coverage was model/validator
+supported, one claim, no gap. Broader research coverage remained model
+supported / validator unresolved, seven claims, gap present. This is live
+evidence of the approved separation, not EI acceptance.
+
+Seven claims, one hypothesis, thirteen bindings and five source bodies were
+retained in the stage counts. The hypothesis had no verified `impact_path`
+binding and was not projectable; submission MISSING, EI NOT_RUN, no Core
+archive/case or Futu quote request. The capture contains one explicit rejected
+binding (claim c4's entity/date attribution). It does not contain a separate
+impact-path binding rejection; do not label the derived required-field failure
+as a captured semantic refusal of that field. Absence versus wrong-role or
+other unverified binding detail is not established. The retained rejected
+hypothesis also has null distribution mode and distribution hypothesis; fixing
+a binding alone would not establish complete EI inputs. No new implementation
+defect or authority to fabricate missing fields was established.
+
+Producer attempts were two: first `producer_v0_3_closed_shape`, then accepted;
+semantic ran once. The two retained final-role call summaries are not a total
+HTTP request count. Existing ceilings remained Tavily two requests/three
+credits and admission five GETs/two redirects; actual source usage is not
+exposed. There was no retry, replacement event or historical rewrite.
+
+Private plan/wrapper directory:
+`/private/tmp/ch-event-20261022-brze-v05-prep/`; consumed guard:
+`/private/tmp/.ch-event-normal-20261022-brze-v05-once/spent-once`.
+Archive directory: `archive/capture-25ae50baec3e4422bf85ec237da7b325/`
+under that private directory (700; files 600). Database SHA-256:
+`ee064ced7a35cdbb234a0ca1c37fa6761a462a9af1fe5be0251015baf115cc8e`;
+sanitized rejection capture SHA-256:
+`63a9f6cba91f2a5778ba4e0e887e6ae703f5c9bf8f69bbfe64a36f9fc374249f`.
+The normal workbench remains usable; a positive real accepted-hypothesis
+Event/World-to-Core case is still unproven. A separate bounded World check is
+being scoped against existing runtime budgets, not a replacement BRZE trial.
+
 ## Event-fact anchor v0.5 implemented (2026-10-22 Beijing)
 
 The [frozen contract](host-event-source-facts-v0.5.md), committed before BUILD

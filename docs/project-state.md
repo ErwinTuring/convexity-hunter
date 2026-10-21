@@ -1,5 +1,18 @@
 # Project State
 
+## v0.5 deployed; real anchor separation demonstrated (2026-10-22 Beijing)
+
+Implementation `32596e7` is deployed with three configured entries, Profile
+v0.4 and the original nineteen-run history/cached reports unchanged. One
+independently guarded real BRZE Event retained verified fact anchor c2 while
+research coverage remained unresolved. Its hypothesis lacked a verified
+impact-path binding and did not project: submission MISSING, EI NOT_RUN, no
+Core case. This is not EI INCOMPLETE or positive research-loop completion.
+The [checkpoint](current-checkpoint.md) records the separate archive, actual
+two producer attempts/one semantic call and limits of rejection attribution.
+No new evidence-standard change or model/source retry is authorized by that
+negative result; the independent World path is the next bounded check.
+
 ## Independent event-fact anchor implemented (2026-10-22 Beijing)
 
 [Source facts v0.5](host-event-source-facts-v0.5.md) is implemented and passed
