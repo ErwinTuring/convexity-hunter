@@ -2,6 +2,58 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## BRZE normal Event: correction exercised, EI incomplete (2026-10-21)
+
+One fresh operation ran on `c8c2b38`, with a new preregistered input and spent
+guard, not an IRDM replay. The input was a research question about
+[Braze's SEC filing](https://www.sec.gov/Archives/edgar/data/1676238/000095010326015850/dp254600_8k.htm),
+not an injected verified hypothesis. Run `311e1504-c7bc-443e-98ec-f2c5ddf95bb4`
+returned HTTP 201 / BLOCKED. Eight claims, one hypothesis and sixteen field
+bindings were produced from five source bodies. Attempt one was rejected for
+`producer_v0_3_required_binding_omission_v0_9`; attempt two passed the strict
+append-only correction under `host-grounder-discovery-binding-omission-repair-v0.2`.
+There was no third attempt or semantic retry. Two claim/entity bindings failed
+semantic verification because their date/header paragraphs did not establish
+the asserted entity. The hypothesis itself was not rejected by the verifier.
+
+Builder created a submission; EI assessed it as INCOMPLETE with six issues:
+`missing_event_description`, `incomplete_event_date_range`,
+`missing_underlying_key`, `missing_distribution_mode`,
+`missing_distribution_hypothesis`, `missing_temporal_applicability`.
+The retained submission and batch EI audit agree: impact_path is non-null;
+distribution_mode, distribution_hypothesis, expected_window and reassessment
+are null. No exact Host security binding or description/date context was
+established. Admission/selection reasons and the original producer DTO were
+not retained, so do not invent their root causes or claim an implementation
+defect/field loss. Coverage was model-supported but validator-unresolved;
+that alone does not prove which fact-selection check stopped preparation.
+
+The Core application executor actually ran and returned a valid batch archive:
+zero cases, one unavailable, with `event_intelligence_not_accepted` and those
+six EI reasons. This is not Core NOT_RUN, but also not research of an accepted
+hypothesis or a positive Event-to-Core case. No detail report was generated.
+The private batch digest validated. This confirms real correction/submission/
+EI/application wiring, not complete EI inputs, investment merit or trade readiness.
+
+Recorded model calls: producer 2/2, semantic 1/1. Tavily actual usage and
+admission GET counts are not exposed by the closed archive; ceilings remained
+two requests/three credits and five target GETs/two redirects. Public preflight
+used four search queries and one page open, exceeding Main's internal two-query
+target; no further searches followed. Do not report ceilings as actual billing.
+
+Private plan: `/private/tmp/ch-event-normal-20261021-brze/preregistration.md`
+(SHA-256 `b3b41fdcadeb90e0135d0c5955a9bf8e676fac423e16c86e38578005c729eac8`).
+Private archive/capture directory:
+`/private/tmp/capture-37624c5670754ed2bcec243606a6a099/` (700; files 600).
+Archive SHA-256: `a434584b1a227c25ff5034d375463f2d1fc9d1bc3de52c0545072e80bcc26bbe`;
+rejection sidecar SHA-256:
+`6988b7c72d34cc9aedeb11d4c06be7af6a31e41d5c687d92ae6ae9aae1767cf5`.
+The operation used an ephemeral Host and separate archive, not a new workbench
+case: the existing localhost:8080 journal still has nineteen runs (GET 200).
+No production/config changes, replacement event, historical rewrite or new
+full-suite run occurred. Preserve the six unknowns; investigate only a concrete
+evidence/translation loss before changing rules, rather than tuning for ACCEPTED.
+
 ## Approved binding-omission correction (2026-10-21)
 
 The user approved one constrained correction inside the existing producer

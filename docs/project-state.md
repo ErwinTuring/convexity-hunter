@@ -1,5 +1,18 @@
 # Project State
 
+## Real BRZE Event: partial pipeline advance (2026-10-21)
+
+The new binding-omission correction ran in a preregistered real operation:
+two producer calls/one semantic call, submission PRESENT, EI INCOMPLETE.
+The Core application executed but returned zero cases and one unavailable
+because EI was not accepted. A surviving partial hypothesis is not a complete
+research hypothesis; description/date, authenticated security, distribution
+fields and temporal applicability remain unresolved. No implementation defect
+or dropped field was established. The [checkpoint](current-checkpoint.md)
+records exact reasons, budgets and the private independent archive. The
+existing workbench still has nineteen historical runs. No production change,
+retry/replacement or positive accepted-hypothesis Core case is claimed.
+
 ## Binding-omission correction approved (2026-10-21)
 
 The [bounded amendment](local-event-delivery-v0.1.md#approved-binding-omission-correction--2026-10-21)
