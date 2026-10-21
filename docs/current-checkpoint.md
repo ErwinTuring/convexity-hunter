@@ -2,6 +2,59 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## One fresh normal Event outcome (2026-10-21)
+
+The user requested continued execution; one new IRDM results-announcement
+operation was preregistered before acquisition, using the normal producer
+v0.9/verifier v0.8 and approved Profile v0.4. Run
+`859f8b13-a1e3-4627-b4ea-928b7c20b7fe` returned HTTP 201 / BLOCKED /
+GROUNDING_NO_SUBMISSION. Five source bodies yielded five claims, zero field
+bindings and zero hypotheses. All five claims were rejected: seven required
+entity/date bindings were missing; one interpretation additionally received
+a semantic unresolved verdict. No supplied binding was rejected because none
+was supplied. Do not confuse this with the earlier CIFR interpretation refusal
+or infer that no economic mechanism exists. EI/Core and Futu were NOT RUN.
+
+The [existing contract](host-grounder-context-preparation-v0.1.md#producer-binding-completeness-clarification--frozen-successor)
+requires the producer to bind consumed non-null values, but explicitly permits
+the parser to retain partial evidence for downstream rejection. This is a
+demonstrated producer-completeness failure, not a demonstrated parser/Builder
+implementation defect. No automatic binding synthesis, additional repair,
+prompt/gate change, model switch or acceptance was introduced.
+
+Recorded reservations: Tavily two requests/two credits; one discovery and one
+semantic request, not confirmed billing. Admission GET usage was NOT_CAPTURED
+within its five-request ceiling. The existing reviewed runner used a separate
+ephemeral Host/private archive, not the port-8080 journal. Its new guard is
+spent; no retry/replacement followed. The workbench's 19 historical runs were
+not modified by this operation.
+
+Private plan: `/private/tmp/ch-event-normal-20261021-irdm/preregistration.md`,
+SHA-256 `08e6b2d1a88f355518f0f911baf0c560d141132c0e324456ec0b6221e8b0f222`.
+Sanitized result, original item reasons and archive are retained under
+`/private/tmp/capture-be549d4236344ed1bc03e59d89091a3c/` (directory 700/files
+600); rejection-sidecar SHA-256
+`07a01d1cf63610e999d7cdbf067793f58941ce4fa54d12a787ddb054d6c98165`.
+No raw payloads or credentials are committed. Positive real Event/World
+EI-to-Core closure is still unproven. This continuation changed documentation
+only; no new full-suite result or measured 70/30 work-allocation claim is made.
+
+## Deployment and regression verification (2026-10-21)
+
+Normal producer v0.9/verifier v0.8 is deployed in the existing local Host.
+Read-only HTTP checks returned 200 for status, approved Profile v0.4, archived
+runs and a saved Direct detail; all three executors were configured. The saved
+report digest matched, and the research archive remained unchanged at 19 runs,
+3 Direct cases, 8 batch archives and 80 events. No source/model/market request
+or research rerun was made for these checks. These are point-in-time deployment
+checks, not proof of positive Event/World EI-to-Core execution.
+
+The complete offline regression passed 2,004 tests in 300.560 seconds, with
+loopback permission for HTTP fixtures. The existing urllib3/LibreSSL warning
+was non-failing. This supersedes the earlier focused-only validation scope,
+not its historical results. Production behavior and financial policies were
+unchanged; positive real Event/World closure remains unproven.
+
 ## Provisional mechanism assessment (2026-10-16)
 
 The [role clarification](host-grounder-provisional-mechanism-v0.1.md) passed

@@ -1,5 +1,26 @@
 # Project State
 
+## Fresh normal Event: producer binding omission (2026-10-21)
+
+One preregistered IRDM Event run completed with five claims but zero field
+bindings/hypotheses. Seven required bindings were missing, all five claims
+failed validation and no submission reached EI/Core. This differs from the
+earlier CIFR semantic/dependency rejection. Existing contracts deliberately
+allow partial parsing and reject unsupported consumed fields downstream;
+no parser/Builder defect or license to synthesize bindings was established.
+There was no retry, Futu call, production change or positive live closure.
+The [checkpoint](current-checkpoint.md) records the separate private archive,
+original reasons and bounded usage. Direct v0.4 and shared World gates remain.
+
+## Deployed integration verification (2026-10-21)
+
+The current normal Grounder route and approved Direct Profile v0.4 are deployed
+in the existing local Host. Read-only readiness/profile/history/detail checks
+passed without research acquisition or changing the 19-run archive. The full
+offline regression passed 2,004 tests. This verifies deployment, compatibility
+and cached detail rendering, not positive real Event/World acceptance into
+Core; that remaining gap is unchanged. See the [checkpoint](current-checkpoint.md).
+
 ## Provisional mechanism role clarification (2026-10-16)
 
 Verifier v0.8 is implemented on the normal producer-v0.9 path after independent
