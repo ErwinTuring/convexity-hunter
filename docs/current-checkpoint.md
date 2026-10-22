@@ -2,6 +2,39 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Seven-day financing Event gate (2026-10-22 UTC)
+
+One preregistered SEC-domain public-web search request was run for the fixed
+window 2026-10-15T00:18:00Z through 2026-10-22T00:18:00Z. The search interface
+displayed seven results, with displayed publication-age metadata outside the
+window (nearest label: “3 weeks”). This metadata was not independently
+verified against official pages: none was opened, so the result does not
+establish actual event dates or that no qualifying market event exists. The
+exact query and seven URL/age rows were not retained in the available tool
+record (NOT_CAPTURED); do not reconstruct them. The outcome was
+`STOP_NO_ELIGIBLE_CANDIDATE` based on the displayed metadata only. One public-
+web request did occur; no guard, Host POST, Tavily/model call, official-source
+page read, market-provider request, or Core submission occurred. Do not widen
+the window or repeat the search.
+The private preregistration and sanitized result are at
+`/Users/erwinlee/convexity-hunter/research/event-financing-2026-10-22-v01/`.
+
+At the earlier search checkpoint, usage was primary 94% / weekly 34%, with 98%
+a hard stop. Before restart the owned Host was READY with 21 runs and zero
+active; its launcher date was 2026-10-21 while UTC was 2026-10-22. Session
+13857 was gracefully stopped. The first same-day start returned exit code 2
+with the launcher's sanitized message `local Host could not start`; cause is
+UNKNOWN. After the interval, one explicitly authorized start through the same
+launcher with UTC date 2026-10-22 succeeded. Current listener PID 42435 is in
+exec session 56282. Read-only GETs for `/`, `/api/status`, `/api/profile`, and
+`/api/runs` returned 200. The root shows the v0.3 anchor disclosure and Direct,
+World, Event entries. The run journal still has 21 records (18 BLOCKED, 3
+COMPLETED; Direct 3, World 8, Event 10), hence active=0. The profile endpoint
+returned `standard-research-profile`; its exposed version field was `v0.1`,
+so this check does not independently establish the saved Direct Profile v0.4.
+The Host is left running. No POST, source/model/provider request, retry of the
+search/Event operation, or further startup diagnosis was performed.
+
 ## Final deployed checkpoint (2026-10-22 Beijing)
 
 Display implementation `19f1399` is running through the original launcher,

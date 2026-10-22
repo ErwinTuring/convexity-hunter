@@ -1,5 +1,27 @@
 # Project State
 
+## Financing Event prospecting stopped at date gate (2026-10-22 UTC)
+
+One preregistered SEC-domain public-web request covered the fixed seven-day
+window. Seven result rows displayed publication-age metadata outside the
+window (nearest label: “3 weeks”); no official page was opened, so the dates
+were not independently verified and this does not show that no qualifying
+market event exists. Exact query and all seven URL/age rows are NOT_CAPTURED in
+the available tool record. One public-web request occurred; no official-source
+read, market-provider request, Host POST, Tavily/model call, guard, or Core
+submission occurred. See the private record path in [current checkpoint](current-checkpoint.md).
+
+The prior owned Host (21 runs, zero active) was gracefully stopped for UTC-date
+alignment. The first existing-launcher start using 2026-10-22 returned exit
+code 2 with `local Host could not start`; cause is UNKNOWN. After the interval,
+one authorized start via the same launcher succeeded. PID 42435/session 56282
+is serving `127.0.0.1:8080`. Read-only GETs returned 200 for root, status,
+profile and run journal; root displays the v0.3 anchor disclosure and all three
+entries. The journal remains at 21 runs, active=0 (Direct 3, World 8, Event
+10). No research request or further startup diagnosis occurred. The profile
+endpoint's exposed version is `v0.1`; do not treat this GET alone as fresh
+verification of saved Direct Profile v0.4.
+
 ## Final local deployment verified (2026-10-22 Beijing)
 
 The original launcher serves the reviewed backend and v0.3 display at
