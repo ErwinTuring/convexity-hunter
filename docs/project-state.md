@@ -1,5 +1,27 @@
 # Project State
 
+## SentinelOne Event source recovery remained blocked (2026-10-22 UTC)
+
+Two independently guarded normal Event runs used the frozen SentinelOne 8-K
+question and three frozen source leads; this exploratory-lead exercise is
+separate from the seven-day search gate below. Run
+`3c3929f6-3e0c-44ec-8f03-1803b78a4172` stopped at `grounder` with
+`SOURCE_TRANSPORT_FAILURE`; its source cause/status and model-attempt count were
+not retained. Independent recovery run
+`9df4ba95-1573-4b85-8de3-a0f546403c37` completed its bounded search/extract
+source calls but stopped at semantic transport with `SEMANTIC_CALL_FAILED` /
+`model_transport_network_error`; its archive records one producer attempt, not
+a total semantic request count. Neither run produced a semantic receipt,
+submission, EI acceptance, or Core case. A later read-only `GET /models` on
+`api.deepseek.com` returned 200 and included the configured semantic model; it
+does not recover the earlier transient cause. The sanitized record and private
+archive paths are in the [current checkpoint](current-checkpoint.md). The three
+Direct/World/Event entries remain configured, but a positive real
+Event/World-to-Core case remains unproven. Independent preflight confirmed the
+current single-verifier/no-retry contract. A network-only retry is a pending
+invocation/billing-policy decision, not an approved bug fix; no production
+change or further Event replay has been made.
+
 ## Financing Event prospecting stopped at date gate (2026-10-22 UTC)
 
 One preregistered SEC-domain public-web request covered the fixed seven-day

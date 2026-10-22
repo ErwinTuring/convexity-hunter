@@ -2,6 +2,74 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## SentinelOne Event recovery and read-only model endpoint check (2026-10-22 UTC)
+
+This is a separate exploratory-lead selection and two-run Event sequence, not a
+continuation of the fixed seven-day search below and not a Tavily-search
+experiment or ranking. Main made one public-web exploratory search, then opened
+the official SEC index and direct 8-K (including resolving its ixJS stub). The
+filed 8-K is dated 2026-10-16 (report date 2026-10-13). Before either POST, the
+question and exactly these three leads were frozen; no additional public
+search followed:
+
+- SEC 8-K: <https://www.sec.gov/Archives/edgar/data/1583708/000110465926116654/tm2627397d1_8k.htm>
+- SEC filing index: <https://www.sec.gov/Archives/edgar/data/1583708/000110465926116654/0001104659-26-116654-index.htm>
+- Nasdaq listing page: <https://www.nasdaq.com/market-activity/stocks/s>
+
+The first normal Event POST returned HTTP 201 and run
+`3c3929f6-3e0c-44ec-8f03-1803b78a4172`, BLOCKED at the Host `grounder` stage
+with `SOURCE_TRANSPORT_FAILURE`. Its private archive is
+`/private/tmp/ch-event-20261022-s1-v05-prep/archive/capture-c1a434382d244edf8f3700f7d1005d0c/`.
+The original source transport code, HTTP status, and underlying cause were not
+retained; archived `producer_attempts` are absent, so the model-attempt count is
+UNKNOWN, not zero.
+
+After the separately authorized technical recovery, one independent normal
+Event POST (not a replay) returned HTTP 201 and run
+`9df4ba95-1573-4b85-8de3-a0f546403c37`, BLOCKED at `grounder` with
+`SEMANTIC_CALL_FAILED` (`semantic_model_transport` /
+`model_transport_network_error`; Host diagnostic
+`MODEL_CALL_FAILURE_CHECK_NETWORK_ERROR`). Its private archive is
+`/private/tmp/ch-event-20261022-s1-v05-recovery-prep/archive/capture-a2a12b94da4144cdbc6b02dc2405a4ed/`.
+The bounded source calls (one search and one extract) returned; the private
+observer recorded response structure only. The archive contains one
+`producer_attempts` record; that is the recorded producer attempt count, not a
+retained total for semantic transport requests. No semantic response/receipt
+or field-binding verdicts were produced, so this is not evidence of a missing,
+wrong-role, or refused binding. No lawful submission reached EI or Core.
+
+One subsequent read-only HTTPS `GET /models` to the configured public host
+`api.deepseek.com` returned HTTP 200 and the response included the configured
+semantic model (`configured_model_present=true`). No redirect, chat/completion,
+token generation, response body, or model list was retained. This later
+connectivity result does not identify the earlier run's transient network
+cause, which remains UNKNOWN. The original helper was reused through
+`/private/tmp/ch-event-20261022-s1-v05-recovery-prep/run_s1_recovery.py`; no
+repository implementation/configuration, prompt, schema, or caps were changed.
+The three configured Direct/World/Event entries remain without a demonstrated
+positive accepted-hypothesis Event/World-to-Core path; no further network or
+model operation is authorized by this record.
+
+Separate technical checks also succeeded: Tavily `GET /usage` reported the
+Researcher plan at 96/1000 credits and pay-as-you-go usage 0; an unauthenticated
+HEAD received HTTP 405 (an HTTP response, not proof that Search succeeds).
+These are observations, not current billing guarantees or proof of the
+original failure's cause. The original local launcher was started with UTC
+evaluation date 2026-10-22 in session 7141; a subsequent status GET returned
+200 with Host/journal/UI READY and all three entries CONFIGURED. No research
+POST was made to that persistent Host by this work unit. Two temporary Hosts
+handled the separate Event archives and were closed after their operations.
+
+Independent read-only contract preflight confirmed that the frozen semantic
+procedure permits one verifier call and the model client is explicitly
+no-retry. Unused request capacity does not authorize another verifier call.
+No code defect was established by the network failure. A network-only retry
+would be a new invocation policy, not a repair or a semantic reroll: it needs
+an explicit decision on potentially duplicated billing, cumulative request,
+token/time limits, and per-attempt audit before contract freeze/BUILD. A lost
+response does not establish that the provider did not process the request.
+No such policy or production change has been made; do not replay these guards.
+
 ## Seven-day financing Event gate (2026-10-22 UTC)
 
 One preregistered SEC-domain public-web search request was run for the fixed
