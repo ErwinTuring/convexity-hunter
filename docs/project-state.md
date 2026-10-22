@@ -1,5 +1,15 @@
 # Project State
 
+## FDA date preparation bug fix validated (2026-10-22)
+
+A real AXSM SEC sentence exposed a lexical defect in v0.4: periods and the
+conjunction inside the exact FDA agency name prevented occurrence-date
+preparation. The closed-phrase fix preserves all source, actor, date, original
+span and ambiguity requirements; no new date authority or successor contract
+is introduced. Independent static review and 2,036 full-regression tests pass.
+Deployment and the bounded normal AXSM Event remain pending; positive real
+Event/World-to-Core acceptance is not yet claimed. See the [checkpoint](current-checkpoint.md).
+
 ## Current acceptance checkpoint (2026-10-22)
 
 The Phase B KORE source screen failed eligibility and did not attempt an Event run. World run `95f63c6c-0d4d-483d-b606-efbfe67a2582` returned HTTP 201/`BLOCKED` with `world_last30days_model_failed`; its hypotheses and native/source/model/Futu usage are UNKNOWN, not zero. TW and World blocked archives are readable.

@@ -2321,6 +2321,12 @@ _SEC_V04_SLASH_DATE_TOKEN = re.compile(
     r"(?<![A-Za-z0-9-])[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}(?![A-Za-z0-9-])",
     re.ASCII,
 )
+_SEC_V04_ALLOWED_PERIODIC_OBJECT_TEXT = "U.S. Food and Drug Administration"
+_SEC_V04_ALLOWED_PERIODIC_OBJECT_PHRASE = (
+    r"(?<![A-Za-z0-9_])"
+    + re.escape(_SEC_V04_ALLOWED_PERIODIC_OBJECT_TEXT)
+    + r"(?![A-Za-z0-9_])"
+)
 
 
 def _sec_v04_ambiguity_date_tokens(text: str):
@@ -2351,6 +2357,11 @@ def _sec_primary_html_occurrence_pattern(registrant: str):
         r"(?:" + whitespace + r"\(" + _ascii_whitespace_pattern("the")
         + whitespace + r"(?:“Company”|\"Company\")\))?"
     )
+    object_pattern = (
+        r"(?P<object>(?:[^.!?]|"
+        + _SEC_V04_ALLOWED_PERIODIC_OBJECT_PHRASE
+        + r"){1,240}?)\."
+    )
     return re.compile(
         r"(?<![A-Za-z0-9])On" + whitespace
         + r"(?P<month>(?ai:" + _ENGLISH_MONTHS + r"))" + whitespace
@@ -2359,7 +2370,7 @@ def _sec_primary_html_occurrence_pattern(registrant: str):
         + _ascii_whitespace_pattern(registrant)
         + alias_pattern + whitespace
         + r"(?P<verb>" + verb_pattern + r")" + whitespace
-        + r"(?P<object>[^.!?]{1,240}?)\."
+        + object_pattern
         + r"(?=$|[ \t\r\n\f\v])"
     )
 
@@ -2483,6 +2494,10 @@ def _sec_primary_html_occurrence_date_v0_4(
         return None
 
     object_text = statement.group("object").strip(" \t\r\n\f\v")
+    # The one permitted periodic phrase contains "and" as part of the agency name.
+    uncertainty_object_text = object_text.replace(
+        _SEC_V04_ALLOWED_PERIODIC_OBJECT_TEXT, "U.S. Food-Drug Administration"
+    )
     negation = re.compile(
         r"\b(?:not|never|neither|nor|no|without|failed\s+to|cannot|can't|"
         r"won't|didn't|doesn't|hasn't|haven't|hadn't)\b",
@@ -2491,7 +2506,7 @@ def _sec_primary_html_occurrence_date_v0_4(
     if (
         not object_text
         or len(object_text) > 240
-        or _UNCERTAIN_ACTION.search(object_text) is not None
+        or _UNCERTAIN_ACTION.search(uncertainty_object_text) is not None
         or negation.search(object_text) is not None
     ):
         return None

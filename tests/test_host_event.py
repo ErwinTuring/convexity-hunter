@@ -3123,6 +3123,83 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
 
+    def test_v04_allows_only_the_closed_fda_periodic_phrase_in_action_object(self):
+        from convexity_hunter.host_event import _sec_primary_html_occurrence_pattern
+
+        sentence = (
+            "On September 21, 2026, Example Holdings, Inc. issued a press release "
+            "announcing that the U.S. Food and Drug Administration approved a new indication."
+        )
+        prepared, context, admission = _sec_v04_fact_case(
+            paragraph=sentence, model_date="2026-09-21"
+        )
+        self.assertEqual(
+            prepared.event_date_range.start_date, datetime.date(2026, 9, 21)
+        )
+        methodology = json.loads(prepared.event_date_range.methodology)
+        source = context.source_bodies[admission.source_id]
+        self.assertEqual(source.body, admission.parsed_body)
+        self.assertEqual(methodology["action_role"], "announcement")
+        self.assertEqual(methodology["matched_statement"], sentence)
+        self.assertEqual(
+            source.body[
+                methodology["statement_start"]:methodology["statement_end"]
+            ],
+            sentence,
+        )
+        self.assertEqual(
+            source.body[
+                methodology["paragraph_start"]:methodology["paragraph_end"]
+            ],
+            methodology["paragraph_quote"],
+        )
+        self.assertEqual(
+            source.body[
+                methodology["binding_start"]:methodology["binding_end"]
+            ],
+            methodology["paragraph_quote"],
+        )
+        self.assertEqual(
+            (methodology["binding_start"], methodology["binding_end"]),
+            (methodology["paragraph_start"], methodology["paragraph_end"]),
+        )
+        self.assertEqual(
+            source.body[
+                methodology["date_token_start"]:methodology["date_token_end"]
+            ],
+            "September 21, 2026",
+        )
+
+        registrant = "Example Holdings, Inc."
+        pattern = _sec_primary_html_occurrence_pattern(registrant)
+        oversized_object_prefix = "The U.S. Food and Drug Administration "
+        oversized_object = oversized_object_prefix + "x" * (
+            241 - len(oversized_object_prefix)
+        )
+        self.assertEqual(len(oversized_object), 241)
+        oversized_sentence = (
+            "On September 21, 2026, {} announced {}.".format(
+                registrant, oversized_object
+            )
+        )
+        matched = pattern.search(oversized_sentence)
+        self.assertIsNotNone(matched)
+        self.assertEqual(len(matched.group("object")), 241)
+        oversized, _context, _admission = _sec_v04_fact_case(
+            paragraph=oversized_sentence, model_date="2026-09-21"
+        )
+        self.assertIsNone(oversized.event_date_range)
+
+        unsupported_sentence = sentence.replace(
+            "U.S. Food and Drug Administration",
+            "U.S. Securities and Exchange Commission",
+        )
+        self.assertIsNone(pattern.search(unsupported_sentence))
+        unsupported, _context, _admission = _sec_v04_fact_case(
+            paragraph=unsupported_sentence, model_date="2026-09-21"
+        )
+        self.assertIsNone(unsupported.event_date_range)
+
     def test_v05_prebound_description_does_not_trigger_v04_date_derivation(self):
         from convexity_hunter.host_event import _retain_unknown_context_v0_4
 

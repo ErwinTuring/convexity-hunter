@@ -2,6 +2,24 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## FDA occurrence-date lexical fix validated (2026-10-22)
+
+Continued source preparation found an AXSM [SEC announcement](https://www.sec.gov/Archives/edgar/data/1579428/000119312526304039/axsm-20260715.htm)
+whose single dated statement has a 181-character action object. The old v0.4
+matcher rejected its internal `U.S.` periods; the agency name's `and` also
+collided with the compound-action guard. The existing-contract bug fix admits
+only `U.S. Food and Drug Administration` as a closed lexical phrase, retains
+the original 240-character bound, and changes no source text, offsets,
+identity/date authority, receipt requirement, or ambiguity rule. Other
+abbreviations and unrelated conjunctions remain fail-closed.
+
+Five focused tests and the single full regression passed: 2,036 tests,
+zero failures, 299.866 seconds. Independent static review, compileall and diff
+checks passed. Deployment and one preregistered normal AXSM Event are next,
+not yet claimed as complete. Its historical FDA target is not proof of
+unchanged current status or an impact end date. Private preparation:
+`/private/tmp/ch-axsm-event-20261022-prep/manifest.json`.
+
 ## Current evidence checkpoint (2026-10-22)
 
 Phase A TW archive: coverage fields `user_event_input` and `event_fact_anchor_v0_1` are `unresolved`, `gap_present=true` at model/validator; `selected_claim_id=null`. Source-body and per-binding text were not retained (verified UNKNOWN).

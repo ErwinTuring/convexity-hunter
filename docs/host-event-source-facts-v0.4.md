@@ -46,6 +46,16 @@ months and standard three-letter abbreviations (optional period), ISO dates
 and slash dates. These formats only reject ambiguity; they do not broaden the
 outer occurrence-date authority beyond the full-month grammar above.
 
+Implementation bug fix (2026-10-22): the exact agency name
+`U.S. Food and Drug Administration` contains internal periods and a conjunction,
+not a sentence boundary or a second action. Recognize only this closed phrase
+inside the action object; other period-containing abbreviations remain
+unsupported. Apply the 240-character bound to the original object, not regex
+token count. Source text, quote offsets, actor/date authority and all ambiguity,
+negation, correction and verified-binding guards remain unchanged. This fixes
+an incidental lexical rejection, not a new occurrence-date authority or a
+methodology-version change.
+
 Folded claim text must equal the matched complete original statement. This is
 not a paraphrase/date inference rule. The selected quote must be the complete
 unique catalog paragraph containing that statement. Require exactly one
