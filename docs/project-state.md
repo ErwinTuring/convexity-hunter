@@ -1,5 +1,22 @@
 # Project State
 
+## Semantic retry policy deployed; real evidence gap identified (2026-10-22 Beijing)
+
+The [retry successor](host-semantic-transport-retry-v0.1.md), implemented as
+`29f757a`, is independently reviewed, fully tested (2,034 passed) and deployed.
+One prospective SentinelOne Event reached semantic/Builder completion with one
+successful semantic attempt and no retry, then stopped without a submission.
+The captured refusal is a specific distribution-hypothesis binding whose
+reconciliation paragraph did not support the claimed distribution change.
+This is neither a network failure nor proof of a code defect or absent market
+mechanism. EI/Core were NOT_RUN; no acceptance or investment result is claimed.
+
+The original local Host is READY on port 8080 with new v0.4 audit rendering;
+21 historical records, zero active, unchanged profile and three readable cached
+Direct reports were verified. No data/credential/provider/prompt or Direct
+policy change accompanied deployment. See the [checkpoint](current-checkpoint.md)
+for exact counts, private evidence, billing limitations and remaining gaps.
+
 ## Semantic transport recovery implemented (2026-10-22 Beijing)
 
 The [network-only successor](host-semantic-transport-retry-v0.1.md) is

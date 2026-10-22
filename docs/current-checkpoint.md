@@ -2,6 +2,65 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Retry policy live acceptance and deployment (2026-10-22 Beijing)
+
+Implementation `29f757a` was exercised in the separately guarded prospective
+Event operation: run `397c413f-a97d-4f54-915a-043336b1035b`, HTTP 201,
+`run_finished/BLOCKED`. Tavily Search and Extract returned (two actual calls;
+reported credits were not captured). Semantic transport returned on its first
+attempt in 12.549 seconds; no live retry occurred or was artificially induced.
+Its v0.4 outcome and private audit retain attempt limit 2, decision budget 90
+seconds, requested output reservation limit 12,000 tokens, and one reservation
+of 6,000. That successful receipt reports 27,288 prompt / 3,482 completion /
+30,770 total tokens. These are semantic-call observations, not whole-run token
+totals or money spent. Retry recovery itself is proved by deterministic tests,
+not by a second live attempt in this operation.
+
+The semantic/Builder path completed but submission was MISSING and EI NOT_RUN;
+no Core batch/case or classification was produced. The retained receipt has
+22 verified bindings, one rejected binding (index 22), and no rejected claims.
+H1 was rejected at `/hypotheses/0/distribution_hypothesis`: the bound paragraph
+describes unresolved financing-amount reconciliation, not support for the
+stated distribution hypothesis/mode. This is the original verifier refusal,
+distinct from the derived required-binding failure. Description is bound;
+date is not, and underlying-binding count is zero. Do not infer that no
+possible economic transmission exists, invent missing context, or substitute
+this for a Core rejection. No implementation loss of a field was demonstrated.
+One bounded independent read-only inspection of the actual binding/claim
+context returned NO_CODE_CHANGE: the refusal is consistent with v0.8's
+source-grounded inference rule, not a requirement for literal market
+prediction. A source paragraph about amount reconciliation does not itself
+ground the chosen financing/buyback transmission; binding a different field
+to secondary commentary does not automatically repair this field. The full
+claim-to-paragraph cross-table is not in this capture, so no broader quality
+or absence-of-mechanism conclusion is justified. No further live trial,
+producer rewrite, semantic reroll or rule relaxation followed the inspection.
+
+The outcome does not retain `producer_attempts`; its actual producer-attempt
+count remains UNKNOWN. Read-only code/archive verification confirmed the
+single-producer omission was already in the baseline, not a v0.4 regression;
+no audit expansion or patch was made. Final-role summaries are not total HTTP
+request counts. The sole POST followed a local wrapper-argument correction
+before helper invocation/POST; neither old guard was replayed.
+
+Private evidence directory (700, files 600):
+`/private/tmp/ch-event-20261022-s1-semantic-retry-v1-prep/archive/capture-9c29092bc57c46639a08592e924befad/`.
+It includes `host.sqlite3`, `grounder-rejections.json`, and
+`semantic-transport.json`; no raw payload or credential is committed.
+
+The persistent Host was separately deployed through the original launcher
+with UTC evaluation date 2026-10-22. The old listener's UID, exact command,
+repository cwd, loopback port, zero-active journal and profile baseline were
+verified before SIGINT. Session 7141 was an exec-session ID, not a PID.
+New observed PID 48062/session 51016 serves `http://127.0.0.1:8080/`.
+Status/journal/UI are READY; v0.4/semantic-transport renderer markers are
+present, all 21 historical rows and the profile fingerprint match, zero runs
+are active, and all three cached Direct reports remain readable as
+DATA_INSUFFICIENT_CORE. No research POST accompanied deployment.
+The policy is implemented, tested and deployed; positive accepted-hypothesis
+Event/World-to-Core research remains unproven. No further live operation is
+authorized by this completed acceptance record.
+
 ## Semantic transport recovery implemented and validated (2026-10-22 Beijing)
 
 The [frozen retry successor](host-semantic-transport-retry-v0.1.md) is
