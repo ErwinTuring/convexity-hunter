@@ -3184,6 +3184,7 @@ def create_event_grounder(
             max_catalog_bytes=active_config.max_catalog_bytes,
             max_catalog_paragraphs=active_config.max_catalog_paragraphs,
             host_context_preparer=run_context_preparer,
+            semantic_transport_retry_enabled=default_recipe,
         )
         if event_fact_anchor_capture is None:
             return result

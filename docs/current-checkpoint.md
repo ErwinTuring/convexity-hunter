@@ -2,6 +2,35 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Semantic transport recovery implemented and validated (2026-10-22 Beijing)
+
+The [frozen retry successor](host-semantic-transport-retry-v0.1.md) is
+implemented for the default Event/World semantic role only. The generic
+client's public call, Direct and legacy/custom routes remain no-retry. New
+closed stage/submission v0.4 outcomes and a failure-audit successor retain
+attempts, conservative reservations and unknown billing; old records remain
+readable. The workbench displays the new audit without upgrading authority.
+
+Independent review passed after one confirmed P2 audit-coherence correction
+and targeted re-review. Its impossible deadline-exceeded counterexample is
+rejected while legitimate preparation/gap time and floating-point boundaries
+remain supported. Final full regression passed 2,034 tests in 302.707 seconds;
+compileall, JavaScript syntax, export/constructor compatibility, documentation
+and diff checks passed. The runtime error has a new optional keyword-only
+audit parameter, not a falsely identical signature. No pricing/EI/Core
+semantics, prompt or configured request ceiling changed.
+
+Next is ordinary commit/push and one separately guarded prospective normal
+Event on the new implementation. The prepared external wrapper is
+`/private/tmp/ch-event-20261022-s1-semantic-retry-v1-prep/run_s1_policy_acceptance.py`;
+release requires an explicit clean HEAD/main/origin-main equality. It reuses
+the frozen SentinelOne question/leads and existing caps, permits no external
+POST retry and injects no network fault. This is the third SentinelOne Event
+operation, first under this policy, not a replay or proof of acceptance.
+No new live result is claimed at this implementation checkpoint. Reliable
+coding-versus-checking active-time totals were not collected; no 70/30 work
+split is inferred from line counts or the full-suite elapsed time.
+
 ## Semantic network-retry policy approved and frozen (2026-10-22 Beijing)
 
 The user approved a single network/timeout retry, potentially duplicated API

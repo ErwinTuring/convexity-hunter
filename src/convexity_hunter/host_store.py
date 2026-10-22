@@ -129,28 +129,35 @@ _DIRECT_REPORT_VERSION_BY_PROFILE = {
 _GROUNDER_STAGE_OUTCOME_VERSION = "host-grounder-stage-outcome-v0.1"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-stage-outcome-v0.2"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_3 = "host-grounder-stage-outcome-v0.3"
+_GROUNDER_STAGE_OUTCOME_VERSION_V0_4 = "host-grounder-stage-outcome-v0.4"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION = "host-grounder-submission-stage-outcome-v0.1"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-submission-stage-outcome-v0.2"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3 = "host-grounder-submission-stage-outcome-v0.3"
+_GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4 = "host-grounder-submission-stage-outcome-v0.4"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION = "host-grounder-producer-failure-audit-v0.1"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2 = "host-grounder-producer-failure-audit-v0.2"
+_GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3 = "host-grounder-producer-failure-audit-v0.3"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS = frozenset((
     _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION,
     _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
+    _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
 ))
 _GROUNDER_STAGE_DIAGNOSTIC = "GROUNDING_NO_SUBMISSION"
 _GROUNDER_STAGE_OUTCOME_VERSIONS = frozenset((
     _GROUNDER_STAGE_OUTCOME_VERSION,
     _GROUNDER_STAGE_OUTCOME_VERSION_V0_2,
     _GROUNDER_STAGE_OUTCOME_VERSION_V0_3,
+    _GROUNDER_STAGE_OUTCOME_VERSION_V0_4,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3,
+    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4,
 ))
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSIONS = frozenset((
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3,
+    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4,
 ))
 _GROUNDER_BUILD_DIAGNOSTIC_CODES = frozenset((
     "CALLER_POLICY_PROVENANCE_MISMATCH",
@@ -666,6 +673,10 @@ def _validate_grounder_producer_failure_audit(
         fields = base_fields
     elif version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2:
         fields = base_fields | {"producer_prompt_version", "verifier_prompt_version"}
+    elif version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3:
+        fields = base_fields | {
+            "producer_prompt_version", "verifier_prompt_version", "semantic_transport"
+        }
     else:
         fields = set()
     if (
@@ -675,12 +686,17 @@ def _validate_grounder_producer_failure_audit(
         or (expected_status is not None and value["status"] != expected_status)
     ):
         raise ValueError("Grounder producer failure audit has an invalid closed shape")
-    if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2:
+    if version in (
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
+    ):
         route = (value["producer_prompt_version"], value["verifier_prompt_version"])
-        if (
-            any(type(item) is not str for item in route)
-            or route != _BINDING_OMISSION_FAILURE_ROUTE
-        ):
+        expected_route = (
+            _BINDING_OMISSION_FAILURE_ROUTE
+            if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2
+            else (_GROUNDER_PRODUCER_PROMPT_V0_9, _GROUNDER_VERIFIER_PROMPT_V0_8)
+        )
+        if any(type(item) is not str for item in route) or route != expected_route:
             raise ValueError("Grounder producer failure audit has an unsupported route")
     attempts = _validate_grounder_producer_attempts(
         value["producer_attempts"], successful=False
@@ -692,10 +708,22 @@ def _validate_grounder_producer_failure_audit(
     if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION:
         if has_omission_marker:
             raise ValueError("legacy Grounder producer failure audit cannot carry omission markers")
-    else:
+    elif version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2:
         if (
             not has_omission_marker
             or attempts[0]["status"] != "rejected"
+            or attempts[0]["failure_check"] != _BINDING_OMISSION_FIRST_FAILURE_CHECK
+            or any(check == _BINDING_OMISSION_FIRST_FAILURE_CHECK for check in checks[1:])
+            or any(
+                check == _BINDING_OMISSION_DELTA_FAILURE_CHECK
+                and (index != 1 or attempts[index]["status"] != "rejected")
+                for index, check in enumerate(checks)
+            )
+        ):
+            raise ValueError("Grounder producer failure audit has an invalid omission sequence")
+    elif version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3 and has_omission_marker:
+        if (
+            attempts[0]["status"] != "rejected"
             or attempts[0]["failure_check"] != _BINDING_OMISSION_FIRST_FAILURE_CHECK
             or any(check == _BINDING_OMISSION_FIRST_FAILURE_CHECK for check in checks[1:])
             or any(
@@ -710,9 +738,18 @@ def _validate_grounder_producer_failure_audit(
         "status": value["status"],
         "producer_attempts": attempts,
     }
-    if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2:
+    if version in (
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
+    ):
         result["producer_prompt_version"] = value["producer_prompt_version"]
         result["verifier_prompt_version"] = value["verifier_prompt_version"]
+    if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3:
+        from .host_grounder_runtime import _validate_semantic_transport_retry_audit
+
+        result["semantic_transport"] = _validate_semantic_transport_retry_audit(
+            value["semantic_transport"]
+        )
     if len(_canonical_json(result, "Grounder producer failure audit").encode("utf-8")) > 100_000:
         raise ValueError("Grounder producer failure audit exceeds its archive bound")
     return result
@@ -763,6 +800,13 @@ def _grounder_stage_outcome(
     event_fact_anchor = result._event_fact_anchor_outcome
     if event_fact_anchor is not None and type(event_fact_anchor) is not _EventFactAnchorOutcome:
         raise TypeError("Grounder fact-anchor audit is not the exact private outcome")
+    semantic_transport = result._semantic_transport
+    if semantic_transport is not None:
+        from .host_grounder_runtime import _validate_semantic_transport_retry_audit
+
+        if event_fact_anchor is None:
+            raise ValueError("semantic transport audit requires the default Event fact anchor")
+        semantic_transport = _validate_semantic_transport_retry_audit(semantic_transport)
     attempts_json = None
     single_attempt_json = None
     if audit.producer_attempts:
@@ -1140,12 +1184,16 @@ def _grounder_stage_outcome(
         provenance["producer_attempts"] = attempts_json
     outcome = {
         "schema_version": (
-            _GROUNDER_STAGE_OUTCOME_VERSION_V0_3
-            if event_fact_anchor is not None
+            _GROUNDER_STAGE_OUTCOME_VERSION_V0_4
+            if semantic_transport is not None
             else (
-                _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
-                if attempts_json is not None
-                else _GROUNDER_STAGE_OUTCOME_VERSION
+                _GROUNDER_STAGE_OUTCOME_VERSION_V0_3
+                if event_fact_anchor is not None
+                else (
+                    _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
+                    if attempts_json is not None
+                    else _GROUNDER_STAGE_OUTCOME_VERSION
+                )
             )
         ),
         "grounder_status": "COMPLETED",
@@ -1172,15 +1220,21 @@ def _grounder_stage_outcome(
             "subquestion_id": "event_fact_anchor_v0_1",
             "selected_claim_id": event_fact_anchor.selected_claim_id,
         }
+    if semantic_transport is not None:
+        outcome["semantic_transport"] = semantic_transport
     if require_submission:
         outcome.update({
             "schema_version": (
-                _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3
-                if event_fact_anchor is not None
+                _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4
+                if semantic_transport is not None
                 else (
-                    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2
-                    if attempts_json is not None
-                    else _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION
+                    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3
+                    if event_fact_anchor is not None
+                    else (
+                        _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2
+                        if attempts_json is not None
+                        else _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION
+                    )
                 )
             ),
             "submission_status": "PRESENT",
@@ -1194,6 +1248,8 @@ def _grounder_stage_outcome(
                 "subquestion_id": "event_fact_anchor_v0_1",
                 "selected_claim_id": event_fact_anchor.selected_claim_id,
             }
+        if semantic_transport is not None:
+            outcome["semantic_transport"] = semantic_transport
         _validate_grounder_submission_stage_outcome(outcome)
     else:
         _validate_grounder_stage_outcome(outcome)
@@ -1216,13 +1272,24 @@ def _validate_event_fact_anchor_outcome(value: Any) -> Dict[str, Any]:
 
 
 def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
-    if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_3:
+    if type(value) is dict and value.get("schema_version") in (
+        _GROUNDER_STAGE_OUTCOME_VERSION_V0_3,
+        _GROUNDER_STAGE_OUTCOME_VERSION_V0_4,
+    ):
         fields_v0_2 = {"schema_version", "grounder_status", "source_status", "semantic_status", "builder_status", "submission_status", "ei_status", "counts", "diagnostic_counts", "coverage", "provenance"}
-        if set(value) != fields_v0_2 | {"event_fact_anchor"}:
-            raise ValueError("Grounder v0.3 stage outcome has an invalid closed field set")
+        expected_fields = fields_v0_2 | {"event_fact_anchor"}
+        if value["schema_version"] == _GROUNDER_STAGE_OUTCOME_VERSION_V0_4:
+            expected_fields.add("semantic_transport")
+        if set(value) != expected_fields:
+            raise ValueError("Grounder stage outcome has an invalid closed field set")
         _validate_event_fact_anchor_outcome(value["event_fact_anchor"])
+        if value["schema_version"] == _GROUNDER_STAGE_OUTCOME_VERSION_V0_4:
+            from .host_grounder_runtime import _validate_semantic_transport_retry_audit
+
+            _validate_semantic_transport_retry_audit(value["semantic_transport"])
         inherited = dict(value)
         inherited.pop("event_fact_anchor")
+        inherited.pop("semantic_transport", None)
         inherited["schema_version"] = (
             _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
             if type(value.get("provenance")) is dict
@@ -1394,18 +1461,29 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
 def _validate_grounder_submission_stage_outcome(value: Any) -> Dict[str, Any]:
     if (
         type(value) is dict
-        and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3
+        and value.get("schema_version") in (
+            _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3,
+            _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4,
+        )
     ):
         fields_v0_2 = {
             "schema_version", "grounder_status", "source_status", "semantic_status",
             "builder_status", "submission_status", "ei_status", "counts", "diagnostic_counts",
             "coverage", "provenance", "submission", "submission_sha256", "source_batch_count",
         }
-        if set(value) != fields_v0_2 | {"event_fact_anchor"}:
-            raise ValueError("Grounder v0.3 submission outcome has an invalid closed field set")
+        expected_fields = fields_v0_2 | {"event_fact_anchor"}
+        if value["schema_version"] == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4:
+            expected_fields.add("semantic_transport")
+        if set(value) != expected_fields:
+            raise ValueError("Grounder submission outcome has an invalid closed field set")
         _validate_event_fact_anchor_outcome(value["event_fact_anchor"])
+        if value["schema_version"] == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4:
+            from .host_grounder_runtime import _validate_semantic_transport_retry_audit
+
+            _validate_semantic_transport_retry_audit(value["semantic_transport"])
         inherited = dict(value)
         inherited.pop("event_fact_anchor")
+        inherited.pop("semantic_transport", None)
         inherited["schema_version"] = (
             _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2
             if type(value.get("provenance")) is dict
@@ -1493,6 +1571,7 @@ def _grounder_public_stage_outcome(value: Any) -> Dict[str, Any]:
         _GROUNDER_STAGE_OUTCOME_VERSION,
         _GROUNDER_STAGE_OUTCOME_VERSION_V0_2,
         _GROUNDER_STAGE_OUTCOME_VERSION_V0_3,
+        _GROUNDER_STAGE_OUTCOME_VERSION_V0_4,
     ):
         return _validate_grounder_stage_outcome(value)
     if value.get("schema_version") in _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS:
@@ -1508,8 +1587,13 @@ def _grounder_public_stage_outcome(value: Any) -> Dict[str, Any]:
         "builder_status", "submission_status", "ei_status", "counts", "diagnostic_counts",
         "coverage", "provenance", "submission_sha256", "source_batch_count",
     }
-    if outcome["schema_version"] == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3:
+    if outcome["schema_version"] in (
+        _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3,
+        _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4,
+    ):
         safe_fields.add("event_fact_anchor")
+    if outcome["schema_version"] == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4:
+        safe_fields.add("semantic_transport")
     public = {key: outcome[key] for key in safe_fields}
     public["ei_assessment_status"] = assessment_status
     if set(public) != safe_fields | {"ei_assessment_status"}:
@@ -1528,11 +1612,15 @@ def _validate_shell_outcome(value: Any) -> Any:
         return _validate_grounder_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_3:
         return _validate_grounder_stage_outcome(value)
+    if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_4:
+        return _validate_grounder_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION:
         return _validate_grounder_submission_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2:
         return _validate_grounder_submission_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3:
+        return _validate_grounder_submission_stage_outcome(value)
+    if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4:
         return _validate_grounder_submission_stage_outcome(value)
     if (
         type(value) is dict

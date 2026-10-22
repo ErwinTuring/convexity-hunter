@@ -95,6 +95,12 @@ _GROUNDER_SUBMISSION_PUBLIC_FIELDS = frozenset((
     "diagnostic_counts", "coverage", "provenance", "submission_sha256",
     "source_batch_count", "ei_assessment_status",
 ))
+_GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_3 = _GROUNDER_SUBMISSION_PUBLIC_FIELDS | {
+    "event_fact_anchor",
+}
+_GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_4 = _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_3 | {
+    "semantic_transport",
+}
 _GROUNDER_BUDGET_ERROR_CODES = frozenset((
     "REQUEST_BUDGET_EXHAUSTED",
     "CREDIT_BUDGET_EXHAUSTED",
@@ -437,6 +443,7 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
     from .host_store import (
         _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION,
         _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
         _validate_grounder_producer_failure_audit,
     )
 
@@ -455,6 +462,18 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
         "status": status,
         "producer_attempts": [item.to_json() for item in attempts],
     }
+    semantic_transport = getattr(error, "semantic_transport", None)
+    if semantic_transport is not None:
+        route = (
+            "host-grounder-discovery-prompt-v0.9",
+            "host-grounder-semantic-verifier-prompt-v0.8",
+        )
+        outcome.update({
+            "schema_version": _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
+            "producer_prompt_version": route[0],
+            "verifier_prompt_version": route[1],
+            "semantic_transport": semantic_transport,
+        })
     if has_omission_marker:
         route = getattr(error, "_producer_failure_route", None)
         if (
@@ -464,11 +483,12 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
             or route != _BINDING_OMISSION_FAILURE_ROUTE
         ):
             return None
-        outcome.update({
-            "schema_version": _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
-            "producer_prompt_version": route[0],
-            "verifier_prompt_version": route[1],
-        })
+        if semantic_transport is None:
+            outcome.update({
+                "schema_version": _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
+                "producer_prompt_version": route[0],
+                "verifier_prompt_version": route[1],
+            })
     try:
         return _validate_grounder_producer_failure_audit(outcome)
     except (TypeError, ValueError):
@@ -483,6 +503,8 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
     if value.get("schema_version") in (
         "host-grounder-stage-outcome-v0.1",
         "host-grounder-stage-outcome-v0.2",
+        "host-grounder-stage-outcome-v0.3",
+        "host-grounder-stage-outcome-v0.4",
     ):
         try:
             from .host_store import _validate_grounder_stage_outcome
@@ -493,6 +515,8 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
     if value.get("schema_version") in (
         "host-grounder-submission-stage-outcome-v0.1",
         "host-grounder-submission-stage-outcome-v0.2",
+        "host-grounder-submission-stage-outcome-v0.3",
+        "host-grounder-submission-stage-outcome-v0.4",
     ):
         try:
             if "submission" in value:
@@ -501,9 +525,15 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
                 projected = _grounder_public_stage_outcome(value)
             else:
                 projected = value
+            expected_public_fields = {
+                "host-grounder-submission-stage-outcome-v0.3":
+                    _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_3,
+                "host-grounder-submission-stage-outcome-v0.4":
+                    _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_4,
+            }.get(projected.get("schema_version"), _GROUNDER_SUBMISSION_PUBLIC_FIELDS)
             if (
                 type(projected) is not dict
-                or set(projected) != _GROUNDER_SUBMISSION_PUBLIC_FIELDS
+                or set(projected) != expected_public_fields
             ):
                 return None
             fixed = {
@@ -547,13 +577,14 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
             ):
                 return None
             return {
-                key: projected[key] for key in _GROUNDER_SUBMISSION_PUBLIC_FIELDS
+                key: projected[key] for key in expected_public_fields
             }
         except (AttributeError, TypeError, ValueError):
             return None
     if value.get("schema_version") in (
         "host-grounder-producer-failure-audit-v0.1",
         "host-grounder-producer-failure-audit-v0.2",
+        "host-grounder-producer-failure-audit-v0.3",
     ):
         try:
             from .host_store import _validate_grounder_producer_failure_audit
@@ -1914,23 +1945,29 @@ class HostRequestHandler(BaseHTTPRequestHandler):
 
             if type(error) is HostGrounderRuntimeError:
                 attempts = error.producer_attempts
-                if (
+                valid_attempts = (
                     type(attempts) is tuple
                     and 1 <= len(attempts) <= 2
                     and all(
                         type(item) is HostEvidenceCatalogProducerAttempt
                         for item in attempts
                     )
-                    and any(
+                )
+                if valid_attempts and (
+                    any(
                         item.failure_check in _BINDING_OMISSION_FAILURE_MARKERS
                         for item in attempts
                     )
+                    or error.semantic_transport is not None
                 ):
                     failure_audit = _grounder_producer_failure_audit(error, "FAILED")
                     if (
                         type(failure_audit) is dict
                         and failure_audit.get("schema_version")
-                        == "host-grounder-producer-failure-audit-v0.2"
+                        in (
+                            "host-grounder-producer-failure-audit-v0.2",
+                            "host-grounder-producer-failure-audit-v0.3",
+                        )
                     ):
                         outcome = failure_audit
             if not self._complete_terminal_run(

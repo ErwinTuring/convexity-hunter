@@ -10,6 +10,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
+from urllib.error import HTTPError, URLError
 from unittest.mock import patch
 
 from convexity_hunter.core_application import CoreOperationalBounds
@@ -1359,6 +1360,195 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertNotIn("SYNTHETIC", repr(config))
         with self.assertRaisesRegex(TypeError, "host_context_preparer"):
             create_event_grounder(config, repo_root=_ROOT, host_context_preparer=object())
+
+    def test_default_event_semantic_transport_retries_same_body_once(self):
+        run_id = "semantic-transport-retry-event"
+        config = _config()
+        config = replace(
+            config,
+            semantic_model=replace(config.semantic_model, request_budget=2),
+        )
+        discovery, semantic, _normalized = _model_outputs(
+            run_id, _RAW_INPUT, _SEARCH_ORDER, _BODY_BY_URL, config
+        )
+
+        class ScriptedTransport:
+            def __init__(self):
+                self.calls = []
+                self.semantic_calls = 0
+
+            def __call__(self, request, timeout):
+                payload = json.loads(request.data.decode("utf-8"))
+                model = payload["model"]
+                self.calls.append((model, request.data, timeout))
+                if model == "fixture-semantic":
+                    self.semantic_calls += 1
+                    if self.semantic_calls == 1:
+                        raise URLError("private synthetic network detail")
+                    content = semantic
+                else:
+                    content = discovery
+                return _SyntheticResponse({
+                    "id": "synthetic-" + model,
+                    "model": model,
+                    "choices": [{
+                        "message": {"role": "assistant", "content": content},
+                        "finish_reason": "stop",
+                    }],
+                    "usage": {
+                        "prompt_tokens": 10,
+                        "completion_tokens": 20,
+                        "total_tokens": 30,
+                    },
+                })
+
+        model_transport = ScriptedTransport()
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=_SyntheticSourceTransport(),
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        result = callback(
+            _RAW_INPUT,
+            run_id=run_id,
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        semantic_calls = [call for call in model_transport.calls if call[0] == "fixture-semantic"]
+        self.assertEqual(len(model_transport.calls), 3)
+        self.assertEqual(len(semantic_calls), 2)
+        self.assertEqual(semantic_calls[0][1], semantic_calls[1][1])
+        self.assertEqual(
+            hashlib.sha256(semantic_calls[0][1]).hexdigest(),
+            result._semantic_transport["request_body_sha256"],
+        )
+        self.assertTrue(all(0 < call[2] <= config.semantic_model.timeout_seconds for call in semantic_calls))
+        audit = result._semantic_transport
+        self.assertEqual(audit["attempt_limit"], 2)
+        self.assertEqual(
+            [row["transport_code"] for row in audit["attempts"]],
+            ["NETWORK_ERROR", None],
+        )
+        self.assertEqual(
+            [row["outcome"] for row in audit["attempts"]],
+            ["transport_failed", "response_received"],
+        )
+        self.assertEqual(
+            audit["output_reservation_limit_tokens"],
+            2 * config.semantic_model.max_tokens,
+        )
+        self.assertEqual(audit["attempts"][1]["usage"]["total_tokens"], 30)
+        self.assertIsNotNone(result._event_fact_anchor_outcome)
+
+    def test_default_event_semantic_http_failure_is_not_retried(self):
+        run_id = "semantic-transport-http-no-retry"
+        config = _config()
+        config = replace(
+            config,
+            semantic_model=replace(config.semantic_model, request_budget=2),
+        )
+        discovery, _semantic, _normalized = _model_outputs(
+            run_id, _RAW_INPUT, _SEARCH_ORDER, _BODY_BY_URL, config
+        )
+
+        class HttpFailureTransport:
+            def __init__(self):
+                self.semantic_calls = 0
+
+            def __call__(self, request, _timeout):
+                payload = json.loads(request.data.decode("utf-8"))
+                if payload["model"] == "fixture-semantic":
+                    self.semantic_calls += 1
+                    raise HTTPError(request.full_url, 503, "synthetic", {}, None)
+                return _SyntheticResponse({
+                    "id": "synthetic-discovery",
+                    "model": "fixture-discovery",
+                    "choices": [{
+                        "message": {"role": "assistant", "content": discovery},
+                        "finish_reason": "stop",
+                    }],
+                })
+
+        model_transport = HttpFailureTransport()
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=_SyntheticSourceTransport(),
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            callback(
+                _RAW_INPUT,
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        self.assertEqual(raised.exception.code, "SEMANTIC_CALL_FAILED")
+        self.assertEqual(model_transport.semantic_calls, 1)
+        audit = raised.exception.semantic_transport
+        self.assertEqual(len(audit["attempts"]), 1)
+        self.assertEqual(audit["attempts"][0]["transport_code"], "HTTP_ERROR")
+        self.assertEqual(audit["attempts"][0]["http_status"], 503)
+
+    def test_custom_context_preparer_keeps_semantic_call_single_attempt(self):
+        run_id = "semantic-transport-custom-route-no-retry"
+        config = _config()
+        config = replace(
+            config,
+            semantic_model=replace(config.semantic_model, request_budget=2),
+        )
+        discovery, _semantic, _normalized = _model_outputs(
+            run_id,
+            _RAW_INPUT,
+            _SEARCH_ORDER,
+            _BODY_BY_URL,
+            config,
+            normal_recipe=False,
+        )
+
+        class CustomRouteTransport:
+            def __init__(self):
+                self.semantic_calls = 0
+
+            def __call__(self, request, _timeout):
+                payload = json.loads(request.data.decode("utf-8"))
+                if payload["model"] == "fixture-semantic":
+                    self.semantic_calls += 1
+                    raise URLError("private custom-route network detail")
+                return _SyntheticResponse({
+                    "id": "synthetic-discovery",
+                    "model": "fixture-discovery",
+                    "choices": [{
+                        "message": {"role": "assistant", "content": discovery},
+                        "finish_reason": "stop",
+                    }],
+                })
+
+        model_transport = CustomRouteTransport()
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=_SyntheticSourceTransport(),
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+            host_context_preparer=_retain_unknown_context_v0_3,
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            callback(
+                _RAW_INPUT,
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        self.assertEqual(model_transport.semantic_calls, 1)
+        self.assertEqual(raised.exception.code, "SEMANTIC_CALL_FAILED")
+        self.assertIsNone(raised.exception.semantic_transport)
 
     def test_independent_anchor_gate_selects_only_its_supported_fact_row(self):
         coverage = [
@@ -3187,7 +3377,7 @@ class HostEventGrounderTests(unittest.TestCase):
 
         archived = _grounder_stage_outcome(result, _RUN_ID, _RAW_INPUT)
         self.assertEqual(
-            archived["schema_version"], "host-grounder-stage-outcome-v0.3"
+            archived["schema_version"], "host-grounder-stage-outcome-v0.4"
         )
         self.assertEqual(
             archived["event_fact_anchor"],

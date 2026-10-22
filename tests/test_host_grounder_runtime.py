@@ -1080,6 +1080,350 @@ class HostGrounderQuoteLocalizationTests(unittest.TestCase):
         self.assertTrue(holder.finalized)
         self.assertIsNotNone(holder.audit)
 
+    def test_semantic_transport_retry_uses_clock_remaining_and_validator_enforces_each_cap(self):
+        config = _config("semantic", request_budget=2)
+
+        class PreparedClient:
+            def __init__(self, first_error_code="NETWORK_ERROR", request_budget=2):
+                self.remaining_request_budget = request_budget
+                self.calls = []
+                self.first_error_code = first_error_code
+
+            def _request_body(self, system_prompt, source_prompt):
+                return (system_prompt + "\n" + source_prompt).encode("utf-8")
+
+            def _complete_prepared(self, body, *, timeout_seconds):
+                self.calls.append((body, timeout_seconds))
+                self.remaining_request_budget -= 1
+                if len(self.calls) == 1:
+                    raise ModelTransportError(self.first_error_code)
+                return ModelTransportReceipt(
+                    provider=config.provider,
+                    requested_model=config.model,
+                    returned_model=config.model,
+                    request_id="fixture-retry-response",
+                    content="{}",
+                    reasoning_content=None,
+                    finish_reason="stop",
+                    bytes_sent=len(body),
+                    bytes_received=2,
+                    prompt_tokens=1,
+                    completion_tokens=1,
+                    total_tokens=2,
+                    cached_tokens=None,
+                    prompt_cache_hit_tokens=None,
+                    prompt_cache_miss_tokens=None,
+                )
+
+        client = PreparedClient()
+        # First attempt consumes 1.5s of a 2s decision window. The next
+        # timeout is therefore 0.5s, not the configured 1s.
+        with patch.object(
+            host_grounder_runtime_module,
+            "_monotonic",
+            side_effect=(10.0, 10.0, 11.5, 11.5, 11.75),
+        ):
+            receipt, audit = host_grounder_runtime_module._call_semantic_with_transport_retry(
+                client,
+                config,
+                "frozen system",
+                "frozen source",
+                producer_attempts=(),
+            )
+
+        self.assertEqual(receipt.request_id, "fixture-retry-response")
+        self.assertEqual(client.calls[0][0], client.calls[1][0])
+        self.assertEqual([call[1] for call in client.calls], [1.0, 0.5])
+        self.assertEqual(audit["attempts"][1]["timeout_seconds"], 0.5)
+        self.assertEqual(
+            host_grounder_runtime_module._validate_semantic_transport_retry_audit(audit),
+            audit,
+        )
+
+        for clock_origin in (0.0, -10.0):
+            origin_client = PreparedClient()
+            with patch.object(
+                host_grounder_runtime_module,
+                "_monotonic",
+                side_effect=(
+                    clock_origin,
+                    clock_origin,
+                    clock_origin + 1.5,
+                    clock_origin + 1.5,
+                    clock_origin + 1.75,
+                ),
+            ):
+                origin_receipt, _origin_audit = (
+                    host_grounder_runtime_module._call_semantic_with_transport_retry(
+                        origin_client,
+                        config,
+                        "frozen system",
+                        "frozen source",
+                        producer_attempts=(),
+                    )
+                )
+            self.assertEqual(origin_receipt.request_id, "fixture-retry-response")
+            self.assertEqual(len(origin_client.calls), 2)
+
+        timeout_client = PreparedClient("TIMEOUT")
+        with patch.object(
+            host_grounder_runtime_module,
+            "_monotonic",
+            side_effect=(10.0, 10.0, 10.1, 10.1, 10.2),
+        ):
+            _receipt, timeout_audit = host_grounder_runtime_module._call_semantic_with_transport_retry(
+                timeout_client,
+                config,
+                "frozen system",
+                "frozen source",
+                producer_attempts=(),
+            )
+        self.assertEqual(len(timeout_client.calls), 2)
+        self.assertEqual(timeout_audit["attempts"][0]["transport_code"], "TIMEOUT")
+
+        late_client = PreparedClient()
+        with patch.object(
+            host_grounder_runtime_module,
+            "_monotonic",
+            side_effect=(10.0, 10.0, 11.5, 11.5, 12.1),
+        ):
+            with self.assertRaises(HostGrounderRuntimeError) as late:
+                host_grounder_runtime_module._call_semantic_with_transport_retry(
+                    late_client,
+                    config,
+                    "frozen system",
+                    "frozen source",
+                    producer_attempts=(),
+                )
+        self.assertEqual(
+            [row["outcome"] for row in late.exception.semantic_transport["attempts"]],
+            ["transport_failed", "deadline_exceeded"],
+        )
+        self.assertNotEqual(
+            late.exception.semantic_transport["attempts"][-1]["outcome"],
+            "response_received",
+        )
+
+        late_after_gap_client = PreparedClient()
+        with patch.object(
+            host_grounder_runtime_module,
+            "_monotonic",
+            side_effect=(10.0, 10.0, 10.25, 11.9, 12.000000000000002),
+        ):
+            with self.assertRaises(HostGrounderRuntimeError) as late_after_gap:
+                host_grounder_runtime_module._call_semantic_with_transport_retry(
+                    late_after_gap_client,
+                    config,
+                    "frozen system",
+                    "frozen source",
+                    producer_attempts=(),
+                )
+        late_gap_audit = late_after_gap.exception.semantic_transport
+        self.assertEqual(
+            [row["outcome"] for row in late_gap_audit["attempts"]],
+            ["transport_failed", "deadline_exceeded"],
+        )
+        self.assertLess(
+            sum(row["elapsed_seconds"] for row in late_gap_audit["attempts"]),
+            late_gap_audit["decision_deadline_seconds"],
+        )
+
+        single_config = _config("semantic", request_budget=1)
+        single_client = PreparedClient(request_budget=1)
+        with patch.object(
+            host_grounder_runtime_module,
+            "_monotonic",
+            side_effect=(10.0, 10.0, 10.1),
+        ):
+            with self.assertRaises(HostGrounderRuntimeError) as single:
+                host_grounder_runtime_module._call_semantic_with_transport_retry(
+                    single_client,
+                    single_config,
+                    "frozen system",
+                    "frozen source",
+                    producer_attempts=(),
+                )
+        self.assertEqual(len(single_client.calls), 1)
+        self.assertEqual(single.exception.semantic_transport["attempt_limit"], 1)
+        self.assertEqual(len(single.exception.semantic_transport["attempts"]), 1)
+
+        def audit_with(rows):
+            return {
+                "schema_version": "host-semantic-transport-retry-v0.1",
+                "request_body_sha256": "a" * 64,
+                "attempt_limit": 2,
+                "decision_deadline_seconds": 2.0,
+                "output_reservation_limit_tokens": 4000,
+                "attempts": rows,
+            }
+
+        first = {
+            "index": 1,
+            "outcome": "transport_failed",
+            "transport_code": "NETWORK_ERROR",
+            "http_status": None,
+            "timeout_seconds": 1.0,
+            "elapsed_seconds": 1.25,
+            "reserved_output_tokens": 2000,
+            "request_id": None,
+            "usage": None,
+        }
+        second = {
+            "index": 2,
+            "outcome": "response_received",
+            "transport_code": None,
+            "http_status": None,
+            "timeout_seconds": 0.75,
+            "elapsed_seconds": 0.5,
+            "reserved_output_tokens": 2000,
+            "request_id": "fixture-response",
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+        impossible_deadline = {
+            "schema_version": "host-semantic-transport-retry-v0.1",
+            "request_body_sha256": "a" * 64,
+            "attempt_limit": 1,
+            "decision_deadline_seconds": 1.0,
+            "output_reservation_limit_tokens": 2000,
+            "attempts": [{
+                "index": 1,
+                "outcome": "deadline_exceeded",
+                "transport_code": "TIMEOUT",
+                "http_status": None,
+                "timeout_seconds": 1.0,
+                "elapsed_seconds": 0.1,
+                "reserved_output_tokens": 2000,
+                "request_id": None,
+                "usage": None,
+            }],
+        }
+        with self.assertRaisesRegex(ValueError, "elapsed time is inconsistent"):
+            host_grounder_runtime_module._validate_semantic_transport_retry_audit(
+                impossible_deadline
+            )
+        nonterminal_deadline = audit_with([
+            {
+                "index": 1,
+                "outcome": "deadline_exceeded",
+                "transport_code": "TIMEOUT",
+                "http_status": None,
+                "timeout_seconds": 1.0,
+                "elapsed_seconds": 1.0,
+                "reserved_output_tokens": 2000,
+                "request_id": None,
+                "usage": None,
+            },
+            {
+                **first,
+                "index": 2,
+                "timeout_seconds": 1.0,
+                "elapsed_seconds": 0.1,
+            },
+        ])
+        with self.assertRaisesRegex(ValueError, "must be terminal"):
+            host_grounder_runtime_module._validate_semantic_transport_retry_audit(
+                nonterminal_deadline
+            )
+        with self.assertRaisesRegex(ValueError, "timeout exceeds remaining decision time"):
+            host_grounder_runtime_module._validate_semantic_transport_retry_audit(
+                audit_with([
+                    {**first, "elapsed_seconds": 0.25},
+                    {**second, "timeout_seconds": 1.0001, "elapsed_seconds": 0.1},
+                ])
+            )
+        with self.assertRaisesRegex(ValueError, "timeout exceeds remaining decision time"):
+            host_grounder_runtime_module._validate_semantic_transport_retry_audit(
+                audit_with([first, {**second, "timeout_seconds": 0.7501}])
+            )
+        with self.assertRaisesRegex(ValueError, "late semantic response cannot be admitted"):
+            host_grounder_runtime_module._validate_semantic_transport_retry_audit(
+                audit_with([first, {**second, "elapsed_seconds": 0.8}])
+            )
+
+    def test_semantic_transport_retry_malformed_codes_fail_closed_without_retry(self):
+        config = _config("semantic", request_budget=2)
+
+        class MalformedCodeClient:
+            def __init__(self, error):
+                self.error = error
+                self.remaining_request_budget = 2
+                self.calls = 0
+
+            def _request_body(self, _system_prompt, _source_prompt):
+                return b"frozen request body"
+
+            def _complete_prepared(self, _body, *, timeout_seconds):
+                self.calls += 1
+                self.remaining_request_budget -= 1
+                raise self.error
+
+        malformed_codes = (
+            ["PRIVATE_LIST_CODE_SENTINEL"],
+            {"private": "PRIVATE_DICT_CODE_SENTINEL"},
+        )
+        for raw_code in malformed_codes:
+            error = ModelTransportError("NETWORK_ERROR")
+            error.code = raw_code
+            client = MalformedCodeClient(error)
+            with patch.object(
+                host_grounder_runtime_module,
+                "_monotonic",
+                side_effect=(10.0, 10.0, 10.1),
+            ):
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    host_grounder_runtime_module._call_semantic_with_transport_retry(
+                        client,
+                        config,
+                        "frozen system",
+                        "frozen source",
+                        producer_attempts=(),
+                    )
+
+            self.assertEqual(type(raised.exception), HostGrounderRuntimeError)
+            self.assertEqual(str(raised.exception), "SEMANTIC_CALL_FAILED")
+            self.assertNotIn("PRIVATE_", repr(raised.exception))
+            self.assertEqual(client.calls, 1)
+            self.assertEqual(len(raised.exception.semantic_transport["attempts"]), 1)
+            attempt = raised.exception.semantic_transport["attempts"][0]
+            self.assertEqual(attempt["outcome"], "transport_failed")
+            self.assertIsNone(attempt["transport_code"])
+
+    def test_semantic_transport_retry_rejects_overflowed_deadline_before_call(self):
+        config = replace(_config("semantic", request_budget=2), timeout_seconds=1e308)
+
+        class NeverCalledClient:
+            remaining_request_budget = 2
+
+            def __init__(self):
+                self.calls = 0
+
+            def _request_body(self, _system_prompt, _source_prompt):
+                return b"frozen request body"
+
+            def _complete_prepared(self, _body, *, timeout_seconds):
+                self.calls += 1
+                raise AssertionError("transport must not be called")
+
+        client = NeverCalledClient()
+        with patch.object(
+            host_grounder_runtime_module,
+            "_monotonic",
+            return_value=10.0,
+        ):
+            with self.assertRaises(HostGrounderRuntimeError) as raised:
+                host_grounder_runtime_module._call_semantic_with_transport_retry(
+                    client,
+                    config,
+                    "frozen system",
+                    "frozen source",
+                    producer_attempts=(),
+                )
+
+        self.assertEqual(str(raised.exception), "SEMANTIC_CALL_FAILED")
+        self.assertNotIn("inf", repr(raised.exception))
+        self.assertIsNone(raised.exception.semantic_transport)
+        self.assertEqual(client.calls, 0)
+
     def test_call_once_logs_only_closed_transport_metadata(self):
         class DerivedTransportError(ModelTransportError):
             pass

@@ -124,6 +124,65 @@ def _world_configuration_snapshot():
     return snapshot
 
 
+def _semantic_transport_audit():
+    return {
+        "schema_version": "host-semantic-transport-retry-v0.1",
+        "request_body_sha256": "a" * 64,
+        "attempt_limit": 2,
+        "decision_deadline_seconds": 4.0,
+        "output_reservation_limit_tokens": 4000,
+        "attempts": [
+            {
+                "index": 1,
+                "outcome": "transport_failed",
+                "transport_code": "NETWORK_ERROR",
+                "http_status": None,
+                "timeout_seconds": 2.0,
+                "elapsed_seconds": 0.25,
+                "reserved_output_tokens": 2000,
+                "request_id": None,
+                "usage": None,
+            },
+            {
+                "index": 2,
+                "outcome": "response_received",
+                "transport_code": None,
+                "http_status": None,
+                "timeout_seconds": 2.0,
+                "elapsed_seconds": 0.5,
+                "reserved_output_tokens": 2000,
+                "request_id": "fixture-semantic-response",
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            },
+        ],
+    }
+
+
+def _impossible_deadline_exceeded_audit():
+    return {
+        "schema_version": "host-semantic-transport-retry-v0.1",
+        "request_body_sha256": "a" * 64,
+        "attempt_limit": 1,
+        "decision_deadline_seconds": 1.0,
+        "output_reservation_limit_tokens": 2000,
+        "attempts": [{
+            "index": 1,
+            "outcome": "deadline_exceeded",
+            "transport_code": "TIMEOUT",
+            "http_status": None,
+            "timeout_seconds": 1.0,
+            "elapsed_seconds": 0.1,
+            "reserved_output_tokens": 2000,
+            "request_id": None,
+            "usage": None,
+        }],
+    }
+
+
 def blocked_outcome():
     return {
         "executor_status": "NOT_CONFIGURED",
@@ -172,6 +231,7 @@ def make_grounder_no_submission_result(
     run_id="grounder-run", *,
     producer_prompt_version="host-grounder-discovery-prompt-v0.6",
     validator_version="host-grounder-semantic-verifier-prompt-v0.7",
+    normal_event_route=False,
 ):
     """Synthetic typed fixture for the future stage journal API; never a live run."""
 
@@ -213,17 +273,29 @@ def make_grounder_no_submission_result(
         },
         run_id=run_id,
         canonical_input_hash="a" * 64,
+        event_description_binding=(
+            "fixture-description-binding" if normal_event_route else None
+        ),
     )
+    primary_subquestion_id = (
+        "user_event_input" if normal_event_route else "question-1"
+    )
+    coverage = [{
+        "subquestion_id": primary_subquestion_id, "status": "unresolved",
+        "claim_ids": [], "gap": "PRIVATE_GAP_TEXT",
+    }]
+    if normal_event_route:
+        coverage.append({
+            "subquestion_id": "event_fact_anchor_v0_1", "status": "unresolved",
+            "claim_ids": [], "gap": "PRIVATE_ANCHOR_GAP_TEXT",
+        })
     envelope = {
         "schema_version": "grounder-output-v0.1",
         "stage": "semantic",
         "request_id": run_id,
         "claims": [{"claim_id": "claim-private", "text": "PRIVATE_CLAIM_TEXT"}],
         "hypotheses": [],
-        "coverage": [{
-            "subquestion_id": "question-1", "status": "unresolved",
-            "claim_ids": [], "gap": "PRIVATE_GAP_TEXT",
-        }],
+        "coverage": coverage,
         "field_bindings": [{}],
     }
     envelope_bytes = canonical(envelope).encode("utf-8")
@@ -242,7 +314,15 @@ def make_grounder_no_submission_result(
         "rejected_hypotheses": (),
         "verified_binding_indices": (0,),
         "rejected_bindings": (),
-        "coverage_outcomes": ((0, "question-1", "unresolved", "PRIVATE_VALIDATOR_RATIONALE"),),
+        "coverage_outcomes": tuple(
+            (
+                index,
+                item["subquestion_id"],
+                "unresolved",
+                "PRIVATE_VALIDATOR_RATIONALE",
+            )
+            for index, item in enumerate(coverage)
+        ),
     })
     semantic = SemanticValidationRecord(
         run_id, context.canonical_input_hash, envelope_hash, receipt,
@@ -278,10 +358,13 @@ def make_grounder_no_submission_result(
         raw_input,
         None,
         None,
-        (CoverageSidecar(
-            0, "question-1", "unresolved", "unresolved", (),
-            "PRIVATE_GAP_TEXT", "PRIVATE_VALIDATOR_RATIONALE",
-        ),),
+        tuple(
+            CoverageSidecar(
+                index, item["subquestion_id"], "unresolved", "unresolved", (),
+                item["gap"], "PRIVATE_VALIDATOR_RATIONALE",
+            )
+            for index, item in enumerate(coverage)
+        ),
         (FieldBindingSidecar(
             0, "event.description", "source-1", "PRIVATE_QUOTE", 0, 1,
             "description", "supported", "verified", None,
@@ -412,7 +495,7 @@ def make_grounder_binding_omission_result(run_id="grounder-run"):
     return replace(result, audit=audit), omitted
 
 
-def make_grounder_submission_result(run_id="grounder-run"):
+def make_grounder_submission_result(run_id="grounder-run", *, normal_event_route=False):
     from convexity_hunter.core_application import SourceSubmissionBatch
     from convexity_hunter.event_intelligence import (
         EventIntelligenceSubmission,
@@ -422,7 +505,18 @@ def make_grounder_submission_result(run_id="grounder-run"):
         EventUnderlyingHypothesis,
     )
 
-    result = make_grounder_no_submission_result(run_id)
+    result = make_grounder_no_submission_result(
+        run_id,
+        producer_prompt_version=(
+            "host-grounder-discovery-prompt-v0.9"
+            if normal_event_route else "host-grounder-discovery-prompt-v0.6"
+        ),
+        validator_version=(
+            "host-grounder-semantic-verifier-prompt-v0.8"
+            if normal_event_route else "host-grounder-semantic-verifier-prompt-v0.7"
+        ),
+        normal_event_route=normal_event_route,
+    )
     context = result.build_result.context
     now = context.observed_at
     submission = EventIntelligenceSubmission(
@@ -506,6 +600,180 @@ class HostStoreTests(unittest.TestCase):
             STANDARD_RESEARCH_PROFILE.snapshot(),
             _run_start_metadata(),
         )
+
+    def test_semantic_transport_success_audit_is_archived_in_stage_v04(self):
+        from convexity_hunter.host_grounder_runtime import (
+            _EventFactAnchorOutcome,
+            _stamp_event_fact_anchor_outcome,
+        )
+        from convexity_hunter.host_store import _validate_grounder_stage_outcome
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(
+            run_id,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.9",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.8",
+            normal_event_route=True,
+        )
+        result = _stamp_event_fact_anchor_outcome(
+            result,
+            _EventFactAnchorOutcome(
+                ("user_event_input", "event_fact_anchor_v0_1"),
+                "fixture-description-binding",
+                None,
+            ),
+        )
+        object.__setattr__(result, "_semantic_transport", _semantic_transport_audit())
+
+        self.store.save_grounder_stage_result(run_id, stage_id, result)
+        outcome = self.store.get_run(run_id)["events"][-1]["outcome"]
+        self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.4")
+        self.assertEqual(outcome["semantic_transport"], _semantic_transport_audit())
+        _validate_grounder_stage_outcome(outcome)
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        restored = reopened.get_run(run_id)["events"][-1]["outcome"]
+        self.assertEqual(restored["schema_version"], "host-grounder-stage-outcome-v0.4")
+        self.assertEqual(restored["semantic_transport"], _semantic_transport_audit())
+
+        submission_run_id = reopened.create_run(
+            "event",
+            "synthetic fixture event",
+            BOUNDS,
+            STANDARD_RESEARCH_PROFILE.snapshot(),
+            _run_start_metadata(),
+        )
+        submission_stage_id = reopened.start_stage(submission_run_id, "grounder")
+        submission_result = make_grounder_submission_result(
+            submission_run_id, normal_event_route=True
+        )
+        submission_result = _stamp_event_fact_anchor_outcome(
+            submission_result,
+            _EventFactAnchorOutcome(
+                ("user_event_input", "event_fact_anchor_v0_1"),
+                "fixture-description-binding",
+                None,
+            ),
+        )
+        object.__setattr__(
+            submission_result, "_semantic_transport", _semantic_transport_audit()
+        )
+        reopened.save_grounder_submission_stage_result(
+            submission_run_id, submission_stage_id, submission_result
+        )
+        submission_outcome = reopened.get_run(submission_run_id)["events"][-1]["outcome"]
+        self.assertEqual(
+            submission_outcome["schema_version"],
+            "host-grounder-submission-stage-outcome-v0.4",
+        )
+        self.assertEqual(
+            submission_outcome["semantic_transport"], _semantic_transport_audit()
+        )
+
+    def test_impossible_deadline_exceeded_audit_is_rejected_on_store_build_and_reload(self):
+        from convexity_hunter.host_grounder_runtime import (
+            _EventFactAnchorOutcome,
+            _stamp_event_fact_anchor_outcome,
+        )
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(
+            run_id,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.9",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.8",
+            normal_event_route=True,
+        )
+        result = _stamp_event_fact_anchor_outcome(
+            result,
+            _EventFactAnchorOutcome(
+                ("user_event_input", "event_fact_anchor_v0_1"),
+                "fixture-description-binding",
+                None,
+            ),
+        )
+        impossible_audit = _impossible_deadline_exceeded_audit()
+        object.__setattr__(result, "_semantic_transport", impossible_audit)
+        with self.assertRaisesRegex(ValueError, "elapsed time is inconsistent"):
+            self.store.save_grounder_stage_result(run_id, stage_id, result)
+
+        object.__setattr__(result, "_semantic_transport", _semantic_transport_audit())
+        self.store.save_grounder_stage_result(run_id, stage_id, result)
+        self.store.close()
+
+        connection = sqlite3.connect(str(self.db_path))
+        try:
+            finish = connection.execute(
+                "SELECT event_seq,payload_json FROM events "
+                "WHERE run_id=? AND event_type='stage_finished'",
+                (run_id,),
+            ).fetchone()
+            payload = json.loads(finish[1])
+            payload["outcome"]["semantic_transport"] = impossible_audit
+            payload_json = json.dumps(
+                payload,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            connection.execute("DROP TRIGGER events_no_update")
+            connection.execute(
+                "UPDATE events SET payload_json=? WHERE event_seq=?",
+                (payload_json, finish[0]),
+            )
+            connection.execute(
+                "CREATE TRIGGER events_no_update BEFORE UPDATE ON events "
+                "BEGIN SELECT RAISE(ABORT,'append-only journal'); END"
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        with self.assertRaisesRegex(StoreCorruptionError, "stage result payload violates"):
+            HostStore(self.db_path)
+
+    def test_semantic_transport_failure_audit_v03_reopens_and_validates(self):
+        from convexity_hunter.host_grounder_evidence_catalog import (
+            _BINDING_OMISSION_FAILURE_ROUTE,
+        )
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+        from convexity_hunter.host_server import _grounder_producer_failure_audit
+        from convexity_hunter.host_store import _validate_grounder_producer_failure_audit
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        producer_result, _omitted = make_grounder_binding_omission_result(run_id)
+        error = HostGrounderRuntimeError(
+            "SEMANTIC_CALL_FAILED",
+            producer_attempts=producer_result.audit.producer_attempts,
+            semantic_transport=_semantic_transport_audit(),
+        )
+        error._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE
+        failure = _grounder_producer_failure_audit(error, "FAILED")
+
+        self.assertEqual(
+            failure["schema_version"], "host-grounder-producer-failure-audit-v0.3"
+        )
+        self.assertEqual(
+            _validate_grounder_producer_failure_audit(failure), failure
+        )
+        self.store.finish_stage(
+            run_id, stage_id, "FAILED", failure, ("SEMANTIC_CALL_FAILED",)
+        )
+        self.store.finish_run(run_id, "FAILED", ("SEMANTIC_CALL_FAILED",))
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        restored = reopened.get_run(run_id)["events"][-1]["outcome"]
+        self.assertEqual(
+            restored["schema_version"], "host-grounder-producer-failure-audit-v0.3"
+        )
+        self.assertEqual(restored["semantic_transport"], _semantic_transport_audit())
 
     def test_private_permissions_and_schema_identity(self):
         self.assertEqual(stat.S_IMODE(self.root.stat().st_mode), 0o700)

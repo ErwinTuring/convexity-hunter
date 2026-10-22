@@ -5,6 +5,11 @@ targeted re-review. It defines a conservative, bounded Host evidence-assessment
 boundary; it does not prove semantic truth, authorize live calls, or claim a
 working validator. Live integration requires a separate real trial.
 
+The separately frozen [semantic transport-retry successor](host-semantic-transport-retry-v0.1.md)
+defines the approved normal default Event/World exception to the single-call
+procedure below. Legacy/custom routes retain this procedure; the successor's
+implementation status is tracked in its own document and the checkpoint.
+
 This contract complements the
 [semantic verification design](event-grounder-semantic-verification-design-v0.1.md)
 and the frozen [Builder contract](host-grounder-builder-v0.1.md). EI's existing

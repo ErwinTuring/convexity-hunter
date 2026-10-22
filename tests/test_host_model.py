@@ -207,6 +207,28 @@ class HostModelTests(unittest.TestCase):
         self.assertNotIn("not JSON", repr(receipt))
         self.assertEqual(client.remaining_request_budget, 1)
 
+    def test_private_prepared_request_timeout_does_not_change_public_complete(self) -> None:
+        transport = RecordingTransport([
+            FakeResponse(completion_body("retry receipt")),
+            FakeResponse(completion_body("public receipt")),
+        ])
+        client = self.client(transport, timeout_seconds=0.25, request_budget=2)
+        body = client._request_body("system", "same frozen input")
+
+        prepared = client._complete_prepared(body, timeout_seconds=0.125)
+        public = client.complete("system", "same frozen input")
+
+        self.assertEqual(prepared.content, "retry receipt")
+        self.assertEqual(public.content, "public receipt")
+        self.assertEqual([request.data for request, _timeout in transport.calls], [body, body])
+        self.assertEqual([timeout for _request, timeout in transport.calls], [0.125, 0.25])
+        self.assertEqual(client.remaining_request_budget, 0)
+
+        for invalid_timeout in (0, -0.1, 0.250001, float("inf")):
+            with self.assertRaises(ValueError):
+                client._complete_prepared(body, timeout_seconds=invalid_timeout)
+        self.assertEqual(len(transport.calls), 2)
+
     def test_external_properties_file_is_explicit_and_repr_is_nonsecret(self) -> None:
         properties = self.external / "model.properties"
         properties.write_text("api_key=sk-file-secret\n", encoding="utf-8")

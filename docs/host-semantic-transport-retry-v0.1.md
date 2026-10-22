@@ -1,9 +1,12 @@
 # Host Semantic Transport Retry v0.1
 
-Status: FROZEN / SUBSEQUENT_BUILD_READY. Production implementation is absent
-at this checkpoint. The user approved this invocation-policy successor on
-2026-10-22. It is not a correction to a previously retrying implementation.
-Main accepted the read-only preflight: READY_WITH_IMPLEMENTATION_BOUNDARIES.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS. The contract was
+committed before BUILD after Main accepted the read-only preflight:
+READY_WITH_IMPLEMENTATION_BOUNDARIES. The user approved this invocation-policy
+successor on 2026-10-22; it is not a correction to a previously retrying
+implementation. Full regression passed 2,034 tests; compile, JavaScript and
+compatibility checks passed. Deployment and live evidence are separate facts
+tracked in the checkpoint, not implied by implementation tests.
 
 ## Scope
 

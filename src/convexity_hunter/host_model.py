@@ -687,6 +687,12 @@ class ChatCompletionsClient:
         as semantic JSON and is intentionally left for a later validator.
         """
 
+        body = self._request_body(system_prompt, source_prompt)
+        return self._complete_prepared(body, timeout_seconds=self.config.timeout_seconds)
+
+    def _request_body(self, system_prompt: str, source_prompt: str) -> bytes:
+        """Build the exact immutable request body for one client configuration."""
+
         if type(system_prompt) is not str or not system_prompt:
             raise ModelTransportError("INVALID_SYSTEM_PROMPT")
         if type(source_prompt) is not str or not source_prompt:
@@ -715,8 +721,27 @@ class ChatCompletionsClient:
             ).encode("utf-8")
         except (TypeError, ValueError):
             raise ModelTransportError("REQUEST_SERIALIZATION_FAILED") from None
-        if len(body) > self.config.max_input_bytes:
+        return body
+
+    def _complete_prepared(
+        self, body: bytes, *, timeout_seconds: float
+    ) -> ModelTransportReceipt:
+        """Send one already-frozen body with a private per-call timeout.
+
+        The public ``complete`` path always supplies the configured timeout.
+        The normal Event semantic retry coordinator uses this private method
+        to preserve byte identity without mutating the shared config/client.
+        """
+
+        if type(body) is not bytes or len(body) > self.config.max_input_bytes:
             raise ModelTransportError("REQUEST_TOO_LARGE")
+        if (
+            type(timeout_seconds) not in (int, float)
+            or not math.isfinite(timeout_seconds)
+            or timeout_seconds <= 0
+            or timeout_seconds > self.config.timeout_seconds
+        ):
+            raise ValueError("invalid private timeout override")
 
         self._reserve_request()
         api_key = self.credential.resolve(repo_root=self.repo_root)
@@ -738,7 +763,7 @@ class ChatCompletionsClient:
         response = None
         try:
             try:
-                response = self._transport(request, self.config.timeout_seconds)
+                response = self._transport(request, timeout_seconds)
             except HTTPError as error:
                 status = error.code if type(error.code) is int else None
                 if status == 401:

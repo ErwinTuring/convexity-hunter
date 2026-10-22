@@ -709,9 +709,12 @@ _DOCUMENT = r'''<!doctype html>
     } else {
       lines.push("  调用字节计数：接口未提供可识别列表");
     }
+    lines.push(...renderSemanticTransportAudit(outcome.semantic_transport));
     if ([
       "host-grounder-stage-outcome-v0.3",
-      "host-grounder-submission-stage-outcome-v0.3"
+      "host-grounder-submission-stage-outcome-v0.3",
+      "host-grounder-stage-outcome-v0.4",
+      "host-grounder-submission-stage-outcome-v0.4"
     ].includes(outcome.schema_version)) {
       const anchor = outcome.event_fact_anchor;
       const validAnchor = isRecord(anchor)
@@ -736,6 +739,30 @@ _DOCUMENT = r'''<!doctype html>
       lines.push("边界：事实锚点不等于研究假设，也不表示 EI 通过。");
     }
     return lines;
+  }
+
+  function renderSemanticTransportAudit(audit) {
+    if (audit === undefined) return [];
+    const fields = [
+      "schema_version", "request_body_sha256", "attempt_limit",
+      "decision_deadline_seconds", "output_reservation_limit_tokens", "attempts"
+    ];
+    const valid = isRecord(audit)
+      && Object.keys(audit).length === fields.length
+      && fields.every((field) => Object.prototype.hasOwnProperty.call(audit, field))
+      && audit.schema_version === "host-semantic-transport-retry-v0.1"
+      && Number.isSafeInteger(audit.attempt_limit)
+      && [1, 2].includes(audit.attempt_limit)
+      && Array.isArray(audit.attempts)
+      && audit.attempts.length <= audit.attempt_limit
+      && audit.attempts.every((row, index) => isRecord(row)
+        && row.index === index + 1
+        && ["response_received", "transport_failed", "deadline_exceeded"].includes(row.outcome));
+    if (!valid) return ["语义传输尝试审计：字段缺失或不可识别；不据此推断计费或 EI 结果。"];
+    return [
+      "语义传输尝试数（审计行数；不是 model_calls 最终调用摘要数）：" + audit.attempts.length,
+      "计费边界：失败响应的服务端处理与费用可能未知；重试可能重复收费；token reservation 不是实际账单上限。该审计不表示 EI 接受或 Core 结果。"
+    ];
   }
 
   function renderGrounderStageOutcome(outcome) {
@@ -776,15 +803,18 @@ _DOCUMENT = r'''<!doctype html>
 
   function renderKnownStageOutcome(outcome, stageName) {
     if (!isRecord(outcome)) return [];
-    if (["host-grounder-submission-stage-outcome-v0.1", "host-grounder-submission-stage-outcome-v0.2", "host-grounder-submission-stage-outcome-v0.3"].includes(outcome.schema_version)) {
+    if (["host-grounder-submission-stage-outcome-v0.1", "host-grounder-submission-stage-outcome-v0.2", "host-grounder-submission-stage-outcome-v0.3", "host-grounder-submission-stage-outcome-v0.4"].includes(outcome.schema_version)) {
       return stageName === "grounder"
         ? renderGrounderSubmissionStageOutcome(outcome)
         : ["阶段结果与阶段类型不匹配；其他字段未显示。"];
     }
-    if (["host-grounder-stage-outcome-v0.1", "host-grounder-stage-outcome-v0.2", "host-grounder-stage-outcome-v0.3"].includes(outcome.schema_version)) {
+    if (["host-grounder-stage-outcome-v0.1", "host-grounder-stage-outcome-v0.2", "host-grounder-stage-outcome-v0.3", "host-grounder-stage-outcome-v0.4"].includes(outcome.schema_version)) {
       return stageName === "grounder"
         ? renderGrounderStageOutcome(outcome)
         : ["阶段结果与阶段类型不匹配；其他字段未显示。"];
+    }
+    if (outcome.schema_version === "host-grounder-producer-failure-audit-v0.3") {
+      return ["Grounder failure audit（未形成 EI 接受结论）：", ...renderSemanticTransportAudit(outcome.semantic_transport)];
     }
     if (outcome.schema_version === "host-batch-outcome-v0.1") {
       return ["批量阶段结果：case_count=" + compactCount(outcome.case_count)

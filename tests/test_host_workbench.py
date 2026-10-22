@@ -521,6 +521,45 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   }
   if (innerHtmlWrites !== 0) throw new Error("v0.3 submission outcome reached innerHTML");
 
+  const semanticTransportAudit = {
+    schema_version: "host-semantic-transport-retry-v0.1",
+    request_body_sha256: "a".repeat(64),
+    attempt_limit: 2,
+    decision_deadline_seconds: 4,
+    output_reservation_limit_tokens: 4000,
+    attempts: [
+      { index: 1, outcome: "transport_failed", transport_code: "NETWORK_ERROR" },
+      { index: 2, outcome: "response_received", transport_code: null }
+    ]
+  };
+  const retriedSubmission = await scenario({
+    mode: "event", cases: [], runStatus: "RUNNING",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: {
+      ...positiveOutcome,
+      schema_version: "host-grounder-submission-stage-outcome-v0.4",
+      event_fact_anchor: { subquestion_id: "event_fact_anchor_v0_1", selected_claim_id: null },
+      semantic_transport: semanticTransportAudit
+    } }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await retriedSubmission.clickRun();
+  const retriedSubmissionText = retriedSubmission.elements.get("run-events").textContent;
+  for (const expected of [
+    "host-grounder-submission-stage-outcome-v0.4",
+    "语义传输尝试数（审计行数；不是 model_calls 最终调用摘要数）：2",
+    "重试可能重复收费",
+    "token reservation 不是实际账单上限",
+    "该审计不表示 EI 接受或 Core 结果"
+  ]) {
+    if (!retriedSubmissionText.includes(expected)) {
+      throw new Error("semantic retry audit display omitted a bounded billing/attempt field: " + expected);
+    }
+  }
+  if (innerHtmlWrites !== 0) throw new Error("semantic retry outcome reached innerHTML");
+  if (retriedSubmissionText.includes("EI 确定性评估：ACCEPTED")) {
+    throw new Error("semantic transport receipt was promoted to EI acceptance");
+  }
+
   const accepted = await scenario({
     mode: "event", cases: [], runStatus: "RUNNING",
     events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: {

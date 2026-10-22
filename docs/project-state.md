@@ -1,5 +1,17 @@
 # Project State
 
+## Semantic transport recovery implemented (2026-10-22 Beijing)
+
+The [network-only successor](host-semantic-transport-retry-v0.1.md) is
+implemented and independently reviewed, with the confirmed audit-coherence
+finding fixed and re-reviewed. Full regression: 2,034 passed; compileall,
+JavaScript, compatibility and diff checks passed. Only the normal Event/World
+semantic role can retry once within remaining budgets; no semantic reroll,
+source retry, weaker EI/Core gate or Direct change is authorized. New/old
+archive reading and the workbench support are covered. Commit/push and one
+separately guarded live acceptance operation are next, not yet completed.
+See the [checkpoint](current-checkpoint.md) for exact evidence and limits.
+
 ## Bounded semantic transport recovery frozen (2026-10-22 Beijing)
 
 User approval and read-only preflight permit the

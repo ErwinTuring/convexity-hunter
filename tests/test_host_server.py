@@ -1115,6 +1115,73 @@ class HostServerGrounderProjectionTests(unittest.TestCase):
         legacy_omission.pop("verifier_prompt_version")
         self.assertIsNone(host_server_module._public_outcome(legacy_omission))
 
+    def test_semantic_transport_success_and_failure_audits_have_closed_public_projection(self):
+        from tests.test_host_store import (
+            _semantic_transport_audit,
+            make_grounder_binding_omission_result,
+            make_grounder_no_submission_result,
+        )
+        from convexity_hunter.host_grounder_evidence_catalog import (
+            _BINDING_OMISSION_FAILURE_ROUTE,
+        )
+        from convexity_hunter.host_grounder_runtime import (
+            HostGrounderRuntimeError,
+            _EventFactAnchorOutcome,
+            _stamp_event_fact_anchor_outcome,
+        )
+        from convexity_hunter.host_store import _grounder_stage_outcome
+
+        run_id = "grounder-semantic-transport-public-run"
+        result = make_grounder_no_submission_result(
+            run_id,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.9",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.8",
+            normal_event_route=True,
+        )
+        result = _stamp_event_fact_anchor_outcome(
+            result,
+            _EventFactAnchorOutcome(
+                ("user_event_input", "event_fact_anchor_v0_1"),
+                "fixture-description-binding",
+                None,
+            ),
+        )
+        object.__setattr__(result, "_semantic_transport", _semantic_transport_audit())
+        stage_outcome = _grounder_stage_outcome(
+            result, run_id, "synthetic fixture event"
+        )
+        self.assertEqual(
+            host_server_module._public_outcome(stage_outcome), stage_outcome
+        )
+        self.assertIsNone(
+            host_server_module._public_outcome(
+                dict(stage_outcome, private_payload="must-not-project")
+            )
+        )
+
+        failure_result, _ = make_grounder_binding_omission_result(run_id + "-failure")
+        error = HostGrounderRuntimeError(
+            "SEMANTIC_CALL_FAILED",
+            producer_attempts=failure_result.audit.producer_attempts,
+            semantic_transport=_semantic_transport_audit(),
+        )
+        error._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE
+        failure_outcome = host_server_module._grounder_producer_failure_audit(
+            error, "FAILED"
+        )
+        self.assertEqual(
+            failure_outcome["schema_version"],
+            "host-grounder-producer-failure-audit-v0.3",
+        )
+        self.assertEqual(
+            host_server_module._public_outcome(failure_outcome), failure_outcome
+        )
+        self.assertIsNone(
+            host_server_module._public_outcome(
+                dict(failure_outcome, private_payload="must-not-project")
+            )
+        )
+
     def test_v09_omission_failures_stamp_private_route_for_each_terminal_path(self):
         from convexity_hunter.host_grounder_evidence_catalog import (
             _BINDING_OMISSION_FAILURE_ROUTE,
@@ -1778,9 +1845,9 @@ class HostServerBatchTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         outcome["schema_version"],
-                        "host-grounder-submission-stage-outcome-v0.3"
+                        "host-grounder-submission-stage-outcome-v0.4"
                         if has_submission
-                        else "host-grounder-stage-outcome-v0.3",
+                        else "host-grounder-stage-outcome-v0.4",
                     )
                     expected_anchor = {
                         "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,

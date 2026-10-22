@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging as _logging
+import math
+import time
 from dataclasses import dataclass, field, replace
 from datetime import timezone
 from types import MappingProxyType
@@ -114,6 +116,174 @@ _SEMANTIC_TRANSPORT_FAILURE_CHECKS = frozenset(
     _SEMANTIC_TRANSPORT_FAILURE_CHECK_PREFIX + code.lower()
     for code in _MODEL_TRANSPORT_ERROR_CODES
 )
+_SEMANTIC_TRANSPORT_AUDIT_VERSION = "host-semantic-transport-retry-v0.1"
+_SEMANTIC_TRANSPORT_RETRY_CODES = frozenset(("NETWORK_ERROR", "TIMEOUT"))
+_SEMANTIC_TRANSPORT_AUDIT_FIELDS = frozenset((
+    "schema_version", "request_body_sha256", "attempt_limit",
+    "decision_deadline_seconds", "output_reservation_limit_tokens", "attempts",
+))
+_SEMANTIC_TRANSPORT_ATTEMPT_FIELDS = frozenset((
+    "index", "outcome", "transport_code", "http_status", "timeout_seconds",
+    "elapsed_seconds", "reserved_output_tokens", "request_id", "usage",
+))
+_monotonic = time.monotonic
+
+
+def _finite_number(value: object, *, positive: bool) -> bool:
+    if type(value) not in (int, float):
+        return False
+    if positive and value <= 0 or not positive and value < 0:
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        return False
+
+
+def _validate_semantic_transport_retry_audit(value: object) -> dict:
+    """Validate and detach the private, payload-free semantic transport DTO."""
+
+    if (
+        type(value) is not dict
+        or set(value) != _SEMANTIC_TRANSPORT_AUDIT_FIELDS
+        or value.get("schema_version") != _SEMANTIC_TRANSPORT_AUDIT_VERSION
+        or type(value.get("request_body_sha256")) is not str
+        or len(value["request_body_sha256"]) != 64
+        or any(ch not in "0123456789abcdef" for ch in value["request_body_sha256"])
+        or type(value.get("attempt_limit")) is not int
+        or value["attempt_limit"] not in (1, 2)
+        or not _finite_number(value.get("decision_deadline_seconds"), positive=True)
+        or type(value.get("output_reservation_limit_tokens")) is not int
+        or value["output_reservation_limit_tokens"] <= 0
+        or type(value.get("attempts")) is not list
+        or len(value["attempts"]) > value["attempt_limit"]
+    ):
+        raise ValueError("semantic transport audit has an invalid closed shape")
+
+    rows = []
+    reserved_per_attempt = None
+    elapsed_before_attempt = 0.0
+    per_attempt_timeout_limit = (
+        value["decision_deadline_seconds"] / value["attempt_limit"]
+    )
+    for index, row in enumerate(value["attempts"], 1):
+        if (
+            type(row) is not dict
+            or set(row) != _SEMANTIC_TRANSPORT_ATTEMPT_FIELDS
+            or type(row.get("index")) is not int
+            or row["index"] != index
+            or row.get("outcome") not in (
+                "response_received", "transport_failed", "deadline_exceeded"
+            )
+            or (
+                row.get("transport_code") is not None
+                and (
+                    type(row["transport_code"]) is not str
+                    or row["transport_code"] not in _MODEL_TRANSPORT_ERROR_CODES
+                )
+            )
+            or (
+                row.get("http_status") is not None
+                and (
+                    type(row["http_status"]) is not int
+                    or not 100 <= row["http_status"] <= 599
+                )
+            )
+            or not _finite_number(row.get("timeout_seconds"), positive=True)
+            or not _finite_number(row.get("elapsed_seconds"), positive=False)
+            or type(row.get("reserved_output_tokens")) is not int
+            or row["reserved_output_tokens"] <= 0
+            or (
+                row.get("request_id") is not None
+                and (
+                    type(row["request_id"]) is not str
+                    or not row["request_id"]
+                    or len(row["request_id"].encode("utf-8", "strict")) > 4096
+                )
+            )
+        ):
+            raise ValueError("semantic transport attempt has an invalid closed shape")
+        if reserved_per_attempt is None:
+            reserved_per_attempt = row["reserved_output_tokens"]
+        if row["reserved_output_tokens"] != reserved_per_attempt:
+            raise ValueError("semantic transport reservation changed between attempts")
+        remaining_from_audit = (
+            value["decision_deadline_seconds"] - elapsed_before_attempt
+        )
+        if (
+            row["timeout_seconds"] > per_attempt_timeout_limit
+            or row["timeout_seconds"] > remaining_from_audit
+            or remaining_from_audit <= 0
+        ):
+            raise ValueError("semantic transport timeout exceeds remaining decision time")
+        usage = row["usage"]
+        if usage is not None and (
+            type(usage) is not dict
+            or set(usage) != {"prompt_tokens", "completion_tokens", "total_tokens"}
+            or any(
+                item is not None and (type(item) is not int or item < 0)
+                for item in usage.values()
+            )
+        ):
+            raise ValueError("semantic transport usage is malformed")
+        if row["outcome"] == "response_received":
+            if row["transport_code"] is not None or row["http_status"] is not None:
+                raise ValueError("received semantic response cannot carry a transport error")
+            if elapsed_before_attempt + row["elapsed_seconds"] > value[
+                "decision_deadline_seconds"
+            ]:
+                raise ValueError("late semantic response cannot be admitted")
+        elif row["outcome"] == "transport_failed":
+            if row["request_id"] is not None or usage is not None:
+                raise ValueError("failed semantic transport cannot invent receipt metadata")
+        elif row["outcome"] == "deadline_exceeded":
+            if index != len(value["attempts"]):
+                raise ValueError("deadline-exceeded semantic attempt must be terminal")
+            if math.nextafter(
+                float(row["elapsed_seconds"]), math.inf
+            ) < float(row["timeout_seconds"]):
+                raise ValueError(
+                    "deadline-exceeded elapsed time is inconsistent with transport timeout"
+                )
+        rows.append({
+            "index": row["index"],
+            "outcome": row["outcome"],
+            "transport_code": row["transport_code"],
+            "http_status": row["http_status"],
+            "timeout_seconds": float(row["timeout_seconds"]),
+            "elapsed_seconds": float(row["elapsed_seconds"]),
+            "reserved_output_tokens": row["reserved_output_tokens"],
+            "request_id": row["request_id"],
+            "usage": None if usage is None else dict(usage),
+        })
+        elapsed_before_attempt += row["elapsed_seconds"]
+
+    if reserved_per_attempt is not None and (
+        value["output_reservation_limit_tokens"]
+        != value["attempt_limit"] * reserved_per_attempt
+    ):
+        raise ValueError("semantic transport reservation limit is inconsistent")
+    if len(rows) == 2 and not (
+        rows[0]["outcome"] == "transport_failed"
+        and rows[0]["transport_code"] in _SEMANTIC_TRANSPORT_RETRY_CODES
+        and rows[0]["http_status"] is None
+    ):
+        raise ValueError("semantic transport retry sequence is not eligible")
+    if any(
+        row["timeout_seconds"] > value["decision_deadline_seconds"]
+        for row in rows
+    ):
+        raise ValueError("semantic transport timeout exceeds its decision deadline")
+    return {
+        "schema_version": _SEMANTIC_TRANSPORT_AUDIT_VERSION,
+        "request_body_sha256": value["request_body_sha256"],
+        "attempt_limit": value["attempt_limit"],
+        "decision_deadline_seconds": float(value["decision_deadline_seconds"]),
+        "output_reservation_limit_tokens": value["output_reservation_limit_tokens"],
+        "attempts": rows,
+    }
+
+
 _logger = _logging.getLogger(__name__)
 _CATALOG_FAILURE_CHECKS = MappingProxyType({
     "source registry exceeds max_array_items": "SOURCE_COUNT_LIMIT",
@@ -674,6 +844,7 @@ class HostGrounderRuntimeError(RuntimeError):
         self, code: str, *, failure_stage: Optional[str] = None,
         failure_check: Optional[str] = None,
         producer_attempts: Optional[tuple] = None,
+        semantic_transport: Optional[dict] = None,
     ) -> None:
         producer_failure_checks = (
             "producer_wire_normalization",
@@ -757,6 +928,11 @@ class HostGrounderRuntimeError(RuntimeError):
         self.failure_stage = failure_stage
         self.failure_check = failure_check
         self.producer_attempts = attempts
+        self.semantic_transport = (
+            None
+            if semantic_transport is None
+            else _validate_semantic_transport_retry_audit(semantic_transport)
+        )
         super().__init__(code)
 
     def with_producer_attempts(
@@ -767,6 +943,18 @@ class HostGrounderRuntimeError(RuntimeError):
             failure_stage=self.failure_stage,
             failure_check=self.failure_check,
             producer_attempts=attempts,
+            semantic_transport=self.semantic_transport,
+        )
+
+    def with_semantic_transport(
+        self, audit: dict
+    ) -> "HostGrounderRuntimeError":
+        return HostGrounderRuntimeError(
+            self.code,
+            failure_stage=self.failure_stage,
+            failure_check=self.failure_check,
+            producer_attempts=self.producer_attempts,
+            semantic_transport=audit,
         )
 
     def __repr__(self) -> str:
@@ -822,6 +1010,9 @@ class HostGrounderEvidenceCatalogRuntimeResult:
     _event_fact_anchor_outcome: Optional["_EventFactAnchorOutcome"] = field(
         default=None, init=False, repr=False, compare=False
     )
+    _semantic_transport: Optional[dict] = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __repr__(self) -> str:
         return "HostGrounderEvidenceCatalogRuntimeResult(has_submission={!r}, sidecar_sha256={!r})".format(
@@ -867,6 +1058,7 @@ def _stamp_event_fact_anchor_outcome(
         result.audit,
     )
     object.__setattr__(stamped, "_event_fact_anchor_outcome", outcome)
+    object.__setattr__(stamped, "_semantic_transport", result._semantic_transport)
     return stamped
 
 
@@ -987,6 +1179,12 @@ def _call_once(
             failure_stage=failure_stage,
             failure_check=failure_check,
         ) from None
+    return _validate_model_receipt(receipt, config, role)
+
+
+def _validate_model_receipt(
+    receipt: object, config: ModelRuntimeConfig, role: str
+) -> ModelTransportReceipt:
     if type(receipt) is not ModelTransportReceipt or type(receipt.content) is not str:
         raise HostGrounderRuntimeError(role + "_RESPONSE_INVALID")
     try:
@@ -996,6 +1194,242 @@ def _call_once(
     if output_size > config.max_output_bytes:
         raise HostGrounderRuntimeError(role + "_RESPONSE_TOO_LARGE")
     return receipt
+
+
+def _semantic_transport_failure(
+    error: Exception,
+    audit: Optional[dict],
+    producer_attempts: tuple,
+) -> HostGrounderRuntimeError:
+    failure_stage = None
+    failure_check = None
+    code = "SEMANTIC_CALL_FAILED"
+    status = None
+    if type(error) is ModelTransportError:
+        raw_code = getattr(error, "code", None)
+        raw_status = getattr(error, "status", None)
+        code = (
+            raw_code
+            if type(raw_code) is str and raw_code in _MODEL_TRANSPORT_ERROR_CODES
+            else None
+        )
+        status = raw_status if type(raw_status) is int and 100 <= raw_status <= 599 else None
+        if code is not None:
+            failure_stage = _SEMANTIC_TRANSPORT_FAILURE_STAGE
+            failure_check = _SEMANTIC_TRANSPORT_FAILURE_CHECK_PREFIX + code.lower()
+    try:
+        _logger.warning(
+            "grounder_model_call_failed role=semantic code=%s status=%s",
+            code or "UNKNOWN", status if status is not None else "UNKNOWN",
+        )
+    except Exception:
+        pass
+    return HostGrounderRuntimeError(
+        "SEMANTIC_CALL_FAILED",
+        failure_stage=failure_stage,
+        failure_check=failure_check,
+        producer_attempts=producer_attempts,
+        semantic_transport=audit,
+    )
+
+
+def _call_semantic_with_transport_retry(
+    client: ChatCompletionsClient,
+    config: ModelRuntimeConfig,
+    system_prompt: str,
+    source_prompt: str,
+    *,
+    producer_attempts: tuple,
+) -> tuple[ModelTransportReceipt, dict]:
+    """Freeze and send the normal-route semantic request at most twice."""
+
+    try:
+        started = _monotonic()
+    except Exception:
+        raise HostGrounderRuntimeError(
+            "SEMANTIC_CALL_FAILED", producer_attempts=producer_attempts
+        ) from None
+    remaining_budget = client.remaining_request_budget
+    if type(remaining_budget) is not int or remaining_budget < 1:
+        raise HostGrounderRuntimeError("MODEL_CLIENT_CONFIGURATION_INVALID")
+    attempt_limit = min(2, remaining_budget)
+    timeout_limit = config.timeout_seconds
+    reservation_per_attempt = config.max_tokens
+    decision_deadline_seconds = attempt_limit * timeout_limit
+    try:
+        decision_deadline = started + decision_deadline_seconds
+        initial_remaining = decision_deadline - started
+        timing_values_valid = (
+            type(started) in (int, float)
+            and math.isfinite(started)
+            and type(decision_deadline_seconds) in (int, float)
+            and math.isfinite(decision_deadline_seconds)
+            and decision_deadline_seconds > 0
+            and type(decision_deadline) in (int, float)
+            and math.isfinite(decision_deadline)
+            and type(initial_remaining) in (int, float)
+            and math.isfinite(initial_remaining)
+            and initial_remaining > 0
+        )
+    except (OverflowError, TypeError, ValueError):
+        timing_values_valid = False
+        decision_deadline = None
+    if not timing_values_valid:
+        raise HostGrounderRuntimeError(
+            "SEMANTIC_CALL_FAILED", producer_attempts=producer_attempts
+        ) from None
+    try:
+        body = client._request_body(system_prompt, source_prompt)
+    except Exception as error:
+        # There is no valid frozen body to hash, so this remains a preflight
+        # failure and intentionally has no invented transport-attempt row.
+        raise _semantic_transport_failure(
+            error, None,
+            producer_attempts,
+        ) from None
+    request_body_sha256 = hashlib.sha256(body).hexdigest()
+    audit = {
+        "schema_version": _SEMANTIC_TRANSPORT_AUDIT_VERSION,
+        "request_body_sha256": request_body_sha256,
+        "attempt_limit": attempt_limit,
+        "decision_deadline_seconds": decision_deadline_seconds,
+        "output_reservation_limit_tokens": attempt_limit * reservation_per_attempt,
+        "attempts": [],
+    }
+    if len(body) > config.max_input_bytes:
+        raise HostGrounderRuntimeError(
+            "MODEL_REQUEST_TOO_LARGE",
+            producer_attempts=producer_attempts,
+            semantic_transport=audit,
+        ) from None
+
+    last_error: Optional[Exception] = None
+    for index in range(1, attempt_limit + 1):
+        try:
+            now = _monotonic()
+        except Exception:
+            last_error = RuntimeError("clock unavailable")
+            break
+        elapsed_before = now - started
+        remaining_time = decision_deadline_seconds - elapsed_before
+        if (
+            not math.isfinite(elapsed_before)
+            or remaining_time <= 0
+            or len(audit["attempts"]) >= attempt_limit
+            or client.remaining_request_budget <= 0
+            or attempt_limit - len(audit["attempts"]) <= 0
+        ):
+            last_error = TimeoutError("semantic decision budget exhausted")
+            break
+        if hashlib.sha256(body).hexdigest() != request_body_sha256:
+            last_error = RuntimeError("frozen request body changed")
+            break
+        timeout_seconds = min(timeout_limit, remaining_time)
+        attempt_started = now
+        receipt = None
+        transport_error = None
+        try:
+            receipt = client._complete_prepared(
+                body, timeout_seconds=timeout_seconds
+            )
+        except Exception as error:
+            transport_error = error
+        try:
+            ended = _monotonic()
+        except Exception:
+            ended = attempt_started
+            transport_error = RuntimeError("clock unavailable")
+        elapsed_seconds = max(0.0, ended - attempt_started)
+        elapsed_total = ended - started
+        if not math.isfinite(elapsed_seconds) or not math.isfinite(elapsed_total):
+            last_error = RuntimeError("clock unavailable")
+            break
+
+        late = ended > decision_deadline
+        if transport_error is None and type(receipt) is ModelTransportReceipt:
+            usage = {
+                "prompt_tokens": receipt.prompt_tokens,
+                "completion_tokens": receipt.completion_tokens,
+                "total_tokens": receipt.total_tokens,
+            }
+            row = {
+                "index": index,
+                "outcome": "deadline_exceeded" if late else "response_received",
+                "transport_code": None,
+                "http_status": None,
+                "timeout_seconds": timeout_seconds,
+                "elapsed_seconds": elapsed_seconds,
+                "reserved_output_tokens": reservation_per_attempt,
+                "request_id": receipt.request_id,
+                "usage": usage,
+            }
+            audit["attempts"].append(row)
+            if late:
+                raise HostGrounderRuntimeError(
+                    "SEMANTIC_CALL_FAILED",
+                    producer_attempts=producer_attempts,
+                    semantic_transport=audit,
+                ) from None
+            try:
+                return _validate_model_receipt(receipt, config, "SEMANTIC"), audit
+            except HostGrounderRuntimeError as error:
+                raise error.with_producer_attempts(producer_attempts).with_semantic_transport(
+                    audit
+                ) from None
+
+        if transport_error is None:
+            transport_error = RuntimeError("semantic transport returned no receipt")
+        raw_code = (
+            getattr(transport_error, "code", None)
+            if type(transport_error) is ModelTransportError else None
+        )
+        code = (
+            raw_code
+            if type(raw_code) is str and raw_code in _MODEL_TRANSPORT_ERROR_CODES
+            else None
+        )
+        raw_status = (
+            getattr(transport_error, "status", None)
+            if type(transport_error) is ModelTransportError else None
+        )
+        status = (
+            raw_status
+            if type(raw_status) is int and 100 <= raw_status <= 599
+            else None
+        )
+        row_outcome = "deadline_exceeded" if late else "transport_failed"
+        audit["attempts"].append({
+            "index": index,
+            "outcome": row_outcome,
+            "transport_code": code,
+            "http_status": status,
+            "timeout_seconds": timeout_seconds,
+            "elapsed_seconds": elapsed_seconds,
+            "reserved_output_tokens": reservation_per_attempt,
+            "request_id": None,
+            "usage": None,
+        })
+        eligible = (
+            not late
+            and type(transport_error) is ModelTransportError
+            and code in _SEMANTIC_TRANSPORT_RETRY_CODES
+            and raw_status is None
+        )
+        if (
+            eligible
+            and index < attempt_limit
+            and client.remaining_request_budget > 0
+            and ended < decision_deadline
+        ):
+            continue
+        last_error = transport_error
+        break
+
+    if last_error is None:
+        last_error = TimeoutError("semantic decision budget exhausted")
+    raise _semantic_transport_failure(
+        last_error, audit, producer_attempts
+    ) from None
 
 
 def _call_summary(receipt: ModelTransportReceipt, role: str) -> HostGrounderCallSummary:
@@ -1756,6 +2190,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     ] = None,
     producer_diagnostics_v0_3: bool = False,
     producer_format_repair_enabled: bool = False,
+    semantic_transport_retry_enabled: bool = False,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Run the explicit paragraph-catalog v0.3 wire path exactly once per role."""
     max_json_bytes = _positive_int(max_json_bytes, "JSON_LIMIT_INVALID")
@@ -1779,6 +2214,14 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     if type(producer_format_repair_enabled) is not bool:
         raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_FLAG_INVALID")
+    if type(semantic_transport_retry_enabled) is not bool:
+        raise HostGrounderRuntimeError("SEMANTIC_TRANSPORT_RETRY_FLAG_INVALID")
+    if semantic_transport_retry_enabled and not (
+        producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
+        and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8
+        and producer_format_repair_enabled
+    ):
+        raise HostGrounderRuntimeError("SEMANTIC_TRANSPORT_RETRY_ROUTE_INVALID")
     if producer_format_repair_enabled and producer_prompt_version not in (
         _PRODUCER_PROMPT_VERSION_V0_7,
         _PRODUCER_PROMPT_VERSION_V0_8,
@@ -1849,6 +2292,7 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise HostGrounderRuntimeError("AUDIT_HOLDER_INVALID") from None
 
     producer_attempts = []
+    semantic_transport_audit = None
     _producer_failure_check = (
         _PRODUCER_V0_3_FAILURE_CHECKS[0]
         if producer_diagnostics_v0_3 else "producer_wire_normalization"
@@ -1879,7 +2323,9 @@ def _run_host_grounder_same_run_evidence_catalog(
 
     def with_producer_attempts(error: HostGrounderRuntimeError) -> HostGrounderRuntimeError:
         if producer_format_repair_enabled and not error.producer_attempts:
-            return error.with_producer_attempts(tuple(producer_attempts))
+            error = error.with_producer_attempts(tuple(producer_attempts))
+        if semantic_transport_audit is not None and error.semantic_transport is None:
+            error = error.with_semantic_transport(semantic_transport_audit)
         return error
 
     def retain_attempt(attempt: HostEvidenceCatalogProducerAttempt) -> None:
@@ -2214,13 +2660,22 @@ def _run_host_grounder_same_run_evidence_catalog(
         verifier_input["producer_binding_evidence_map"] = producer_binding_evidence_map
     verifier_prompt = _canonical_json(verifier_input, "SEMANTIC_PROMPT_INVALID")
     try:
-        semantic_call = _call_once(
-            semantic_client,
-            semantic_config,
-            semantic_system_prompt,
-            verifier_prompt,
-            role="SEMANTIC",
-        )
+        if semantic_transport_retry_enabled:
+            semantic_call, semantic_transport_audit = _call_semantic_with_transport_retry(
+                semantic_client,
+                semantic_config,
+                semantic_system_prompt,
+                verifier_prompt,
+                producer_attempts=tuple(producer_attempts),
+            )
+        else:
+            semantic_call = _call_once(
+                semantic_client,
+                semantic_config,
+                semantic_system_prompt,
+                verifier_prompt,
+                role="SEMANTIC",
+            )
     except HostGrounderRuntimeError as error:
         raise with_producer_attempts(error) from None
 
@@ -2383,7 +2838,9 @@ def _run_host_grounder_same_run_evidence_catalog(
             )
             build_receipt = readonly_receipt
         except Exception:
-            raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED") from None
+            raise with_producer_attempts(
+                HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED")
+            ) from None
 
     try:
         result = _build_host_grounder_v0_2(
@@ -2399,12 +2856,15 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise with_producer_attempts(
             HostGrounderRuntimeError("BUILDER_REJECTED")
         ) from None
-    return HostGrounderEvidenceCatalogRuntimeResult(
+    runtime_result = HostGrounderEvidenceCatalogRuntimeResult(
         result,
         _call_summary(discovery_call, "discovery"),
         _call_summary(semantic_call, "semantic"),
         audit,
     )
+    if semantic_transport_audit is not None:
+        object.__setattr__(runtime_result, "_semantic_transport", semantic_transport_audit)
+    return runtime_result
 
 
 def run_host_grounder_same_run_evidence_catalog_v0_1(
@@ -2691,6 +3151,7 @@ def _run_host_grounder_same_run_evidence_catalog_v0_9(
             HostBuildContext,
         ]
     ] = None,
+    semantic_transport_retry_enabled: bool = False,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Private normal-Event successor selecting producer prompt v0.9."""
     if not callable(host_context_preparer):
@@ -2712,6 +3173,7 @@ def _run_host_grounder_same_run_evidence_catalog_v0_9(
             context_preparer=host_context_preparer,
             producer_diagnostics_v0_3=True,
             producer_format_repair_enabled=True,
+            semantic_transport_retry_enabled=semantic_transport_retry_enabled,
         )
     except HostGrounderRuntimeError as error:
         attempts = getattr(error, "producer_attempts", None)
