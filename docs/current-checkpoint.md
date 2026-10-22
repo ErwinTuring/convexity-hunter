@@ -2,6 +2,46 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## AXSM normal Event completed; hypothesis not admitted (2026-10-22 UTC)
+
+The FDA lexical fix is committed as `b75971d` and deployed through the original
+launcher. Owned Host PID 57213/session 16910 serves port 8080 with UTC evaluation
+date 2026-10-22. Pre/post-deployment journal, profile v0.4 and all three cached
+Direct report hashes matched; the 23 prior records were preserved.
+
+One preregistered normal AXSM Event created run
+`e790098c-84f9-4db6-bcb3-197483df0613`, HTTP 201, terminal `BLOCKED` /
+`GROUNDING_NO_SUBMISSION`. Grounder and Builder completed and the semantic
+receipt validated. Its fixed event-fact anchor is supported by both producer
+and verifier, selecting `c1`; the overall research question remains unresolved.
+Counts are 5 source bodies, 10 claims, 24 bindings and 1 hypothesis, not counts
+of fully verified statements. Diagnostics are
+`HYPOTHESIS_REJECTED_BY_VALIDATOR: 1` and `NO_PROJECTABLE_HYPOTHESIS: 1`.
+Submission is MISSING, EI NOT_RUN, and no Core archive/cases were produced.
+This does not demonstrate the fixed date preparation reaching EI, a missing
+economic mechanism, or a defective verifier. The original rejection rationale
+is not retained in the checked SQLite stage record; its exact cause is UNKNOWN.
+
+The receipt records one successful semantic attempt (no retry), 10.226 seconds,
+28,102 prompt / 3,718 completion / 31,820 total tokens. These are semantic-call
+values only. Two final-role model records are not total request counts; source
+Search/Extract counts, credits and whole-run usage remain UNKNOWN. No semantic
+reroll or AXSM replay occurred. Original source text was not rewritten or
+manually submitted to EI. Private manifest, consumed guard and run audit:
+`/private/tmp/ch-axsm-event-20261022-prep/`.
+
+The live journal now contains 24 records, zero active. Real Event/World
+EI-ACCEPTED-to-Futu/Core engineering acceptance remains outstanding; Direct
+engineering and cached DATA_INSUFFICIENT_CORE reports remain separate verified
+capabilities. Continue from fresh Git grounding; do not replay consumed guards
+or reconstruct missing original model output.
+
+One bounded read-only follow-up of World run `95f63c6c` found no retained
+stage cache, phase ID or original failure payload. Its native stage directory
+was temporary; the generic model-failure code cannot distinguish transport,
+budget, schema or interoperability causes. NO_PROVEN_DEFECT; no replay,
+diagnostic framework or speculative World patch was added.
+
 ## FDA occurrence-date lexical fix validated (2026-10-22)
 
 Continued source preparation found an AXSM [SEC announcement](https://www.sec.gov/Archives/edgar/data/1579428/000119312526304039/axsm-20260715.htm)

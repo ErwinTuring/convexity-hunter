@@ -1,5 +1,18 @@
 # Project State
 
+## FDA fix deployed; normal AXSM Event stopped before EI (2026-10-22 UTC)
+
+Production fix `b75971d` passed independent review and 2,036 full-regression
+tests and is deployed through the original launcher. History, profile v0.4
+and cached Direct reports were preserved. The single normal AXSM Event
+`e790098c-84f9-4db6-bcb3-197483df0613` completed Grounder/Builder and obtained
+a supported fact anchor, but its sole hypothesis was not admitted. Submission
+is MISSING, EI NOT_RUN and no Core archive exists. Original verifier rationale
+was not retained; do not infer a specific semantic/binding/dependency cause or
+an absent economic mechanism. No replay or weaker gate followed.
+The live journal has 24 records and zero active; positive real Event/World
+EI-to-Futu/Core acceptance is still unproven. See the [checkpoint](current-checkpoint.md).
+
 ## FDA date preparation bug fix validated (2026-10-22)
 
 A real AXSM SEC sentence exposed a lexical defect in v0.4: periods and the
