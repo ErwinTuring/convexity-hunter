@@ -4,24 +4,35 @@ Repository: `ErwinTuring/convexity-hunter`
 
 ## Resumption checkpoint — 2026-10-22 UTC / 2026-10-23 Beijing
 
-- Grounding: HEAD `67279f0` was clean. The existing v0.9 actual-runtime fixture
-  and two negative controls passed 3/3. This is offline evidence with fixed
-  model responses and prepared context, not proof the live outer route succeeds.
-  No proven defect; this check made no production change.
-- Host snapshot: port 8080 `READY`, 24 runs, 0 active; UTC date 2026-10-22,
-  profile v0.4.
-- AQST source screen: 2 queries, 4 official-source opens, 1 exhibit read. The
-  event and future milestone were observed, but filing cover, full security
-  identity and options remain unverified; eligibility is partial only. No
-  normal Event POST, Tavily/DeepSeek call, or Futu business call; prior AXSM
-  and World runs were not replayed.
-- Stop paid validation pending user recovery of OpenD: port 11111 has no
-  listener/process. Existing `/Users/erwinlee/Applications/Futu_OpenD.app`
-  metadata is readable; v10.10.7008 arm64 `codesign verify` exited 1 with
-  `code or signature have been modified`. This is not merely unsigned; infer
-  neither attack nor file corruption. OpenD was not started and Gatekeeper was
-  not bypassed. Resume only after the user restores a valid trusted official
-  installation and signs in.
+This round began at fresh HEAD `38627ec`; production/tests were not changed. The prior-round
+offline v0.9 fixture and two negative controls passed 3/3; they were not rerun this round.
+
+AQST `d4c21de4-c9c8-4590-837c-0932acc5726f`: HTTP 201, `BLOCKED` /
+`GROUNDING_NO_SUBMISSION`; Grounder/Builder completed, receipt validated, anchor `c1` supported
+by producer/verifier. Counts: 5 bodies, 7 claims, 30 bindings, 1 hypothesis (not all verified);
+validator rejected it, submission MISSING, EI NOT_RUN. Host run archive is readable; no Core
+batch/case archive. Earlier screen: 2 queries, 4 official opens, 1 exhibit; this run added 2
+official reads (SEC failed, Nasdaq common-stock succeeded). Filing cover and full canonical
+identity/currency/options unverified; eligibility partial. Producer records: first
+`producer_v0_3_required_binding_omission_v0_9`, second accepted after format repair (not reroll).
+One semantic call: 13.520s, prompt 24,390 / completion 3,592 / total 27,982; source
+requests/credits and whole-run cost UNKNOWN. AQST guard `/private/tmp/ch-aqst-event-20261022/`
+spent, not replayed. Mixed old Godel output cannot attribute a more specific cause.
+
+World `d25dc3f0-a336-42a0-95b8-17a855ac20c6`: HTTP 201 / `BLOCKED`; run GET 200, root 200,
+CSRF passed. Executor only: cases 0, unavailable 0, reasons `world_last30days_failed` /
+`world_last30days_model_failed` / `world_grounder_failed`. Grounder detail, EI accepted count/cause,
+actual source/model calls and usage UNKNOWN (not zero; not evidence of no market event). Caps:
+7-day Reddit/X/HN/Digg; 3 global stages; per-model-role request cap 2 run-wide, shared by
+native/Grounder; Tavily 2 requests / 3 credits, PAYGO off. Config max hypotheses 10, request 8;
+other bounds 1 submission, 400 rows, 200 cases, 10 seconds, existing quote limit. World guard
+`/private/tmp/ch-world-20261022-final-once-93631e5e8fc9/` spent, not replayed. Journal 25→26:
+only new World run, 0 active. After clearing old outputs, one Godel read found no semantic counts
+or technical error; no rejection cause attributable. Host 8080 READY, PID 57213, UTC 2026-10-22,
+profile v0.4, 26 runs, 0 active. User-restored OpenD: TCP 11111 and one `get_global_state` ret=0
+confirm startup/handshake, not market-data closure; no trade or forbidden config read. No replay,
+further case, diagnostic framework or speculative patch; Direct unchanged. Positive Event/World
+EI→Core remains unproven.
 
 ## AXSM normal Event completed; hypothesis not admitted (2026-10-22 UTC)
 

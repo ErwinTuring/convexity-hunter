@@ -2,20 +2,15 @@
 
 ## Resumption checkpoint — 2026-10-22 UTC / 2026-10-23 Beijing
 
-- HEAD `67279f0` was clean at grounding. Existing v0.9 actual-runtime fixture
-  plus two negative controls passed 3/3 using fixed model responses and a
-  prepared context; this offline result does not prove live outer-route success.
-  No proven defect or production change.
-- Host snapshot: 8080 `READY`, 24 runs, 0 active; UTC date 2026-10-22,
-  profile v0.4. AQST screening was partial only (2 queries, 4 official opens,
-  1 exhibit; cover/full security identity/options unverified). No normal Event
-  POST, Tavily/DeepSeek/Futu business calls, or AXSM/World replay.
-- Paid validation is stopped for user recovery of OpenD. Port 11111 has no
-  listener/process. Existing `/Users/erwinlee/Applications/Futu_OpenD.app`
-  metadata is readable; v10.10.7008 arm64 `codesign verify` exited 1:
-  `code or signature have been modified`. Not merely unsigned; no inference of
-  attack or file corruption. It was not started and Gatekeeper was not bypassed.
-  Resume after the user restores a valid trusted official installation and logs in.
+Fresh HEAD `38627ec`; production and tests unchanged. AQST run
+`d4c21de4-c9c8-4590-837c-0932acc5726f` was HTTP 201 / blocked before EI;
+World run `d25dc3f0-a336-42a0-95b8-17a855ac20c6` was HTTP 201 / `BLOCKED`.
+World executor reasons are recorded, but EI acceptance and actual source/model
+calls/usage remain UNKNOWN. Host 8080 is READY with 26 runs / 0 active. OpenD
+startup/handshake and one state response do not prove market-data closure.
+Direct is unchanged; positive Event/World EI→Core acceptance remains unproven.
+See the [current checkpoint](current-checkpoint.md) for exact stages, caps,
+archive/guard facts and unknowns.
 
 ## FDA fix deployed; normal AXSM Event stopped before EI (2026-10-22 UTC)
 
