@@ -2,6 +2,18 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Semantic network-retry policy approved and frozen (2026-10-22 Beijing)
+
+The user approved a single network/timeout retry, potentially duplicated API
+billing, finite cumulative limits and attempt-level audit. Main accepted the
+read-only preflight and froze the
+[bounded successor](host-semantic-transport-retry-v0.1.md). Production is still
+unchanged at this contract checkpoint. BUILD is next: normal Event/World
+semantic role only, existing remaining request budget, identical request,
+conservative output reservation and monotonic decision deadline. Generic
+no-retry client, Direct, old/custom routes, prompts and EI/Core standards stay
+unchanged. No old guard is reopened; no live result is implied by the freeze.
+
 ## SentinelOne Event recovery and read-only model endpoint check (2026-10-22 UTC)
 
 This is a separate exploratory-lead selection and two-run Event sequence, not a

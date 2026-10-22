@@ -1,5 +1,14 @@
 # Project State
 
+## Bounded semantic transport recovery frozen (2026-10-22 Beijing)
+
+User approval and read-only preflight permit the
+[network-only retry successor](host-semantic-transport-retry-v0.1.md).
+Contract frozen; production implementation absent. BUILD must preserve
+request budgets, identical input, explicit reservation/deadline limits and
+per-attempt audit; no semantic reroll or weaker EI/Core rule is authorized.
+See the [checkpoint](current-checkpoint.md) for the still-blocked real cases.
+
 ## SentinelOne Event source recovery remained blocked (2026-10-22 UTC)
 
 Two independently guarded normal Event runs used the frozen SentinelOne 8-K
