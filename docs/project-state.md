@@ -1,5 +1,22 @@
 # Project State
 
+## Resumption checkpoint — 2026-10-22 UTC / 2026-10-23 Beijing
+
+- HEAD `67279f0` was clean at grounding. Existing v0.9 actual-runtime fixture
+  plus two negative controls passed 3/3 using fixed model responses and a
+  prepared context; this offline result does not prove live outer-route success.
+  No proven defect or production change.
+- Host snapshot: 8080 `READY`, 24 runs, 0 active; UTC date 2026-10-22,
+  profile v0.4. AQST screening was partial only (2 queries, 4 official opens,
+  1 exhibit; cover/full security identity/options unverified). No normal Event
+  POST, Tavily/DeepSeek/Futu business calls, or AXSM/World replay.
+- Paid validation is stopped for user recovery of OpenD. Port 11111 has no
+  listener/process. Existing `/Users/erwinlee/Applications/Futu_OpenD.app`
+  metadata is readable; v10.10.7008 arm64 `codesign verify` exited 1:
+  `code or signature have been modified`. Not merely unsigned; no inference of
+  attack or file corruption. It was not started and Gatekeeper was not bypassed.
+  Resume after the user restores a valid trusted official installation and logs in.
+
 ## FDA fix deployed; normal AXSM Event stopped before EI (2026-10-22 UTC)
 
 Production fix `b75971d` passed independent review and 2,036 full-regression

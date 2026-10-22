@@ -2,6 +2,27 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Resumption checkpoint — 2026-10-22 UTC / 2026-10-23 Beijing
+
+- Grounding: HEAD `67279f0` was clean. The existing v0.9 actual-runtime fixture
+  and two negative controls passed 3/3. This is offline evidence with fixed
+  model responses and prepared context, not proof the live outer route succeeds.
+  No proven defect; this check made no production change.
+- Host snapshot: port 8080 `READY`, 24 runs, 0 active; UTC date 2026-10-22,
+  profile v0.4.
+- AQST source screen: 2 queries, 4 official-source opens, 1 exhibit read. The
+  event and future milestone were observed, but filing cover, full security
+  identity and options remain unverified; eligibility is partial only. No
+  normal Event POST, Tavily/DeepSeek call, or Futu business call; prior AXSM
+  and World runs were not replayed.
+- Stop paid validation pending user recovery of OpenD: port 11111 has no
+  listener/process. Existing `/Users/erwinlee/Applications/Futu_OpenD.app`
+  metadata is readable; v10.10.7008 arm64 `codesign verify` exited 1 with
+  `code or signature have been modified`. This is not merely unsigned; infer
+  neither attack nor file corruption. OpenD was not started and Gatekeeper was
+  not bypassed. Resume only after the user restores a valid trusted official
+  installation and signs in.
+
 ## AXSM normal Event completed; hypothesis not admitted (2026-10-22 UTC)
 
 The FDA lexical fix is committed as `b75971d` and deployed through the original
