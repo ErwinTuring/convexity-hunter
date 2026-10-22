@@ -2,6 +2,16 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## TW normal Event stopped (2026-10-22)
+
+The [SEC 8-K](https://www.sec.gov/Archives/edgar/data/1758730/000119312526425378/d140509d8k.htm) (filed/reported earliest 2026-10-19) and Nasdaq issuer page identify TW / Nasdaq; the filing describes a signed, contingent, not-yet-closed Trumid acquisition. Prospecting used four queries against an internal two-query cap; two official reads were within the three-read cap. This was not a controlled search or World comparison; no more sourcing followed.
+
+The old S1 helper required three leads and was not reused; the product Host API accepts plain input without a three-lead requirement. Two local Host POSTs occurred: duplicate-Host HTTP 421 before creation, then HTTP 201 under the corrected, fresh guard. Offline capture after the external runner fix confirmed exactly one Host; the old guard/log were preserved. At the pre-correction check the journal had 21 historical runs, zero active, and no run created by the 421. Exactly one research run was created: `4f0355fb-5c57-4351-b9b4-9e3011c67ca0`, terminal `BLOCKED`, with a batch archive.
+
+The nonempty submission has 2 sources, 4 statements, and 1 hypothesis. Grounder completed; outcome has 5 source bodies, 8 claims, 1 hypothesis, 20 field bindings, and 2 coverage records. Both `user_event_input` and `event_fact_anchor_v0_1` have unresolved model/validator status and `gap_present=true`; `UNDERLYING_UNRESOLVED` count is 1. Semantic receipt is `RECEIPT_VALIDATED`, but no rejection code or exact binding cause was retained. EI was assessed with an incomplete assessment (not a missing placeholder), not accepted. Issues are `missing_event_description`, `incomplete_event_date_range`, `missing_underlying_key`, and `missing_temporal_applicability`. Batch is `BLOCKED`: 0 evaluated Core cases, 1 unavailable assessment. Do not infer a positive hypothesis, absent mechanism, or Core result.
+
+Two model-call records (discovery and semantic) are not a total attempt count. Semantic usage: 20,518 prompt / 2,948 completion / 23,466 total tokens. Discovery tokens and actual source request/credit counts are UNKNOWN. No external retry, semantic reroll, or production-code change followed; no specific code patch is justified. Private run records: `/private/tmp/ch-tw-event-20261022-hostfix/run_record.jsonl` and `/private/tmp/ch-tw-event-20261022/run_record.jsonl`.
+
 ## Retry policy live acceptance and deployment (2026-10-22 Beijing)
 
 Implementation `29f757a` was exercised in the separately guarded prospective

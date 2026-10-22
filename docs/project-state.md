@@ -1,5 +1,11 @@
 # Project State
 
+## TW normal Event stopped at EI gate (2026-10-22)
+
+Two local Host POSTs occurred: the first returned duplicate-Host HTTP 421 before run creation; the fresh corrected guard's HTTP 201 created the sole research run, `4f0355fb-5c57-4351-b9b4-9e3011c67ca0` (`BLOCKED`, batch archive). Its nonempty submission contains 2 sources, 4 statements, and 1 hypothesis. Grounder completed; semantic receipt validated, with no retained rejection code or exact binding cause. EI was assessed but incomplete and not accepted; Core has 0 evaluated cases and 1 unavailable assessment. Outcome coverage for `user_event_input` and `event_fact_anchor_v0_1` has unresolved model/validator status and `gap_present=true` (underlying unresolved count 1). This is real pipeline progress, not an accepted EI/Core result or a positive/negative mechanism conclusion.
+
+The [current checkpoint](current-checkpoint.md) records the SEC/Nasdaq sources, search-cap deviation (4 queries vs 2; 2 official reads within 3), pre-correction journal baseline (21 historical, 0 active), token/request usage status, and private run-record paths. The old S1 helper's three-lead constraint did not apply to the plain-input product API. Discovery and semantic model-call records do not establish total attempts; discovery tokens and source request/credit counts remain UNKNOWN. No external retry, semantic reroll, or production-code change followed; no specific patch is justified.
+
 ## Semantic retry policy deployed; real evidence gap identified (2026-10-22 Beijing)
 
 The [retry successor](host-semantic-transport-retry-v0.1.md), implemented as
