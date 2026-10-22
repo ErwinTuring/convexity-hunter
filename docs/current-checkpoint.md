@@ -2,6 +2,27 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Current evidence checkpoint (2026-10-22)
+
+Phase A TW archive: coverage fields `user_event_input` and `event_fact_anchor_v0_1` are `unresolved`, `gap_present=true` at model/validator; `selected_claim_id=null`. Source-body and per-binding text were not retained (verified UNKNOWN).
+
+| EI field | Source | Model | Host | Fix |
+|---|---|---|---|---|
+| Description | Anchor/body text unavailable (UNKNOWN) | Coverage unresolved | No anchor, so no description or dependent date | UNKNOWN; no bug proved |
+| Date | Occurrence-date support UNKNOWN; filing is not a substitute | Proposal/verification not retained | Final date absent after anchor gate | UNKNOWN; no loss proved |
+| Identity | Listing proof/rejection not retained (UNKNOWN) | `UNDERLYING_UNRESOLVED` count=1; non-null Builder symbol only | No verified underlying key | UNKNOWN |
+| Temporal | Milestone source and raw recovery UNKNOWN | No `expected_window`/reassessment in final input | Host did not invent a date | UNKNOWN |
+
+Phase B KORE was a source screen only: 2 queries, 3 official-page open attempts. Its preliminary proxy's conditional Nov 27 item does not qualify absent Aug 26 conditions; meeting date is blank and issuer identity/options unproved. Eligibility failed. No Event attempt, Host Event POST, Tavily, model, or Futu call.
+
+World run `95f63c6c-0d4d-483d-b606-efbfe67a2582`: HTTP 201, terminal `BLOCKED`, reasons `world_last30days_failed`, `world_last30days_model_failed`, `world_grounder_no_submission`; 0 evaluated Core cases, 0 unavailable. Hypothesis counts, native stages/source usage, Tavily/model request counts/tokens/charges, and Futu calls are UNKNOWN/not retained. Do not infer zero hypotheses or provider-wide failure from this run-specific error. Guard spent, no retry. The initial root GET was blocked by local sandbox URL rules; the same read-only curl returned 200 after escalation. The same released run resumed before POST while its guard was unacquired, not an external research retry. Private records: `/private/tmp/ch-world-20261022-phasec-prep-1316/preregistration.json`, `/private/tmp/ch-world-20261022-phasec-prep-1316/run_record.jsonl`.
+
+Final read-only GETs: localhost root/journal/UI 200/READY; 3 executors, 23 runs/0 active. Profile v0.4 (fingerprint not exposed); `status.configuration` NOT_INSPECTED, distinct from external strict-loader budget verification. TW and World BLOCKED archives are readable (TW 0 Core/1 unavailable; World 0 Core). Direct case `ae306aef`: GET 200, `DATA_INSUFFICIENT_CORE`, reasons `unknown_required_component`/`unknown_cost_component`; report readable (14,814 chars), not emitted. No POST/provider/model call, restart, or DB copy occurred. This was not fresh-restart validation; offline reopen tests are separate. Production baseline `74135dc` is unchanged; the only remaining code change is in `tests/test_host_server.py` (test-only).
+
+The normal-Grounder fixture failed on date handling and was removed with its `tests/test_host_event.py` helper extraction; `tests/test_host_event.py` is unchanged. The sole test-file change is the 117-line `tests/test_host_server.py::test_staged_accepted_event_batch_reaches_core_store_and_detail`: synthetic post-Grounder coverage using a stub Grounder, real EI-accepted assessment (no verdict mock), actual Event executor, shared-Core fake bridge, exact batch/hypothesis identity, and SQLite public case/detail. It does not show normal source/model/Grounder success or live Futu execution. Builder's three focused tests passed (3/3): this accepted-path test, the existing incomplete-EI control, and the no-submission control. Private-cache `py_compile` and `git diff --check` passed. Independent Huygens static review of the new method diff passed; the reviewer's loopback rerun was blocked by sandbox before test bodies, so independent execution is not claimed. No full suite was run; there was no production-code change.
+
+Existing Event/World wiring is READY / NO_CHANGE; accepted branches share Core, and partial source failure preserves valid leads. Direct engineering is verified; the cached Direct result is `DATA_INSUFFICIENT_CORE`. Positive real Event/World EI acceptance to Futu Core remains unproven. No new API, diagnostics framework, or contract is proposed.
+
 ## TW normal Event stopped (2026-10-22)
 
 The [SEC 8-K](https://www.sec.gov/Archives/edgar/data/1758730/000119312526425378/d140509d8k.htm) (filed/reported earliest 2026-10-19) and Nasdaq issuer page identify TW / Nasdaq; the filing describes a signed, contingent, not-yet-closed Trumid acquisition. Prospecting used four queries against an internal two-query cap; two official reads were within the three-read cap. This was not a controlled search or World comparison; no more sourcing followed.

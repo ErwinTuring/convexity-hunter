@@ -1693,6 +1693,123 @@ class HostServerBatchTests(unittest.TestCase):
             store.close()
             temporary_directory.cleanup()
 
+    def test_staged_accepted_event_batch_reaches_core_store_and_detail(self):
+        from convexity_hunter.event_intelligence import (
+            EventIntelligenceAcceptanceStatus,
+            assess_event_intelligence_submission,
+        )
+        from convexity_hunter.host_event_core import create_event_core_executor
+        from tests.test_host_store import make_grounder_submission_result
+
+        raw_input = "synthetic fixture event"
+        temporary_directory, store = self._new_grounder_store(
+            "grounder-accepted-core.sqlite3"
+        )
+        holder = {}
+        core_calls = []
+        core_results = []
+        market_bridge = BatchFakeMarketBridge((
+            make_batch_row(datetime.date(2030, 1, 31), "CALL", "100"),
+            make_batch_row(datetime.date(2030, 1, 31), "PUT", "100"),
+        ))
+        configured_core = create_event_core_executor(
+            evaluation_date=datetime.date(2030, 1, 1),
+            maturity_authority=OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
+            market_bridge=market_bridge,
+        )
+
+        def grounder(actual_input, *, run_id, bounds):
+            self.assertEqual(actual_input, raw_input)
+            self.assertIsInstance(bounds, CoreOperationalBounds)
+            result = make_grounder_submission_result(run_id)
+            context = result.build_result.context
+            submission = replace(
+                make_batch_submission(),
+                event_description=context.raw_input.description,
+            )
+            batch = SourceSubmissionBatch(context.raw_input, (submission,))
+            holder["result"] = replace(
+                result,
+                build_result=replace(
+                    result.build_result,
+                    submission=submission,
+                    source_batch=batch,
+                ),
+            )
+            assessment = assess_event_intelligence_submission(submission)
+            self.assertIs(
+                assessment.status, EventIntelligenceAcceptanceStatus.ACCEPTED
+            )
+            self.assertEqual(assessment.issues, ())
+            return holder["result"]
+
+        grounder.configuration_snapshot = self._event_configuration_snapshot_accessor()
+
+        def event_core(actual_input, *, bounds, source_batch):
+            self.assertEqual(actual_input, raw_input)
+            self.assertIs(source_batch, holder["result"].build_result.source_batch)
+            core_calls.append((actual_input, bounds, source_batch))
+            result = configured_core(
+                actual_input, bounds=bounds, source_batch=source_batch
+            )
+            core_results.append(result)
+            return result
+
+        try:
+            self._start_server(
+                event_grounder=grounder,
+                event_core_executor=event_core,
+            )
+            response = self._post(raw_input, mode="event")
+            self.assertEqual(response[0], 201)
+            created = self._decoded(response)
+            self.assertIn(created["status"], ("COMPLETED", "PARTIAL"))
+            run_id = created["run_id"]
+            source_batch = holder["result"].build_result.source_batch
+            submission = source_batch.submissions[0]
+            self.assertIs(
+                source_batch.raw_input,
+                holder["result"].build_result.context.raw_input,
+            )
+            self.assertEqual(source_batch.raw_input.description, raw_input)
+            self.assertEqual(len(core_calls), 1)
+            self.assertIs(core_calls[0][2], source_batch)
+            stored_run = store.get_run(run_id)
+            self.assertEqual(
+                stored_run["events"][1]["outcome"]["ei_assessment_status"],
+                "accepted",
+            )
+            core_result = core_results[0]
+            self.assertIs(core_result.case_set.submissions, source_batch)
+            self.assertGreater(len(core_result.case_set.cases), 0)
+            for case in core_result.case_set.cases:
+                self.assertIs(case.submissions, source_batch)
+                self.assertIs(case.hypothesis, submission.hypotheses[0])
+            self.assertTrue(market_bridge.calls)
+
+            summary = store.get_batch_summary(run_id)
+            self.assertEqual(summary["entry_origin"], "EVENT")
+            self.assertGreater(summary["case_count"], 0)
+            public_run_response = self._request(
+                "GET", "/api/runs/{}".format(run_id)
+            )
+            self.assertEqual(public_run_response[0], 200)
+            public_run = self._decoded(public_run_response)
+            self.assertGreater(len(public_run["cases"]), 0)
+            first_case = public_run["cases"][0]
+            detail_response = self._request(
+                "GET",
+                "/api/runs/{}/cases/{}".format(run_id, first_case["case_key"]),
+            )
+            self.assertEqual(detail_response[0], 200)
+            public_case = self._decoded(detail_response)
+            self.assertEqual(public_case["case_id"], first_case["case_id"])
+            self.assertTrue(public_case["report"])
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
     def test_normal_event_runtime_v09_negative_and_positive_archives_survive_restart(self):
         from convexity_hunter.host_event import (
             _EVENT_FACT_ANCHOR_SUBQUESTION_ID,

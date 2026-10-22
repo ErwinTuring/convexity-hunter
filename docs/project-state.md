@@ -1,5 +1,13 @@
 # Project State
 
+## Current acceptance checkpoint (2026-10-22)
+
+The Phase B KORE source screen failed eligibility and did not attempt an Event run. World run `95f63c6c-0d4d-483d-b606-efbfe67a2582` returned HTTP 201/`BLOCKED` with `world_last30days_model_failed`; its hypotheses and native/source/model/Futu usage are UNKNOWN, not zero. TW and World blocked archives are readable.
+
+Final GET checks found localhost root/journal/UI 200/READY, 3 executors, 23 runs/0 active, profile v0.4, and Direct case `ae306aef` as `DATA_INSUFFICIENT_CORE` (report readable, not emitted). No POST/provider/model call, restart, or DB copy occurred; this is not fresh-restart validation. `status.configuration` remains NOT_INSPECTED.
+
+Production baseline `74135dc` is unchanged; the only code-file change is test-only in `tests/test_host_server.py` (`tests/test_host_event.py` is unchanged). The failed normal-Grounder/date fixture and its helper extraction were removed. The new accepted-path test is synthetic post-Grounder, not normal source/model/Grounder or live Futu evidence. Builder's three focused tests passed (3/3): accepted-path, incomplete-EI, and no-submission; private-cache `py_compile` and `git diff --check` passed. Independent Huygens static review of the new method diff passed; its loopback rerun was blocked by sandbox before test bodies, so independent execution is not claimed. No full suite or production change. Existing Event/World wiring is READY / NO_CHANGE; accepted branches share Core and partial source failure preserves valid leads. Direct engineering is verified; cached Direct status remains `DATA_INSUFFICIENT_CORE`. A qualified normal Event/World path reaching EI acceptance/Futu Core remains unproven. Opportunity is optional; no new policy decision or contract is identified. See the [current checkpoint](current-checkpoint.md) for exact test and read-only/run evidence.
+
 ## TW normal Event stopped at EI gate (2026-10-22)
 
 Two local Host POSTs occurred: the first returned duplicate-Host HTTP 421 before run creation; the fresh corrected guard's HTTP 201 created the sole research run, `4f0355fb-5c57-4351-b9b4-9e3011c67ca0` (`BLOCKED`, batch archive). Its nonempty submission contains 2 sources, 4 statements, and 1 hypothesis. Grounder completed; semantic receipt validated, with no retained rejection code or exact binding cause. EI was assessed but incomplete and not accepted; Core has 0 evaluated cases and 1 unavailable assessment. Outcome coverage for `user_event_input` and `event_fact_anchor_v0_1` has unresolved model/validator status and `gap_present=true` (underlying unresolved count 1). This is real pipeline progress, not an accepted EI/Core result or a positive/negative mechanism conclusion.
