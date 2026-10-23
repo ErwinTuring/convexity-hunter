@@ -357,6 +357,205 @@ class HostWorldTests(unittest.TestCase):
             result = runner(self.raw_input, bounds=bounds or self.post_bounds)
         return result, captured, discovery_calls, semantic_calls
 
+    def _run_frozen_native_skill_world(self, outputs):
+        from tests.test_host_skill import NOW as skill_now, SyntheticSkillRunner
+
+        observed = {}
+
+        def fake_transport(role):
+            def transport(request, _timeout):
+                body = json.loads(request.data.decode("utf-8"))
+                system_prompt = body["messages"][0]["content"]
+                source = json.loads(body["messages"][1]["content"])
+                phase = source["phase"]
+                expected_role = "discovery" if phase == "judgments" else "semantic"
+                self.assertEqual(role, expected_role)
+                observed[phase] = {
+                    "system": system_prompt,
+                    "source": source,
+                }
+                return _Response(
+                    json.dumps(outputs[phase], separators=(",", ":")),
+                    body["model"],
+                )
+
+            return transport
+
+        stage_runner = SyntheticSkillRunner()
+        self.grounder_calls.clear()
+        self.grounder_query_calls.clear()
+        with mock.patch.object(
+            ModelCredential, "resolve", return_value="synthetic-token"
+        ), mock.patch(
+            "convexity_hunter.host_skill._verify_skill_pin",
+            return_value=pathlib.Path("/synthetic/skill"),
+        ), mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            side_effect=self._fake_grounder,
+        ):
+            world_runner = create_world_runner(
+                self.config,
+                repo_root=ROOT,
+                market_bridge=self.lazy_bridge,
+                discovery_transport=fake_transport("discovery"),
+                semantic_transport=fake_transport("semantic"),
+                stage_runner=stage_runner,
+                skill_clock=lambda: skill_now,
+            )
+            result = world_runner(self.raw_input, bounds=self.post_bounds)
+        return result, stage_runner, observed
+
+    def test_world_model_callback_passes_frozen_native_skill_wire(self):
+        outputs = {
+            "judgments": {
+                "judgments": [
+                    {"id": "n2", "name": "Topic two", "junk": True, "worthiness": 3},
+                    {"id": "n1", "name": "Topic one", "junk": False, "worthiness": 97},
+                ]
+            },
+            "angles": {
+                "angles": [
+                    {"id": "n1", "podcast": "podcast one", "x_article": "article one"},
+                    {"id": "n2", "podcast": "podcast two", "x_article": "article two"},
+                ]
+            },
+        }
+        result, stage_runner, observed = self._run_frozen_native_skill_world(outputs)
+
+        self.assertEqual(result.case_set.status, "COMPLETE")
+        self.assertIn("lead=last30days@3.21.1", result.case_set.submissions.submissions[0].producer_version)
+        self.assertEqual(len(self.grounder_calls), 1)
+        self.assertEqual(self.grounder_query_calls, [self.raw_input])
+        self.assertEqual(
+            [row["id"] for row in stage_runner.judgments["judgments"]],
+            ["n1", "n2"],
+        )
+        self.assertEqual(
+            [row["id"] for row in stage_runner.angles["angles"]],
+            ["n2", "n1"],
+        )
+        self.assertEqual(
+            observed["judgments"]["source"]["rows"][0]["payload"]["nomination"]
+            ["items"][0]["title"],
+            "Native seed one",
+        )
+        self.assertEqual(
+            observed["angles"]["source"]["rows"][0]["payload"]["name"],
+            "Model topic two",
+        )
+        self.assertIn("exactly these keys and JSON types", observed["judgments"]["system"])
+        self.assertIn("junk (boolean)", observed["judgments"]["system"])
+        self.assertIn("worthiness (integer", observed["judgments"]["system"])
+        self.assertIn("exactly these keys and JSON types", observed["angles"]["system"])
+        self.assertIn("podcast (string)", observed["angles"]["system"])
+        self.assertIn("at most 200 characters", observed["angles"]["system"])
+        self.assertIn(
+            "the returned ID set must exactly equal the input ID set",
+            observed["judgments"]["system"],
+        )
+        self.assertIn(
+            "the returned ID set must exactly equal the input ID set",
+            observed["angles"]["system"],
+        )
+
+    def test_world_model_prompt_counterexamples_match_frozen_consumer(self):
+        valid_outputs = {
+            "judgments": {
+                "judgments": [
+                    {"id": "n1", "name": "Topic one", "junk": False, "worthiness": 50},
+                    {"id": "n2", "name": "Topic two", "junk": False, "worthiness": 50},
+                ]
+            },
+            "angles": {
+                "angles": [
+                    {"id": "n2", "podcast": "podcast two", "x_article": "article two"},
+                    {"id": "n1", "podcast": "podcast one", "x_article": "article one"},
+                ]
+            },
+        }
+        counterexamples = (
+            (
+                "judgment_non_boolean",
+                "judgments",
+                lambda: {
+                    "judgments": [
+                        {"id": "n1", "name": "Topic one", "junk": "false", "worthiness": 50},
+                        {"id": "n2", "name": "Topic two", "junk": False, "worthiness": 50},
+                    ]
+                },
+                "junk (boolean)",
+            ),
+            (
+                "judgment_extra_key",
+                "judgments",
+                lambda: {
+                    "judgments": [
+                        {"id": "n1", "name": "Topic one", "junk": False, "worthiness": 50, "certainty": 1},
+                        {"id": "n2", "name": "Topic two", "junk": False, "worthiness": 50},
+                    ]
+                },
+                "Do not add row keys",
+            ),
+            (
+                "judgment_unknown_id_row",
+                "judgments",
+                lambda: {
+                    "judgments": [
+                        {"id": "n1", "name": "Topic one", "junk": False, "worthiness": 50},
+                        {"id": "n2", "name": "Topic two", "junk": False, "worthiness": 50},
+                        {"id": "n3", "name": "Unknown topic", "junk": False, "worthiness": 50},
+                    ]
+                },
+                "the returned ID set must exactly equal the input ID set",
+            ),
+            (
+                "angle_non_string",
+                "angles",
+                lambda: {
+                    "angles": [
+                        {"id": "n2", "podcast": None, "x_article": "article two"},
+                        {"id": "n1", "podcast": "podcast one", "x_article": "article one"},
+                    ]
+                },
+                "podcast (string)",
+            ),
+            (
+                "angle_extra_key",
+                "angles",
+                lambda: {
+                    "angles": [
+                        {"id": "n2", "podcast": "podcast two", "x_article": "article two", "confidence": 1},
+                        {"id": "n1", "podcast": "podcast one", "x_article": "article one"},
+                    ]
+                },
+                "Do not add row keys",
+            ),
+        )
+
+        for case_name, phase, invalid_output, prompt_clause in counterexamples:
+            with self.subTest(case=case_name):
+                outputs = dict(valid_outputs)
+                outputs[phase] = invalid_output()
+                result, stage_runner, observed = self._run_frozen_native_skill_world(outputs)
+
+                self.assertIn("world_last30days_failed", result.case_set.reasons)
+                if case_name != "judgment_unknown_id_row":
+                    self.assertIn("world_last30days_model_failed", result.case_set.reasons)
+                self.assertTrue(
+                    all(
+                        "last30days_status=failed@3.21.1" in item.producer_version
+                        for item in result.case_set.submissions.submissions
+                    )
+                )
+                self.assertIn(prompt_clause, observed[phase]["system"])
+                expected_phases = ["nominate"]
+                if phase == "angles":
+                    expected_phases.append("resume")
+                self.assertEqual(
+                    [request.phase for request in stage_runner.requests],
+                    expected_phases,
+                )
+
     def test_only_stamped_v09_v08_omission_failures_escape_world_catch(self):
         from tests.test_host_server import _normal_v09_omission_failure
 

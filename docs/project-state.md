@@ -1,5 +1,14 @@
 # Project State
 
+## World native callback wire clarified — 2026-10-23 UTC
+
+Existing output constraints are now explicit in the callback prompts; consumer,
+budgets and EI/Core semantics are unchanged. World 24 tests, 3 focused Skill
+tests and independent targeted review pass. This is not proof of the old
+failure's cause or a live closed loop. Deployment/normal-run validation and
+the separate default Event outer-route fixture are pending; see the
+[checkpoint](current-checkpoint.md).
+
 ## Resumption checkpoint — 2026-10-22 UTC / 2026-10-23 Beijing
 
 Fresh HEAD `38627ec`; production and tests unchanged. AQST run

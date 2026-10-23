@@ -2,6 +2,19 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## World native wire clarification reviewed — 2026-10-23 UTC
+
+The existing native-model callback prompts now specify the frozen consumer's
+exact row keys, JSON types, text bounds and exact input/output ID-set equality.
+Parsers, native scoring, source permissions, budgets and EI/Core gates are
+unchanged. This corrects underspecified instructions, not a proven cause of
+the historical failures. Real callback/native-controller synthetic coverage
+passed: World module 24 tests and 3 focused Skill tests. Independent review
+and targeted re-review passed; extra-ID rows still fail closed. No live success
+is implied. Deployment with the current UTC date and a new bounded World run
+remain pending; old guards stay spent. The separate default Event outer-route
+fixture is still in progress and is not part of this reviewed patch.
+
 ## Resumption checkpoint — 2026-10-22 UTC / 2026-10-23 Beijing
 
 This round began at fresh HEAD `38627ec`; production/tests were not changed. The prior-round
