@@ -41,7 +41,7 @@ from .host_grounder_runtime import (
     HostGrounderEvidenceCatalogRuntimeResult,
     HostGrounderRuntimeError,
     _EventFactAnchorOutcome,
-    _run_host_grounder_same_run_evidence_catalog_v0_9,
+    _run_host_grounder_same_run_evidence_catalog_v0_10,
     _stamp_event_fact_anchor_outcome,
     run_host_grounder_same_run_evidence_catalog_v0_6,
 )
@@ -3187,7 +3187,7 @@ def create_event_grounder(
             run_id=run_id,
             canonical_input_hash=run_input.canonical_input_hash,
         )
-        result = _run_host_grounder_same_run_evidence_catalog_v0_9(
+        result = _run_host_grounder_same_run_evidence_catalog_v0_10(
             run_input,
             context,
             discovery_client=discovery_client,

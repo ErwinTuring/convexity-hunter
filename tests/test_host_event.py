@@ -1394,6 +1394,33 @@ class _SyntheticModelTransport:
             if not content:
                 raise AssertionError("synthetic model output sequence was exhausted")
             content = content.pop(0)
+        if (
+            model == "fixture-semantic"
+            and "host-grounder-semantic-verifier-prompt-v0.9"
+            in payload["messages"][0]["content"]
+        ):
+            response = json.loads(content)
+            request_data = json.loads(payload["messages"][1]["content"])
+            binding_objects = request_data["host_binding_objects"]
+            if response.get("schema_version") == "semantic-verdict-v0.3":
+                response["schema_version"] = "semantic-verdict-v0.4"
+                bound_records = []
+                for index, record in enumerate(response["field_bindings"]):
+                    binding_object = binding_objects[index]
+                    refs = [
+                        ref for ref in record["evidence_refs"]
+                        if ref.get("evidence_id") != binding_object["evidence_id"]
+                    ]
+                    bound_records.append({
+                        "binding_id": binding_object["binding_id"],
+                        "outcome": record["outcome"],
+                        "rationale": record["rationale"],
+                        "evidence_refs": refs,
+                    })
+                response["field_bindings"] = bound_records
+                content = json.dumps(
+                    response, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                )
         return _SyntheticResponse(
             {
                 "id": "synthetic-" + model,
@@ -1527,7 +1554,30 @@ class HostEventGrounderTests(unittest.TestCase):
                     self.semantic_calls += 1
                     if self.semantic_calls == 1:
                         raise URLError("private synthetic network detail")
-                    content = semantic
+                    response = json.loads(semantic)
+                    if response.get("schema_version") == "semantic-verdict-v0.3":
+                        request_data = json.loads(
+                            payload["messages"][1]["content"]
+                        )
+                        binding_objects = request_data["host_binding_objects"]
+                        response["schema_version"] = "semantic-verdict-v0.4"
+                        response["field_bindings"] = [
+                            {
+                                "binding_id": binding_objects[index]["binding_id"],
+                                "outcome": record["outcome"],
+                                "rationale": record["rationale"],
+                                "evidence_refs": [
+                                    ref for ref in record["evidence_refs"]
+                                    if ref.get("evidence_id")
+                                    != binding_objects[index]["evidence_id"]
+                                ],
+                            }
+                            for index, record in enumerate(response["field_bindings"])
+                        ]
+                    content = json.dumps(
+                        response, ensure_ascii=False, sort_keys=True,
+                        separators=(",", ":"),
+                    )
                 else:
                     content = discovery
                 return _SyntheticResponse({
@@ -1853,6 +1903,34 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         self.assertEqual(len(source_transport.calls), 4)
         self.assertEqual(len(model_transport.calls), 4)
+        semantic_calls = [
+            call for call in model_transport.calls
+            if call["model"] == "fixture-semantic"
+        ]
+        self.assertEqual(len(semantic_calls), 2)
+        for call in semantic_calls:
+            self.assertIn(
+                "host-grounder-semantic-verifier-prompt-v0.9",
+                call["messages"][0]["content"],
+            )
+            semantic_input = json.loads(call["messages"][1]["content"])
+            self.assertIn("host_binding_objects", semantic_input)
+            self.assertNotIn("producer_binding_evidence_map", semantic_input)
+            self.assertEqual(
+                semantic_input["host_binding_objects"],
+                [
+                    {
+                        "binding_id": "binding-{}-{}".format(
+                            semantic_input["envelope_sha256"], index
+                        ),
+                        "index": index,
+                        "evidence_id": item["evidence_id"],
+                    }
+                    for index, item in enumerate(
+                        semantic_input["host_binding_objects"]
+                    )
+                ],
+            )
         def contains_full_context(value, full_context):
             if type(value) is str:
                 if full_context in value:
@@ -1909,6 +1987,14 @@ class HostEventGrounderTests(unittest.TestCase):
                     ],
                     expected_hash,
                 )
+        self.assertEqual(
+            json.loads(result.audit.sidecar_utf8)["verifier_wire_version"],
+            "semantic-verdict-v0.4",
+        )
+        self.assertEqual(
+            json.loads(result.audit.sidecar_utf8)["validator_version"],
+            "host-grounder-semantic-verifier-prompt-v0.9",
+        )
 
     def test_private_world_query_factory_rejects_invalid_bound_queries_before_calls(self):
         source_transport = _SyntheticSourceTransport()
@@ -2853,6 +2939,19 @@ class HostEventGrounderTests(unittest.TestCase):
 
         build = result.build_result
         self.assertEqual(len(model_transport.calls), 2)
+        route_sidecar = json.loads(result.audit.sidecar_utf8)
+        self.assertEqual(
+            (
+                route_sidecar["verifier_wire_version"],
+                route_sidecar["validator_version"],
+                route_sidecar["producer_prompt_version"],
+            ),
+            (
+                "semantic-verdict-v0.4",
+                "host-grounder-semantic-verifier-prompt-v0.9",
+                "host-grounder-discovery-prompt-v0.9",
+            ),
+        )
         self.assertEqual(
             admission_calls, [_SEC_LOCATOR, reference_locator, yahoo_locator]
         )
@@ -4460,7 +4559,7 @@ class HostEventGrounderTests(unittest.TestCase):
             any("host-grounder-discovery-prompt-v0.9" in prompt for prompt in system_prompts)
         )
         self.assertTrue(
-            any("host-grounder-semantic-verifier-prompt-v0.8" in prompt for prompt in system_prompts)
+            any("host-grounder-semantic-verifier-prompt-v0.9" in prompt for prompt in system_prompts)
         )
 
     def test_event_v06_explicit_budget_two_repairs_format_on_same_source_snapshot(self):

@@ -32,6 +32,10 @@ from convexity_hunter.host_grounder_run_input import (
     HostGrounderRunInputBounds,
     HostGrounderSubquestion,
 )
+from convexity_hunter.host_grounder_receipt import (
+    validate_semantic_validation_receipt,
+)
+from convexity_hunter.host_grounder_semantic import build_semantic_validation_receipt
 from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT_V0_4,
     DISCOVERY_SYSTEM_PROMPT_V0_5,
@@ -798,6 +802,316 @@ class EvidenceCatalogWireTests(unittest.TestCase):
                 producer_binding_evidence_ids=two_expected_ids,
             )
 
+    def test_bound_object_supported_and_negative_verdicts_match_explicit_legacy_refs(self):
+        body = _BODY + "\n\nThe filing was later withdrawn.\n"
+        run_input, context = _fixture(body)
+        catalog, producer, envelope, envelope_bytes, legacy_wire = _wire_bundle(
+            run_input, context
+        )
+        binding_ids = tuple(
+            item["evidence_id"] for item in producer["field_bindings"]
+        )
+        objects = catalog_module._build_host_binding_objects(
+            envelope,
+            envelope_bytes,
+            binding_ids,
+            catalog=catalog,
+            source_bodies=context.source_bodies,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_input_bytes=100_000,
+        )
+
+        supported_wire = copy.deepcopy(legacy_wire)
+        supported_wire["schema_version"] = "semantic-verdict-v0.4"
+        supported_wire["field_bindings"] = [
+            {
+                "binding_id": item["binding_id"],
+                "outcome": "supported",
+                "rationale": "The catalog paragraph is the exact producer binding.",
+                "evidence_refs": [],
+            }
+            for item in objects
+        ]
+        implicit_supported = catalog_module._parse_semantic_verdict_v0_4(
+            _canonical(supported_wire),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+            envelope=envelope,
+            normalized_envelope_utf8=envelope_bytes,
+            producer_binding_evidence_ids=binding_ids,
+            host_binding_objects=objects,
+        )
+        explicit_supported = parse_semantic_verdict_v0_3(
+            _canonical(legacy_wire),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+            producer_binding_evidence_ids=binding_ids,
+        )
+        self.assertEqual(implicit_supported, explicit_supported)
+
+        ordered_wire = copy.deepcopy(supported_wire)
+        ordered_wire["field_bindings"][0]["evidence_refs"] = [
+            {"evidence_id": catalog.entries[1].evidence_id},
+            {"evidence_id": catalog.entries[0].evidence_id},
+        ]
+        normalized_ordered = catalog_module._parse_semantic_verdict_v0_4(
+            _canonical(ordered_wire),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+            envelope=envelope,
+            normalized_envelope_utf8=envelope_bytes,
+            producer_binding_evidence_ids=binding_ids,
+            host_binding_objects=objects,
+        )
+        ordered_legacy = copy.deepcopy(legacy_wire)
+        ordered_legacy["field_bindings"][0]["evidence_refs"] = [
+            {"evidence_id": catalog.entries[1].evidence_id},
+            {"evidence_id": catalog.entries[0].evidence_id},
+        ]
+        self.assertEqual(
+            normalized_ordered,
+            parse_semantic_verdict_v0_3(
+                _canonical(ordered_legacy),
+                100_000,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                source_bodies=context.source_bodies,
+                catalog=catalog,
+                producer_binding_evidence_ids=binding_ids,
+            ),
+        )
+
+        negative_wire = copy.deepcopy(supported_wire)
+        negative_wire["field_bindings"][0].update(
+            outcome="contradicted",
+            rationale="The later registered paragraph contradicts this field.",
+            evidence_refs=[{"evidence_id": catalog.entries[1].evidence_id}],
+        )
+        negative_wire["field_bindings"][1].update(
+            outcome="unresolved",
+            rationale="The available text does not resolve this field.",
+            evidence_refs=[],
+        )
+        normalized_negative = catalog_module._parse_semantic_verdict_v0_4(
+            _canonical(negative_wire),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+            envelope=envelope,
+            normalized_envelope_utf8=envelope_bytes,
+            producer_binding_evidence_ids=binding_ids,
+            host_binding_objects=objects,
+        )
+        legacy_negative = copy.deepcopy(legacy_wire)
+        legacy_negative["field_bindings"][0].update(
+            outcome="contradicted",
+            rationale="The later registered paragraph contradicts this field.",
+            evidence_refs=[{"evidence_id": catalog.entries[1].evidence_id}],
+        )
+        legacy_negative["field_bindings"][1].update(
+            outcome="unresolved",
+            rationale="The available text does not resolve this field.",
+            evidence_refs=[],
+        )
+        normalized_legacy_negative = parse_semantic_verdict_v0_3(
+            _canonical(legacy_negative),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+            producer_binding_evidence_ids=binding_ids,
+        )
+        self.assertEqual(normalized_negative, normalized_legacy_negative)
+        negative_bindings = json.loads(normalized_negative)["field_bindings"]
+        self.assertEqual(
+            negative_bindings[0]["evidence_refs"][0]["quote"],
+            catalog.entries[1].quote,
+        )
+        self.assertEqual(negative_bindings[1]["evidence_refs"], [])
+        source_texts = {
+            source_id: source.body
+            for source_id, source in context.source_bodies.items()
+        }
+        receipt = build_semantic_validation_receipt(
+            envelope,
+            normalized_negative.decode("utf-8"),
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            request_subquestion_ids=run_input.subquestion_ids,
+            source_bodies=source_texts,
+            validator_id="fixture-validator",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.9",
+            max_input_bytes=100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            max_source_body_bytes=20_000,
+            receipt_schema_version="semantic-validation-v0.2",
+        )
+        self.assertIn(0, dict(receipt["rejected_bindings"]))
+        validate_semantic_validation_receipt(
+            envelope,
+            receipt,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            request_subquestion_ids=run_input.subquestion_ids,
+            source_bodies=source_texts,
+            max_input_bytes=100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            expected_schema_version="semantic-validation-v0.2",
+        )
+
+    def test_bound_object_wire_fails_closed_on_identity_and_reference_ambiguity(self):
+        run_input, context = _fixture()
+        catalog, producer, envelope, envelope_bytes, legacy_wire = _wire_bundle(
+            run_input, context
+        )
+        binding_ids = tuple(
+            item["evidence_id"] for item in producer["field_bindings"]
+        )
+        objects = catalog_module._build_host_binding_objects(
+            envelope,
+            envelope_bytes,
+            binding_ids,
+            catalog=catalog,
+            source_bodies=context.source_bodies,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_input_bytes=100_000,
+        )
+        base = copy.deepcopy(legacy_wire)
+        base["schema_version"] = "semantic-verdict-v0.4"
+        base["field_bindings"] = [
+            {
+                "binding_id": item["binding_id"],
+                "outcome": "supported",
+                "rationale": "Exact bound paragraph supports this field.",
+                "evidence_refs": [],
+            }
+            for item in objects
+        ]
+
+        def parse(value, *, binding_objects=objects, envelope_value=envelope,
+                  envelope_bytes_value=envelope_bytes):
+            return catalog_module._parse_semantic_verdict_v0_4(
+                _canonical(value),
+                100_000,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                source_bodies=context.source_bodies,
+                catalog=catalog,
+                envelope=envelope_value,
+                normalized_envelope_utf8=envelope_bytes_value,
+                producer_binding_evidence_ids=binding_ids,
+                host_binding_objects=binding_objects,
+            )
+
+        for label, mutate in (
+            ("missing", lambda wire: wire["field_bindings"].pop()),
+            ("duplicate", lambda wire: wire["field_bindings"][1].update(
+                binding_id=wire["field_bindings"][0]["binding_id"])),
+            ("foreign", lambda wire: wire["field_bindings"][0].update(
+                binding_id="binding-foreign")),
+            ("reordered", lambda wire: wire["field_bindings"].reverse()),
+            ("unknown-extra-reference", lambda wire: wire["field_bindings"][0][
+                "evidence_refs"].append({"evidence_id": "evidence-foreign"})),
+            ("duplicate-reference", lambda wire: wire["field_bindings"][0][
+                "evidence_refs"].extend((
+                    {"evidence_id": catalog.entries[0].evidence_id},
+                    {"evidence_id": catalog.entries[0].evidence_id},
+                ))),
+            ("malformed-reference", lambda wire: wire["field_bindings"][0][
+                "evidence_refs"].append({
+                    "evidence_id": catalog.entries[0].evidence_id,
+                    "quote": "not-an-allowed-wire-field",
+                })),
+        ):
+            with self.subTest(case=label), self.assertRaises(ValueError):
+                invalid = copy.deepcopy(base)
+                mutate(invalid)
+                parse(invalid)
+
+        changed_envelope = copy.deepcopy(envelope)
+        changed_envelope["field_bindings"][0]["quote"] += " changed"
+        with self.assertRaises(ValueError):
+            parse(base, envelope_value=changed_envelope)
+
+    def test_bound_object_wire_accepts_zero_binding_objects(self):
+        run_input, context = _fixture()
+        catalog, _producer, envelope, _envelope_bytes, _verdict = _wire_bundle(
+            run_input, context
+        )
+        envelope["field_bindings"] = []
+        envelope_bytes = _canonical(envelope).encode("utf-8")
+        objects = catalog_module._build_host_binding_objects(
+            envelope,
+            envelope_bytes,
+            (),
+            catalog=catalog,
+            source_bodies=context.source_bodies,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_input_bytes=100_000,
+        )
+        wire = {
+            "schema_version": "semantic-verdict-v0.4",
+            "run_id": run_input.run_id,
+            "envelope_hash": hashlib.sha256(envelope_bytes).hexdigest(),
+            "source_body_hashes": [
+                {"source_id": source_id, "sha256": source.body_sha256}
+                for source_id, source in sorted(context.source_bodies.items())
+            ],
+            "claims": [],
+            "hypotheses": [],
+            "field_bindings": [],
+            "coverage": [],
+        }
+        parsed = catalog_module._parse_semantic_verdict_v0_4(
+            _canonical(wire),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+            envelope=envelope,
+            normalized_envelope_utf8=envelope_bytes,
+            producer_binding_evidence_ids=(),
+            host_binding_objects=objects,
+        )
+        self.assertEqual(json.loads(parsed)["field_bindings"], [])
+
     def test_catalog_rejects_changed_registered_body(self):
         run_input, context = _fixture()
         catalog = _catalog_for(run_input, context)
@@ -1081,6 +1395,47 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             "Preserve contradicted and unresolved outcomes, including legitimate empty output",
         ):
             self.assertIn(requirement, additions)
+
+    def test_bound_object_v09_prompt_is_explicit_and_keeps_negative_refs(self):
+        prompt = runtime_module._SEMANTIC_SYSTEM_PROMPT_V0_9
+        obsolete_empty_refs_rule = (
+            "evidence_refs is always an array: it may be empty only for unresolved; "
+            "supported and contradicted require at least one reference."
+        )
+        self.assertIn(obsolete_empty_refs_rule, SEMANTIC_SYSTEM_PROMPT_V0_8)
+        self.assertNotIn(obsolete_empty_refs_rule, prompt)
+        self.assertIn(
+            "Prompt version: host-grounder-semantic-verifier-prompt-v0.9.",
+            prompt,
+        )
+        self.assertIn("Set schema_version to semantic-verdict-v0.4", prompt)
+        self.assertIn(
+            "A supported field binding may have an empty array because the Host "
+            "associates its exact bound primary paragraph.",
+            prompt,
+        )
+        self.assertIn(
+            "Every other supported record (claims, hypotheses, and coverage), "
+            "and every contradicted record including field bindings, requires "
+            "at least one explicit reference.",
+            prompt,
+        )
+        self.assertIn(
+            "field_bindings[] exact keys: binding_id, outcome, rationale, evidence_refs.",
+            prompt,
+        )
+        self.assertIn("host_binding_objects", prompt)
+        self.assertIn("original bound paragraph", prompt)
+        self.assertIn("another similar paragraph", prompt)
+        self.assertIn(
+            "a contradicted binding must explicitly cite its counterevidence",
+            prompt,
+        )
+        self.assertNotIn("producer_binding_evidence_map", prompt)
+        self.assertNotIn(
+            "For a supported field binding at index i, cite",
+            prompt,
+        )
 
     def test_audit_holder_pins_only_closed_producer_prompt_versions(self):
         run_input, context = _fixture()

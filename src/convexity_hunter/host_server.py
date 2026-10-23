@@ -124,6 +124,11 @@ _SEMANTIC_FAILURE_CHECK_DIAGNOSTICS = {
     "internal_verdict_final_normalization": "SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_FINAL_NORMALIZATION",
 }
 _SEMANTIC_RECEIPT_FAILURE_ROUTE = "producer_v0_9_verifier_v0_8"
+_SEMANTIC_RECEIPT_BOUND_OBJECT_FAILURE_ROUTE = "producer_v0_9_verifier_v0_9"
+_SEMANTIC_RECEIPT_FAILURE_ROUTES = frozenset((
+    _SEMANTIC_RECEIPT_FAILURE_ROUTE,
+    _SEMANTIC_RECEIPT_BOUND_OBJECT_FAILURE_ROUTE,
+))
 _SEMANTIC_RECEIPT_CHECK_DIAGNOSTICS = {
     "RUN_BINDING": "SEMANTIC_RECEIPT_CHECK_RUN_BINDING",
     "ENVELOPE_HASH": "SEMANTIC_RECEIPT_CHECK_ENVELOPE_HASH",
@@ -446,7 +451,7 @@ def _semantic_failure_diagnostic_codes(error: Exception) -> Tuple[str, ...]:
         error_state = error.__dict__
         if (
             type(getattr(error, "_receipt_failure_route", None)) is str
-            and error._receipt_failure_route == _SEMANTIC_RECEIPT_FAILURE_ROUTE
+            and error._receipt_failure_route in _SEMANTIC_RECEIPT_FAILURE_ROUTES
             and type(error_state) is dict
             and error_state.get("failure_check", object()) is None
         ):
@@ -467,6 +472,7 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
         HostEvidenceCatalogProducerAttempt,
         _BINDING_OMISSION_FAILURE_MARKERS,
         _BINDING_OMISSION_FAILURE_ROUTE,
+        _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
         _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     )
     from .host_grounder_runtime import HostGrounderRuntimeError
@@ -493,24 +499,46 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
         "producer_attempts": [item.to_json() for item in attempts],
     }
     semantic_transport = getattr(error, "semantic_transport", None)
+    semantic_transport_route = None
     if semantic_transport is not None:
-        route = (
-            "host-grounder-discovery-prompt-v0.9",
-            "host-grounder-semantic-verifier-prompt-v0.8",
+        semantic_transport_route = getattr(
+            error,
+            "_semantic_transport_route",
+            _BINDING_OMISSION_FAILURE_ROUTE,
         )
+        if semantic_transport_route not in (
+            _BINDING_OMISSION_FAILURE_ROUTE,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+        ):
+            return None
         outcome.update({
             "schema_version": _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
-            "producer_prompt_version": route[0],
-            "verifier_prompt_version": route[1],
+            "producer_prompt_version": semantic_transport_route[0],
+            "verifier_prompt_version": semantic_transport_route[1],
             "semantic_transport": semantic_transport,
         })
     if has_omission_marker:
         route = getattr(error, "_producer_failure_route", None)
+        selected_route = getattr(error, "_semantic_transport_route", None)
         if (
             attempts[0].status != "rejected"
             or attempts[0].failure_check != _BINDING_OMISSION_FIRST_FAILURE_CHECK
             or type(route) is not tuple
-            or route != _BINDING_OMISSION_FAILURE_ROUTE
+            or route not in (
+                _BINDING_OMISSION_FAILURE_ROUTE,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+            )
+            or (
+                selected_route is not None
+                and (
+                    type(selected_route) is not tuple
+                    or route != selected_route
+                )
+            )
+            or (
+                semantic_transport is not None
+                and route != semantic_transport_route
+            )
         ):
             return None
         if semantic_transport is None:

@@ -58,10 +58,12 @@ _PRODUCER_PROMPT_VERSIONS = frozenset(
 )
 _PRODUCER_PROMPT_VERSION = _PRODUCER_PROMPT_VERSION_V0_4
 _VERIFIER_WIRE_VERSION = "semantic-verdict-v0.3"
+_VERIFIER_WIRE_VERSION_V0_4 = "semantic-verdict-v0.4"
 _VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.5"
 _VERIFIER_PROMPT_VERSION_V0_6 = "host-grounder-semantic-verifier-prompt-v0.6"
 _VERIFIER_PROMPT_VERSION_V0_7 = "host-grounder-semantic-verifier-prompt-v0.7"
 _VERIFIER_PROMPT_VERSION_V0_8 = "host-grounder-semantic-verifier-prompt-v0.8"
+_VERIFIER_PROMPT_VERSION_V0_9 = "host-grounder-semantic-verifier-prompt-v0.9"
 _BINDING_OMISSION_FIRST_FAILURE_CHECK = (
     "producer_v0_3_required_binding_omission_v0_9"
 )
@@ -71,6 +73,10 @@ _BINDING_OMISSION_DELTA_FAILURE_CHECK = (
 _BINDING_OMISSION_FAILURE_ROUTE = (
     _PRODUCER_PROMPT_VERSION_V0_9,
     _VERIFIER_PROMPT_VERSION_V0_8,
+)
+_BINDING_OMISSION_FAILURE_ROUTE_V0_10 = (
+    _PRODUCER_PROMPT_VERSION_V0_9,
+    _VERIFIER_PROMPT_VERSION_V0_9,
 )
 _BINDING_OMISSION_FAILURE_MARKERS = frozenset((
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
@@ -82,15 +88,18 @@ _VERIFIER_PROMPT_VERSIONS = frozenset(
         _VERIFIER_PROMPT_VERSION_V0_6,
         _VERIFIER_PROMPT_VERSION_V0_7,
         _VERIFIER_PROMPT_VERSION_V0_8,
+        _VERIFIER_PROMPT_VERSION_V0_9,
     )
 )
 
 
 def _valid_prompt_pair(producer_prompt_version: str, semantic_prompt_version: str) -> bool:
-    return (
-        semantic_prompt_version != _VERIFIER_PROMPT_VERSION_V0_8
-        or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
-    )
+    if semantic_prompt_version in (
+        _VERIFIER_PROMPT_VERSION_V0_8,
+        _VERIFIER_PROMPT_VERSION_V0_9,
+    ):
+        return producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
+    return True
 
 
 def _producer_repair_prompt_version(
@@ -109,7 +118,10 @@ def _producer_repair_prompt_version(
         first_status == "rejected"
         and first_failure_check == _BINDING_OMISSION_FIRST_FAILURE_CHECK
         and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
-        and semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_8
+        and semantic_prompt_version in (
+            _VERIFIER_PROMPT_VERSION_V0_8,
+            _VERIFIER_PROMPT_VERSION_V0_9,
+        )
     ):
         return _BINDING_OMISSION_REPAIR_PROMPT_VERSION
     return None
@@ -444,6 +456,74 @@ def _normalized_bytes(value: object, max_input_bytes: int, label: str) -> bytes:
     return normalized
 
 
+def _build_host_binding_objects(
+    envelope: object,
+    normalized_envelope_utf8: bytes,
+    producer_binding_evidence_ids: tuple,
+    *,
+    catalog: HostEvidenceCatalog,
+    source_bodies: Mapping[str, HostSourceBody],
+    run_id: str,
+    canonical_input_hash: str,
+    max_string_bytes: int,
+    max_input_bytes: int,
+) -> list:
+    """Bind each accepted normalized field binding to its exact catalog entry."""
+    max_string_bytes = _limit(max_string_bytes, "max_string_bytes")
+    max_input_bytes = _limit(max_input_bytes, "max_input_bytes")
+    if (
+        type(normalized_envelope_utf8) is not bytes
+        or len(normalized_envelope_utf8) > max_input_bytes
+        or type(envelope) is not dict
+        or set(envelope) != frozenset((
+            "schema_version", "stage", "request_id", "claims", "hypotheses",
+            "coverage", "field_bindings",
+        ))
+        or envelope.get("schema_version") != "grounder-output-v0.1"
+        or envelope.get("stage") != "semantic"
+        or envelope.get("request_id") != run_id
+        or _canonical_bytes(envelope) != normalized_envelope_utf8
+        or type(producer_binding_evidence_ids) is not tuple
+        or type(envelope.get("field_bindings")) is not list
+        or len(envelope["field_bindings"]) != len(producer_binding_evidence_ids)
+    ):
+        raise ValueError("accepted normalized binding envelope is not exact")
+    catalog.validate_sources(
+        source_bodies,
+        run_id=run_id,
+        canonical_input_hash=canonical_input_hash,
+        max_string_bytes=max_string_bytes,
+    )
+    envelope_hash = hashlib.sha256(normalized_envelope_utf8).hexdigest()
+    result = []
+    for index, (binding, evidence_id) in enumerate(
+        zip(envelope["field_bindings"], producer_binding_evidence_ids)
+    ):
+        evidence_id = _wire_string(
+            evidence_id, "producer binding evidence_id", max_string_bytes
+        )
+        entry = catalog._entries_by_id.get(evidence_id)
+        if (
+            type(binding) is not dict
+            or entry is None
+            or binding.get("source_id") != entry.source_id
+            or binding.get("quote") != entry.quote
+            or type(binding.get("start")) is not int
+            or binding["start"] != entry.start
+            or type(binding.get("end")) is not int
+            or binding["end"] != entry.end
+            or entry.body_sha256
+            != source_bodies[entry.source_id].body_sha256
+        ):
+            raise ValueError("normalized producer binding does not match catalog entry")
+        result.append({
+            "binding_id": "binding-{}-{}".format(envelope_hash, index),
+            "index": index,
+            "evidence_id": evidence_id,
+        })
+    return result
+
+
 def parse_grounder_output_v0_3(
     raw_json: str,
     max_input_bytes: int,
@@ -726,6 +806,153 @@ def _parse_semantic_verdict_v0_3(
     if progress is not None:
         progress.failure_check = "internal_verdict_final_normalization"
     return _normalized_bytes(parsed, max_input_bytes, "normalized verdict")
+
+
+def _parse_semantic_verdict_v0_4(
+    raw_json: str,
+    max_input_bytes: int,
+    *,
+    max_string_bytes: int,
+    max_array_items: int,
+    run_id: str,
+    canonical_input_hash: str,
+    source_bodies: Mapping[str, HostSourceBody],
+    catalog: HostEvidenceCatalog,
+    envelope: Mapping[str, object],
+    normalized_envelope_utf8: bytes,
+    producer_binding_evidence_ids: tuple,
+    host_binding_objects: list,
+    progress: _SemanticVerdictProgress | None = None,
+) -> bytes:
+    """Validate bound-object identities, then normalize into the legacy receipt DTO."""
+    if progress is not None:
+        progress.failure_check = "wire_decode"
+    max_input_bytes = _limit(max_input_bytes, "max_input_bytes")
+    max_string_bytes = _limit(max_string_bytes, "max_string_bytes")
+    max_array_items = _limit(max_array_items, "max_array_items")
+    wire = _decode(raw_json, max_input_bytes)
+    if progress is not None:
+        progress.failure_check = "topshape"
+    if (
+        set(wire) != _VERDICT_TOP
+        or wire.get("schema_version") != _VERIFIER_WIRE_VERSION_V0_4
+    ):
+        raise ValueError("bound-object verifier wire has an invalid closed shape or version")
+    if progress is not None:
+        progress.failure_check = "run_binding"
+    if wire.get("run_id") != run_id:
+        raise ValueError("verifier run_id does not match Host run")
+    if progress is not None:
+        progress.failure_check = "catalog_validation"
+    catalog.validate_sources(
+        source_bodies,
+        run_id=run_id,
+        canonical_input_hash=canonical_input_hash,
+        max_string_bytes=max_string_bytes,
+    )
+
+    if progress is not None:
+        progress.failure_check = "producer_binding_alignment"
+    expected_objects = _build_host_binding_objects(
+        envelope,
+        normalized_envelope_utf8,
+        producer_binding_evidence_ids,
+        catalog=catalog,
+        source_bodies=source_bodies,
+        run_id=run_id,
+        canonical_input_hash=canonical_input_hash,
+        max_string_bytes=max_string_bytes,
+        max_input_bytes=max_input_bytes,
+    )
+    supplied_objects = host_binding_objects
+    if type(supplied_objects) is not list or len(supplied_objects) != len(expected_objects):
+        raise ValueError("Host binding objects do not match accepted producer bindings")
+    for supplied, expected in zip(supplied_objects, expected_objects):
+        if (
+            type(supplied) is not dict
+            or set(supplied) != frozenset(("binding_id", "index", "evidence_id"))
+            or type(supplied.get("binding_id")) is not str
+            or type(supplied.get("index")) is not int
+            or type(supplied.get("evidence_id")) is not str
+            or supplied != expected
+        ):
+            raise ValueError("Host binding object identity is malformed")
+    envelope_hash = hashlib.sha256(normalized_envelope_utf8).hexdigest()
+    if wire.get("envelope_hash") != envelope_hash:
+        raise ValueError("verifier envelope hash does not match normalized producer envelope")
+
+    # Validate every model-selected reference before adding any implicit primary.
+    for section in _VERDICT_SECTIONS:
+        records = wire.get(section)
+        if type(records) is not list or len(records) > max_array_items:
+            raise ValueError("{} must be a bounded array".format(section))
+        for record in records:
+            if type(record) is not dict or type(record.get("evidence_refs")) is not list:
+                raise ValueError("verdict record evidence_refs must be an array")
+            refs = record["evidence_refs"]
+            if len(refs) > max_array_items:
+                raise ValueError("evidence_refs exceeds max_array_items")
+            seen_refs = set()
+            for ref in refs:
+                if type(ref) is not dict or set(ref) != frozenset(("evidence_id",)):
+                    raise ValueError("verifier evidence ref has an invalid closed wire shape")
+                evidence_id = _wire_string(
+                    ref["evidence_id"], "evidence_id", max_string_bytes
+                )
+                if evidence_id in seen_refs:
+                    raise ValueError("duplicate evidence_id within verifier record")
+                seen_refs.add(evidence_id)
+                if evidence_id not in catalog._entries_by_id:
+                    raise ValueError("verifier evidence_id is not in this run catalog")
+
+    if progress is not None:
+        progress.failure_check = "evidence_ref_expansion"
+    wire_bindings = wire.get("field_bindings")
+    if (
+        type(wire_bindings) is not list
+        or len(wire_bindings) != len(expected_objects)
+    ):
+        raise ValueError("verifier binding verdict count does not match Host binding objects")
+    normalized_bindings = []
+    for index, (record, binding_object) in enumerate(
+        zip(wire_bindings, expected_objects)
+    ):
+        if (
+            type(record) is not dict
+            or set(record) != frozenset((
+                "binding_id", "outcome", "rationale", "evidence_refs",
+            ))
+            or type(record.get("binding_id")) is not str
+            or record["binding_id"] != binding_object["binding_id"]
+        ):
+            raise ValueError("verifier binding object IDs are missing, foreign, or out of order")
+        refs = list(record["evidence_refs"])
+        if record.get("outcome") == "supported":
+            primary_id = binding_object["evidence_id"]
+            if not any(ref["evidence_id"] == primary_id for ref in refs):
+                refs.insert(0, {"evidence_id": primary_id})
+        normalized_bindings.append({
+            "index": index,
+            "outcome": record.get("outcome"),
+            "rationale": record.get("rationale"),
+            "evidence_refs": refs,
+        })
+
+    legacy_wire = dict(wire)
+    legacy_wire["schema_version"] = _VERIFIER_WIRE_VERSION
+    legacy_wire["field_bindings"] = normalized_bindings
+    return _parse_semantic_verdict_v0_3(
+        _canonical_bytes(legacy_wire).decode("utf-8", errors="strict"),
+        max_input_bytes,
+        max_string_bytes=max_string_bytes,
+        max_array_items=max_array_items,
+        run_id=run_id,
+        canonical_input_hash=canonical_input_hash,
+        source_bodies=source_bodies,
+        catalog=catalog,
+        producer_binding_evidence_ids=producer_binding_evidence_ids,
+        progress=progress,
+    )
 
 
 @dataclass(frozen=True)
@@ -1021,7 +1248,11 @@ class HostEvidenceCatalogAuditHolder:
                     {"source_id": source_id, "sha256": body_sha256}
                     for source_id, body_sha256 in catalog.source_body_hashes
                 ],
-                "verifier_wire_version": _VERIFIER_WIRE_VERSION,
+                "verifier_wire_version": (
+                    _VERIFIER_WIRE_VERSION_V0_4
+                    if self._semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_9
+                    else _VERIFIER_WIRE_VERSION
+                ),
                 "validator_version": self._semantic_prompt_version,
                 "localizer_version": _RESOLVER_VERSION,
                 "catalog_schema_version": EVIDENCE_CATALOG_SCHEMA_VERSION,

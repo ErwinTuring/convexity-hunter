@@ -217,10 +217,32 @@ _GROUNDER_PRODUCER_PROMPT_VERSIONS = frozenset((
 _GROUNDER_VERIFIER_PROMPT_VERSIONS = frozenset((
     "host-grounder-semantic-verifier-prompt-v0.7",
     "host-grounder-semantic-verifier-prompt-v0.8",
+    "host-grounder-semantic-verifier-prompt-v0.9",
 ))
 _GROUNDER_VERIFIER_PROMPT_V0_8 = "host-grounder-semantic-verifier-prompt-v0.8"
+_GROUNDER_VERIFIER_PROMPT_V0_9 = "host-grounder-semantic-verifier-prompt-v0.9"
 _GROUNDER_PRODUCER_PROMPT_V0_9 = "host-grounder-discovery-prompt-v0.9"
+_GROUNDER_VERIFIER_WIRE_V0_3 = "semantic-verdict-v0.3"
+_GROUNDER_VERIFIER_WIRE_V0_4 = "semantic-verdict-v0.4"
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
+
+
+def _grounder_verifier_route_is_valid(
+    producer_prompt_version: object,
+    verifier_prompt_version: object,
+    verifier_wire_version: object,
+) -> bool:
+    if verifier_prompt_version == _GROUNDER_VERIFIER_PROMPT_V0_9:
+        return (
+            producer_prompt_version == _GROUNDER_PRODUCER_PROMPT_V0_9
+            and verifier_wire_version == _GROUNDER_VERIFIER_WIRE_V0_4
+        )
+    if verifier_prompt_version == _GROUNDER_VERIFIER_PROMPT_V0_8:
+        return (
+            producer_prompt_version == _GROUNDER_PRODUCER_PROMPT_V0_9
+            and verifier_wire_version == _GROUNDER_VERIFIER_WIRE_V0_3
+        )
+    return verifier_wire_version == _GROUNDER_VERIFIER_WIRE_V0_3
 _EVENT_MODEL_SNAPSHOT_FIELDS = frozenset((
     "schema_version", "provider", "model", "base_endpoint", "role", "capabilities",
     "timeout_seconds", "request_budget", "max_tokens", "max_input_bytes",
@@ -664,6 +686,7 @@ def _validate_grounder_producer_failure_audit(
         _BINDING_OMISSION_DELTA_FAILURE_CHECK,
         _BINDING_OMISSION_FAILURE_MARKERS,
         _BINDING_OMISSION_FAILURE_ROUTE,
+        _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
         _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     )
 
@@ -691,12 +714,21 @@ def _validate_grounder_producer_failure_audit(
         _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
     ):
         route = (value["producer_prompt_version"], value["verifier_prompt_version"])
-        expected_route = (
-            _BINDING_OMISSION_FAILURE_ROUTE
+        expected_routes = (
+            (
+                _BINDING_OMISSION_FAILURE_ROUTE,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+            )
             if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2
-            else (_GROUNDER_PRODUCER_PROMPT_V0_9, _GROUNDER_VERIFIER_PROMPT_V0_8)
+            else (
+                _BINDING_OMISSION_FAILURE_ROUTE,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+            )
         )
-        if any(type(item) is not str for item in route) or route != expected_route:
+        if (
+            any(type(item) is not str for item in route)
+            or route not in expected_routes
+        ):
             raise ValueError("Grounder producer failure audit has an unsupported route")
     attempts = _validate_grounder_producer_attempts(
         value["producer_attempts"], successful=False
@@ -907,7 +939,6 @@ def _grounder_stage_outcome(
             else "host-grounder-quote-localization-audit-v0.3"
         ),
         "producer_wire_version": "grounder-output-v0.3",
-        "verifier_wire_version": "semantic-verdict-v0.3",
         "localizer_version": "host-evidence-catalog-resolver-v0.1",
         "catalog_schema_version": "host-grounder-evidence-catalog-v0.1",
         "catalog_generator_version": "host-evidence-paragraph-generator-v0.1",
@@ -933,9 +964,10 @@ def _grounder_stage_outcome(
         or sidecar["producer_prompt_version"] not in _GROUNDER_PRODUCER_PROMPT_VERSIONS
         or type(sidecar.get("validator_version")) is not str
         or sidecar["validator_version"] not in _GROUNDER_VERIFIER_PROMPT_VERSIONS
-        or (
-            sidecar["validator_version"] == _GROUNDER_VERIFIER_PROMPT_V0_8
-            and sidecar["producer_prompt_version"] != _GROUNDER_PRODUCER_PROMPT_V0_9
+        or not _grounder_verifier_route_is_valid(
+            sidecar.get("producer_prompt_version"),
+            sidecar.get("validator_version"),
+            sidecar.get("verifier_wire_version"),
         )
         or (
             attempts_json is not None
@@ -1022,7 +1054,10 @@ def _grounder_stage_outcome(
         if (
             event_fact_anchor.subquestion_ids != anchor_subquestions
             or sidecar["producer_prompt_version"] != _GROUNDER_PRODUCER_PROMPT_V0_9
-            or sidecar["validator_version"] != _GROUNDER_VERIFIER_PROMPT_V0_8
+            or sidecar["validator_version"] not in (
+                _GROUNDER_VERIFIER_PROMPT_V0_8,
+                _GROUNDER_VERIFIER_PROMPT_V0_9,
+            )
             or tuple(
                 row.get("subquestion_id") if type(row) is dict else None
                 for row in envelope["coverage"]
@@ -1374,7 +1409,6 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
             else "host-grounder-quote-localization-audit-v0.3"
         ),
         "producer_wire_version": "grounder-output-v0.3",
-        "verifier_wire_version": "semantic-verdict-v0.3",
         "localizer_version": "host-evidence-catalog-resolver-v0.1",
         "catalog_schema_version": "host-grounder-evidence-catalog-v0.1",
         "catalog_generator_version": "host-evidence-paragraph-generator-v0.1",
@@ -1389,9 +1423,10 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
     if (
         type(provenance.get("validator_version")) is not str
         or provenance["validator_version"] not in _GROUNDER_VERIFIER_PROMPT_VERSIONS
-        or (
-            provenance["validator_version"] == _GROUNDER_VERIFIER_PROMPT_V0_8
-            and provenance["producer_prompt_version"] != _GROUNDER_PRODUCER_PROMPT_V0_9
+        or not _grounder_verifier_route_is_valid(
+            provenance.get("producer_prompt_version"),
+            provenance.get("validator_version"),
+            provenance.get("verifier_wire_version"),
         )
     ):
         raise ValueError(

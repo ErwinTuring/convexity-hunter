@@ -36,6 +36,7 @@ from .host_grounder_evidence_catalog import (
     HostEvidenceCatalogCallAudit,
     HostEvidenceCatalogProducerAttempt,
     _BINDING_OMISSION_FAILURE_ROUTE,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     _BINDING_OMISSION_DELTA_FAILURE_CHECK,
     _BINDING_OMISSION_REPAIR_PROMPT_VERSION,
@@ -50,12 +51,15 @@ from .host_grounder_evidence_catalog import (
     _VERIFIER_PROMPT_VERSION_V0_6 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
     _VERIFIER_PROMPT_VERSION_V0_7 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
     _VERIFIER_PROMPT_VERSION_V0_8 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
+    _VERIFIER_PROMPT_VERSION_V0_9 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
     build_host_evidence_catalog,
+    _build_host_binding_objects,
     parse_grounder_output_v0_3,
     _parse_grounder_output_v0_3_with_progress,
     parse_semantic_verdict_v0_3,
     _SemanticVerdictProgress,
     _parse_semantic_verdict_v0_3,
+    _parse_semantic_verdict_v0_4,
 )
 from .host_grounder_quote_localization import (
     QuoteLocalizationAudit,
@@ -90,6 +94,7 @@ from .host_model import (
 
 _RECEIPT_SCHEMA_VERSION = "semantic-validation-v0.2"
 _RECEIPT_FAILURE_DEFAULT_ROUTE = "producer_v0_9_verifier_v0_8"
+_RECEIPT_FAILURE_BOUND_OBJECT_ROUTE = "producer_v0_9_verifier_v0_9"
 _VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.2"
 _QUOTE_LOCALIZED_PRODUCER_PROMPT_VERSION = "host-grounder-discovery-prompt-v0.3"
 _QUOTE_LOCALIZED_VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.4"
@@ -845,6 +850,48 @@ SEMANTIC_SYSTEM_PROMPT_V0_8 = _replace_prompt_fragment(
     "EI acceptance, an opportunity, a recommendation, or positive expected "
     "return. Preserve contradicted and unresolved outcomes, including legitimate "
     "empty output."
+)
+
+_SEMANTIC_SYSTEM_PROMPT_V0_9 = SEMANTIC_SYSTEM_PROMPT_V0_8
+_SEMANTIC_SYSTEM_PROMPT_V0_9 = _replace_prompt_fragment(
+    _SEMANTIC_SYSTEM_PROMPT_V0_9,
+    "host-grounder-semantic-verifier-prompt-v0.8.",
+    "host-grounder-semantic-verifier-prompt-v0.9.",
+)
+if _SEMANTIC_SYSTEM_PROMPT_V0_9.count("semantic-verdict-v0.3") != 2:
+    raise RuntimeError("bound-object verifier prompt source fragment changed")
+_SEMANTIC_SYSTEM_PROMPT_V0_9 = _SEMANTIC_SYSTEM_PROMPT_V0_9.replace(
+    "semantic-verdict-v0.3", "semantic-verdict-v0.4"
+)
+_SEMANTIC_SYSTEM_PROMPT_V0_9 = _replace_prompt_fragment(
+    _SEMANTIC_SYSTEM_PROMPT_V0_9,
+    "field_bindings[] exact keys: index, outcome, rationale, evidence_refs. coverage[] exact keys: index, subquestion_id, outcome, rationale, evidence_refs. All these fields are required; record IDs are nonempty strings and indices are nonnegative integers.",
+    "field_bindings[] exact keys: binding_id, outcome, rationale, evidence_refs. coverage[] exact keys: index, subquestion_id, outcome, rationale, evidence_refs. All these fields are required; record IDs and binding_id are nonempty strings; coverage indices are nonnegative integers.",
+)
+_SEMANTIC_SYSTEM_PROMPT_V0_9 = _replace_prompt_fragment(
+    _SEMANTIC_SYSTEM_PROMPT_V0_9,
+    "evidence_refs is always an array: it may be empty only for unresolved; supported and contradicted require at least one reference.",
+    "evidence_refs is always an array. It may be empty for unresolved. A supported field binding may have an empty array because the Host associates its exact bound primary paragraph. Every other supported record (claims, hypotheses, and coverage), and every contradicted record including field bindings, requires at least one explicit reference.",
+)
+_SEMANTIC_SYSTEM_PROMPT_V0_9 = _replace_prompt_fragment(
+    _SEMANTIC_SYSTEM_PROMPT_V0_9,
+    "For a supported field binding at index i, cite producer_binding_evidence_map[i][\"evidence_id\"].",
+    "For a supported field binding, assess the exact original paragraph identified by its Host-supplied binding object; the Host associates that object with the primary reference.",
+)
+_SEMANTIC_SYSTEM_PROMPT_V0_9 = _replace_prompt_fragment(
+    _SEMANTIC_SYSTEM_PROMPT_V0_9,
+    "Supported and contradicted outcomes require at least one ID; unresolved may have none.",
+    "Supported and contradicted outcomes require evidence. Only a supported field binding may omit its exact bound primary ID from evidence_refs because the Host associates that immutable object; a contradicted binding must explicitly cite its counterevidence, and unresolved may have none.",
+)
+_SEMANTIC_SYSTEM_PROMPT_V0_9 = _replace_prompt_fragment(
+    _SEMANTIC_SYSTEM_PROMPT_V0_9,
+    "Identity closure is exact: claims has one and only one verdict per envelope claim_id; hypotheses has one and only one verdict per envelope hypothesis_id; field_bindings has one verdict for every zero-based envelope binding index and no others.",
+    "Identity closure is exact: claims has one and only one verdict per envelope claim_id; hypotheses has one and only one verdict per envelope hypothesis_id; field_bindings has exactly one verdict per Host-supplied host_binding_objects entry, in the same order and with its exact binding_id.",
+)
+_SEMANTIC_SYSTEM_PROMPT_V0_9 = _replace_prompt_fragment(
+    _SEMANTIC_SYSTEM_PROMPT_V0_9,
+    "Host-derived producer_binding_evidence_map (v0.6) is an ordered list of {\"index\": 0, \"evidence_id\": \"FORMAT_ONLY_ID\"} items. Index is the zero-based producer field_bindings position. The Host supplies this map only after producer validation, preserving order and repeated IDs; an empty field_bindings array maps to []. This is lexical correspondence only: it establishes no truth, support, entailment, source authority, or required supported verdict. Contradicted and unresolved outcomes remain independently permitted. FORMAT_ONLY_ID is a shape placeholder, not a source fact.",
+    "Bound-object wire (v0.9): host_binding_objects is the Host-supplied ordered list of exact {\"binding_id\": \"binding-<full normalized-envelope SHA-256>-<index>\", \"index\": 0, \"evidence_id\": \"FORMAT_ONLY_ID\"} objects derived from the final accepted producer envelope and this run's catalog; repeated evidence_id values are legal. This is exact lexical identity only, never a verdict or evidence of entailment. For each object, independently judge whether its original bound paragraph, in full registered source and declared field-role context, supports that exact field. supported means that specific bound paragraph supports the field; another similar paragraph, catalog membership, a plausible hypothesis, or the Host-supplied identity alone is insufficient. Return field_bindings records with exactly {\"binding_id\", \"outcome\", \"rationale\", \"evidence_refs\"}, one per supplied object, in identical order; copy binding_id exactly and emit no index/evidence_id in the verdict record. Preserve every relevant qualification and counterevidence reference. The Host associates the primary bound paragraph only for an explicit supported judgment; never rely on that implicit association for contradicted, whose counterevidence must be explicitly referenced. unresolved remains permitted, including with no references. For zero objects return field_bindings: []. FORMAT_ONLY_ID is a shape placeholder, not a source fact.",
 )
 
 
@@ -2229,7 +2276,10 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise HostGrounderRuntimeError("SEMANTIC_TRANSPORT_RETRY_FLAG_INVALID")
     if semantic_transport_retry_enabled and not (
         producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
-        and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8
+        and semantic_prompt_version in (
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
+        )
         and producer_format_repair_enabled
     ):
         raise HostGrounderRuntimeError("SEMANTIC_TRANSPORT_RETRY_ROUTE_INVALID")
@@ -2247,12 +2297,22 @@ def _run_host_grounder_same_run_evidence_catalog(
         semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_7
     elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8:
         semantic_system_prompt = SEMANTIC_SYSTEM_PROMPT_V0_8
+    elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9:
+        semantic_system_prompt = _SEMANTIC_SYSTEM_PROMPT_V0_9
     else:
+        raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
+    if (
+        semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9
+        and producer_prompt_version != _PRODUCER_PROMPT_VERSION_V0_9
+    ):
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     receipt_failure_default_route = (
         callable(context_preparer)
         and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
-        and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8
+        and semantic_prompt_version in (
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
+        )
         and producer_diagnostics_v0_3 is True
         and producer_format_repair_enabled is True
     )
@@ -2337,8 +2397,10 @@ def _run_host_grounder_same_run_evidence_catalog(
         producer_format_repair_enabled
         and producer_diagnostics_v0_3
         and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
-        and semantic_prompt_version
-        == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8
+        and semantic_prompt_version in (
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
+        )
     )
 
     def with_producer_attempts(error: HostGrounderRuntimeError) -> HostGrounderRuntimeError:
@@ -2645,6 +2707,24 @@ def _run_host_grounder_same_run_evidence_catalog(
         {"index": index, "evidence_id": evidence_id}
         for index, evidence_id in enumerate(producer_binding_evidence_ids)
     ]
+    host_binding_objects = None
+    if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9:
+        try:
+            host_binding_objects = _build_host_binding_objects(
+                envelope,
+                normalized_envelope_bytes,
+                producer_binding_evidence_ids,
+                catalog=catalog,
+                source_bodies=frozen_context.source_bodies,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_input_bytes=max_json_bytes,
+            )
+        except Exception:
+            raise with_producer_attempts(
+                HostGrounderRuntimeError("PRODUCER_ENVELOPE_INVALID")
+            ) from None
 
     try:
         audit = audit_holder._finalize(
@@ -2672,7 +2752,9 @@ def _run_host_grounder_same_run_evidence_catalog(
         "registered_source_registry_json": registry_json,
         "evidence_catalog_json": catalog_json,
     }
-    if semantic_prompt_version in (
+    if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9:
+        verifier_input["host_binding_objects"] = host_binding_objects
+    elif semantic_prompt_version in (
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
@@ -2700,23 +2782,43 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise with_producer_attempts(error) from None
 
     progress = _SemanticVerdictProgress() if context_preparer is not None else None
-    verdict_parser = (
-        _parse_semantic_verdict_v0_3 if progress is not None else parse_semantic_verdict_v0_3
-    )
+    if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9:
+        verdict_parser = _parse_semantic_verdict_v0_4
+    else:
+        verdict_parser = (
+            _parse_semantic_verdict_v0_3 if progress is not None else parse_semantic_verdict_v0_3
+        )
     parser_options = {"progress": progress} if progress is not None else {}
     try:
-        normalized_verdict = verdict_parser(
-            semantic_call.content,
-            max_json_bytes,
-            max_string_bytes=run_input.bounds.max_string_bytes,
-            max_array_items=run_input.bounds.max_array_items,
-            run_id=run_input.run_id,
-            canonical_input_hash=run_input.canonical_input_hash,
-            source_bodies=frozen_context.source_bodies,
-            catalog=catalog,
-            producer_binding_evidence_ids=producer_binding_evidence_ids,
-            **parser_options,
-        )
+        if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9:
+            normalized_verdict = verdict_parser(
+                semantic_call.content,
+                max_json_bytes,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                source_bodies=frozen_context.source_bodies,
+                catalog=catalog,
+                envelope=envelope,
+                normalized_envelope_utf8=normalized_envelope_bytes,
+                producer_binding_evidence_ids=producer_binding_evidence_ids,
+                host_binding_objects=host_binding_objects,
+                **parser_options,
+            )
+        else:
+            normalized_verdict = verdict_parser(
+                semantic_call.content,
+                max_json_bytes,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                source_bodies=frozen_context.source_bodies,
+                catalog=catalog,
+                producer_binding_evidence_ids=producer_binding_evidence_ids,
+                **parser_options,
+            )
     except Exception:
         raise with_producer_attempts(HostGrounderRuntimeError(
             "SEMANTIC_VERDICT_REJECTED",
@@ -2750,7 +2852,11 @@ def _run_host_grounder_same_run_evidence_catalog(
             ),
         ))
         if receipt_failure_default_route:
-            runtime_error._receipt_failure_route = _RECEIPT_FAILURE_DEFAULT_ROUTE
+            runtime_error._receipt_failure_route = (
+                _RECEIPT_FAILURE_BOUND_OBJECT_ROUTE
+                if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9
+                else _RECEIPT_FAILURE_DEFAULT_ROUTE
+            )
             runtime_error._receipt_failure_check = _receipt_failure_check(error)
         raise runtime_error from None
 
@@ -3200,6 +3306,10 @@ def _run_host_grounder_same_run_evidence_catalog_v0_9(
             semantic_transport_retry_enabled=semantic_transport_retry_enabled,
         )
     except HostGrounderRuntimeError as error:
+        error._semantic_transport_route = (
+            _PRODUCER_PROMPT_VERSION_V0_9,
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
+        )
         attempts = getattr(error, "producer_attempts", None)
         if (
             type(error) is HostGrounderRuntimeError
@@ -3210,4 +3320,64 @@ def _run_host_grounder_same_run_evidence_catalog_v0_9(
             and attempts[0].failure_check == _BINDING_OMISSION_FIRST_FAILURE_CHECK
         ):
             error._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE
+        raise
+
+
+def _run_host_grounder_same_run_evidence_catalog_v0_10(
+    run_input: HostGrounderRunInput,
+    context: HostBuildContext,
+    *,
+    discovery_client: ChatCompletionsClient,
+    semantic_client: ChatCompletionsClient,
+    audit_holder: HostEvidenceCatalogAuditHolder,
+    max_json_bytes: int,
+    max_source_body_bytes: int,
+    max_catalog_entries: int,
+    max_catalog_bytes: int,
+    max_catalog_paragraphs: int,
+    host_context_preparer: Optional[
+        Callable[
+            [ValidatedEnvelopeSnapshot, Mapping[str, object], HostBuildContext],
+            HostBuildContext,
+        ]
+    ] = None,
+    semantic_transport_retry_enabled: bool = False,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Private normal-Event successor selecting the bound-object verifier wire."""
+    if not callable(host_context_preparer):
+        raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
+    try:
+        return _run_host_grounder_same_run_evidence_catalog(
+            run_input,
+            context,
+            discovery_client=discovery_client,
+            semantic_client=semantic_client,
+            audit_holder=audit_holder,
+            max_json_bytes=max_json_bytes,
+            max_source_body_bytes=max_source_body_bytes,
+            max_catalog_entries=max_catalog_entries,
+            max_catalog_bytes=max_catalog_bytes,
+            max_catalog_paragraphs=max_catalog_paragraphs,
+            producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_9,
+            semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
+            context_preparer=host_context_preparer,
+            producer_diagnostics_v0_3=True,
+            producer_format_repair_enabled=True,
+            semantic_transport_retry_enabled=semantic_transport_retry_enabled,
+        )
+    except HostGrounderRuntimeError as error:
+        error._semantic_transport_route = (
+            _PRODUCER_PROMPT_VERSION_V0_9,
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
+        )
+        attempts = getattr(error, "producer_attempts", None)
+        if (
+            type(error) is HostGrounderRuntimeError
+            and type(attempts) is tuple
+            and bool(attempts)
+            and type(attempts[0]) is HostEvidenceCatalogProducerAttempt
+            and attempts[0].status == "rejected"
+            and attempts[0].failure_check == _BINDING_OMISSION_FIRST_FAILURE_CHECK
+        ):
+            error._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE_V0_10
         raise

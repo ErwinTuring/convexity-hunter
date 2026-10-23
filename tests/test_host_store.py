@@ -340,7 +340,11 @@ def make_grounder_no_submission_result(
         "producer_content_sha256": hashlib.sha256(producer_bytes).hexdigest(),
         "normalized_envelope_sha256": envelope_hash,
         "source_body_hashes": source_hashes,
-        "verifier_wire_version": "semantic-verdict-v0.3",
+        "verifier_wire_version": (
+            "semantic-verdict-v0.4"
+            if validator_version == "host-grounder-semantic-verifier-prompt-v0.9"
+            else "semantic-verdict-v0.3"
+        ),
         "validator_version": validator_version,
         "localizer_version": "host-evidence-catalog-resolver-v0.1",
         "catalog_schema_version": "host-grounder-evidence-catalog-v0.1",
@@ -512,7 +516,7 @@ def make_grounder_submission_result(run_id="grounder-run", *, normal_event_route
             if normal_event_route else "host-grounder-discovery-prompt-v0.6"
         ),
         validator_version=(
-            "host-grounder-semantic-verifier-prompt-v0.8"
+            "host-grounder-semantic-verifier-prompt-v0.9"
             if normal_event_route else "host-grounder-semantic-verifier-prompt-v0.7"
         ),
         normal_event_route=normal_event_route,
@@ -613,7 +617,7 @@ class HostStoreTests(unittest.TestCase):
         result = make_grounder_no_submission_result(
             run_id,
             producer_prompt_version="host-grounder-discovery-prompt-v0.9",
-            validator_version="host-grounder-semantic-verifier-prompt-v0.8",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.9",
             normal_event_route=True,
         )
         result = _stamp_event_fact_anchor_outcome(
@@ -684,7 +688,7 @@ class HostStoreTests(unittest.TestCase):
         result = make_grounder_no_submission_result(
             run_id,
             producer_prompt_version="host-grounder-discovery-prompt-v0.9",
-            validator_version="host-grounder-semantic-verifier-prompt-v0.8",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.9",
             normal_event_route=True,
         )
         result = _stamp_event_fact_anchor_outcome(
@@ -1262,6 +1266,46 @@ class HostStoreTests(unittest.TestCase):
             _grounder_stage_outcome(
                 replace(result, audit=wrong_pair_audit),
                 run_id,
+                "synthetic fixture event",
+            )
+
+        bound_object = make_grounder_no_submission_result(
+            producer_prompt_version="host-grounder-discovery-prompt-v0.9",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.9",
+        )
+        bound_run_id = bound_object.build_result.context.run_id
+        bound_outcome = _grounder_stage_outcome(
+            bound_object, bound_run_id, "synthetic fixture event"
+        )
+        self.assertEqual(
+            (
+                bound_outcome["provenance"]["audit_schema_version"],
+                bound_outcome["provenance"]["producer_prompt_version"],
+                bound_outcome["provenance"]["verifier_wire_version"],
+                bound_outcome["provenance"]["validator_version"],
+            ),
+            (
+                "host-grounder-quote-localization-audit-v0.3",
+                "host-grounder-discovery-prompt-v0.9",
+                "semantic-verdict-v0.4",
+                "host-grounder-semantic-verifier-prompt-v0.9",
+            ),
+        )
+        _validate_grounder_stage_outcome(bound_outcome)
+        wrong_wire_sidecar = json.loads(bound_object.audit.sidecar_utf8)
+        wrong_wire_sidecar["verifier_wire_version"] = "semantic-verdict-v0.3"
+        wrong_wire_bytes = json.dumps(
+            wrong_wire_sidecar, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        wrong_wire_audit = replace(
+            bound_object.audit,
+            sidecar_utf8=wrong_wire_bytes,
+            sidecar_sha256=hashlib.sha256(wrong_wire_bytes).hexdigest(),
+        )
+        with self.assertRaisesRegex(ValueError, "audit versions do not identify"):
+            _grounder_stage_outcome(
+                replace(bound_object, audit=wrong_wire_audit),
+                bound_run_id,
                 "synthetic fixture event",
             )
 

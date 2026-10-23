@@ -1,8 +1,10 @@
 # Host verifier bound-object wire v0.1
 
-Status: FROZEN / BUILD READY after bounded preflight and independent contract
-review PASS. Production implementation is absent at this freeze; current
-runtime remains unchanged. User approval covers this bounded successor work.
+Status: FROZEN / IMPLEMENTED / REVIEW PASS. Implementation follows the separately
+committed contract freeze, at which production was absent. Full regression
+passes 2,051 tests; focused adversarial tests, public API compatibility,
+compileall and independent implementation/test review pass. Deployment and
+real integration are still pending. User approval covers this bounded successor.
 
 ## Purpose and boundary
 
@@ -60,7 +62,11 @@ explicit schema version. Only each `field_bindings[]` record changes to:
 
 This is a shape example, not a default outcome or evidence. The record has
 exactly these four keys; `outcome` retains the existing closed enum, rationale
-and ref limits. Record count and ordered ID sequence must equal the complete
+and ref limits. The sole nonempty-reference exception is a supported binding:
+its refs may be `[]` because its primary citation is implicit. Supported
+claims/hypotheses/coverage and all contradicted records still require explicit
+nonempty references; unresolved retains its existing empty-ref permission.
+Record count and ordered ID sequence must equal the complete
 Host map exactly, including `[]` for zero bindings. Missing, duplicate, foreign,
 malformed, mismatched or reordered objects fail closed as a whole. No numeric
 coercion, sorting, ID correction, partial verdict or default outcome is allowed.

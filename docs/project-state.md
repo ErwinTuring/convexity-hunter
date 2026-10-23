@@ -1,17 +1,22 @@
 # Project State
 
-## Bound-object verifier contract frozen; BUILD next — 2026-10-23 UTC
+## Bound-object verifier implemented and reviewed; deployment next — 2026-10-23 UTC
 
 User-approved preflight and independent contract review pass for the
 [bound-object wire successor](host-verifier-bound-object-wire-v0.1.md).
-Status is FROZEN / BUILD READY, implementation absent. New explicit wire/prompt
+Contract is frozen and the successor is implemented locally. New explicit wire/prompt
 versions fix the object of independent assessment, not its outcome; legacy
 routes, EI/Core authority, producer, budgets/retries and Direct stay unchanged.
+Focused regression, compileall, public API compatibility and independent targeted
+implementation review pass; full regression passes all 2,051 tests, with final
+independent review of updated route fixtures. Documentation checks pass for
+repository-relative links and fence pairs; historical absolute temporary-file
+links were not validated. Deployment and real integration remain pending.
 No live call was made. Follow the [checkpoint](current-checkpoint.md) for BUILD
 scope, proof boundaries and spent guards. Real positive Event/World closure
 remains unproven.
 
-## Current blocking decision: semantic binding-wire reliability — 2026-10-23 UTC
+## Historical blocking decision (superseded by approved successor above) — 2026-10-23 UTC
 
 The verified bound-fact retention fix `d6ecfdf` is deployed. The sole post-fix
 Nasdaq run `7cc1b60e` stopped earlier at semantic wire parsing, specifically

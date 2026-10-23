@@ -25,6 +25,7 @@ from .host_grounder_evidence_catalog import (
     HostEvidenceCatalogProducerAttempt,
     _BINDING_OMISSION_FAILURE_MARKERS,
     _BINDING_OMISSION_FAILURE_ROUTE,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
 )
 from .host_grounder_runtime import HostGrounderRuntimeError
@@ -899,7 +900,12 @@ def create_world_runner(
                             for item in attempts
                         )
                         and type(route) is tuple
-                        and route == _BINDING_OMISSION_FAILURE_ROUTE
+                        and route in (
+                            _BINDING_OMISSION_FAILURE_ROUTE,
+                            _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+                        )
+                        and getattr(error, "_semantic_transport_route", route)
+                        == route
                     ):
                         raise
                 reasons.append("world_grounder_failed")

@@ -556,33 +556,51 @@ class HostWorldTests(unittest.TestCase):
                     expected_phases,
                 )
 
-    def test_only_stamped_v09_v08_omission_failures_escape_world_catch(self):
+    def test_only_stamped_bound_object_omission_failures_escape_world_catch(self):
         from tests.test_host_server import _normal_v09_omission_failure
+        from convexity_hunter.host_grounder_evidence_catalog import (
+            _BINDING_OMISSION_FAILURE_ROUTE,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+        )
 
         empty_skill = HostSkillResult("empty", None, (), (), (), 0)
-        omission_error, _calls = _normal_v09_omission_failure("delta")
-        self.grounder_query_error = omission_error
-        with self.assertRaises(HostGrounderRuntimeError) as raised:
-            self._run_through_real_core(skill_result=empty_skill)
-        self.assertIs(raised.exception, omission_error)
+        for bound_object, expected_route in (
+            (False, _BINDING_OMISSION_FAILURE_ROUTE),
+            (True, _BINDING_OMISSION_FAILURE_ROUTE_V0_10),
+        ):
+            omission_error, _calls = _normal_v09_omission_failure(
+                "delta", bound_object=bound_object
+            )
+            self.assertEqual(omission_error._producer_failure_route, expected_route)
+            self.grounder_query_error = omission_error
+            with self.assertRaises(HostGrounderRuntimeError) as raised:
+                self._run_through_real_core(skill_result=empty_skill)
+            self.assertIs(raised.exception, omission_error)
 
-        invalid_routes = (None, (
-            "host-grounder-discovery-prompt-v0.8",
-            "host-grounder-semantic-verifier-prompt-v0.7",
-        ))
-        for route in invalid_routes:
-            with self.subTest(route=route):
-                error, _calls = _normal_v09_omission_failure("delta")
-                if route is None:
-                    del error._producer_failure_route
-                else:
-                    error._producer_failure_route = route
-                self.grounder_query_error = error
-                result, captured, _discovery, _semantic = self._run_through_real_core(
-                    skill_result=empty_skill
-                )
-                self.assertIn("world_grounder_failed", result.case_set.reasons)
-                self.assertEqual(captured[0].submissions, ())
+            invalid_routes = (
+                None,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_10
+                if not bound_object else _BINDING_OMISSION_FAILURE_ROUTE,
+                (
+                    "host-grounder-discovery-prompt-v0.8",
+                    "host-grounder-semantic-verifier-prompt-v0.7",
+                ),
+            )
+            for route in invalid_routes:
+                with self.subTest(bound_object=bound_object, route=route):
+                    error, _calls = _normal_v09_omission_failure(
+                        "delta", bound_object=bound_object
+                    )
+                    if route is None:
+                        del error._producer_failure_route
+                    else:
+                        error._producer_failure_route = route
+                    self.grounder_query_error = error
+                    result, captured, _discovery, _semantic = self._run_through_real_core(
+                        skill_result=empty_skill
+                    )
+                    self.assertIn("world_grounder_failed", result.case_set.reasons)
+                    self.assertEqual(captured[0].submissions, ())
 
     def test_world_batch_failure_is_archived_with_v02_attempt_hashes(self):
         from tests.test_host_server import _normal_v09_omission_failure
