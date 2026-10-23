@@ -1,5 +1,16 @@
 # Project State
 
+## Bound-object verifier contract frozen; BUILD next — 2026-10-23 UTC
+
+User-approved preflight and independent contract review pass for the
+[bound-object wire successor](host-verifier-bound-object-wire-v0.1.md).
+Status is FROZEN / BUILD READY, implementation absent. New explicit wire/prompt
+versions fix the object of independent assessment, not its outcome; legacy
+routes, EI/Core authority, producer, budgets/retries and Direct stay unchanged.
+No live call was made. Follow the [checkpoint](current-checkpoint.md) for BUILD
+scope, proof boundaries and spent guards. Real positive Event/World closure
+remains unproven.
+
 ## Current blocking decision: semantic binding-wire reliability — 2026-10-23 UTC
 
 The verified bound-fact retention fix `d6ecfdf` is deployed. The sole post-fix

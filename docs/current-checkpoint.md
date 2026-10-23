@@ -2,6 +2,24 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Bound-object verifier successor frozen — 2026-10-23 UTC
+
+The user approved the bounded semantic-wire preflight. The
+[bound-object wire contract](host-verifier-bound-object-wire-v0.1.md) passed
+independent authority-equivalence review and is FROZEN / BUILD READY, not yet
+implemented. Host may fix binding identity/reference correspondence but never
+supply the model's verdict. The successor requires exact ordered object IDs,
+explicit independent judgments, preserved model counterreferences and the
+unchanged normalized receipt/EI checks. Old routes are not reinterpreted.
+
+Target verifier wire v0.4 / prompt v0.9 and private runtime v0.10 change only
+the versioned binding adapter; producer, public APIs, budgets/retries, receipt
+schema, Direct and Core remain unchanged. No raw-response retention, new
+provider/database or expanded evidence claim is authorized. BUILD, focused
+regression and independent implementation review are next. No live request
+has been made in this work unit. Current Host still runs `d6ecfdf`, 32 records
+/ 0 active at its last verified checkpoint; do not replay spent manifests.
+
 ## Post-fix normal Event blocked at verifier binding alignment — 2026-10-23 UTC
 
 Release `d6ecfdf` is deployed through the original launcher: PID 82957/session
