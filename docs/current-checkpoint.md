@@ -2,7 +2,7 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## World native wire clarification reviewed — 2026-10-23 UTC
+## World wire deployed; default Event route verified offline — 2026-10-23 UTC
 
 The existing native-model callback prompts now specify the frozen consumer's
 exact row keys, JSON types, text bounds and exact input/output ID-set equality.
@@ -11,9 +11,18 @@ unchanged. This corrects underspecified instructions, not a proven cause of
 the historical failures. Real callback/native-controller synthetic coverage
 passed: World module 24 tests and 3 focused Skill tests. Independent review
 and targeted re-review passed; extra-ID rows still fail closed. No live success
-is implied. Deployment with the current UTC date and a new bounded World run
-remain pending; old guards stay spent. The separate default Event outer-route
-fixture is still in progress and is not part of this reviewed patch.
+is implied. Commit `8b8e0dd` is deployed through the original launcher with
+UTC evaluation date 2026-10-23 (PID 71877/session 21702). The same database's
+26 records, profile v0.4 and three cached Direct-report hashes were preserved.
+A new bounded World validation is in preparation; old guards stay spent.
+
+The separate synthetic default Event outer-route test now passes without a
+preparer override, injected submission or mocked EI verdict. It exercises
+source admission, anchor/date/listing preparation, semantic receipt and Builder
+before the actual EI assessor returns ACCEPTED. The full Event test module
+passed 63 tests; independent static review passed. Only the test file changed.
+Fixed model/source responses prove protocol and wiring, not real grounding
+quality or live Event-to-Core closure.
 
 ## Resumption checkpoint — 2026-10-22 UTC / 2026-10-23 Beijing
 

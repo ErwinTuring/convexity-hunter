@@ -15,7 +15,11 @@ from unittest.mock import patch
 
 from convexity_hunter.core_application import CoreOperationalBounds
 from convexity_hunter.event_entry import UserEventInput
-from convexity_hunter.event_intelligence import MethodologizedDateRange
+from convexity_hunter.event_intelligence import (
+    EventIntelligenceAcceptanceStatus,
+    MethodologizedDateRange,
+    assess_event_intelligence_submission,
+)
 from convexity_hunter.host_event import (
     _EVENT_FACT_ANCHOR_QUESTION,
     _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
@@ -195,8 +199,10 @@ def _digest(text):
 
 
 def _context_and_run_input(
-    run_id, raw_input, source_order, bodies_by_url, bounds, *, normal_recipe=True
+    run_id, raw_input, source_order, bodies_by_url, bounds, *, normal_recipe=True,
+    source_body_overrides=None,
 ):
+    source_body_overrides = {} if source_body_overrides is None else source_body_overrides
     user_input = UserEventInput(raw_input)
     subquestions = (HostGrounderSubquestion("user_event_input", raw_input),)
     if normal_recipe:
@@ -211,8 +217,8 @@ def _context_and_run_input(
     )
     source_bodies = {
         source_id: HostSourceBody(
-            bodies_by_url[url],
-            _digest(bodies_by_url[url]),
+            source_body_overrides.get(source_id, bodies_by_url[url]),
+            _digest(source_body_overrides.get(source_id, bodies_by_url[url])),
             url,
             _NOW,
             "Unverified source title",
@@ -1077,15 +1083,18 @@ def _sec_primary_listing_case(
 
 
 def _listing_runtime_wires(
-    run_id, symbol, source_order, bodies_by_url, config, *, normal_recipe=True
+    run_id, symbol, source_order, bodies_by_url, config, *, normal_recipe=True,
+    claim_quote="A synthetic event was reported.", source_body_overrides=None,
+    raw_input="Assess a synthetic listing event.",
 ):
     run_input, context = _context_and_run_input(
         run_id,
-        "Assess a synthetic listing event.",
+        raw_input,
         source_order,
         bodies_by_url,
         config.run_input_bounds,
         normal_recipe=normal_recipe,
+        source_body_overrides=source_body_overrides,
     )
     catalog = build_host_evidence_catalog(
         run_id,
@@ -1099,13 +1108,19 @@ def _listing_runtime_wires(
     )
     claim_id = "claim-generated-{}".format(run_id)
     hypothesis_id = "hypothesis-generated-{}".format(run_id)
-    claim_quote = "A synthetic event was reported."
     sec_source_id = source_order[0][0]
-    claim_entry = next(
-        entry
-        for entry in catalog.entries
-        if entry.quote.rstrip("\r\n") == claim_quote
-    )
+    if claim_quote == "A synthetic event was reported.":
+        claim_entry = next(
+            entry for entry in catalog.entries
+            if entry.quote.rstrip("\r\n") == claim_quote
+        )
+    else:
+        claim_matches = tuple(
+            entry for entry in catalog.entries if claim_quote in entry.quote
+        )
+        if len(claim_matches) != 1:
+            raise AssertionError("claim_quote must uniquely identify one catalog entry")
+        claim_entry = claim_matches[0]
     symbol_entry = next(
         entry
         for entry in catalog.entries
@@ -1233,6 +1248,133 @@ def _listing_runtime_wires(
         json.dumps(semantic, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
         normalized,
     )
+
+
+def _accepted_default_route_wires(
+    run_id, source_order, bodies_by_url, config, primary_source_id,
+    event_text, milestone_text, source_body_overrides, raw_input,
+):
+    discovery, _semantic, _ = _listing_runtime_wires(
+        run_id, "ACME", source_order, bodies_by_url, config,
+        claim_quote=event_text, source_body_overrides=source_body_overrides,
+        raw_input=raw_input,
+    )
+    run_input, context = _context_and_run_input(
+        run_id, raw_input, source_order, bodies_by_url, config.run_input_bounds,
+        source_body_overrides=source_body_overrides,
+    )
+    catalog = build_host_evidence_catalog(
+        run_id, run_input.canonical_input_hash, context.source_bodies,
+        max_catalog_entries=config.max_catalog_entries,
+        max_catalog_bytes=config.max_catalog_bytes,
+        max_catalog_paragraphs=config.max_catalog_paragraphs,
+        max_string_bytes=run_input.bounds.max_string_bytes,
+        max_array_items=run_input.bounds.max_array_items,
+    )
+    def evidence(quote):
+        return next(
+            item for item in catalog.entries
+            if item.source_id == primary_source_id and quote in item.quote
+        )
+    event_entry, milestone_entry = evidence(event_text), evidence(milestone_text)
+    producer = json.loads(discovery)
+    event_id = producer["claims"][0]["claim_id"]
+    milestone_id, interpretation_id = "claim-milestone", "claim-interpretation"
+    hypothesis = producer["hypotheses"][0]
+    hypothesis["impact_path"] = "The wider range may broaden possible results in either direction."
+    hypothesis["distribution_mode"] = "bidirectional_expansion"
+    hypothesis["distribution_hypothesis"] = "The wider range may increase the frequency of tail outcomes."
+    hypothesis["reassessment"] = {
+        "reassessment_by": "2027-01-31",
+        "methodology": "source-backed-milestone:{}:2027-01-31".format(milestone_id),
+        "basis_kind": "source_backed_milestone",
+        "basis_claim_ids": [milestone_id],
+    }
+    hypothesis["supporting_claim_ids"] = [interpretation_id]
+    hypothesis["contradiction_review"] = "No contrary statement is included in this synthetic fixture."
+    hypothesis["uncertainties"] = ["The source does not quantify the resulting range of outcomes."]
+    hypothesis["falsification_conditions"] = ["A later source reports a narrower forecast range."]
+    event_claim = producer["claims"][0]
+    event_claim.update(
+        evidence_id=event_entry.evidence_id, text=event_text,
+        event_date="2026-09-21",
+    )
+    producer["claims"].extend((
+        {
+            "claim_id": milestone_id, "kind": "observed_fact",
+            "evidence_id": milestone_entry.evidence_id, "text": milestone_text,
+            "entity_refs": [], "event_date": None, "published_at": None,
+            "dependency_claim_ids": [], "uncertainty": [], "falsification_conditions": [],
+        },
+        {
+            "claim_id": interpretation_id, "kind": "interpretation",
+            "evidence_id": event_entry.evidence_id,
+            "text": "A wider forecast range may broaden possible performance outcomes.",
+            "entity_refs": [], "event_date": None, "published_at": None,
+            "dependency_claim_ids": [event_id, milestone_id],
+            "uncertainty": ["The source does not quantify the resulting range of outcomes."],
+            "falsification_conditions": ["A later source reports a narrower forecast range."],
+        },
+    ))
+    producer["coverage"][0]["claim_ids"] = [event_id, milestone_id, interpretation_id]
+    producer["coverage"][1]["claim_ids"] = [event_id]
+    bindings = [
+        ("/claims/0/event_date", event_entry, "date"),
+        ("/hypotheses/0/impact_path", event_entry, "hypothesis"),
+        ("/hypotheses/0/distribution_mode", event_entry, "hypothesis"),
+        ("/hypotheses/0/distribution_hypothesis", event_entry, "hypothesis"),
+        ("/hypotheses/0/reassessment/reassessment_by", milestone_entry, "date"),
+    ]
+    producer["field_bindings"].extend(
+        {"field_path": path, "evidence_id": item.evidence_id,
+         "semantic_role": role, "status": "supported"}
+        for path, item, role in bindings
+    )
+    _normalized, envelope_bytes = parse_grounder_output_v0_3(
+        json.dumps(producer, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        config.max_json_bytes, max_string_bytes=run_input.bounds.max_string_bytes,
+        max_array_items=run_input.bounds.max_array_items, run_id=run_id,
+        canonical_input_hash=run_input.canonical_input_hash,
+        source_bodies=context.source_bodies, catalog=catalog,
+    )
+    refs = [{"evidence_id": item.evidence_id} for item in (event_entry, milestone_entry)]
+    semantic = {
+        "schema_version": "semantic-verdict-v0.3", "run_id": run_id,
+        "envelope_hash": hashlib.sha256(envelope_bytes).hexdigest(),
+        "source_body_hashes": [
+            {"source_id": sid, "sha256": source.body_sha256}
+            for sid, source in sorted(context.source_bodies.items())
+        ],
+        "claims": [
+            {"claim_id": claim["claim_id"], "outcome": "supported",
+             "rationale": "The synthetic verifier supports the exact registered source link.",
+             "evidence_refs": ([{"evidence_id": claim["evidence_id"]}]
+                               if claim["claim_id"] != interpretation_id else refs)}
+            for claim in producer["claims"]
+        ],
+        "hypotheses": [{
+            "hypothesis_id": hypothesis["hypothesis_id"], "outcome": "supported",
+            "rationale": "The synthetic verifier supports this inference over its verified fact closure.",
+            "evidence_refs": refs,
+        }],
+        "field_bindings": [
+            {"index": index, "outcome": "supported",
+             "rationale": "The synthetic verifier supports the exact bound source field.",
+             "evidence_refs": [{"evidence_id": binding["evidence_id"]}]}
+            for index, binding in enumerate(producer["field_bindings"])
+        ],
+        "coverage": [
+            {"index": index, "subquestion_id": item["subquestion_id"],
+             "outcome": "supported", "rationale": "The verified source facts address this subquestion.",
+             "evidence_refs": refs if index == 0 else [refs[0]]}
+            for index, item in enumerate(producer["coverage"])
+        ],
+    }
+    semantic_json = json.dumps(semantic, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    producer_json = json.dumps(
+        producer, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return producer_json, semantic_json
 
 
 class _SyntheticModelTransport:
@@ -2624,6 +2766,140 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(
             admission_calls, [_SEC_LOCATOR, reference_locator, yahoo_locator]
         )
+
+    def test_default_outer_route_reaches_ei_accepted_from_sec_admission(self):
+        # Synthetic model replies exercise normal-path wiring, not real-world truth.
+        run_id, symbol = "default-outer-accepted-run", "ACME"
+        raw_input = (
+            "Research the announced widening of Example Holdings' full-year revenue "
+            "forecast range. Assess support for a change in outcome distribution and "
+            "identify a source-backed reassessment milestone."
+        )
+        event_text = (
+            "On September 21, 2026, Example Holdings, Inc. (the “Company”) "
+            "announced that it widened its full-year revenue forecast range."
+        )
+        milestone_text = (
+            "The Company will publish its next full-year revenue forecast on 2027-01-31."
+        )
+        cover_html = _sec_primary_raw_cover_html(symbol).replace(
+            b"</p><table>",
+            b"</p><p>" + event_text.encode("utf-8") + b"</p><p>"
+            + milestone_text.encode("utf-8") + b"</p><table>",
+        )
+        _fixture_client, records, _fixture_calls = _sec_primary_composite_records(
+            symbol, cover_html_override=cover_html
+        )
+        note_locator = "https://source.example/a"
+        candidate_order = (("source-sec", _SEC_LOCATOR), ("source-note", note_locator))
+        source_order = candidate_order + tuple(
+            (record.source_id, record.initial_locator) for record in records
+        )
+        bodies_by_url = {
+            record.initial_locator: record.parsed_body for record in records
+        }
+        bodies_by_url[_SEC_LOCATOR] = "Example Holdings, Inc. ACME\n"
+        bodies_by_url[note_locator] = "No additional event fact is asserted.\n"
+        source_body_overrides = {records[0].source_id: records[0].parsed_body}
+        config = _config(source_order=candidate_order)
+        discovery, semantic = _accepted_default_route_wires(
+            run_id, source_order, bodies_by_url, config, records[0].source_id,
+            event_text, milestone_text, source_body_overrides, raw_input,
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=candidate_order, body_overrides=bodies_by_url
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        reference_locator = "https://www.sec.gov/files/company_tickers_exchange.json"
+        yahoo_locator = "https://finance.yahoo.com/quote/{}/".format(symbol)
+        reference_body = json.dumps(
+            {
+                "fields": ["cik", "name", "ticker", "exchange"],
+                "data": [[320193, "Reference Unicode — Name", symbol, "Nasdaq"]],
+            }, ensure_ascii=False, separators=(",", ":"),
+        ).encode("utf-8")
+        yahoo_body = (
+            "<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+            "<h1>Example Holdings, Inc. ({})</h1></body></html>".format(symbol)
+        ).encode("utf-8")
+        replies = {
+            _SEC_LOCATOR: _Reply(200, {"Content-Type": "text/html; charset=UTF-8"}, cover_html),
+            reference_locator: _Reply(200, {"Content-Type": "application/json"}, reference_body),
+            yahoo_locator: _Reply(200, {"Content-Type": "text/html; charset=UTF-8"}, yahoo_body),
+        }
+        admission_calls = []
+
+        def admission_transport(locator, _address, _timeout, _max_bytes):
+            admission_calls.append(locator)
+            return replies.get(locator, _Reply(404, {"Content-Type": "text/plain"}, b"absent"))
+
+        admission_client = _SourceAdmissionClient(
+            timeout_seconds=2.0, max_response_bytes=1_500_000,
+            byte_budget=2_500_000, _transport=admission_transport,
+            _resolver=lambda _host, _port: ("93.184.216.34",), _clock=lambda: _NOW,
+        )
+        callback = create_event_grounder(
+            config, repo_root=_ROOT, source_transport=source_transport,
+            discovery_transport=model_transport, semantic_transport=model_transport,
+        )
+        with patch(
+            "convexity_hunter.host_event._create_source_admission_client",
+            return_value=admission_client,
+        ):
+            result = callback(
+                raw_input, run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        build = result.build_result
+        self.assertEqual(len(model_transport.calls), 2)
+        self.assertEqual(
+            admission_calls, [_SEC_LOCATOR, reference_locator, yahoo_locator]
+        )
+        self.assertIsNotNone(build.submission)
+        receipt = build.semantic_validation.receipt
+        self.assertEqual(build.context.raw_input.description, raw_input)
+        self.assertEqual(
+            receipt["canonical_input_hash"], build.context.canonical_input_hash
+        )
+        self.assertEqual(set(receipt["verified_claim_ids"]), {
+            "claim-generated-{}".format(run_id), "claim-milestone", "claim-interpretation",
+        })
+        self.assertEqual(receipt["verified_hypothesis_ids"],
+                         ("hypothesis-generated-{}".format(run_id),))
+        self.assertEqual(set(receipt["verified_binding_indices"]),
+                         set(range(len(build.field_bindings))))
+        self.assertEqual(build.context.event_description_binding,
+                         "claim-generated-{}".format(run_id))
+        self.assertEqual(build.context.event_date_range.start_date, datetime.date(2026, 9, 21))
+        self.assertEqual(build.context.event_date_range.end_date, datetime.date(2026, 9, 21))
+        date_provenance = json.loads(build.context.event_date_range.methodology)
+        self.assertEqual(date_provenance["rule_version"],
+                         "host-event-source-facts-v0.4/sec-primary-html-occurrence-date")
+        self.assertEqual(date_provenance["action_role"], "announcement")
+        self.assertEqual(date_provenance["registrant"], "Example Holdings, Inc.")
+        self.assertEqual(date_provenance["matched_statement"], event_text)
+        self.assertEqual(date_provenance["paragraph_quote"].rstrip("\n"), event_text)
+        pair = ("hypothesis-generated-{}".format(run_id), symbol)
+        self.assertIn(pair, build.context.underlying_bindings)
+        underlying, listing_ref = build.context.underlying_bindings[pair]
+        self.assertEqual(
+            (underlying.symbol, underlying.listing_mic, underlying.security_type.value,
+             underlying.currency),
+            (symbol, None, "equity", "USD"),
+        )
+        listing_provenance = json.loads(listing_ref)
+        self.assertEqual(listing_provenance["symbol"], symbol)
+        self.assertEqual(
+            [item["role"] for item in listing_provenance["sources"]],
+            ["sec_issuer_reference", "sec_cover_security_class", "yahoo_quote_denomination"],
+        )
+        self.assertEqual(
+            listing_provenance["rule_version"], "host-listing-source-composite-v0.2",
+        )
+        assessment = assess_event_intelligence_submission(build.submission)
+        self.assertIs(assessment.status, EventIntelligenceAcceptanceStatus.ACCEPTED)
+        self.assertEqual(assessment.issues, ())
 
     def test_sec_v2_v3_and_v4_supplement_authority_is_candidate_only(self):
         nasdaq_url = "https://www.nasdaq.com/market-activity/stocks/acme"

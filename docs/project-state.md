@@ -1,12 +1,15 @@
 # Project State
 
-## World native callback wire clarified — 2026-10-23 UTC
+## World wire deployed; default Event integration verified offline — 2026-10-23 UTC
 
 Existing output constraints are now explicit in the callback prompts; consumer,
 budgets and EI/Core semantics are unchanged. World 24 tests, 3 focused Skill
-tests and independent targeted review pass. This is not proof of the old
-failure's cause or a live closed loop. Deployment/normal-run validation and
-the separate default Event outer-route fixture are pending; see the
+tests and independent targeted review pass. Commit `8b8e0dd` is deployed with
+the current UTC date; 26 records/profile/cached Direct reports are preserved.
+The default Event outer-route synthetic integration reaches actual EI ACCEPTED
+without a preparer override or verdict mock; the Event module's 63 tests and
+independent review pass. A new bounded World validation is being prepared.
+Neither offline result proves live grounding or EI-to-Core closure; see the
 [checkpoint](current-checkpoint.md).
 
 ## Resumption checkpoint — 2026-10-22 UTC / 2026-10-23 Beijing
