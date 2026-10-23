@@ -130,10 +130,12 @@ _GROUNDER_STAGE_OUTCOME_VERSION = "host-grounder-stage-outcome-v0.1"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-stage-outcome-v0.2"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_3 = "host-grounder-stage-outcome-v0.3"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_4 = "host-grounder-stage-outcome-v0.4"
+_GROUNDER_STAGE_OUTCOME_VERSION_V0_5 = "host-grounder-stage-outcome-v0.5"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION = "host-grounder-submission-stage-outcome-v0.1"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-submission-stage-outcome-v0.2"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3 = "host-grounder-submission-stage-outcome-v0.3"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4 = "host-grounder-submission-stage-outcome-v0.4"
+_GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_5 = "host-grounder-submission-stage-outcome-v0.5"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION = "host-grounder-producer-failure-audit-v0.1"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2 = "host-grounder-producer-failure-audit-v0.2"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3 = "host-grounder-producer-failure-audit-v0.3"
@@ -148,16 +150,19 @@ _GROUNDER_STAGE_OUTCOME_VERSIONS = frozenset((
     _GROUNDER_STAGE_OUTCOME_VERSION_V0_2,
     _GROUNDER_STAGE_OUTCOME_VERSION_V0_3,
     _GROUNDER_STAGE_OUTCOME_VERSION_V0_4,
+    _GROUNDER_STAGE_OUTCOME_VERSION_V0_5,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4,
+    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_5,
 ))
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSIONS = frozenset((
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4,
+    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_5,
 ))
 _GROUNDER_BUILD_DIAGNOSTIC_CODES = frozenset((
     "CALLER_POLICY_PROVENANCE_MISMATCH",
@@ -833,6 +838,7 @@ def _grounder_stage_outcome(
     if event_fact_anchor is not None and type(event_fact_anchor) is not _EventFactAnchorOutcome:
         raise TypeError("Grounder fact-anchor audit is not the exact private outcome")
     semantic_transport = result._semantic_transport
+    semantic_rejection_projection = result._semantic_rejection_projection
     if semantic_transport is not None:
         from .host_grounder_runtime import _validate_semantic_transport_retry_audit
 
@@ -1049,6 +1055,35 @@ def _grounder_stage_outcome(
         or any(len(envelope[name]) > _GROUNDER_STAGE_MAX_ITEMS for name in ("claims", "hypotheses", "coverage", "field_bindings"))
     ):
         raise ValueError("Grounder validated envelope has an invalid closed shape")
+    bound_object_wire_pair = (
+        sidecar["producer_prompt_version"] == _GROUNDER_PRODUCER_PROMPT_V0_9
+        and sidecar["validator_version"] == _GROUNDER_VERIFIER_PROMPT_V0_9
+        and sidecar["verifier_wire_version"] == _GROUNDER_VERIFIER_WIRE_V0_4
+    )
+    if semantic_rejection_projection is not None and not bound_object_wire_pair:
+        raise ValueError("Grounder rejection projection is outside its bound-object wire pair")
+    if semantic_rejection_projection is not None and event_fact_anchor is None:
+        raise ValueError("Grounder rejection projection requires the default Event fact anchor")
+    if (
+        bound_object_wire_pair
+        and event_fact_anchor is not None
+        and semantic_rejection_projection is None
+    ):
+        raise ValueError("Grounder default bound-object route is missing its complete rejection projection")
+    semantic_rejections = None
+    if semantic_rejection_projection is not None:
+        semantic_rejections = _semantic_rejection_projection_for_stage(
+            semantic_rejection_projection,
+            run_id=run_id,
+            envelope_hash=audit.normalized_envelope_sha256,
+            envelope=envelope,
+            receipt=receipt,
+            counts={
+                "claim_count": len(envelope["claims"]),
+                "hypothesis_count": len(envelope["hypotheses"]),
+                "field_binding_count": len(envelope["field_bindings"]),
+            },
+        )
     if event_fact_anchor is not None:
         anchor_subquestions = ("user_event_input", "event_fact_anchor_v0_1")
         if (
@@ -1219,15 +1254,19 @@ def _grounder_stage_outcome(
         provenance["producer_attempts"] = attempts_json
     outcome = {
         "schema_version": (
-            _GROUNDER_STAGE_OUTCOME_VERSION_V0_4
-            if semantic_transport is not None
+            _GROUNDER_STAGE_OUTCOME_VERSION_V0_5
+            if semantic_rejection_projection is not None
             else (
-                _GROUNDER_STAGE_OUTCOME_VERSION_V0_3
-                if event_fact_anchor is not None
+                _GROUNDER_STAGE_OUTCOME_VERSION_V0_4
+                if semantic_transport is not None
                 else (
-                    _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
-                    if attempts_json is not None
-                    else _GROUNDER_STAGE_OUTCOME_VERSION
+                    _GROUNDER_STAGE_OUTCOME_VERSION_V0_3
+                    if event_fact_anchor is not None
+                    else (
+                        _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
+                        if attempts_json is not None
+                        else _GROUNDER_STAGE_OUTCOME_VERSION
+                    )
                 )
             )
         ),
@@ -1257,18 +1296,24 @@ def _grounder_stage_outcome(
         }
     if semantic_transport is not None:
         outcome["semantic_transport"] = semantic_transport
+    if semantic_rejections is not None:
+        outcome["semantic_rejections"] = semantic_rejections
     if require_submission:
         outcome.update({
             "schema_version": (
-                _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4
-                if semantic_transport is not None
+                _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_5
+                if semantic_rejection_projection is not None
                 else (
-                    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3
-                    if event_fact_anchor is not None
+                    _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4
+                    if semantic_transport is not None
                     else (
-                        _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2
-                        if attempts_json is not None
-                        else _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION
+                        _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3
+                        if event_fact_anchor is not None
+                        else (
+                            _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2
+                            if attempts_json is not None
+                            else _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION
+                        )
                     )
                 )
             ),
@@ -1285,6 +1330,8 @@ def _grounder_stage_outcome(
             }
         if semantic_transport is not None:
             outcome["semantic_transport"] = semantic_transport
+        if semantic_rejections is not None:
+            outcome["semantic_rejections"] = semantic_rejections
         _validate_grounder_submission_stage_outcome(outcome)
     else:
         _validate_grounder_stage_outcome(outcome)
@@ -1306,10 +1353,288 @@ def _validate_event_fact_anchor_outcome(value: Any) -> Dict[str, Any]:
     return dict(value)
 
 
+_SEMANTIC_REJECTION_OUTCOMES = frozenset(("supported", "unresolved", "contradicted"))
+_SEMANTIC_REJECTION_CHECKS = frozenset((
+    "verifier_unresolved",
+    "verifier_contradicted",
+    "missing_exact_reference",
+    "required_field_binding",
+    "dependency_closure",
+    "dependency_cycle",
+    "hypothesis_roots_invalid",
+    "hypothesis_dependency_closure",
+    "hypothesis_support_source",
+))
+_SEMANTIC_REJECTION_KIND_ORDER = {"claim": 0, "hypothesis": 1, "field_binding": 2}
+_SEMANTIC_REJECTION_CHECKS_BY_KIND = {
+    "claim": frozenset((
+        "verifier_unresolved", "verifier_contradicted", "missing_exact_reference",
+        "required_field_binding", "dependency_closure", "dependency_cycle",
+    )),
+    "hypothesis": frozenset((
+        "verifier_unresolved", "verifier_contradicted", "required_field_binding",
+        "hypothesis_roots_invalid", "hypothesis_dependency_closure",
+        "hypothesis_support_source",
+    )),
+    "field_binding": frozenset((
+        "verifier_unresolved", "verifier_contradicted", "missing_exact_reference",
+    )),
+}
+
+
+def _validate_semantic_rejection_rows(value: Any, counts: Any) -> list:
+    """Validate the payload-free closed rows and array-index bounds."""
+    if (
+        type(value) is not list
+        or len(value) > _GROUNDER_STAGE_MAX_ITEMS
+        or type(counts) is not dict
+    ):
+        raise ValueError("Grounder semantic rejection rows are malformed")
+    count_for_kind = {
+        "claim": counts.get("claim_count"),
+        "hypothesis": counts.get("hypothesis_count"),
+        "field_binding": counts.get("field_binding_count"),
+    }
+    fields = {"kind", "index", "verifier_outcome", "checks"}
+    result = []
+    previous_key = None
+    for row in value:
+        if (
+            type(row) is not dict
+            or set(row) != fields
+            or type(row["kind"]) is not str
+            or row["kind"] not in _SEMANTIC_REJECTION_KIND_ORDER
+            or type(row["index"]) is not int
+            or row["index"] < 0
+            or type(count_for_kind[row["kind"]]) is not int
+            or row["index"] >= count_for_kind[row["kind"]]
+            or type(row["verifier_outcome"]) is not str
+            or row["verifier_outcome"] not in _SEMANTIC_REJECTION_OUTCOMES
+            or type(row["checks"]) is not list
+            or not row["checks"]
+            or len(row["checks"]) > len(_SEMANTIC_REJECTION_CHECKS)
+        ):
+            raise ValueError("Grounder semantic rejection row is malformed")
+        key = (_SEMANTIC_REJECTION_KIND_ORDER[row["kind"]], row["index"])
+        if previous_key is not None and key <= previous_key:
+            raise ValueError("Grounder semantic rejection rows are not uniquely ordered")
+        previous_key = key
+        allowed = _SEMANTIC_REJECTION_CHECKS_BY_KIND[row["kind"]]
+        previous_check = None
+        for check in row["checks"]:
+            if (
+                type(check) is not str
+                or check not in _SEMANTIC_REJECTION_CHECKS
+                or check not in allowed
+                or (previous_check is not None and check <= previous_check)
+            ):
+                raise ValueError("Grounder semantic rejection check is malformed")
+            previous_check = check
+        expected_verifier_check = (
+            "verifier_{}".format(row["verifier_outcome"])
+            if row["verifier_outcome"] != "supported" else None
+        )
+        direct_checks = {"verifier_unresolved", "verifier_contradicted"}.intersection(
+            row["checks"]
+        )
+        if (
+            (expected_verifier_check is None and direct_checks)
+            or (
+                expected_verifier_check is not None
+                and direct_checks != {expected_verifier_check}
+            )
+        ):
+            raise ValueError("Grounder semantic rejection outcome conflicts with its checks")
+        result.append({
+            "kind": row["kind"],
+            "index": row["index"],
+            "verifier_outcome": row["verifier_outcome"],
+            "checks": list(row["checks"]),
+        })
+    return result
+
+
+def _semantic_rejection_projection_for_stage(
+    projection: Any,
+    *,
+    run_id: str,
+    envelope_hash: str,
+    envelope: dict,
+    receipt: Mapping[str, Any],
+    counts: dict,
+) -> list:
+    """Bind run-local private rows to exactly the rejected receipt partition."""
+    from .host_grounder_semantic import _SemanticRejectionProjection
+
+    if (
+        type(projection) is not _SemanticRejectionProjection
+        or type(projection.run_id) is not str
+        or projection.run_id != run_id
+        or type(projection.normalized_envelope_sha256) is not str
+        or projection.normalized_envelope_sha256 != envelope_hash
+        or type(projection.rows) is not tuple
+    ):
+        raise ValueError("Grounder semantic rejection projection provenance is invalid")
+
+    identity_to_index = {}
+    for kind, array_name, id_name in (
+        ("claim", "claims", "claim_id"),
+        ("hypothesis", "hypotheses", "hypothesis_id"),
+    ):
+        identities = {}
+        for index, item in enumerate(envelope[array_name]):
+            if (
+                type(item) is not dict
+                or type(item.get(id_name)) is not str
+                or not item[id_name]
+                or item[id_name] in identities
+            ):
+                raise ValueError("Grounder envelope object identity is malformed")
+            identities[item[id_name]] = index
+        identity_to_index[kind] = identities
+    expected = set()
+    for kind, verified_name, rejected_name in (
+        ("claim", "verified_claim_ids", "rejected_claims"),
+        ("hypothesis", "verified_hypothesis_ids", "rejected_hypotheses"),
+    ):
+        identity_map = identity_to_index[kind]
+        verified = receipt[verified_name]
+        rejected = receipt[rejected_name]
+        if type(verified) is not tuple or type(rejected) is not tuple:
+            raise ValueError("Grounder semantic receipt partition is malformed")
+        verified_indexes = []
+        for object_id in verified:
+            if type(object_id) is not str:
+                raise ValueError("Grounder verified identity is malformed")
+            index = identity_map.get(object_id)
+            if index is None:
+                raise ValueError("Grounder verified identity is foreign to its envelope")
+            verified_indexes.append(index)
+        rejected_indexes = []
+        for entry in rejected:
+            if (
+                type(entry) is not tuple
+                or len(entry) != 2
+                or type(entry[0]) is not str
+                or type(entry[1]) is not str
+            ):
+                raise ValueError("Grounder semantic rejected partition row is malformed")
+            index = identity_map.get(entry[0])
+            if index is None:
+                raise ValueError("Grounder semantic rejection is foreign to its envelope")
+            rejected_indexes.append(index)
+        if (
+            len(set(verified_indexes)) != len(verified_indexes)
+            or len(set(rejected_indexes)) != len(rejected_indexes)
+            or verified_indexes != sorted(verified_indexes)
+            or rejected_indexes != sorted(rejected_indexes)
+            or set(verified_indexes) & set(rejected_indexes)
+            or set(verified_indexes) | set(rejected_indexes)
+            != set(range(len(identity_map)))
+        ):
+            raise ValueError("Grounder semantic receipt partition is incomplete or unordered")
+        expected.update((kind, index) for index in rejected_indexes)
+
+    rejected_bindings = receipt["rejected_bindings"]
+    verified_bindings = receipt["verified_binding_indices"]
+    if type(rejected_bindings) is not tuple or type(verified_bindings) is not tuple:
+        raise ValueError("Grounder binding receipt partition is malformed")
+    if (
+        any(type(index) is not int or index < 0 or index >= len(envelope["field_bindings"])
+            for index in verified_bindings)
+        or verified_bindings != tuple(sorted(set(verified_bindings)))
+    ):
+        raise ValueError("Grounder verified binding partition is malformed")
+    rejected_binding_indexes = []
+    for entry in rejected_bindings:
+        if (
+            type(entry) is not tuple
+            or len(entry) != 2
+            or type(entry[0]) is not int
+            or entry[0] < 0
+            or entry[0] >= len(envelope["field_bindings"])
+            or type(entry[1]) is not str
+        ):
+            raise ValueError("Grounder rejected binding row is malformed")
+        rejected_binding_indexes.append(entry[0])
+    all_binding_indexes = set(range(len(envelope["field_bindings"])))
+    if (
+        rejected_binding_indexes != sorted(set(rejected_binding_indexes))
+        or set(verified_bindings) & set(rejected_binding_indexes)
+        or set(verified_bindings) | set(rejected_binding_indexes) != all_binding_indexes
+    ):
+        raise ValueError("Grounder binding receipt partition is incomplete or unordered")
+    expected.update(("field_binding", index) for index in rejected_binding_indexes)
+
+    rows = []
+    actual = set()
+    for row in projection.rows:
+        if type(row) is not tuple or len(row) != 4:
+            raise ValueError("Grounder private semantic rejection row is malformed")
+        kind, index, outcome, checks = row
+        if type(kind) is not str or type(index) is not int:
+            raise ValueError("Grounder private semantic rejection identity is malformed")
+        key = (kind, index)
+        if key in actual:
+            raise ValueError("Grounder private semantic rejection identity is duplicated")
+        actual.add(key)
+        if type(checks) is not tuple:
+            raise ValueError("Grounder private semantic rejection checks are not immutable")
+        rows.append({
+            "kind": kind,
+            "index": index,
+            "verifier_outcome": outcome,
+            "checks": list(checks),
+        })
+    if actual != expected:
+        raise ValueError("Grounder semantic rejection rows do not match receipt partitions")
+    return _validate_semantic_rejection_rows(rows, counts)
+
+
 def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
+    if (
+        type(value) is dict
+        and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_5
+    ):
+        fields = {
+            "schema_version", "grounder_status", "source_status", "semantic_status",
+            "builder_status", "submission_status", "ei_status", "counts",
+            "diagnostic_counts", "coverage", "provenance", "event_fact_anchor",
+            "semantic_rejections",
+        }
+        if "semantic_transport" in value:
+            fields.add("semantic_transport")
+        if set(value) != fields:
+            raise ValueError("Grounder v0.5 stage outcome has an invalid closed field set")
+        _validate_event_fact_anchor_outcome(value["event_fact_anchor"])
+        _validate_semantic_rejection_rows(value["semantic_rejections"], value.get("counts"))
+        provenance = value.get("provenance")
+        if (
+            type(provenance) is not dict
+            or provenance.get("producer_prompt_version") != _GROUNDER_PRODUCER_PROMPT_V0_9
+            or provenance.get("validator_version") != _GROUNDER_VERIFIER_PROMPT_V0_9
+            or provenance.get("verifier_wire_version") != _GROUNDER_VERIFIER_WIRE_V0_4
+        ):
+            raise ValueError("Grounder v0.5 stage route is not the registered bound-object pair")
+        if "semantic_transport" in value:
+            from .host_grounder_runtime import _validate_semantic_transport_retry_audit
+
+            _validate_semantic_transport_retry_audit(value["semantic_transport"])
+        inherited = dict(value)
+        inherited.pop("event_fact_anchor")
+        inherited.pop("semantic_rejections")
+        inherited.pop("semantic_transport", None)
+        inherited["schema_version"] = (
+            _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
+            if type(provenance) is dict and "producer_attempts" in provenance
+            else _GROUNDER_STAGE_OUTCOME_VERSION
+        )
+        _validate_grounder_stage_outcome(inherited)
+        return dict(value)
     if type(value) is dict and value.get("schema_version") in (
         _GROUNDER_STAGE_OUTCOME_VERSION_V0_3,
         _GROUNDER_STAGE_OUTCOME_VERSION_V0_4,
+        _GROUNDER_STAGE_OUTCOME_VERSION_V0_5,
     ):
         fields_v0_2 = {"schema_version", "grounder_status", "source_status", "semantic_status", "builder_status", "submission_status", "ei_status", "counts", "diagnostic_counts", "coverage", "provenance"}
         expected_fields = fields_v0_2 | {"event_fact_anchor"}
@@ -1496,6 +1821,75 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
 def _validate_grounder_submission_stage_outcome(value: Any) -> Dict[str, Any]:
     if (
         type(value) is dict
+        and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_5
+    ):
+        fields = {
+            "schema_version", "grounder_status", "source_status", "semantic_status",
+            "builder_status", "submission_status", "ei_status", "counts",
+            "diagnostic_counts", "coverage", "provenance", "submission",
+            "submission_sha256", "source_batch_count", "event_fact_anchor",
+            "semantic_rejections",
+        }
+        if "semantic_transport" in value:
+            fields.add("semantic_transport")
+        if set(value) != fields:
+            raise ValueError("Grounder v0.5 submission outcome has an invalid closed field set")
+        inherited = {
+            key: value[key]
+            for key in (
+                "grounder_status", "source_status", "semantic_status", "builder_status",
+                "submission_status", "ei_status", "counts", "diagnostic_counts",
+                "coverage", "provenance", "event_fact_anchor", "semantic_rejections",
+            )
+        }
+        inherited["schema_version"] = _GROUNDER_STAGE_OUTCOME_VERSION_V0_5
+        inherited["submission_status"] = "MISSING"
+        inherited["ei_status"] = "NOT_RUN"
+        if "semantic_transport" in value:
+            inherited["semantic_transport"] = value["semantic_transport"]
+        _validate_grounder_stage_outcome(inherited)
+        if (
+            value.get("grounder_status") != "COMPLETED"
+            or value.get("source_status") != "UNKNOWN"
+            or value.get("semantic_status") != "RECEIPT_VALIDATED"
+            or value.get("builder_status") != "COMPLETED"
+            or value.get("submission_status") != "PRESENT"
+            or value.get("ei_status") != "ASSESSED"
+            or type(value.get("source_batch_count")) is not int
+            or value["source_batch_count"] != 1
+            or type(value.get("submission_sha256")) is not str
+            or _SHA256_RE.fullmatch(value["submission_sha256"]) is None
+        ):
+            raise ValueError("Grounder v0.5 submission status or digest is invalid")
+        submission = value.get("submission")
+        if type(submission) is not dict or any(
+            type(submission.get(name)) is not list
+            or len(submission[name]) > _GROUNDER_STAGE_MAX_ITEMS
+            for name in ("sources", "statements", "hypotheses")
+        ):
+            raise ValueError("Grounder v0.5 submission projection is malformed")
+        assessment_projection = submission.get("assessment")
+        if (
+            type(assessment_projection) is not dict
+            or type(assessment_projection.get("issues")) is not list
+            or len(assessment_projection["issues"]) > _GROUNDER_STAGE_MAX_ITEMS
+        ):
+            raise ValueError("Grounder v0.5 EI assessment projection is malformed")
+        from .host_batch_snapshot import _decode_submission
+
+        decoded_submission, assessment = _decode_submission(submission)
+        if assessment.submission is not decoded_submission:
+            raise ValueError("Grounder v0.5 EI assessment does not retain its submission")
+        expected_submission_sha256 = hashlib.sha256(
+            _canonical_json(submission, "Grounder EI submission snapshot").encode("utf-8")
+        ).hexdigest()
+        if expected_submission_sha256 != value["submission_sha256"]:
+            raise ValueError("Grounder v0.5 EI submission digest mismatch")
+        if len(_canonical_json(value, "Grounder submission outcome").encode("utf-8")) > _GROUNDER_STAGE_MAX_BYTES:
+            raise ValueError("Grounder submission outcome exceeds its archive byte bound")
+        return dict(value)
+    if (
+        type(value) is dict
         and value.get("schema_version") in (
             _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3,
             _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4,
@@ -1607,6 +2001,7 @@ def _grounder_public_stage_outcome(value: Any) -> Dict[str, Any]:
         _GROUNDER_STAGE_OUTCOME_VERSION_V0_2,
         _GROUNDER_STAGE_OUTCOME_VERSION_V0_3,
         _GROUNDER_STAGE_OUTCOME_VERSION_V0_4,
+        _GROUNDER_STAGE_OUTCOME_VERSION_V0_5,
     ):
         return _validate_grounder_stage_outcome(value)
     if value.get("schema_version") in _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS:
@@ -1625,10 +2020,18 @@ def _grounder_public_stage_outcome(value: Any) -> Dict[str, Any]:
     if outcome["schema_version"] in (
         _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3,
         _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4,
+        _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_5,
     ):
         safe_fields.add("event_fact_anchor")
-    if outcome["schema_version"] == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4:
+    if outcome["schema_version"] in (
+        _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4,
+    ) or (
+        outcome["schema_version"] == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_5
+        and "semantic_transport" in outcome
+    ):
         safe_fields.add("semantic_transport")
+    if outcome["schema_version"] == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_5:
+        safe_fields.add("semantic_rejections")
     public = {key: outcome[key] for key in safe_fields}
     public["ei_assessment_status"] = assessment_status
     if set(public) != safe_fields | {"ei_assessment_status"}:
@@ -1649,6 +2052,8 @@ def _validate_shell_outcome(value: Any) -> Any:
         return _validate_grounder_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_4:
         return _validate_grounder_stage_outcome(value)
+    if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_5:
+        return _validate_grounder_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION:
         return _validate_grounder_submission_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2:
@@ -1656,6 +2061,8 @@ def _validate_shell_outcome(value: Any) -> Any:
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3:
         return _validate_grounder_submission_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_4:
+        return _validate_grounder_submission_stage_outcome(value)
+    if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_5:
         return _validate_grounder_submission_stage_outcome(value)
     if (
         type(value) is dict

@@ -2,6 +2,35 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Bounded rejection projection implemented and reviewed — 2026-10-23 UTC
+
+Fresh fetch confirms `97c1f61`, clean before this work unit. Existing offline
+fixtures demonstrate that a model-supported hypothesis can fail deterministic
+dependency or field-binding gates and still produce
+`HYPOTHESIS_REJECTED_BY_VALIDATOR`. Earlier references to a semantic refusal
+must not be read as proof of direct model rejection of the economic mechanism.
+The exact cause for historical run `fe638c4b` remains UNKNOWN. An existing safe
+Host log has rejection counts but no run ID; it cannot be attributed to that run.
+
+Main froze a [payload-free projection clarification](host-grounder-semantic-validation-v0.2.md#payload-free-rejection-projection-clarification--2026-10-23)
+after bounded read-only preflight. BUILD and independent targeted review pass:
+collect closed per-object rejection categories at the actual gate; identify
+objects by run/envelope hash/kind/index, not model-authored text/IDs; retain them
+only in new v0.5 stage outcomes. Preserve receipt bytes, public signatures,
+legacy reads, all verification gates, prompts, budgets, retries, EI/Core and
+Direct. No raw response/rationale/source body or new diagnostic framework.
+Validation: semantic 27, Store 59, Event 63 and one default positive/negative
+service save/restart test pass (150 total), plus unchanged six-module public
+exports/signatures/record fields, compileall and diff checks. Explicit custom
+preparers preserve their legacy stage schema without a synthesized anchor;
+the independent compatibility finding is fixed and re-reviewed. Version-only
+test expectations changed only for actual default v0.5 results. No full suite
+was rerun for this diagnostic-only unit.
+No new live request has been made in this work unit. After required gates,
+one fresh guarded normal Event run may verify attribution and automatically
+continue accepted hypotheses to Futu/Core; it is not permission to reroll
+until accepted. Historical spent guards and records remain unchanged.
+
 ## Bound-object successor deployed; normal Event completed without submission — 2026-10-23 UTC
 
 Fresh fetch confirmed HEAD/main/origin/main at `2bad82a` with a clean tree.

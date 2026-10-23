@@ -274,7 +274,93 @@ def _build(envelope, verdict, bodies, **overrides):
     )
 
 
+def _build_with_projection(envelope, verdict, bodies, **overrides):
+    args = dict(
+        run_id=_RUN_ID,
+        canonical_input_hash=_INPUT_HASH,
+        request_subquestion_ids=("question-1",),
+        source_bodies=bodies,
+        validator_id="configured-semantic-verifier",
+        validator_version="model-v1/prompt-v1",
+        **_LIMITS,
+    )
+    args.update(overrides)
+    return semantic_module._build_semantic_validation_receipt_with_projection(
+        envelope,
+        json.dumps(verdict, ensure_ascii=False),
+        _collect_projection=True,
+        **args,
+    )
+
+
 class HostGrounderSemanticTests(unittest.TestCase):
+    def test_private_rejection_projection_distinguishes_verifier_and_dependency(self):
+        envelope, verdict, bodies = _case()
+        verdict["claims"][0]["outcome"] = "unresolved"
+        verdict["claims"][0]["rationale"] = "PRIVATE_MODEL_RATIONALE"
+        verdict["claims"][0]["evidence_refs"] = []
+        receipt = _build(envelope, verdict, bodies)
+        projected_receipt, projection = _build_with_projection(envelope, verdict, bodies)
+
+        self.assertEqual(projected_receipt, receipt)
+        self.assertEqual(
+            projection.rows,
+            (
+                ("claim", 0, "unresolved", ("verifier_unresolved",)),
+                ("hypothesis", 0, "supported", ("hypothesis_dependency_closure",)),
+            ),
+        )
+        public_receipt_bytes = json.dumps(
+            receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        projected_receipt_bytes = json.dumps(
+            projected_receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        self.assertEqual(projected_receipt_bytes, public_receipt_bytes)
+        self.assertNotIn("PRIVATE_MODEL_RATIONALE", repr(projection))
+
+    def test_private_rejection_projection_preserves_direct_hypothesis_verdict(self):
+        envelope, verdict, bodies = _case()
+        verdict["hypotheses"][0]["outcome"] = "contradicted"
+        verdict["hypotheses"][0]["rationale"] = "PRIVATE_HYPOTHESIS_RATIONALE"
+        projected_receipt, projection = _build_with_projection(envelope, verdict, bodies)
+
+        self.assertEqual(projected_receipt["verified_hypothesis_ids"], ())
+        self.assertEqual(
+            projection.rows,
+            (("hypothesis", 0, "contradicted", ("verifier_contradicted",)),),
+        )
+        self.assertNotIn("PRIVATE_HYPOTHESIS_RATIONALE", repr(projection))
+
+    def test_private_projection_separates_invalid_roots_and_missing_binding(self):
+        envelope, verdict, bodies = _case()
+        envelope["hypotheses"][0]["supporting_claim_ids"] = []
+        envelope = _refresh_envelope_hash(envelope, verdict)
+        projected_receipt, projection = _build_with_projection(envelope, verdict, bodies)
+        self.assertEqual(projected_receipt["rejected_hypotheses"][0][0], "hypothesis-1")
+        self.assertEqual(
+            projection.rows,
+            ((
+                "hypothesis", 0, "supported",
+                ("hypothesis_roots_invalid", "hypothesis_support_source"),
+            ),),
+        )
+
+        envelope, verdict, bodies = _case()
+        verdict["field_bindings"][0]["outcome"] = "unresolved"
+        verdict["field_bindings"][0]["rationale"] = "PRIVATE_BINDING_RATIONALE"
+        verdict["field_bindings"][0]["evidence_refs"] = []
+        _receipt, projection = _build_with_projection(envelope, verdict, bodies)
+        self.assertEqual(
+            projection.rows,
+            (
+                ("hypothesis", 0, "supported", ("required_field_binding",)),
+                ("field_binding", 0, "unresolved", ("verifier_unresolved",)),
+            ),
+        )
+
     def test_supported_verdict_builds_existing_receipt_shape_and_hash_bindings(self):
         envelope, verdict, bodies = _case()
         receipt = _build(envelope, verdict, bodies)

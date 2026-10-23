@@ -499,7 +499,9 @@ def make_grounder_binding_omission_result(run_id="grounder-run"):
     return replace(result, audit=audit), omitted
 
 
-def make_grounder_submission_result(run_id="grounder-run", *, normal_event_route=False):
+def make_grounder_submission_result(
+    run_id="grounder-run", *, normal_event_route=False, validator_version=None
+):
     from convexity_hunter.core_application import SourceSubmissionBatch
     from convexity_hunter.event_intelligence import (
         EventIntelligenceSubmission,
@@ -516,7 +518,7 @@ def make_grounder_submission_result(run_id="grounder-run", *, normal_event_route
             if normal_event_route else "host-grounder-discovery-prompt-v0.6"
         ),
         validator_version=(
-            "host-grounder-semantic-verifier-prompt-v0.9"
+            validator_version or "host-grounder-semantic-verifier-prompt-v0.9"
             if normal_event_route else "host-grounder-semantic-verifier-prompt-v0.7"
         ),
         normal_event_route=normal_event_route,
@@ -547,6 +549,34 @@ def make_grounder_submission_result(run_id="grounder-run", *, normal_event_route
     batch = SourceSubmissionBatch(context.raw_input, (submission,))
     build = replace(result.build_result, submission=submission, source_batch=batch)
     return replace(result, build_result=build)
+
+
+def stamp_bound_object_default_route(result):
+    from convexity_hunter.host_grounder_runtime import (
+        _EventFactAnchorOutcome,
+        _stamp_event_fact_anchor_outcome,
+    )
+    from convexity_hunter.host_grounder_semantic import _SemanticRejectionProjection
+
+    context = result.build_result.context
+    if result._semantic_rejection_projection is None:
+        object.__setattr__(
+            result,
+            "_semantic_rejection_projection",
+            _SemanticRejectionProjection(
+                context.run_id,
+                result.audit.normalized_envelope_sha256,
+                (),
+            ),
+        )
+    return _stamp_event_fact_anchor_outcome(
+        result,
+        _EventFactAnchorOutcome(
+            ("user_event_input", "event_fact_anchor_v0_1"),
+            context.event_description_binding,
+            None,
+        ),
+    )
 
 
 def make_v1_database(path):
@@ -617,7 +647,7 @@ class HostStoreTests(unittest.TestCase):
         result = make_grounder_no_submission_result(
             run_id,
             producer_prompt_version="host-grounder-discovery-prompt-v0.9",
-            validator_version="host-grounder-semantic-verifier-prompt-v0.9",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.8",
             normal_event_route=True,
         )
         result = _stamp_event_fact_anchor_outcome(
@@ -652,7 +682,9 @@ class HostStoreTests(unittest.TestCase):
         )
         submission_stage_id = reopened.start_stage(submission_run_id, "grounder")
         submission_result = make_grounder_submission_result(
-            submission_run_id, normal_event_route=True
+            submission_run_id,
+            normal_event_route=True,
+            validator_version="host-grounder-semantic-verifier-prompt-v0.8",
         )
         submission_result = _stamp_event_fact_anchor_outcome(
             submission_result,
@@ -677,6 +709,171 @@ class HostStoreTests(unittest.TestCase):
             submission_outcome["semantic_transport"], _semantic_transport_audit()
         )
 
+    def test_bound_object_rejection_projection_roundtrips_only_closed_rows_in_v05(self):
+        from convexity_hunter.host_store import (
+            _grounder_public_stage_outcome,
+            _validate_grounder_stage_outcome,
+        )
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = stamp_bound_object_default_route(
+            make_grounder_no_submission_result(
+                run_id,
+                producer_prompt_version="host-grounder-discovery-prompt-v0.9",
+                validator_version="host-grounder-semantic-verifier-prompt-v0.9",
+                normal_event_route=True,
+            )
+        )
+        self.store.save_grounder_stage_result(run_id, stage_id, result)
+        outcome = self.store.get_run(run_id)["events"][-1]["outcome"]
+        self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.5")
+        self.assertEqual(outcome["semantic_rejections"], [])
+        self.assertNotIn("PRIVATE_CLAIM_TEXT", json.dumps(outcome))
+        _validate_grounder_stage_outcome(outcome)
+
+        malformed = json.loads(json.dumps(outcome))
+        malformed["semantic_rejections"] = [{
+            "kind": "claim", "index": True, "verifier_outcome": "supported",
+            "checks": ["dependency_closure"],
+        }]
+        with self.assertRaises(ValueError):
+            _validate_grounder_stage_outcome(malformed)
+        malformed = json.loads(json.dumps(outcome))
+        malformed["semantic_rejections"] = [{
+            "kind": "claim", "index": 0, "verifier_outcome": "supported",
+            "checks": ["dependency_closure"], "rationale": "PRIVATE_TEXT",
+        }]
+        with self.assertRaisesRegex(ValueError, "semantic rejection row is malformed"):
+            _validate_grounder_stage_outcome(malformed)
+
+        from convexity_hunter.host_grounder_semantic import _SemanticRejectionProjection
+
+        object.__setattr__(
+            result,
+            "_semantic_rejection_projection",
+            _SemanticRejectionProjection(
+                run_id,
+                result.audit.normalized_envelope_sha256,
+                (("claim", 0, "supported", ("dependency_closure",)),),
+            ),
+        )
+        from convexity_hunter.host_store import _grounder_stage_outcome
+
+        with self.assertRaisesRegex(ValueError, "do not match receipt partitions"):
+            _grounder_stage_outcome(result, run_id, "synthetic fixture event")
+
+        rejected_run_id = self.create_run("event", "synthetic fixture event")
+        rejected_stage_id = self.store.start_stage(rejected_run_id, "grounder")
+        rejected_result = make_grounder_no_submission_result(
+            rejected_run_id,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.9",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.9",
+            normal_event_route=True,
+        )
+        from types import MappingProxyType
+        from convexity_hunter.host_grounder_semantic import _SemanticRejectionProjection
+
+        rejected_receipt = dict(rejected_result.build_result.semantic_validation.receipt)
+        rejected_receipt["verified_claim_ids"] = ()
+        rejected_receipt["rejected_claims"] = (("claim-private", "PRIVATE_REASON_SENTINEL"),)
+        rejected_semantic = replace(
+            rejected_result.build_result.semantic_validation,
+            receipt=MappingProxyType(rejected_receipt),
+        )
+        rejected_build = replace(
+            rejected_result.build_result, semantic_validation=rejected_semantic
+        )
+        rejected_result = replace(rejected_result, build_result=rejected_build)
+        object.__setattr__(
+            rejected_result,
+            "_semantic_rejection_projection",
+            _SemanticRejectionProjection(
+                rejected_run_id,
+                rejected_result.audit.normalized_envelope_sha256,
+                (("claim", 0, "unresolved", ("verifier_unresolved",)),),
+            ),
+        )
+        rejected_result = stamp_bound_object_default_route(rejected_result)
+        self.store.save_grounder_stage_result(
+            rejected_run_id, rejected_stage_id, rejected_result
+        )
+        rejected_outcome = self.store.get_run(rejected_run_id)["events"][-1]["outcome"]
+        self.assertEqual(
+            rejected_outcome["semantic_rejections"],
+            [{
+                "kind": "claim", "index": 0, "verifier_outcome": "unresolved",
+                "checks": ["verifier_unresolved"],
+            }],
+        )
+        self.assertNotIn("PRIVATE_REASON_SENTINEL", json.dumps(rejected_outcome))
+        self.assertNotIn("claim-private", json.dumps(rejected_outcome))
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        stored = reopened.get_run(run_id)["events"][-1]["outcome"]
+        self.assertEqual(stored["semantic_rejections"], [])
+        self.assertEqual(_grounder_public_stage_outcome(stored)["semantic_rejections"], [])
+
+        submission_run_id = reopened.create_run(
+            "event",
+            "synthetic fixture event",
+            BOUNDS,
+            STANDARD_RESEARCH_PROFILE.snapshot(),
+            _run_start_metadata(),
+        )
+        submission_stage_id = reopened.start_stage(submission_run_id, "grounder")
+        submission_result = stamp_bound_object_default_route(
+            make_grounder_submission_result(
+                submission_run_id,
+                normal_event_route=True,
+                validator_version="host-grounder-semantic-verifier-prompt-v0.9",
+            )
+        )
+        reopened.save_grounder_submission_stage_result(
+            submission_run_id, submission_stage_id, submission_result
+        )
+        submission_outcome = reopened.get_run(submission_run_id)["events"][-1]["outcome"]
+        self.assertEqual(
+            submission_outcome["schema_version"],
+            "host-grounder-submission-stage-outcome-v0.5",
+        )
+        self.assertEqual(submission_outcome["semantic_rejections"], [])
+        self.assertNotIn("submission", submission_outcome)
+
+    def test_custom_bound_object_pair_roundtrips_legacy_stage_without_anchor(self):
+        from convexity_hunter.host_store import _validate_grounder_stage_outcome
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = make_grounder_no_submission_result(
+            run_id,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.9",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.9",
+        )
+        self.assertIsNone(result._semantic_rejection_projection)
+        self.assertIsNone(result._event_fact_anchor_outcome)
+
+        self.store.save_grounder_stage_result(run_id, stage_id, result)
+        outcome = self.store.get_run(run_id)["events"][-1]["outcome"]
+        self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.1")
+        self.assertEqual(outcome["provenance"]["verifier_wire_version"], "semantic-verdict-v0.4")
+        self.assertEqual(
+            outcome["provenance"]["validator_version"],
+            "host-grounder-semantic-verifier-prompt-v0.9",
+        )
+        self.assertNotIn("event_fact_anchor", outcome)
+        self.assertNotIn("semantic_rejections", outcome)
+        _validate_grounder_stage_outcome(outcome)
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        restored = reopened.get_run(run_id)["events"][-1]["outcome"]
+        self.assertEqual(restored, outcome)
+        _validate_grounder_stage_outcome(restored)
+
     def test_impossible_deadline_exceeded_audit_is_rejected_on_store_build_and_reload(self):
         from convexity_hunter.host_grounder_runtime import (
             _EventFactAnchorOutcome,
@@ -688,7 +885,7 @@ class HostStoreTests(unittest.TestCase):
         result = make_grounder_no_submission_result(
             run_id,
             producer_prompt_version="host-grounder-discovery-prompt-v0.9",
-            validator_version="host-grounder-semantic-verifier-prompt-v0.9",
+            validator_version="host-grounder-semantic-verifier-prompt-v0.8",
             normal_event_route=True,
         )
         result = _stamp_event_fact_anchor_outcome(
@@ -1272,7 +1469,9 @@ class HostStoreTests(unittest.TestCase):
         bound_object = make_grounder_no_submission_result(
             producer_prompt_version="host-grounder-discovery-prompt-v0.9",
             validator_version="host-grounder-semantic-verifier-prompt-v0.9",
+            normal_event_route=True,
         )
+        bound_object = stamp_bound_object_default_route(bound_object)
         bound_run_id = bound_object.build_result.context.run_id
         bound_outcome = _grounder_stage_outcome(
             bound_object, bound_run_id, "synthetic fixture event"
@@ -1291,6 +1490,10 @@ class HostStoreTests(unittest.TestCase):
                 "host-grounder-semantic-verifier-prompt-v0.9",
             ),
         )
+        self.assertEqual(
+            bound_outcome["schema_version"], "host-grounder-stage-outcome-v0.5"
+        )
+        self.assertEqual(bound_outcome["semantic_rejections"], [])
         _validate_grounder_stage_outcome(bound_outcome)
         wrong_wire_sidecar = json.loads(bound_object.audit.sidecar_utf8)
         wrong_wire_sidecar["verifier_wire_version"] = "semantic-verdict-v0.3"

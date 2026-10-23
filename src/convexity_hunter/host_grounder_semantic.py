@@ -12,6 +12,7 @@ import json
 import logging
 import re
 from collections import deque
+from dataclasses import dataclass
 from typing import Mapping, Tuple
 
 from .host_grounder_receipt import validate_semantic_validation_receipt
@@ -58,6 +59,26 @@ _REJECTION_CHECKS = frozenset(
         "verifier_unresolved",
     )
 )
+_SEMANTIC_REJECTION_PROJECTION_CHECKS = frozenset((
+    "verifier_unresolved",
+    "verifier_contradicted",
+    "missing_exact_reference",
+    "required_field_binding",
+    "dependency_closure",
+    "dependency_cycle",
+    "hypothesis_roots_invalid",
+    "hypothesis_dependency_closure",
+    "hypothesis_support_source",
+))
+
+
+@dataclass(frozen=True, repr=False)
+class _SemanticRejectionProjection:
+    """Payload-free private per-run semantic rejection metadata."""
+
+    run_id: str
+    normalized_envelope_sha256: str
+    rows: tuple
 
 
 def _receipt_failure(message: str, check: str) -> ValueError:
@@ -298,7 +319,45 @@ def build_semantic_validation_receipt(
     max_source_body_bytes: int,
     receipt_schema_version: str = "semantic-validation-v0.1",
 ) -> dict:
-    """Build a version-selected closed receipt; v0.1 remains the default."""
+    """Build the unchanged public receipt; v0.1 remains the default."""
+    receipt, _projection = _build_semantic_validation_receipt_with_projection(
+        envelope,
+        raw_verdict_json,
+        run_id=run_id,
+        canonical_input_hash=canonical_input_hash,
+        request_subquestion_ids=request_subquestion_ids,
+        source_bodies=source_bodies,
+        validator_id=validator_id,
+        validator_version=validator_version,
+        max_input_bytes=max_input_bytes,
+        max_string_bytes=max_string_bytes,
+        max_array_items=max_array_items,
+        max_source_body_bytes=max_source_body_bytes,
+        receipt_schema_version=receipt_schema_version,
+    )
+    return receipt
+
+
+def _build_semantic_validation_receipt_with_projection(
+    envelope: Mapping[str, object],
+    raw_verdict_json: str,
+    *,
+    run_id: str,
+    canonical_input_hash: str,
+    request_subquestion_ids: Tuple[str, ...],
+    source_bodies: Mapping[str, str],
+    validator_id: str,
+    validator_version: str,
+    max_input_bytes: int,
+    max_string_bytes: int,
+    max_array_items: int,
+    max_source_body_bytes: int,
+    receipt_schema_version: str = "semantic-validation-v0.1",
+    _collect_projection: bool = False,
+) -> tuple:
+    """Build the existing receipt plus a private closed projection from its gates."""
+    if type(_collect_projection) is not bool:
+        raise ValueError("semantic rejection projection flag is invalid")
     if (
         type(receipt_schema_version) is not str
         or receipt_schema_version not in _RECEIPT_SCHEMA_VERSIONS
@@ -421,6 +480,13 @@ def build_semantic_validation_receipt(
         paths.setdefault(binding["field_path"], []).append(i)
 
     rejection_checks = {}
+    binding_projection_checks = {}
+    claim_projection_checks = {}
+    hypothesis_projection_checks = {}
+
+    def mark_projection_check(bucket: dict, index: int, check: str) -> None:
+        bucket.setdefault(index, set()).add(check)
+
     verified_bindings, rejected_bindings = set(), {}
     for i, binding in enumerate(bindings):
         exact = any(
@@ -433,8 +499,14 @@ def build_semantic_validation_receipt(
         else:
             if bv[i]["outcome"] != "supported":
                 _record_verifier_rejection(rejection_checks, bv[i]["outcome"])
+                mark_projection_check(
+                    binding_projection_checks, i, "verifier_{}".format(bv[i]["outcome"])
+                )
             else:
                 _record_rejection_check(rejection_checks, "missing_exact_reference")
+                mark_projection_check(
+                    binding_projection_checks, i, "missing_exact_reference"
+                )
             rejected_bindings[i] = (
                 "verifier_{}: {}".format(bv[i]["outcome"], bv[i]["rationale"])
                 if bv[i]["outcome"] != "supported"
@@ -448,6 +520,9 @@ def build_semantic_validation_receipt(
         record, failures = cv[claim_id], []
         if record["outcome"] != "supported":
             _record_verifier_rejection(rejection_checks, record["outcome"])
+            mark_projection_check(
+                claim_projection_checks, i, "verifier_{}".format(record["outcome"])
+            )
             failures.append("verifier_{}: {}".format(record["outcome"], record["rationale"]))
         else:
             body = source_bodies.get(claim["source_id"])
@@ -460,11 +535,17 @@ def build_semantic_validation_receipt(
             )
             if not exact:
                 _record_rejection_check(rejection_checks, "missing_exact_reference")
+                mark_projection_check(
+                    claim_projection_checks, i, "missing_exact_reference"
+                )
                 failures.append("supported verdict lacks unique exact claim quote reference")
         for path in _paths_for_claim(claim, i):
             indexes = paths.get(path, ())
             if not indexes or not all(j in verified_bindings for j in indexes):
                 _record_rejection_check(rejection_checks, "required_field_binding")
+                mark_projection_check(
+                    claim_projection_checks, i, "required_field_binding"
+                )
                 failures.append("required field binding is not supported: {}".format(path))
         claim_failures[claim_id] = failures
 
@@ -478,6 +559,10 @@ def build_semantic_validation_receipt(
             if len(set(deps)) != len(deps) or any(dep not in eligible for dep in deps):
                 eligible.remove(cid)
                 _record_rejection_check(rejection_checks, "dependency_closure")
+                claim_index = claim_map[cid][0]
+                mark_projection_check(
+                    claim_projection_checks, claim_index, "dependency_closure"
+                )
                 claim_failures[cid].append("dependency closure contains duplicate or unverified IDs")
                 changed = True
     dependants = {cid: [] for cid in eligible}
@@ -497,6 +582,9 @@ def build_semantic_validation_receipt(
                 queue.append(parent)
     for cid in eligible - verified_claim_set:
         _record_rejection_check(rejection_checks, "dependency_cycle")
+        mark_projection_check(
+            claim_projection_checks, claim_map[cid][0], "dependency_cycle"
+        )
         claim_failures[cid].append("claim dependency cycle or incomplete closure")
     verified_claim_ids = tuple(cid for cid in claim_ids if cid in verified_claim_set)
     rejected_claims = tuple(
@@ -520,6 +608,10 @@ def build_semantic_validation_receipt(
         hid, record, failures = hypothesis["hypothesis_id"], hv[hypothesis["hypothesis_id"]], []
         if record["outcome"] != "supported":
             _record_verifier_rejection(rejection_checks, record["outcome"])
+            mark_projection_check(
+                hypothesis_projection_checks, i,
+                "verifier_{}".format(record["outcome"]),
+            )
             failures.append("verifier_{}: {}".format(record["outcome"], record["rationale"]))
         support, contradiction = hypothesis["supporting_claim_ids"], hypothesis["contradicting_claim_ids"]
         reassessment = hypothesis["reassessment"]
@@ -533,9 +625,15 @@ def build_semantic_validation_receipt(
             or set(support) & set(contradiction)
         ):
             _record_rejection_check(rejection_checks, "hypothesis_roots")
+            mark_projection_check(
+                hypothesis_projection_checks, i, "hypothesis_roots_invalid"
+            )
             failures.append("hypothesis claim roots are empty, duplicated, or overlapping")
         if any(root not in verified_claim_set for root in roots):
             _record_rejection_check(rejection_checks, "hypothesis_roots")
+            mark_projection_check(
+                hypothesis_projection_checks, i, "hypothesis_dependency_closure"
+            )
             failures.append("hypothesis claim dependency closure is incomplete")
         support_closure = closure(support) if support else set()
         support_sources = {
@@ -543,11 +641,17 @@ def build_semantic_validation_receipt(
         }
         if not support_sources.intersection(r["source_id"] for r in hr[hid]):
             _record_rejection_check(rejection_checks, "hypothesis_support_source")
+            mark_projection_check(
+                hypothesis_projection_checks, i, "hypothesis_support_source"
+            )
             failures.append("hypothesis refs do not cite a supporting-closure source")
         for path in _paths_for_hypothesis(hypothesis, i):
             indexes = paths.get(path, ())
             if not indexes or not all(j in verified_bindings for j in indexes):
                 _record_rejection_check(rejection_checks, "required_field_binding")
+                mark_projection_check(
+                    hypothesis_projection_checks, i, "required_field_binding"
+                )
                 failures.append("required field binding is not supported: {}".format(path))
         if failures:
             rejected_hypotheses.append((hid, "; ".join(dict.fromkeys(failures))))
@@ -602,4 +706,55 @@ def build_semantic_validation_receipt(
         expected_schema_version=receipt_schema_version,
     )
     _emit_rejection_checks(rejection_checks)
-    return receipt
+    if not _collect_projection:
+        return receipt, None
+    projection_rows = []
+
+    def append_projection_rows(kind: str, indexes, records, checks_by_index: dict) -> None:
+        for index in indexes:
+            checks = tuple(sorted(checks_by_index.get(index, ())))
+            if not checks or any(
+                type(check) is not str
+                or check not in _SEMANTIC_REJECTION_PROJECTION_CHECKS
+                for check in checks
+            ):
+                raise ValueError("semantic rejection projection is incomplete")
+            projection_rows.append(
+                (kind, index, records[index], checks)
+            )
+
+    claim_outcomes = {
+        index: cv[claim["claim_id"]]["outcome"]
+        for index, claim in enumerate(claims)
+    }
+    append_projection_rows(
+        "claim",
+        (index for index, claim in enumerate(claims)
+         if claim["claim_id"] not in verified_claim_set),
+        claim_outcomes,
+        claim_projection_checks,
+    )
+    hypothesis_outcomes = {
+        index: hv[hypothesis["hypothesis_id"]]["outcome"]
+        for index, hypothesis in enumerate(hypotheses)
+    }
+    append_projection_rows(
+        "hypothesis",
+        (index for index, hypothesis in enumerate(hypotheses)
+         if hypothesis["hypothesis_id"] not in verified_hypotheses),
+        hypothesis_outcomes,
+        hypothesis_projection_checks,
+    )
+    binding_outcomes = {index: record["outcome"] for index, record in bv.items()}
+    append_projection_rows(
+        "field_binding",
+        (index for index in range(len(bindings)) if index in rejected_bindings),
+        binding_outcomes,
+        binding_projection_checks,
+    )
+    projection = _SemanticRejectionProjection(
+        run_id,
+        envelope_hash,
+        tuple(projection_rows),
+    )
+    return receipt, projection

@@ -1,5 +1,19 @@
 # Project State
 
+## Semantic rejection projection implemented; deployment next — 2026-10-23 UTC
+
+Read-only preflight and existing fixtures show that
+`HYPOTHESIS_REJECTED_BY_VALIDATOR` conflates direct model judgment with Host
+reference/binding/dependency gates. Historical finer causes remain UNKNOWN;
+unbound logger counts cannot recover them. Main froze the bounded
+[projection clarification](host-grounder-semantic-validation-v0.2.md#payload-free-rejection-projection-clarification--2026-10-23):
+private per-object closed categories, no model text/IDs/raw payload, versioned
+stage v0.5 with legacy reads unchanged. BUILD and independent review pass:
+150 targeted tests, API compatibility, compileall and diff checks. Custom
+preparer legacy behavior is preserved. Deployment and the one bounded normal
+Event validation are next; neither is yet claimed. No acceptance, prompt, budget, retry, EI/Core, Direct
+or economic policy change is authorized. See [checkpoint](current-checkpoint.md).
+
 ## Successor deployed; real Event hypothesis not verified — 2026-10-23 UTC
 
 Release `2bad82a` is deployed with the original launcher/database and unchanged

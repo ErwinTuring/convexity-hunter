@@ -2070,10 +2070,11 @@ class HostServerBatchTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         outcome["schema_version"],
-                        "host-grounder-submission-stage-outcome-v0.4"
+                        "host-grounder-submission-stage-outcome-v0.5"
                         if has_submission
-                        else "host-grounder-stage-outcome-v0.4",
+                        else "host-grounder-stage-outcome-v0.5",
                     )
+                    self.assertEqual(outcome["semantic_rejections"], [])
                     expected_anchor = {
                         "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
                         "selected_claim_id": (

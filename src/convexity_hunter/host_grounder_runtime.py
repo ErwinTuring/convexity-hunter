@@ -78,6 +78,8 @@ from .host_grounder_receipt import (
 )
 from .host_grounder_semantic import (
     _RECEIPT_FAILURE_CHECKS,
+    _SemanticRejectionProjection,
+    _build_semantic_validation_receipt_with_projection,
     build_semantic_validation_receipt,
     _paths_for_claim,
     _paths_for_hypothesis,
@@ -1071,6 +1073,9 @@ class HostGrounderEvidenceCatalogRuntimeResult:
     _semantic_transport: Optional[dict] = field(
         default=None, init=False, repr=False, compare=False
     )
+    _semantic_rejection_projection: Optional[_SemanticRejectionProjection] = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __repr__(self) -> str:
         return "HostGrounderEvidenceCatalogRuntimeResult(has_submission={!r}, sidecar_sha256={!r})".format(
@@ -1117,6 +1122,11 @@ def _stamp_event_fact_anchor_outcome(
     )
     object.__setattr__(stamped, "_event_fact_anchor_outcome", outcome)
     object.__setattr__(stamped, "_semantic_transport", result._semantic_transport)
+    object.__setattr__(
+        stamped,
+        "_semantic_rejection_projection",
+        result._semantic_rejection_projection,
+    )
     return stamped
 
 
@@ -2249,6 +2259,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     producer_diagnostics_v0_3: bool = False,
     producer_format_repair_enabled: bool = False,
     semantic_transport_retry_enabled: bool = False,
+    semantic_rejection_projection_enabled: bool = False,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Run the explicit paragraph-catalog v0.3 wire path exactly once per role."""
     max_json_bytes = _positive_int(max_json_bytes, "JSON_LIMIT_INVALID")
@@ -2274,6 +2285,16 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_FLAG_INVALID")
     if type(semantic_transport_retry_enabled) is not bool:
         raise HostGrounderRuntimeError("SEMANTIC_TRANSPORT_RETRY_FLAG_INVALID")
+    if type(semantic_rejection_projection_enabled) is not bool:
+        raise HostGrounderRuntimeError("SEMANTIC_REJECTION_PROJECTION_FLAG_INVALID")
+    if semantic_rejection_projection_enabled and not (
+        producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
+        and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9
+        and callable(context_preparer)
+        and producer_diagnostics_v0_3 is True
+        and producer_format_repair_enabled is True
+    ):
+        raise HostGrounderRuntimeError("SEMANTIC_REJECTION_PROJECTION_ROUTE_INVALID")
     if semantic_transport_retry_enabled and not (
         producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
         and semantic_prompt_version in (
@@ -2829,9 +2850,7 @@ def _run_host_grounder_same_run_evidence_catalog(
         )) from None
 
     try:
-        receipt = build_semantic_validation_receipt(
-            envelope,
-            normalized_verdict.decode("utf-8", errors="strict"),
+        receipt_arguments = dict(
             run_id=run_input.run_id,
             canonical_input_hash=run_input.canonical_input_hash,
             request_subquestion_ids=run_input.subquestion_ids,
@@ -2844,6 +2863,21 @@ def _run_host_grounder_same_run_evidence_catalog(
             max_source_body_bytes=max_source_body_bytes,
             receipt_schema_version=_RECEIPT_SCHEMA_VERSION,
         )
+        if semantic_rejection_projection_enabled:
+            receipt, semantic_rejection_projection = (
+                _build_semantic_validation_receipt_with_projection(
+                    envelope,
+                    normalized_verdict.decode("utf-8", errors="strict"),
+                    _collect_projection=True,
+                    **receipt_arguments,
+                )
+            )
+        else:
+            receipt = build_semantic_validation_receipt(
+                envelope,
+                normalized_verdict.decode("utf-8", errors="strict"),
+                **receipt_arguments,
+            )
     except Exception as error:
         runtime_error = with_producer_attempts(HostGrounderRuntimeError(
             "SEMANTIC_VERDICT_REJECTED",
@@ -2994,6 +3028,12 @@ def _run_host_grounder_same_run_evidence_catalog(
     )
     if semantic_transport_audit is not None:
         object.__setattr__(runtime_result, "_semantic_transport", semantic_transport_audit)
+    if semantic_rejection_projection_enabled:
+        object.__setattr__(
+            runtime_result,
+            "_semantic_rejection_projection",
+            semantic_rejection_projection,
+        )
     return runtime_result
 
 
@@ -3342,10 +3382,13 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
         ]
     ] = None,
     semantic_transport_retry_enabled: bool = False,
+    default_recipe_enabled: bool = False,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Private normal-Event successor selecting the bound-object verifier wire."""
     if not callable(host_context_preparer):
         raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
+    if type(default_recipe_enabled) is not bool:
+        raise HostGrounderRuntimeError("DEFAULT_RECIPE_FLAG_INVALID")
     try:
         return _run_host_grounder_same_run_evidence_catalog(
             run_input,
@@ -3364,6 +3407,7 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
             producer_diagnostics_v0_3=True,
             producer_format_repair_enabled=True,
             semantic_transport_retry_enabled=semantic_transport_retry_enabled,
+            semantic_rejection_projection_enabled=default_recipe_enabled,
         )
     except HostGrounderRuntimeError as error:
         error._semantic_transport_route = (

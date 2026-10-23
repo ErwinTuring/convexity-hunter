@@ -3822,6 +3822,7 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(
             result._event_fact_anchor_outcome.selected_claim_id, "fact-1"
         )
+        self.assertIsNotNone(result._semantic_rejection_projection)
         from convexity_hunter.host_store import (
             _grounder_stage_outcome,
             _validate_grounder_stage_outcome,
@@ -3829,7 +3830,10 @@ class HostEventGrounderTests(unittest.TestCase):
 
         archived = _grounder_stage_outcome(result, _RUN_ID, _RAW_INPUT)
         self.assertEqual(
-            archived["schema_version"], "host-grounder-stage-outcome-v0.4"
+            archived["schema_version"], "host-grounder-stage-outcome-v0.5"
+        )
+        self.assertEqual(
+            archived["provenance"]["verifier_wire_version"], "semantic-verdict-v0.4"
         )
         self.assertEqual(
             archived["event_fact_anchor"],
@@ -3876,13 +3880,19 @@ class HostEventGrounderTests(unittest.TestCase):
             ),),
         )
         batch = SourceSubmissionBatch(prepared.raw_input, (submission,))
-        submission_result = _stamp_event_fact_anchor_outcome(
-            replace(
-                result,
-                build_result=replace(
-                    result.build_result, submission=submission, source_batch=batch
-                ),
+        replaced_result = replace(
+            result,
+            build_result=replace(
+                result.build_result, submission=submission, source_batch=batch
             ),
+        )
+        object.__setattr__(
+            replaced_result,
+            "_semantic_rejection_projection",
+            result._semantic_rejection_projection,
+        )
+        submission_result = _stamp_event_fact_anchor_outcome(
+            replaced_result,
             result._event_fact_anchor_outcome,
         )
         submission_archived = _grounder_stage_outcome(
@@ -3890,7 +3900,7 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         self.assertEqual(
             submission_archived["schema_version"],
-            "host-grounder-submission-stage-outcome-v0.3",
+            "host-grounder-submission-stage-outcome-v0.5",
         )
         public_submission = _grounder_public_stage_outcome(submission_archived)
         self.assertEqual(
@@ -3938,6 +3948,8 @@ class HostEventGrounderTests(unittest.TestCase):
             bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
         )
 
+        self.assertIsNone(result._semantic_rejection_projection)
+        self.assertIsNone(result._event_fact_anchor_outcome)
         prepared = result.build_result.context
         self.assertEqual(prepared.event_description_binding, "fact-1")
         self.assertEqual(prepared.event_date_range.start_date, datetime.date(2026, 4, 10))
