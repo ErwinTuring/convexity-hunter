@@ -279,6 +279,15 @@ class HostGrounderSemanticTests(unittest.TestCase):
         envelope, verdict, bodies = _case()
         receipt = _build(envelope, verdict, bodies)
 
+        receipt_bytes = json.dumps(
+            receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        self.assertEqual(
+            hashlib.sha256(receipt_bytes).hexdigest(),
+            "3ac1fd11f83ba72769ecf8d916ce97f9fb43ce770e114e62bb903a6a1c4df07e",
+        )
+
         self.assertEqual(receipt["schema_version"], "semantic-validation-v0.1")
         self.assertEqual(receipt["run_id"], _RUN_ID)
         self.assertEqual(receipt["canonical_input_hash"], _INPUT_HASH)
@@ -450,6 +459,59 @@ class HostGrounderSemanticTests(unittest.TestCase):
         wrong_body["source_body_hashes"][0]["sha256"] = "b" * 64
         with self.assertRaisesRegex(ValueError, "source_body_hashes"):
             _build(envelope, wrong_body, bodies)
+
+    def test_receipt_failure_categories_preserve_exact_valueerror(self):
+        def check_failure(category, message, mutate=None, **overrides):
+            envelope, verdict, bodies = _case()
+            if mutate is not None:
+                mutate(envelope, verdict, bodies)
+            with self.assertRaises(ValueError) as raised:
+                _build(envelope, verdict, bodies, **overrides)
+            error = raised.exception
+            self.assertIs(type(error), ValueError)
+            self.assertEqual(error.args, (message,))
+            self.assertEqual(str(error), message)
+            self.assertIs(type(error._receipt_failure_check), str)
+            self.assertEqual(error._receipt_failure_check, category)
+
+        def bad_coverage_id(envelope, verdict, _bodies):
+            envelope["coverage"][0]["subquestion_id"] = "foreign-question"
+            _refresh_envelope_hash(envelope, verdict)
+
+        cases = (
+            ("RUN_BINDING", "verdict run_id does not match Host run", None,
+             {"run_id": "other-run"}),
+            ("ENVELOPE_HASH", "verdict envelope_hash does not match canonical envelope",
+             lambda _e, v, _b: v.update(envelope_hash="b" * 64), {}),
+            ("SOURCE_REGISTRY", "source_bodies must be a bounded mapping", None,
+             {"source_bodies": []}),
+            ("SOURCE_HASHES", "verdict source_body_hashes do not match exact registry",
+             lambda _e, v, _b: v["source_body_hashes"][0].update(sha256="b" * 64), {}),
+            ("REQUEST_IDS", "request_subquestion_ids must be a tuple", None,
+             {"request_subquestion_ids": ["question-1"]}),
+            ("CLAIM_IDS", "claims verdict IDs/indices do not match envelope",
+             lambda _e, v, _b: v["claims"][0].update(claim_id="foreign-claim"), {}),
+            ("HYPOTHESIS_IDS", "hypotheses verdict IDs/indices do not match envelope",
+             lambda _e, v, _b: v["hypotheses"][0].update(hypothesis_id="foreign-hypothesis"), {}),
+            ("BINDING_IDS", "field_bindings verdict IDs/indices do not match envelope",
+             lambda _e, v, _b: v["field_bindings"][0].update(index=4), {}),
+            ("COVERAGE_IDS", "envelope coverage IDs do not match ordered request",
+             bad_coverage_id, {}),
+            ("EVIDENCE_SOURCE_HASH", "evidence ref source/hash mismatch",
+             lambda _e, v, _b: v["claims"][0]["evidence_refs"][0].update(body_sha256="b" * 64), {}),
+            ("EVIDENCE_SPAN", "evidence ref span does not match exact body",
+             lambda _e, v, _b: v["claims"][0]["evidence_refs"][0].update(end=999), {}),
+        )
+        for category, message, mutate, overrides in cases:
+            with self.subTest(category=category):
+                check_failure(category, message, mutate, **overrides)
+
+        envelope, verdict, bodies = _case()
+        with self.assertRaises(ValueError) as unknown:
+            _build(envelope, verdict, bodies, receipt_schema_version="unsupported")
+        self.assertIs(type(unknown.exception), ValueError)
+        self.assertEqual(unknown.exception.args, ("receipt_schema_version is unsupported",))
+        self.assertFalse(hasattr(unknown.exception, "_receipt_failure_check"))
 
     def test_bad_span_or_reference_hash_is_rejected(self):
         envelope, verdict, bodies = _case()

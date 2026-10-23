@@ -1,6 +1,40 @@
 # Project State
 
-## Quota-safe pause — 2026-10-23 UTC
+## Receipt failure-category compatibility addition — 2026-10-23 UTC
+
+The default Event receipt-construction error can now retain a closed, private
+check category without changing public `failure_check`, legacy error text,
+acceptance rules, requests or budgets. Independent contract/implementation
+reviews, six focused builder tests, five independent targeted tests,
+compileall and diff checks passed. Public definitions and valid receipt golden
+SHA are unchanged. Deploy, then perform at most one fresh normal Nasdaq Event
+run; do not replay earlier guards or turn its result into speculative fixes.
+See the [checkpoint](current-checkpoint.md) for the precise boundary.
+
+## Source-to-catalog probe completed; normal integration next — 2026-10-23 UTC
+
+The prepared one-shot probe is consumed and passed: 5 sources, 82 candidate
+paragraphs, 71 entries and 25,584 catalog bytes within unchanged bounds.
+Two Tavily requests were dispatched; the model guard stopped before real model
+HTTP (0), EI/Core NOT_RUN. No historical catalog cause or production defect was
+established, so no implementation/configuration change is justified.
+The original launcher restored the existing database, Profile v0.4 and cached
+Direct reports. The single fresh normal World run `8675cdc7` is BLOCKED with
+partial native coverage and `world_grounder_no_submission`, 0 cases / 0
+unavailable; journal is now 29 records / 0 active. No catalog error or proven
+implementation defect was observed. Normal Nasdaq Event run `a4af8d0b` then
+returned BLOCKED at `SEMANTIC_FAILURE_STAGE_RECEIPT_CONSTRUCTION`, 0 cases;
+the finer check is UNKNOWN, not a demonstrated EI rejection or code defect.
+No historical submission was injected. Host is READY with 30 records / 0
+active; Profile v0.4 and prior Direct archives remain unchanged. No production
+or limit change was justified or made. Do not replay these runs, repeat the
+probe, infer a semantic judgment from a technical receipt failure, or claim
+positive Event/World-to-Core closure. A fix requires a concrete failing check
+or independently reproducible counterexample, not another case reroll.
+See the [checkpoint](current-checkpoint.md) for bounds, safe artifacts and
+authority limitations. Real positive Event/World-to-Core closure is unproven.
+
+## Historical quota-safe pause — 2026-10-23 UTC
 
 Implementation/review/tests are committed through `dfb439b`; no partial code.
 Paused at 98% five-hour usage. Source-to-catalog probe is PREPARED_NOT_RUN,

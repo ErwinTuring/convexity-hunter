@@ -209,6 +209,51 @@ def _quote_only_verdict(verdict):
     return wire
 
 
+def _catalog_route_payloads(run_input, context, envelope):
+    catalog = host_grounder_runtime_module.build_host_evidence_catalog(
+        run_input.run_id,
+        run_input.canonical_input_hash,
+        context.source_bodies,
+        max_catalog_entries=64,
+        max_catalog_bytes=32_768,
+        max_catalog_paragraphs=128,
+        max_string_bytes=run_input.bounds.max_string_bytes,
+        max_array_items=run_input.bounds.max_array_items,
+    )
+    evidence_id = catalog.entries[0].evidence_id
+    producer = copy.deepcopy(envelope)
+    producer["schema_version"] = "grounder-output-v0.3"
+    for claim in producer["claims"]:
+        for key in ("source_id", "locator", "quote"):
+            claim.pop(key)
+        claim["evidence_id"] = evidence_id
+    for binding in producer["field_bindings"]:
+        for key in ("source_id", "quote", "start", "end"):
+            binding.pop(key)
+        binding["evidence_id"] = evidence_id
+    parsed_envelope, _normalized = host_grounder_runtime_module.parse_grounder_output_v0_3(
+        json.dumps(producer, ensure_ascii=False),
+        100_000,
+        max_string_bytes=run_input.bounds.max_string_bytes,
+        max_array_items=run_input.bounds.max_array_items,
+        run_id=run_input.run_id,
+        canonical_input_hash=run_input.canonical_input_hash,
+        source_bodies=context.source_bodies,
+        catalog=catalog,
+    )
+    verifier = _verdict(parsed_envelope)
+    verifier["schema_version"] = "semantic-verdict-v0.3"
+    for section in ("claims", "hypotheses", "field_bindings", "coverage"):
+        for record in verifier[section]:
+            record["evidence_refs"] = [
+                {"evidence_id": evidence_id} for _ref_value in record["evidence_refs"]
+            ]
+    return (
+        json.dumps(producer, ensure_ascii=False),
+        json.dumps(verifier, ensure_ascii=False),
+    )
+
+
 def _fixture():
     user_input = UserEventInput(description="Assess the reported ACME filing.")
     run_input = HostGrounderRunInput(
@@ -678,6 +723,102 @@ class HostGrounderRuntimeTests(unittest.TestCase):
                 max_source_body_bytes=20_000,
             )
         self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+
+    def test_receipt_failure_sidecar_is_exact_route_only(self):
+        run_input, context, envelope, _discovery_json, _semantic_json = _fixture()
+        producer_text, verifier_text = _catalog_route_payloads(run_input, context, envelope)
+        routes = (
+            (
+                "default-v0.9-v0.8",
+                host_grounder_runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9,
+                True,
+            ),
+            (
+                "legacy-v0.6",
+                run_host_grounder_same_run_evidence_catalog_v0_6,
+                False,
+            ),
+        )
+        for label, runner, expected_route in routes:
+            with self.subTest(route=label):
+                discovery, semantic, calls = _clients(producer_text, verifier_text)
+                holder = HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                )
+
+                def fail_receipt(*_args, **_kwargs):
+                    error = ValueError("PRIVATE_RECEIPT_SENTINEL")
+                    error._receipt_failure_check = "ENVELOPE_HASH"
+                    raise error
+
+                with patch.object(
+                    host_grounder_runtime_module,
+                    "build_semantic_validation_receipt",
+                    side_effect=fail_receipt,
+                ):
+                    with self.assertRaises(HostGrounderRuntimeError) as raised:
+                        runner(
+                            run_input,
+                            context,
+                            discovery_client=discovery,
+                            semantic_client=semantic,
+                            audit_holder=holder,
+                            max_json_bytes=100_000,
+                            max_source_body_bytes=20_000,
+                            max_catalog_entries=64,
+                            max_catalog_bytes=32_768,
+                            max_catalog_paragraphs=128,
+                            host_context_preparer=lambda _snapshot, _receipt, original: original,
+                        )
+
+                error = raised.exception
+                self.assertEqual(error.code, "SEMANTIC_VERDICT_REJECTED")
+                self.assertEqual(error.failure_stage, "semantic_receipt_construction")
+                self.assertIsNone(error.failure_check)
+                self.assertEqual(error.args, ("SEMANTIC_VERDICT_REJECTED",))
+                self.assertEqual(str(error), "SEMANTIC_VERDICT_REJECTED")
+                self.assertEqual(repr(error), "HostGrounderRuntimeError(code='SEMANTIC_VERDICT_REJECTED')")
+                self.assertNotIn("PRIVATE_RECEIPT_SENTINEL", repr(error))
+                self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+                if expected_route:
+                    self.assertEqual(
+                        error._receipt_failure_route,
+                        "producer_v0_9_verifier_v0_8",
+                    )
+                    self.assertEqual(error._receipt_failure_check, "ENVELOPE_HASH")
+                else:
+                    self.assertFalse(hasattr(error, "_receipt_failure_route"))
+                    self.assertFalse(hasattr(error, "_receipt_failure_check"))
+
+    def test_receipt_failure_metadata_rejects_subclasses_and_malformed_values(self):
+        class StringSubclass(str):
+            pass
+
+        class ValueErrorSubclass(ValueError):
+            def __str__(self):
+                raise AssertionError("exception text must not be read")
+
+        known = ValueError("private")
+        known._receipt_failure_check = "RUN_BINDING"
+        self.assertEqual(host_grounder_runtime_module._receipt_failure_check(known), "RUN_BINDING")
+
+        unannotated = ValueError("private")
+        self.assertEqual(host_grounder_runtime_module._receipt_failure_check(unannotated), "UNKNOWN")
+
+        malformed = ValueError("private")
+        malformed._receipt_failure_check = StringSubclass("RUN_BINDING")
+        self.assertEqual(host_grounder_runtime_module._receipt_failure_check(malformed), "UNKNOWN")
+
+        unknown = ValueError("private")
+        unknown._receipt_failure_check = "PRIVATE_CHECK_SENTINEL"
+        self.assertEqual(host_grounder_runtime_module._receipt_failure_check(unknown), "UNKNOWN")
+        self.assertEqual(
+            host_grounder_runtime_module._receipt_failure_check(
+                ValueErrorSubclass("PRIVATE_EXCEPTION_SENTINEL")
+            ),
+            "UNKNOWN",
+        )
 
     def test_empty_partial_batch_remains_null_and_coverage_unresolved(self):
         run_input, context, _envelope_value, _discovery_json, _semantic_json = _fixture()

@@ -2395,6 +2395,71 @@ class HostServerBatchTests(unittest.TestCase):
         unrelated.failure_check = "wire_decode"
         self.assertEqual(project(unrelated), ())
 
+    def test_receipt_failure_projection_requires_exact_private_route(self):
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+
+        stage_code = "SEMANTIC_FAILURE_STAGE_RECEIPT_CONSTRUCTION"
+        checks = (
+            "RUN_BINDING", "ENVELOPE_HASH", "SOURCE_REGISTRY", "SOURCE_HASHES",
+            "REQUEST_IDS", "CLAIM_IDS", "HYPOTHESIS_IDS", "BINDING_IDS",
+            "COVERAGE_IDS", "EVIDENCE_SOURCE_HASH", "EVIDENCE_SPAN", "UNKNOWN",
+        )
+        project = host_server_module._semantic_failure_diagnostic_codes
+
+        def receipt_error(check="RUN_BINDING", *, route="producer_v0_9_verifier_v0_8",
+                          stage="semantic_receipt_construction",
+                          code="SEMANTIC_VERDICT_REJECTED"):
+            error = HostGrounderRuntimeError(code, failure_stage=stage)
+            error._receipt_failure_route = route
+            error._receipt_failure_check = check
+            return error
+
+        for check in checks:
+            with self.subTest(check=check):
+                error = receipt_error(check)
+                self.assertIsNone(error.failure_check)
+                self.assertEqual(
+                    project(error),
+                    (stage_code, "SEMANTIC_RECEIPT_CHECK_" + check),
+                )
+
+        class StringSubclass(str):
+            pass
+
+        malformed = receipt_error(StringSubclass("RUN_BINDING"))
+        malformed.args = ("PRIVATE_EXCEPTION_SENTINEL",)
+        malformed.private_detail = "PRIVATE_DETAIL_SENTINEL"
+        self.assertEqual(
+            project(malformed),
+            (stage_code, "SEMANTIC_RECEIPT_CHECK_UNKNOWN"),
+        )
+        self.assertNotIn("PRIVATE", repr(malformed))
+
+        wrong_route = receipt_error(route=StringSubclass("producer_v0_9_verifier_v0_8"))
+        self.assertEqual(project(wrong_route), (stage_code,))
+
+        wrong_public_check = receipt_error()
+        wrong_public_check.failure_check = "wire_decode"
+        self.assertEqual(project(wrong_public_check), (stage_code,))
+
+        wrong_stage = receipt_error(stage="semantic_receipt_validation")
+        self.assertEqual(
+            project(wrong_stage), ("SEMANTIC_FAILURE_STAGE_RECEIPT_VALIDATION",)
+        )
+
+        wrong_code = receipt_error(code="PRIVATE_CODE_SENTINEL")
+        self.assertEqual(project(wrong_code), ())
+
+        class ForgedGrounderError(HostGrounderRuntimeError):
+            pass
+
+        forged = ForgedGrounderError(
+            "SEMANTIC_VERDICT_REJECTED", failure_stage="semantic_receipt_construction"
+        )
+        forged._receipt_failure_route = "producer_v0_9_verifier_v0_8"
+        forged._receipt_failure_check = "RUN_BINDING"
+        self.assertEqual(project(forged), ())
+
     def test_model_call_failure_check_projection_is_closed_and_type_bound(self):
         from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
         from convexity_hunter.host_model import _MODEL_TRANSPORT_ERROR_CODES

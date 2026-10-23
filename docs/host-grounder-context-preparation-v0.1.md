@@ -263,3 +263,52 @@ The Host archive still retains only existing diagnostic counts: these private
 logs do not restore missing historical explanations or create a durable schema.
 A runtime discarding stderr may discard this log; do not claim World archival
 coverage. A new live run requires separate bounded authorization.
+
+## Receipt-failure category compatibility addendum — 2026-10-23
+
+Status: FROZEN / IMPLEMENTED after independent contract and implementation
+review. Six focused builder tests and five independently rerun focused tests
+passed; valid receipt golden SHA, legacy errors, closed projection and route
+isolation are covered. Compileall and diff checks passed; public definitions
+are unchanged. No full-suite rerun belongs to this diagnostic-only addition.
+
+The normal Nasdaq Event run `a4af8d0b` retained a receipt-construction stage
+failure but no specific check. This establishes a diagnostic information gap,
+not a faulty acceptance rule or a retrospectively recoverable cause.
+
+For the default v0.9 producer / v0.8 verifier route only, permit a private,
+payload-free receipt-failure category alongside the existing error. Do not
+extend the constructor's public `failure_check` values: it remains `None` for
+receipt construction/validation. Legacy route diagnostics remain unchanged.
+This narrowly supersedes the stage-only Host diagnostic restriction for
+receipt construction on that default route; no receipt-validation extension
+or public function, parameter, DTO, schema or runtime version is introduced.
+
+At an existing receipt-construction validation raise, a private helper may
+construct the same exact `ValueError`, with identical `.args` and `str`, and
+attach one static category known at that check. Do not infer categories by
+reading exception text, model values, hashes, IDs, source content or rationale.
+Do not reorder, remove, repair or repeat a validation. Runtime and Host may
+forward only exact error/string types and these closed labels:
+
+```text
+RUN_BINDING, ENVELOPE_HASH, SOURCE_REGISTRY, SOURCE_HASHES, REQUEST_IDS,
+CLAIM_IDS, HYPOTHESIS_IDS, BINDING_IDS, COVERAGE_IDS,
+EVIDENCE_SOURCE_HASH, EVIDENCE_SPAN, UNKNOWN
+```
+
+Unknown/unannotated exceptions and malformed/subclass metadata become
+`UNKNOWN` without exposing any exception representation. The Host appends
+only `SEMANTIC_RECEIPT_CHECK_<LABEL>` on the exact default-route typed error
+with code `SEMANTIC_VERDICT_REJECTED` and stage
+`semantic_receipt_construction`. Keep the existing generic and stage codes.
+Other stages/routes cannot emit this extension.
+
+The category identifies a failed deterministic check, not factual truth or
+the model's substantive judgment. It cannot upgrade a submission or prove an
+implementation defect. No raw response retention, additional source/model
+request, retry, acceptance rule, budget or Core policy change is authorized.
+Validate same valid receipt bytes, unchanged legacy errors/diagnostics, exact
+category propagation and unknown/subclass/wrong-route non-disclosure before
+deployment. A fresh normal Event run, if performed under the user's existing
+bounded authorization, must use a new spent guard and is not a replay.

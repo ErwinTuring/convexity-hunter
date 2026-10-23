@@ -2,7 +2,85 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## Safe quota checkpoint — 2026-10-23 UTC
+## Receipt failure category retained without changing acceptance — 2026-10-23 UTC
+
+The normal Nasdaq failure below demonstrated a recording gap, not an
+acceptance-rule defect. The independently reviewed [compatibility addendum](host-grounder-context-preparation-v0.1.md#receipt-failure-category-compatibility-addendum--2026-10-23)
+is implemented: original exact ValueErrors retain their args/text, with a
+static private category at existing checks. Only the default v0.9/v0.8 route
+and strict Host projection may emit `SEMANTIC_RECEIPT_CHECK_<LABEL>`;
+public `failure_check` stays None on receipt-construction errors. No exception
+text is parsed, no raw response retained, and no validation, prompt, source,
+budget, retry, EI or Core behavior changed. Unknown/subclass metadata cannot
+leak payloads. Six focused builder tests and five independent targeted tests
+passed; valid receipt golden SHA, compileall, unchanged public definitions
+and diff checks passed. No full suite was rerun for this diagnostic-only change.
+
+Deployment and at most one fresh normal Nasdaq Event run are next, solely to
+obtain a concrete failed check or complete the positive path. Earlier guards
+remain spent and their missing causes remain UNKNOWN. Do not use a category
+as proof of a defective rule or extend this into another diagnosis campaign.
+
+## Resumed source-to-catalog probe — 2026-10-23 UTC
+
+The previously unconsumed probe is now spent: run
+`e9341009-2ef3-4d85-b65e-6a4ce3926e94` completed the default source/admission
+route and generated a complete catalog: 5 sources, 82 candidate paragraphs,
+71 eligible entries, 25,584 canonical bytes. Paragraph/entry/array limits remain
+128 and the catalog-byte limit remains 65,536. No source/body truncation or
+limit change was made. Two Tavily requests were dispatched, reserving 2 credits
+under the existing 3-credit cap with PAYGO off; provider-reported usage and
+admission-page GET count remain UNKNOWN. The discovery transport guard stopped
+execution before real model HTTP (0); semantic, EI, Core, Futu and native Skill
+were NOT_RUN. Its `DISCOVERY_CALL_FAILED` / `TRANSPORT_FAILED` is the deliberate
+guard outcome, not a provider/model failure. The private probe record is
+`/private/tmp/ch-world-source-catalog-20261023.gWRgsT/probe.json`.
+
+This does not reproduce or explain the historical catalog failure, so no
+production/configuration fix is justified. Keep the closed failure check for
+future normal runs; do not reconstruct lost historical detail.
+
+The old Host process had exited. The original launcher restored the same
+database on current code (PID 79637/session 92974, UTC evaluation date
+2026-10-23): root/journal/UI READY, all three executors configured, 28 records /
+0 active. Profile v0.4 and the three cached Direct-report hashes match the
+pre-start snapshot. No research POST was needed for that restoration.
+One fresh normal bounded World run completed on this code:
+`8675cdc7-0e77-4d98-8b8f-c8a46e8b4acd`, HTTP 201 / BLOCKED, 0 cases and
+0 unavailable. Reasons are `world_last30days_partial`, native Reddit/Hacker
+News/Digg `not_ok`, and `world_grounder_no_submission`. No catalog exception
+was surfaced; a missing submission is not proof of an absent economic
+mechanism, a software defect, or EI acceptance. Actual source/model usage and
+the more specific no-submission cause remain UNKNOWN in the public readback.
+Run GET and Workbench root returned 200; journal is 29 records / 0 active.
+The private preregistration, spent POST guard and outcome are retained in
+`/private/tmp/ch-world-20261023-normal-tc8kh5ps/`. Do not replay this batch.
+
+The single normal Event run using the retained Nasdaq extended-trading case
+as a test-object choice also completed: `a4af8d0b-7735-44d5-8b27-af01132a1cff`,
+HTTP 201 / BLOCKED, 0 cases, no batch summary. No historical submission,
+mechanism or acceptance result was injected. Its exact retained diagnostics are
+`SEMANTIC_VERDICT_REJECTED` and
+`SEMANTIC_FAILURE_STAGE_RECEIPT_CONSTRUCTION`; `failure_check` and
+`failure_code` are null. This is a technical receipt-construction rejection,
+not an EI verdict or proof of insufficient economic support. The original
+finer cause is UNKNOWN. A separate `accepted` status without a bound stage
+context must not be described as EI ACCEPTED. Available token counters do not
+establish whole-run usage. Sources/credits and unavailable count are UNKNOWN.
+The private record is `/private/tmp/ch-event-20261023-ndaq-hs24ogak/`; its guard
+is spent. Host remains READY, journal 30 records / 0 active, Workbench root
+200, Profile v0.4 and existing Direct archives unchanged.
+
+No production or limit change was made: inspection confirms receipt building
+still checks exact run/envelope/source identity, verdict ID sets/indices,
+coverage, source references and existing receipt invariants. The retained
+failure-stage alone cannot identify which check failed or justify weakening
+one. Do not replay either normal run, repeat the source probe, infer a model
+semantic judgment from a receipt failure, or claim positive Event/World closure.
+Further corrective work needs a concrete failing input/check or an independent
+offline counterexample, not another uninstrumented case reroll.
+
+## Historical quota checkpoint — 2026-10-23 UTC
 
 Paused at 98% of the five-hour allowance used, per the user's 2% safety rule.
 All implementation/test/review changes are committed through `dfb439b` and

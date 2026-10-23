@@ -28,6 +28,22 @@ _OUTCOMES = frozenset(("supported", "contradicted", "unresolved"))
 _RECEIPT_SCHEMA_VERSIONS = frozenset(
     ("semantic-validation-v0.1", "semantic-validation-v0.2")
 )
+_RECEIPT_FAILURE_CHECKS = frozenset(
+    (
+        "RUN_BINDING",
+        "ENVELOPE_HASH",
+        "SOURCE_REGISTRY",
+        "SOURCE_HASHES",
+        "REQUEST_IDS",
+        "CLAIM_IDS",
+        "HYPOTHESIS_IDS",
+        "BINDING_IDS",
+        "COVERAGE_IDS",
+        "EVIDENCE_SOURCE_HASH",
+        "EVIDENCE_SPAN",
+        "UNKNOWN",
+    )
+)
 _LOGGER = logging.getLogger(__name__)
 _REJECTION_CHECKS = frozenset(
     (
@@ -42,6 +58,15 @@ _REJECTION_CHECKS = frozenset(
         "verifier_unresolved",
     )
 )
+
+
+def _receipt_failure(message: str, check: str) -> ValueError:
+    """Attach one fixed private category without changing ValueError text."""
+    error = ValueError(message)
+    if type(check) is not str or check not in _RECEIPT_FAILURE_CHECKS:
+        check = "UNKNOWN"
+    error._receipt_failure_check = check
+    return error
 
 
 def _record_rejection_check(checks: dict, category: object) -> None:
@@ -305,71 +330,85 @@ def build_semantic_validation_receipt(
         max_string_bytes=max_string_bytes, max_array_items=max_array_items,
     )
     if verdict["run_id"] != run_id:
-        raise ValueError("verdict run_id does not match Host run")
+        raise _receipt_failure("verdict run_id does not match Host run", "RUN_BINDING")
     if verdict["envelope_hash"] != envelope_hash:
-        raise ValueError("verdict envelope_hash does not match canonical envelope")
+        raise _receipt_failure(
+            "verdict envelope_hash does not match canonical envelope", "ENVELOPE_HASH"
+        )
     if not isinstance(source_bodies, Mapping) or len(source_bodies) > max_array_items:
-        raise ValueError("source_bodies must be a bounded mapping")
+        raise _receipt_failure("source_bodies must be a bounded mapping", "SOURCE_REGISTRY")
     body_hashes = {}
     body_bytes_total = 0
     for source_id, body in source_bodies.items():
         _string(source_id, "source_id", max_string_bytes)
         if type(body) is not str:
-            raise ValueError("source body must be a string")
+            raise _receipt_failure("source body must be a string", "SOURCE_REGISTRY")
         try:
             body_bytes = body.encode("utf-8", errors="strict")
         except UnicodeEncodeError as exc:
-            raise ValueError("source body is not valid UTF-8") from exc
+            raise _receipt_failure("source body is not valid UTF-8", "SOURCE_REGISTRY") from exc
         body_bytes_total += len(body_bytes)
         if body_bytes_total > max_source_body_bytes:
-            raise ValueError("source body registry exceeds max_source_body_bytes")
+            raise _receipt_failure(
+                "source body registry exceeds max_source_body_bytes", "SOURCE_REGISTRY"
+            )
         body_hashes[source_id] = hashlib.sha256(body_bytes).hexdigest()
     expected_hashes = tuple(sorted(body_hashes.items()))
     reported_hashes = tuple((x["source_id"], x["sha256"]) for x in verdict["source_body_hashes"])
     if reported_hashes != expected_hashes:
-        raise ValueError("verdict source_body_hashes do not match exact registry")
+        raise _receipt_failure(
+            "verdict source_body_hashes do not match exact registry", "SOURCE_HASHES"
+        )
 
     if type(request_subquestion_ids) is not tuple:
-        raise ValueError("request_subquestion_ids must be a tuple")
+        raise _receipt_failure("request_subquestion_ids must be a tuple", "REQUEST_IDS")
     request_ids = tuple(_string(x, "request subquestion_id", max_string_bytes) for x in request_subquestion_ids)
     if len(set(request_ids)) != len(request_ids):
-        raise ValueError("duplicate request subquestion_id")
+        raise _receipt_failure("duplicate request subquestion_id", "REQUEST_IDS")
     claims, hypotheses = parsed["claims"], parsed["hypotheses"]
     bindings, coverage = parsed["field_bindings"], parsed["coverage"]
     claim_ids = tuple(x["claim_id"] for x in claims)
     hypothesis_ids = tuple(x["hypothesis_id"] for x in hypotheses)
-    if len(set(claim_ids)) != len(claim_ids) or len(set(hypothesis_ids)) != len(hypothesis_ids):
-        raise ValueError("duplicate envelope claim or hypothesis ID")
+    if len(set(claim_ids)) != len(claim_ids):
+        raise _receipt_failure("duplicate envelope claim or hypothesis ID", "CLAIM_IDS")
+    if len(set(hypothesis_ids)) != len(hypothesis_ids):
+        raise _receipt_failure("duplicate envelope claim or hypothesis ID", "HYPOTHESIS_IDS")
     if tuple(x["subquestion_id"] for x in coverage) != request_ids:
-        raise ValueError("envelope coverage IDs do not match ordered request")
+        raise _receipt_failure(
+            "envelope coverage IDs do not match ordered request", "COVERAGE_IDS"
+        )
 
-    def keyed(name: str, id_key: str, expected: set) -> dict:
+    def keyed(name: str, id_key: str, expected: set, check: str) -> dict:
         records = verdict[name]
         result = {item[id_key]: item for item in records}
         if len(result) != len(records):
-            raise ValueError("duplicate {} verdict identity".format(name))
+            raise _receipt_failure("duplicate {} verdict identity".format(name), check)
         if set(result) != expected:
-            raise ValueError("{} verdict IDs/indices do not match envelope".format(name))
+            raise _receipt_failure(
+                "{} verdict IDs/indices do not match envelope".format(name), check
+            )
         return result
 
-    cv = keyed("claims", "claim_id", set(claim_ids))
-    hv = keyed("hypotheses", "hypothesis_id", set(hypothesis_ids))
-    bv = keyed("field_bindings", "index", set(range(len(bindings))))
+    cv = keyed("claims", "claim_id", set(claim_ids), "CLAIM_IDS")
+    hv = keyed("hypotheses", "hypothesis_id", set(hypothesis_ids), "HYPOTHESIS_IDS")
+    bv = keyed("field_bindings", "index", set(range(len(bindings))), "BINDING_IDS")
     vv = verdict["coverage"]
     if len(vv) != len(request_ids) or any(
         item["index"] != i or item["subquestion_id"] != request_ids[i]
         for i, item in enumerate(vv)
     ):
-        raise ValueError("coverage verdicts do not match ordered request")
+        raise _receipt_failure("coverage verdicts do not match ordered request", "COVERAGE_IDS")
 
     def refs(record: dict) -> tuple:
         result = []
         for ref in record["evidence_refs"]:
             body = source_bodies.get(ref["source_id"])
             if body is None or body_hashes.get(ref["source_id"]) != ref["body_sha256"]:
-                raise ValueError("evidence ref source/hash mismatch")
+                raise _receipt_failure("evidence ref source/hash mismatch", "EVIDENCE_SOURCE_HASH")
             if ref["end"] > len(body) or body[ref["start"]:ref["end"]] != ref["quote"]:
-                raise ValueError("evidence ref span does not match exact body")
+                raise _receipt_failure(
+                    "evidence ref span does not match exact body", "EVIDENCE_SPAN"
+                )
             result.append(ref)
         return tuple(result)
 

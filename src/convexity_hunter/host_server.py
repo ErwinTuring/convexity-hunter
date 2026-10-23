@@ -123,6 +123,21 @@ _SEMANTIC_FAILURE_CHECK_DIAGNOSTICS = {
     "internal_verdict_validation": "SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_VALIDATION",
     "internal_verdict_final_normalization": "SEMANTIC_FAILURE_CHECK_INTERNAL_VERDICT_FINAL_NORMALIZATION",
 }
+_SEMANTIC_RECEIPT_FAILURE_ROUTE = "producer_v0_9_verifier_v0_8"
+_SEMANTIC_RECEIPT_CHECK_DIAGNOSTICS = {
+    "RUN_BINDING": "SEMANTIC_RECEIPT_CHECK_RUN_BINDING",
+    "ENVELOPE_HASH": "SEMANTIC_RECEIPT_CHECK_ENVELOPE_HASH",
+    "SOURCE_REGISTRY": "SEMANTIC_RECEIPT_CHECK_SOURCE_REGISTRY",
+    "SOURCE_HASHES": "SEMANTIC_RECEIPT_CHECK_SOURCE_HASHES",
+    "REQUEST_IDS": "SEMANTIC_RECEIPT_CHECK_REQUEST_IDS",
+    "CLAIM_IDS": "SEMANTIC_RECEIPT_CHECK_CLAIM_IDS",
+    "HYPOTHESIS_IDS": "SEMANTIC_RECEIPT_CHECK_HYPOTHESIS_IDS",
+    "BINDING_IDS": "SEMANTIC_RECEIPT_CHECK_BINDING_IDS",
+    "COVERAGE_IDS": "SEMANTIC_RECEIPT_CHECK_COVERAGE_IDS",
+    "EVIDENCE_SOURCE_HASH": "SEMANTIC_RECEIPT_CHECK_EVIDENCE_SOURCE_HASH",
+    "EVIDENCE_SPAN": "SEMANTIC_RECEIPT_CHECK_EVIDENCE_SPAN",
+    "UNKNOWN": "SEMANTIC_RECEIPT_CHECK_UNKNOWN",
+}
 _PRODUCER_FAILURE_CHECK_DIAGNOSTICS = {
     "producer_wire_normalization": "PRODUCER_FAILURE_CHECK_WIRE_NORMALIZATION",
     "producer_run_stage_binding": "PRODUCER_FAILURE_CHECK_RUN_STAGE_BINDING",
@@ -427,6 +442,21 @@ def _semantic_failure_diagnostic_codes(error: Exception) -> Tuple[str, ...]:
             check_code = _SEMANTIC_FAILURE_CHECK_DIAGNOSTICS.get(check)
             if check_code is not None:
                 codes.append(check_code)
+    elif stage == "semantic_receipt_construction":
+        error_state = error.__dict__
+        if (
+            type(getattr(error, "_receipt_failure_route", None)) is str
+            and error._receipt_failure_route == _SEMANTIC_RECEIPT_FAILURE_ROUTE
+            and type(error_state) is dict
+            and error_state.get("failure_check", object()) is None
+        ):
+            check = getattr(error, "_receipt_failure_check", None)
+            if type(check) is not str:
+                check = "UNKNOWN"
+            check_code = _SEMANTIC_RECEIPT_CHECK_DIAGNOSTICS.get(
+                check, _SEMANTIC_RECEIPT_CHECK_DIAGNOSTICS["UNKNOWN"]
+            )
+            codes.append(check_code)
     return tuple(codes)
 
 
