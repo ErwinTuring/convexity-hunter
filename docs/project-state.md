@@ -1,5 +1,19 @@
 # Project State
 
+## Real v0.5 projection verified; retention decision required — 2026-10-23 UTC
+
+Release `191198e` is deployed. The one concrete COGT Event `2d7808ca` persists
+real v0.5 metadata: one claim unresolved; the hypothesis passes the semantic
+receipt but fails Builder's EI reassessment-provenance check. Exact candidate
+basis/support/text are not retained, so its finer predicate is UNKNOWN.
+Underlying identity is independently unresolved. No submission/EI/Futu/Core
+or new batch archive follows; three-entry positive closure is still unproven.
+No evidence justifies weakening EI or speculative code changes. Main proposes
+one private repository-external structured-candidate capture, excluding raw
+API responses/full pages/secrets, to decide mapping defect versus legitimate
+input refusal. This retention exception and further run require user decision;
+they have not been implemented or authorized here. See [checkpoint](current-checkpoint.md).
+
 ## Semantic rejection projection implemented; deployment next — 2026-10-23 UTC
 
 Read-only preflight and existing fixtures show that

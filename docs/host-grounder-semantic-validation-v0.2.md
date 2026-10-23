@@ -26,8 +26,10 @@ runtime or live Host run is implemented or claimed here.
 Status: IMPLEMENTED / independent targeted REVIEW PASS after bounded read-only
 preflight. Semantic 27, Store 59, Event 63 and one service save/restart test
 pass (150 total); public API, compileall and diff checks pass. No full-suite
-rerun is claimed for this diagnostic-only addition; deployment/live validation
-are next. The
+rerun is claimed for this diagnostic-only addition. Release `191198e` is
+deployed; real COGT run `2d7808ca` persists a claim-unresolved row in v0.5,
+then stops before EI on a separate Builder provenance gate. This
+is live projection evidence, not positive EI/Core closure. The
 historical freeze above is unchanged. This addition concerns the current
 default bound-object route (verifier wire v0.4 / prompt v0.9 / private runtime
 v0.10), not semantic acceptance or the receipt schema.

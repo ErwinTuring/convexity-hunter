@@ -2,7 +2,78 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Real projection verified; concrete Event stopped at reassessment provenance — 2026-10-23 UTC
+
+After the catalog-blocked Nasdaq run below, one preregistered concrete COGT
+normal Event ran without changing code, prompts, limits or evidence rules:
+`2d7808ca-6d7d-42b9-835b-2db947b4d180`, HTTP 201 / BLOCKED. The existing
+Grounder completed and persisted `host-grounder-stage-outcome-v0.5` with
+five source bodies, eight claims, one hypothesis and 27 field bindings.
+Direct read-only SQLite inspection, not a generic observer's empty-list
+fallback, confirms exactly one semantic rejection row: claim index 5,
+`verifier_outcome=unresolved`, `checks=[verifier_unresolved]`. The hypothesis
+is not in the receipt's rejected partition. This validates the new projection
+in a real run, not EI acceptance or factual certainty.
+
+Builder diagnostics: `CLAIM_REJECTED_BY_VALIDATOR=1`,
+`HYPOTHESIS_NOT_PROJECTED=1`, `NO_PROJECTABLE_HYPOTHESIS=1`, and
+`UNDERLYING_UNRESOLVED=1`. The existing Host log reports
+`grounder_hypothesis_not_projected check=ei_reassessment_provenance`.
+This is controlled-window attribution, not a log-level run-ID binding:
+Host session 15287 began with 34 runs and then processed only the Nasdaq
+catalog failure (before Builder) and this COGT run; the database now has 36.
+The underlying binding gap is independent and does not itself cause that
+reassessment-provenance rejection. No submission/EI/Futu/Core/batch archive
+was produced. Actual usage remains UNKNOWN, not zero. The spent private guard
+is `/private/tmp/ch-event-cogt-20261023.ZJdl8p/`; never replay it. Final Main
+read-only checks confirm Workbench HTTP 200 and 36 runs / 0 active (33 BLOCKED,
+3 COMPLETED). Host session 15287 remains running. No further case was acquired.
+
+Read-only review finds producer instructions and the frozen EI rules aligned:
+a source-backed reassessment basis must be a sourced observed fact retained
+in supporting closure, and its text must contain the exact reassessment date.
+The retained record lacks the candidate's basis/support relations and fact
+text, so the failing predicate and mapping-versus-input cause remain UNKNOWN.
+Do not infer one from the aggregate code, change EI or add a default horizon.
+
+Next is a user-owned evidence-retention decision, not another logging/schema
+successor: whether to permit one controlled, private, repository-external
+capture of the minimal structured candidate, temporal/identity preparation
+state and deterministic rejection information during one fresh normal run.
+Exclude raw API responses, full source bodies, credentials and account data;
+do not commit it, inject a submission, alter acceptance or increase budgets.
+This is PROPOSED ONLY; no capture exception or further real run is approved
+by this checkpoint. Historical lost fields are not recoverable by replay.
+
 ## Bounded rejection projection implemented and reviewed — 2026-10-23 UTC
+
+Implementation `191198e` is committed/pushed and deployed through the original
+launcher against the same database, UTC evaluation date 2026-10-23: PID 94087,
+Host session 15287, root HTTP 200. The first launch under the restricted
+execution sandbox failed; the unchanged launcher succeeded with the required
+local-listener permission. This was not a demonstrated source/config/code
+defect; no startup patch, security bypass or configuration change was made.
+The fresh one-shot Event guard is
+`/private/tmp/ch-event-20261023-semantic-rejection.uz1yam/`; it is now consumed.
+Run `aa4976fc-0fea-45cd-8f25-056c5a847b9d` returned HTTP 201 and ended BLOCKED
+at `EVIDENCE_CATALOG_INVALID`, before any completed receipt outcome. Its
+stage outcome is the existing terminal string, not a v0.5 object. Rejection
+rows are NOT_REACHED, not an empty successful audit; no EI/Core or live proof
+of the new projection is claimed. The finer catalog check and actual provider
+usage are not retained. Do not reopen a catalog-diagnostic project or replay
+this guard, increase limits, truncate evidence or claim a semantic rejection.
+
+One concrete-catalyst product acceptance is now registered instead of further
+Nasdaq retries: COGT's May 28 disclosure about FDA acceptance/Priority Review
+of bezuclastinib plus sunitinib in GIST. Initial official-source preflight found
+the stated November 30, 2026 review target in the
+[issuer disclosure](https://investors.cogentbio.com/news-releases/news-release-details/cogent-biosciences-announces-fda-acceptance-new-drug-0)
+and [SEC 10-Q](https://www.sec.gov/Archives/edgar/data/1622229/000119312526342393/cogt-20260630.htm).
+This is test-object selection only, not a prepared submission or a verified
+impact window. The normal existing Tavily/Grounder must fetch and verify its
+own evidence; Codex preflight is not Tavily output. Keep all original budgets,
+one fresh guard/POST, no semantic reroll and no further case substitutions.
+EI ACCEPTED must continue directly to the existing Futu/Core path.
 
 Fresh fetch confirms `97c1f61`, clean before this work unit. Existing offline
 fixtures demonstrate that a model-supported hypothesis can fail deterministic
