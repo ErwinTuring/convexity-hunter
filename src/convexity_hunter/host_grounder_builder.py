@@ -846,10 +846,24 @@ def _build_host_grounder_with_schema(
             tuple(diagnostics)
         )
 
+    # The context-bound event fact is an independent statement-retention root,
+    # not an addition to any hypothesis's support or dependency closure.
+    statement_claim_ids = set(kept_claim_ids)
+    binding_id = context.event_description_binding
+    bound_claim = claims_by_id.get(binding_id) if binding_id is not None else None
+    if (
+        bound_claim is not None
+        and bound_claim["kind"] == "observed_fact"
+        and binding_id not in claim_errors
+    ):
+        valid, binding_closure, _reason = claim_closure(binding_id)
+        if valid:
+            statement_claim_ids.update(binding_closure)
+
     statements = []
     used_sources = set()
     for claim in claims:
-        if claim["claim_id"] not in kept_claim_ids:
+        if claim["claim_id"] not in statement_claim_ids:
             continue
         used_sources.add(claim["source_id"])
         statements.append(

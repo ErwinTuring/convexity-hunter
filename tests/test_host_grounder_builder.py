@@ -345,6 +345,70 @@ def _case(
     return parsed, receipt, context
 
 
+def _two_source_case(
+    *,
+    supporting_claim_ids=("claim-2",),
+    event_description_binding="claim-1",
+    anchor_kind="observed_fact",
+    anchor_dependencies=(),
+    verified_claim_ids=None,
+    rejected_claims=(),
+    include_anchor_source=True,
+):
+    anchor = _claim(
+        "claim-1",
+        kind=anchor_kind,
+        source_id="source-a",
+        quote="quote-claim-1",
+        text="The issuer announced the event described by the caller.",
+        dependency_claim_ids=list(anchor_dependencies),
+    )
+    supporting_fact = _claim(
+        "claim-2",
+        source_id="source-b",
+        quote="quote-claim-2",
+        text="The issuer separately reported an operating update.",
+    )
+    hypotheses = [
+        _hypothesis(supporting_claim_ids=list(supporting_claim_ids))
+    ]
+    body_a = "Source A | quote-claim-1"
+    body_b = _base_body([supporting_fact], hypotheses)
+    field_bindings = _default_bindings([hypotheses[0]], [supporting_fact], body_b)
+    for binding in field_bindings:
+        binding["source_id"] = "source-b"
+
+    envelope, receipt, context = _case(
+        claims=[anchor, supporting_fact],
+        hypotheses=hypotheses,
+        field_bindings=field_bindings,
+        source_body=body_a + " | " + body_b,
+        verified_claim_ids=verified_claim_ids,
+        rejected_claims=rejected_claims,
+        event_description_binding=event_description_binding,
+    )
+    source_a = replace(
+        _source(body_a),
+        final_locator="https://publisher.example/a",
+        title="Source A title",
+    )
+    source_b = replace(
+        _source(body_b),
+        final_locator="https://publisher.example/b",
+        title="Source B title",
+    )
+    sources = {"source-b": source_b}
+    if include_anchor_source:
+        sources["source-a"] = source_a
+    context = replace(context, source_bodies=sources)
+    receipt["source_body_hashes"] = tuple(
+        (source_id, source.body_sha256)
+        for source_id, source in sorted(sources.items())
+    )
+    receipt["envelope_hash"] = _canonical_hash(envelope)
+    return envelope, receipt, context
+
+
 def _build(case, **updates):
     envelope, receipt, context = case
     return build_host_grounder(
@@ -358,6 +422,87 @@ def _build(case, **updates):
 
 
 class HostGrounderBuilderTests(unittest.TestCase):
+    def test_context_bound_fact_is_retained_without_changing_hypothesis_support(self):
+        for supporting_claim_ids in (["claim-2"], ["claim-2", "claim-1"]):
+            with self.subTest(supporting_claim_ids=supporting_claim_ids):
+                result = _build(
+                    _two_source_case(supporting_claim_ids=supporting_claim_ids)
+                )
+
+                self.assertIsNotNone(result.submission)
+                submission = result.submission
+                self.assertEqual(
+                    [item.statement_id for item in submission.statements],
+                    ["claim-1", "claim-2"],
+                )
+                self.assertEqual(
+                    [item.source_id for item in submission.sources],
+                    ["source-a", "source-b"],
+                )
+                sources = {item.source_id: item for item in submission.sources}
+                self.assertEqual(sources["source-a"].locator, "https://publisher.example/a")
+                self.assertEqual(sources["source-a"].title, "Source A title")
+                self.assertEqual(sources["source-b"].locator, "https://publisher.example/b")
+                self.assertEqual(sources["source-b"].title, "Source B title")
+                self.assertEqual(
+                    submission.event_description,
+                    "The issuer announced the event described by the caller.",
+                )
+                self.assertEqual(
+                    submission.hypotheses[0].supporting_statement_ids,
+                    tuple(sorted(supporting_claim_ids)),
+                )
+                self.assertFalse(
+                    any(
+                        item.code == "EVENT_DESCRIPTION_BINDING_UNAVAILABLE"
+                        for item in result.diagnostics
+                    )
+                )
+
+    def test_ineligible_or_unbound_context_fact_is_not_retained_as_root(self):
+        cases = (
+            (
+                "unverified",
+                {
+                    "verified_claim_ids": ("claim-2",),
+                    "rejected_claims": {"claim-1": "synthetic rejection"},
+                },
+            ),
+            (
+                "missing source",
+                {
+                    "include_anchor_source": False,
+                    "verified_claim_ids": ("claim-2",),
+                    "rejected_claims": {"claim-1": "source is unavailable"},
+                },
+            ),
+            ("claim not projectable", {"anchor_dependencies": ("claim-2",)}),
+            ("interpretation", {"anchor_kind": "interpretation"}),
+            ("claim absent", {"event_description_binding": "not-in-envelope"}),
+            ("unbound", {"event_description_binding": None}),
+        )
+        for label, options in cases:
+            with self.subTest(label=label):
+                result = _build(_two_source_case(**options))
+
+                self.assertIsNotNone(result.submission)
+                self.assertEqual(
+                    [item.statement_id for item in result.submission.statements],
+                    ["claim-2"],
+                )
+                self.assertEqual(
+                    [item.source_id for item in result.submission.sources],
+                    ["source-b"],
+                )
+                self.assertIsNone(result.submission.event_description)
+                unavailable = any(
+                    item.code == "EVENT_DESCRIPTION_BINDING_UNAVAILABLE"
+                    for item in result.diagnostics
+                )
+                self.assertEqual(
+                    unavailable, options.get("event_description_binding", "claim-1") is not None
+                )
+
     def test_projects_transitive_claim_closure_and_exact_host_source_metadata(self):
         claims = [
             _claim("claim-1", text="A source-reported event occurred."),
@@ -1068,7 +1213,7 @@ class HostGrounderBuilderTests(unittest.TestCase):
             claims=[_claim("claim-1")],
             hypotheses=[],
             field_bindings=[],
-            event_description_binding=None,
+            event_description_binding="claim-1",
         )
         no_hypothesis_result = _build(no_hypothesis_case)
         self.assertIsNone(no_hypothesis_result.submission)

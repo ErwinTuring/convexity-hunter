@@ -132,6 +132,32 @@ lack optional EI fields and be assessed as INCOMPLETE.
   `missing_event_description`. Neither model prose nor raw user wording is
   silently promoted to a verified description.
 
+### Bound event-fact retention clarification — 2026-10-23
+
+Status: FROZEN / IMPLEMENTED after bounded offline preflight and independent
+review. Builder 24-test regression, default Event positive regression,
+compileall and diff checks pass; public exports/signature are unchanged.
+A two-source synthetic counterexample shows
+that a verified, explicitly context-bound event fact can be dropped solely
+because a surviving hypothesis cites different verified facts. This is a
+statement-retention gap, not permission to invent a connection between them.
+
+After the existing no-surviving-hypothesis guard, retain the exact
+`event_description_binding` claim as one additional **statement/source
+retention root** only if it is an observed fact and passes the same complete
+claim eligibility and dependency-closure checks already used for hypotheses.
+Keep original claim order, text, identity and referenced source metadata.
+Already retained facts are not duplicated. Missing, rejected, non-projectable,
+non-observed or unbound facts gain no authority and remain unavailable.
+
+This clarifies “surviving” above: an explicitly bound and fully eligible event
+fact need not also be a hypothesis support root. Never add it to a hypothesis's
+supporting/contradicting/basis IDs, alter hypothesis closure, select another
+fact, or claim it establishes an economic transmission. No surviving hypothesis
+still means no submission. EI, dates, identity, temporal authority, public
+schemas, request budgets and historical records remain unchanged. This is a
+bounded mapping correction, not a new selection or evidence mechanism.
+
 ## Quote spans and semantic boundary
 
 `FieldBindingDTO.field_path` uses only the following positional paths into the

@@ -2,6 +2,45 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Real Event reached EI; bound-fact retention defect reproduced — 2026-10-23 UTC
+
+After deployment of `3fac0c4`, one fresh normal Nasdaq Event run completed:
+`0a80cb48-cd8a-4c0a-abb2-748f22ce850b`, HTTP 201 / BLOCKED. Grounder completed,
+submission PRESENT, source batch count 1; EI was ASSESSED / incomplete, not
+accepted. Envelope counts are 16 claims, 2 hypotheses, 5 source bodies and
+28 field bindings. Both coverage rows have model/validator status supported;
+the broader question retains a gap, while the one-claim anchor has no gap.
+The selected anchor ID is non-null. The sole Builder diagnostic is
+`EVENT_DESCRIPTION_BINDING_UNAVAILABLE`; neither `CLAIM_NOT_PROJECTABLE` nor
+`CLAIM_REJECTED_BY_VALIDATOR` was retained. Core has 0 cases / 1 unavailable.
+EI reasons: missing event description, incomplete event date, and missing
+underlying key, distribution mode and temporal applicability for both
+hypotheses. This retention fix supplies none of those missing fields; their
+existing source, interpretation and authorization rules remain mandatory.
+
+An independent offline two-source counterexample reproduces a mapping gap:
+eligible context-bound event fact A is omitted when the surviving hypothesis
+supports fact B instead. Builder retains only hypothesis claim closures, then
+cannot find A for description. The [Builder clarification](host-grounder-builder-v0.1.md#bound-event-fact-retention-clarification--2026-10-23)
+freezes A as a separate statement/source retention root only after every
+existing check; hypothesis support/contradiction/basis IDs are never changed.
+No surviving hypothesis still means no submission. The bounded mapping fix is
+implemented and independently reviewed: Builder 24-test regression, default
+Event positive regression, missing/unverified-source negative controls,
+compileall and diff checks pass. Public exports/signature are unchanged.
+Deployment and one normal Event integration check after this demonstrated
+fix are next; other EI deficiencies remain separate and no positive real Core
+closure is claimed. This is not another receipt-diagnostic trial or permission
+to repeat until a particular semantic result appears.
+
+The private spent guard and archive audit are in
+`/private/tmp/ch-event-20261023-final-zjn832g0/`. Host PID 81883/session 64266,
+UTC evaluation date 2026-10-23, remains READY: 31 journal records / 0 active,
+Workbench root 200, Profile v0.4 and previous Direct hashes preserved. Do not
+replay the run or assign its progress to the diagnostic change: source/model
+outputs changed independently. The earlier receipt failure's precise cause
+remains UNKNOWN.
+
 ## Receipt failure category retained without changing acceptance — 2026-10-23 UTC
 
 The normal Nasdaq failure below demonstrated a recording gap, not an

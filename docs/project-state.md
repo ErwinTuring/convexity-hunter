@@ -1,5 +1,19 @@
 # Project State
 
+## Real Event EI assessment and proven bound-fact retention gap — 2026-10-23 UTC
+
+Normal Nasdaq run `0a80cb48` produced a real submission and EI INCOMPLETE:
+0 Core cases / 1 unavailable. Its selected verified anchor was non-null, yet
+the sole Builder diagnostic reports its description unavailable. A separate
+offline counterexample reproduces the hypothesis-only retention gap for an
+independently bound event fact. The Builder clarification preserves that fully
+eligible fact as a statement/source root without adding hypothesis support.
+The mapping fix and independent review pass, with 24 Builder tests and the
+default Event positive regression, compileall and diff checks. Deploy and
+perform one post-fix normal integration check. Other date, identity, mode and temporal gaps remain
+unchanged. Host READY, 31 records / 0 active, Profile v0.4 and prior Direct
+archives preserved. See the [checkpoint](current-checkpoint.md).
+
 ## Receipt failure-category compatibility addition — 2026-10-23 UTC
 
 The default Event receipt-construction error can now retain a closed, private
