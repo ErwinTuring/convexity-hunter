@@ -2,6 +2,40 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Post-fix normal Event blocked at verifier binding alignment — 2026-10-23 UTC
+
+Release `d6ecfdf` is deployed through the original launcher: PID 82957/session
+83381, UTC evaluation date 2026-10-23, same SQLite database. The one post-fix
+normal Nasdaq run `7cc1b60e-8d60-4d38-85e2-adf772a41855` returned HTTP 201 /
+BLOCKED before submission. Run-level diagnostics, not the deliberately generic
+stage event, retain `SEMANTIC_VERDICT_REJECTED`,
+`SEMANTIC_FAILURE_STAGE_WIRE_PARSE` and
+`SEMANTIC_FAILURE_CHECK_PRODUCER_BINDING_ALIGNMENT`. There is no
+`SEMANTIC_RECEIPT_CHECK_*`: this is not receipt construction. No EI assessment,
+batch archive or Futu/Core case was produced. The specific count/index/reference
+subcheck and original response are not retained; do not infer which failed or
+recover it by replay. This does not live-validate the later Builder retention
+fix, although its independent offline regression passes.
+
+Host remains READY, Workbench root 200, journal 32 records / 0 active. Profile
+v0.4 and all three prior Direct archive hashes match the deployment baseline.
+Private manifest and spent guard:
+`/private/tmp/ch-event-20261023-postfix-cZNfAg1g/`. No further POST is authorized
+by this completed one-shot manifest. Earlier unknown causes remain unknown;
+source/model changes across runs prevent causal attribution to a code change.
+
+The remaining decision is a bounded semantic-wire design question, not a
+request to weaken EI: whether to preflight a versioned verifier interface in
+which the Host owns immutable binding identity/reference correspondence and
+the independent model judges the explicitly presented binding. It must not
+repair supported outcomes, rebind evidence heuristically, add model rerolls,
+raise budgets or manufacture hypotheses. This is PROPOSED ONLY, not approved,
+frozen or implemented. Retain the existing strict protocol until a deliberate
+decision and adversarial review establish an equivalent evidence boundary.
+No additional diagnosis framework, case reroll, provider or historical
+valuation work is the next action. Positive real Event/World-to-Core closure
+remains unproven; Direct engineering remains separately verified.
+
 ## Real Event reached EI; bound-fact retention defect reproduced — 2026-10-23 UTC
 
 After deployment of `3fac0c4`, one fresh normal Nasdaq Event run completed:

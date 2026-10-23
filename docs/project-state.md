@@ -1,5 +1,17 @@
 # Project State
 
+## Current blocking decision: semantic binding-wire reliability — 2026-10-23 UTC
+
+The verified bound-fact retention fix `d6ecfdf` is deployed. The sole post-fix
+Nasdaq run `7cc1b60e` stopped earlier at semantic wire parsing, specifically
+`PRODUCER_BINDING_ALIGNMENT`; no submission/EI/Core was produced, so live
+Builder-fix verification remains unproven. Do not mislabel this as receipt or
+EI rejection. Host READY, 32 records / 0 active, original policy and Direct
+archives preserved. A bounded Host-owned binding / independent-verdict wire
+preflight is proposed for user decision only; no protocol, evidence or retry
+change is approved. Further blind retries are not the next step. See the
+[checkpoint](current-checkpoint.md) for exact guards, proof and limits.
+
 ## Real Event EI assessment and proven bound-fact retention gap — 2026-10-23 UTC
 
 Normal Nasdaq run `0a80cb48` produced a real submission and EI INCOMPLETE:
