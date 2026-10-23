@@ -2,7 +2,38 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## Real projection verified; concrete Event stopped at reassessment provenance — 2026-10-23 UTC
+## One approved private capture and COGT run consumed; EI incomplete — 2026-10-23 UTC / 2026-10-24 Beijing
+
+The user approved one private minimal capture and one normal COGT Event run,
+`6a38dd50-f67b-4d09-8579-79629e0a69a4`; this authorization is exhausted. Grounder
+completed and persisted submission stage v0.5 (`submission=PRESENT`,
+`ei_status=ASSESSED`): 5 sources, 8 claims, 1 hypothesis, 26 field bindings,
+no semantic rejections and no Builder diagnostics. The
+event-fact anchor subquestion was present but selected no claim. Observer file
+exists and is empty; no rejection row was persisted. The empty file alone does
+not prove whether the validator ran or why no row was produced.
+
+Ops consumed the spent guard `/private/tmp/ch-event-cogt-once.CZAqZW/` for
+exactly one POST; do not replay it.
+
+Offline `_decode_submission` re-assessment returns EI `incomplete`, with one each
+of `missing_event_description`, `incomplete_event_date_range`,
+`missing_underlying_key`, and `missing_temporal_applicability`. The persisted
+batch has 0 cases and 1 unavailable (`HOST_BATCH_BLOCKED`). No implementation bug
+is established; the retained projection cannot distinguish model omission from
+an earlier mapping omission. The older COGT rejection's finer cause remains
+UNKNOWN. Do not infer a relationship between the two runs.
+
+No production, EI, prompt or budget changes were made. Two model-role request
+provenance records are visible; token/credit usage remains UNKNOWN.
+Host PID 3426 / session 31094 is running; root returned 200, with 37 runs / 0
+active. The original three Direct archives remain preserved.
+World was not rerun; no new World result is claimed. The authorized run is spent:
+do not automatically rerun or add another capture. Real EI→Futu→Core success remains
+unproven; this checkpoint authorizes no new architecture, rule relaxation or
+capture.
+
+## Historical checkpoint: real projection verified; concrete Event stopped at reassessment provenance — 2026-10-23 UTC
 
 After the catalog-blocked Nasdaq run below, one preregistered concrete COGT
 normal Event ran without changing code, prompts, limits or evidence rules:
@@ -36,14 +67,11 @@ The retained record lacks the candidate's basis/support relations and fact
 text, so the failing predicate and mapping-versus-input cause remain UNKNOWN.
 Do not infer one from the aggregate code, change EI or add a default horizon.
 
-Next is a user-owned evidence-retention decision, not another logging/schema
-successor: whether to permit one controlled, private, repository-external
-capture of the minimal structured candidate, temporal/identity preparation
-state and deterministic rejection information during one fresh normal run.
-Exclude raw API responses, full source bodies, credentials and account data;
-do not commit it, inject a submission, alter acceptance or increase budgets.
-This is PROPOSED ONLY; no capture exception or further real run is approved
-by this checkpoint. Historical lost fields are not recoverable by replay.
+At that historical checkpoint, the evidence-retention decision below was
+PROPOSED ONLY and not yet approved. The user later approved and consumed the
+single private capture/run documented at the top. Its boundary excluded raw API
+responses, full source bodies, credentials and account data; it did not alter
+acceptance or budgets. Historical lost fields are not recoverable by replay.
 
 ## Bounded rejection projection implemented and reviewed — 2026-10-23 UTC
 

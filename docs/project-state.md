@@ -1,6 +1,32 @@
 # Project State
 
-## Real v0.5 projection verified; retention decision required — 2026-10-23 UTC
+## COGT normal run persisted; EI incomplete, no Core case — 2026-10-23 UTC / 2026-10-24 Beijing
+
+The user-approved private minimal capture and sole normal COGT run
+`6a38dd50-f67b-4d09-8579-79629e0a69a4` are consumed. Grounder completed with
+v0.5 submission PRESENT / `ei_status=ASSESSED` (5 sources, 8 claims, 1 hypothesis,
+26 bindings), no semantic
+rejections/Builder diagnostics; the anchor selected no claim. Observer file
+exists and is empty; no rejection row was persisted. The empty file alone
+does not prove whether the validator ran or why no row was produced. Offline
+`_decode_submission` confirms EI `incomplete`: `missing_event_description`,
+`incomplete_event_date_range`, `missing_underlying_key`,
+`missing_temporal_applicability`. Batch is 0 cases / 1 unavailable.
+
+No implementation bug is established; missing values cannot be attributed to
+model output versus mapping from this retained projection. Historical COGT
+rejection detail is UNKNOWN. Two model-role request provenance records are
+visible; token/credit usage remains UNKNOWN. No production/EI/prompt/budget
+change; no automatic rerun or further capture. Host PID 3426/session 31094,
+root 200, 37 runs / 0 active; three Direct archives preserved.
+World was not rerun; no new World result is claimed. Positive real
+EI→Futu→Core remains unproven. See [current checkpoint](current-checkpoint.md)
+for the bounded evidence and limits.
+
+## Historical checkpoint before capture: real v0.5 projection verified; retention decision required — 2026-10-23 UTC
+
+This records the pre-approval state; the user later approved and consumed the
+single private capture/run documented above.
 
 Release `191198e` is deployed. The one concrete COGT Event `2d7808ca` persists
 real v0.5 metadata: one claim unresolved; the hypothesis passes the semantic
