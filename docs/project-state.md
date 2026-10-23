@@ -10,8 +10,12 @@ The default Event outer-route synthetic integration reaches actual EI ACCEPTED
 without a preparer override or verdict mock; the Event module's 63 tests and
 independent review pass. Real World run `4a9a7b56` progressed through partial
 native coverage, then stopped at Grounder output validation with no Core cases.
-Existing closed failure categories are now preserved through the World wrapper;
-World tests and independent adversarial review pass, deployment pending.
+Release `099adb8` now preserves closed World failure categories. Its real run
+`ba6533b7` identified evidence-catalog construction as the blocker, not an EI
+verdict; 28 records and cached Direct reports remain intact. The already
+computed catalog detail is now carried as typed metadata without opening SDK
+output; focused tests/review pass. This last metadata change awaits deployment
+and a model-free source-to-catalog probe, not another whole-World retry.
 Neither offline result proves live grounding or EI-to-Core closure; see the
 [checkpoint](current-checkpoint.md).
 

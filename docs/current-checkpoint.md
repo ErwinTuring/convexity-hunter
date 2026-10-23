@@ -28,8 +28,22 @@ Grounder code/check categories that its wrapper previously collapsed. Generic
 reasons remain; only exact error/string types and static allowlists pass.
 No raw output, new DTO/version, retries, budget or acceptance changes were
 introduced. World 24 tests, targeted adversarial review and compile checks
-pass. Deployment and one new bounded normal validation of this passthrough
-remain pending; no historical cause is reconstructed and old guards stay spent.
+pass. Release `099adb8` is deployed (PID 73095/session 99993, UTC 2026-10-23).
+Its single new World run `ba6533b7-dd0c-47e4-ad1f-3a58466691f7` returned
+HTTP 201 / BLOCKED, 0 cases / 0 unavailable, partial native Reddit/Digg and
+the precise reason `world_grounder_evidence_catalog_invalid`. Journal is
+28 records / 0 active; prior Direct-report hashes survived deployment.
+Actual usage remains UNKNOWN. Private spent guard/public run record:
+`/private/tmp/ch-world-20261023-wire.QFEIti/`.
+
+Code inspection located the empty-log cause: the Host intentionally discards
+stderr throughout World execution for SDK safety. That protection is retained.
+The runtime now carries its already-computed closed catalog check on the typed
+error, and World passes only the seven static categories; no raw text escapes.
+Focused runtime/World tests and independent review passed. A source-to-catalog
+probe, stopped before any model HTTP call, is next; it is not an EI/Core run.
+This metadata change is not yet deployed in the persistent Host. No historical
+fine cause is reconstructed and old guards remain spent.
 
 The separate synthetic default Event outer-route test now passes without a
 preparer override, injected submission or mocked EI verdict. It exercises

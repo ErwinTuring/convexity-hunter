@@ -1235,6 +1235,30 @@ class HostWorldTests(unittest.TestCase):
             DiagnosticString("producer_wire_normalization"),
         )
         object.__setattr__(subclassed_check, "args", (private_url_sentinel,))
+        catalog_limit_failure = HostGrounderRuntimeError(
+            "EVIDENCE_CATALOG_INVALID"
+        )
+        object.__setattr__(
+            catalog_limit_failure,
+            "_evidence_catalog_failure_check",
+            "ENTRY_LIMIT",
+        )
+        tampered_catalog_check = HostGrounderRuntimeError(
+            "EVIDENCE_CATALOG_INVALID"
+        )
+        object.__setattr__(
+            tampered_catalog_check,
+            "_evidence_catalog_failure_check",
+            private_url_sentinel,
+        )
+        subclassed_catalog_check = HostGrounderRuntimeError(
+            "EVIDENCE_CATALOG_INVALID"
+        )
+        object.__setattr__(
+            subclassed_catalog_check,
+            "_evidence_catalog_failure_check",
+            DiagnosticString("ENTRY_LIMIT"),
+        )
         subclassed_stage = HostGrounderRuntimeError(
             "PRODUCER_ENVELOPE_INVALID",
             failure_stage="producer_envelope_normalization",
@@ -1285,6 +1309,14 @@ class HostWorldTests(unittest.TestCase):
                 (
                     "world_grounder_output_invalid",
                     "world_grounder_evidence_catalog_invalid",
+                ),
+            ),
+            (
+                catalog_limit_failure,
+                (
+                    "world_grounder_output_invalid",
+                    "world_grounder_evidence_catalog_invalid",
+                    "world_grounder_catalog_entry_limit",
                 ),
             ),
             (hidden_grounder_failure, "world_model_response_too_large"),
@@ -1389,6 +1421,38 @@ class HostWorldTests(unittest.TestCase):
                 ("world_grounder_producer_wire_normalization_failed",),
             ),
             (
+                tampered_catalog_check,
+                (
+                    "world_grounder_output_invalid",
+                    "world_grounder_evidence_catalog_invalid",
+                ),
+                (
+                    "world_grounder_catalog_source_count_limit",
+                    "world_grounder_catalog_paragraph_limit",
+                    "world_grounder_catalog_entry_limit",
+                    "world_grounder_catalog_byte_limit",
+                    "world_grounder_catalog_empty",
+                    "world_grounder_catalog_hash_invalid",
+                    "world_grounder_catalog_unknown",
+                ),
+            ),
+            (
+                subclassed_catalog_check,
+                (
+                    "world_grounder_output_invalid",
+                    "world_grounder_evidence_catalog_invalid",
+                ),
+                (
+                    "world_grounder_catalog_source_count_limit",
+                    "world_grounder_catalog_paragraph_limit",
+                    "world_grounder_catalog_entry_limit",
+                    "world_grounder_catalog_byte_limit",
+                    "world_grounder_catalog_empty",
+                    "world_grounder_catalog_hash_invalid",
+                    "world_grounder_catalog_unknown",
+                ),
+            ),
+            (
                 subclassed_stage,
                 (
                     "world_grounder_output_invalid",
@@ -1402,6 +1466,13 @@ class HostWorldTests(unittest.TestCase):
             "world_grounder_discovery_response_invalid",
             "world_grounder_producer_envelope_invalid",
             "world_grounder_evidence_catalog_invalid",
+            "world_grounder_catalog_source_count_limit",
+            "world_grounder_catalog_paragraph_limit",
+            "world_grounder_catalog_entry_limit",
+            "world_grounder_catalog_byte_limit",
+            "world_grounder_catalog_empty",
+            "world_grounder_catalog_hash_invalid",
+            "world_grounder_catalog_unknown",
             *(reason for _check, reason in producer_checks),
         )
         for failure_case in failures + producer_check_failures + tampered_failures:

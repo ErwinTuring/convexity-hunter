@@ -184,6 +184,16 @@ _WORLD_GROUNDER_PRODUCER_CHECK_DIAGNOSTICS = {
     "producer_v0_3_binding_omission_repair_delta": "world_grounder_producer_v0_3_binding_omission_repair_delta_failed",
 }
 
+_WORLD_GROUNDER_CATALOG_CHECK_DIAGNOSTICS = {
+    "SOURCE_COUNT_LIMIT": "world_grounder_catalog_source_count_limit",
+    "PARAGRAPH_LIMIT": "world_grounder_catalog_paragraph_limit",
+    "ENTRY_LIMIT": "world_grounder_catalog_entry_limit",
+    "BYTE_LIMIT": "world_grounder_catalog_byte_limit",
+    "EMPTY": "world_grounder_catalog_empty",
+    "HASH_INVALID": "world_grounder_catalog_hash_invalid",
+    "UNKNOWN": "world_grounder_catalog_unknown",
+}
+
 _WORLD_MODEL_TRANSPORT_DIAGNOSTICS = {
     "REQUEST_TOO_LARGE": "world_model_request_too_large",
     "RESPONSE_TOO_LARGE": "world_model_response_too_large",
@@ -219,6 +229,16 @@ def _world_grounder_specific_diagnostics(
     code_reason = _WORLD_GROUNDER_SPECIFIC_CODE_DIAGNOSTICS.get(code)
     if code_reason is not None:
         reasons.append(code_reason)
+    if code == "EVIDENCE_CATALOG_INVALID":
+        failure_check = getattr(
+            error, "_evidence_catalog_failure_check", None
+        )
+        if type(failure_check) is str:
+            check_reason = _WORLD_GROUNDER_CATALOG_CHECK_DIAGNOSTICS.get(
+                failure_check
+            )
+            if check_reason is not None:
+                reasons.append(check_reason)
     if code == "PRODUCER_ENVELOPE_INVALID":
         failure_stage = getattr(error, "failure_stage", None)
         failure_check = getattr(error, "failure_check", None)

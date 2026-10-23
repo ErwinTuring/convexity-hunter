@@ -2267,7 +2267,9 @@ def _run_host_grounder_same_run_evidence_catalog(
             _logger.warning("grounder_catalog_failed check=%s", check)
         except Exception:
             pass
-        raise HostGrounderRuntimeError("EVIDENCE_CATALOG_INVALID") from None
+        runtime_error = HostGrounderRuntimeError("EVIDENCE_CATALOG_INVALID")
+        runtime_error._evidence_catalog_failure_check = check
+        raise runtime_error from None
 
     discovery_prompt = _canonical_json(
         {
