@@ -1,5 +1,14 @@
 # Project State
 
+## Quota-safe pause — 2026-10-23 UTC
+
+Implementation/review/tests are committed through `dfb439b`; no partial code.
+Paused at 98% five-hour usage. Source-to-catalog probe is PREPARED_NOT_RUN,
+with no source request consumed; resume it before any whole-World rerun.
+Persistent Host remains `099adb8`, 28 records / 0 active; latest metadata
+awaits deployment. Positive real Event/World closure remains unproven.
+See the [checkpoint](current-checkpoint.md) for the exact safe restart boundary.
+
 ## World wire deployed; default Event integration verified offline — 2026-10-23 UTC
 
 Existing output constraints are now explicit in the callback prompts; consumer,

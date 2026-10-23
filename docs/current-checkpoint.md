@@ -2,6 +2,21 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Safe quota checkpoint — 2026-10-23 UTC
+
+Paused at 98% of the five-hour allowance used, per the user's 2% safety rule.
+All implementation/test/review changes are committed through `dfb439b` and
+pushed; no partial code remains. Persistent Host still serves release
+`099adb8` (PID 73095/session 99993), evaluation date 2026-10-23, same database
+with 28 records / 0 active. The latest catalog-detail metadata is committed
+but not yet deployed there. The model-free source-to-catalog probe made NO
+source request: PREPARED_NOT_RUN, private record
+`/private/tmp/ch-world-source-catalog-20261023.gWRgsT/probe.json`.
+After quota recovery, perform that bounded probe first; stop before model HTTP,
+identify the closed catalog check, then fix only a proven implementation or
+configuration mismatch. Do not replay spent World/Event guards, broaden API
+caps, resume historical valuation, or claim positive EI-to-Core closure.
+
 ## World wire deployed; default Event route verified offline — 2026-10-23 UTC
 
 The existing native-model callback prompts now specify the frozen consumer's
