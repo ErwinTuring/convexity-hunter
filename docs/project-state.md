@@ -1,5 +1,23 @@
 # Project State
 
+## Successor deployed; real Event hypothesis not verified — 2026-10-23 UTC
+
+Release `2bad82a` is deployed with the original launcher/database and unchanged
+Profile v0.4 / three Direct archives. Normal Event run `fe638c4b` completes
+Grounder receipt validation on verifier wire v0.4 / prompt v0.9, then stops
+before EI: its single hypothesis is not verified
+(`HYPOTHESIS_REJECTED_BY_VALIDATOR`, `NO_PROJECTABLE_HYPOTHESIS`).
+This is a semantic refusal, not the prior wire-parser failure, and no
+deterministic implementation defect is established. The finer rationale was
+not retained and remains UNKNOWN. No Event reroll or rule weakening follows.
+World run `8d324b0c` also completed the one-shot normal entry: executor BLOCKED,
+zero cases, partial Reddit/Digg coverage and `world_grounder_no_submission`.
+Its finer Grounder/usage data and EI status are not retained, hence UNKNOWN;
+this does not establish either market-wide event absence or an EI rejection.
+No deterministic code defect was demonstrated and no production change or
+blind reroll was made. Direct remains proven; positive real Event/World-to-Core
+closure remains unproven. See [current checkpoint](current-checkpoint.md).
+
 ## Bound-object verifier implemented and reviewed; deployment next — 2026-10-23 UTC
 
 User-approved preflight and independent contract review pass for the

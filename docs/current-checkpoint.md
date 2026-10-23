@@ -2,6 +2,79 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## Bound-object successor deployed; normal Event completed without submission — 2026-10-23 UTC
+
+Fresh fetch confirmed HEAD/main/origin/main at `2bad82a` with a clean tree.
+The original launcher now serves that release with UTC evaluation date
+2026-10-23, the same SQLite database, Host PID 89463/session 3956. Previous
+Profile v0.4 and all three Direct archive hashes match; Workbench returns 200.
+
+The sole fresh normal Nasdaq Event run `fe638c4b-3ffe-41d4-9514-7c24333d360c`
+returned HTTP 201 / BLOCKED, `GROUNDING_NO_SUBMISSION`. Grounder completed,
+submission MISSING and EI NOT_RUN; no Futu/Core or batch archive was produced.
+This is not the earlier wire-parse failure. One semantic transport attempt
+reports 15,778 prompt / 2,361 completion / 18,139 total tokens. Actual Tavily
+request/credit usage was not retained and remains UNKNOWN, not zero; configured
+caps remain two source requests / three credits, PAYGO off and at most two
+requests per model role, with no semantic reroll. Run count is 33 / 0 active.
+
+Private one-shot artifacts: `/private/tmp/ch-event-20261023-normal.SIdwvc/`;
+its guard is consumed. Never replay this request or infer a finer cause from
+the generic stage diagnostic. Inspect only this run's already retained
+structured audit for precise refusal/projection reasons; no new acquisition
+or diagnostic framework is authorized by that inspection. Positive real
+Event/World-to-Core closure is still unproven; Direct remains separately proven.
+
+Read-only inspection of this exact run's SQLite Grounder outcome resolves the
+coarse refusal: five sources, eight claims, one hypothesis, twelve field
+bindings and two coverage rows. Receipt validation completed on wire v0.4 /
+prompt v0.9. The sole hypothesis is excluded from the receipt's verified set:
+`HYPOTHESIS_REJECTED_BY_VALIDATOR=1`, `NO_PROJECTABLE_HYPOTHESIS=1`.
+Both coverage rows are supported by producer/verifier; the broader row has a
+gap and the one-claim anchor row has none. Coverage support does not override
+hypothesis rejection. Per-hypothesis rationale/outcome and individual binding
+verdicts are not retained, so their finer cause remains UNKNOWN. This is not
+evidence of a Builder transmission defect or permission to weaken semantics;
+no code change or repeated Event request is justified by these records.
+
+### One independent normal World run on the deployed successor
+
+Run `8d324b0c-00b9-483b-af6a-d5e583f89ea6` uses the existing general World
+request and original configured bounds (one submission, ten hypotheses,
+400 Browser rows, 200 cases, ten-second quote wait). The independent one-shot
+guard is `/private/tmp/ch-world-20261023-prep.YX1w63/`; it has been consumed.
+No manual event/submission was injected, no native score became a ranking,
+and no source/model budget or policy was increased.
+
+The persisted executor is BLOCKED with `HOST_BATCH_BLOCKED`, zero cases and
+no batch archive. Its retained reasons are `world_last30days_partial`,
+`world_last30days_native_source_reddit_not_ok`,
+`world_last30days_native_source_digg_not_ok`, and
+`world_grounder_no_submission`. Source limitations and missing submission are
+separate retained reasons; do not equate them with a global no-events result.
+Detailed source coverage, lead counts, actual Grounder dispatch and per-role
+usage are not retained here and remain UNKNOWN. No EI assessment status is
+retained for this World run; do not infer EI rejection or acceptance from the
+generic executor status. No positive real World-to-Core closure is established.
+
+This bounded deployment/integration unit changes documentation only. The
+release's 2,051-test regression and independent reviews remain its code gate;
+no redundant full suite, new provider, diagnostic framework or blind Event /
+World reroll was performed. Remaining positive-integration blocker: neither
+run supplied an independently verified, projectable hypothesis to shared
+EI/Core. Event's refusal layer is known; its finer rationale and World's
+finer Grounder cause are not. No deterministic defect is established to fix.
+Do not fabricate a mechanism, policy date or supported verdict to finish MVP.
+
+Final readback: World HTTP 201 / BLOCKED, exactly one dispatch; manifest has
+the response and the exclusive guard remains consumed (`DISPATCH_STARTED`),
+not reset to reusable. SQLite contains 34 runs / 0 active. Host/root and
+Profile GET return 200, Profile reports v0.4, and the three Direct archive
+hashes match the existing pre-deployment snapshot. Final Profile response-hash
+comparability was not established and remains UNKNOWN; version equality alone
+is not a byte-hash guarantee. Host session 3956 remains running. No new Direct
+provider acquisition or trade call was made.
+
 ## Bound-object verifier implementation — 2026-10-23 UTC
 
 The user approved the bounded semantic-wire preflight. The

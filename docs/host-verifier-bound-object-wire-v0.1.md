@@ -3,8 +3,11 @@
 Status: FROZEN / IMPLEMENTED / REVIEW PASS. Implementation follows the separately
 committed contract freeze, at which production was absent. Full regression
 passes 2,051 tests; focused adversarial tests, public API compatibility,
-compileall and independent implementation/test review pass. Deployment and
-real integration are still pending. User approval covers this bounded successor.
+compileall and independent implementation/test review pass. Release `2bad82a`
+is deployed. Normal Event run `fe638c4b` completes receipt validation but the
+single hypothesis is not verified, so no submission/EI/Core follows; protocol
+execution is not evidence of hypothesis support or positive downstream closure.
+See the [checkpoint](current-checkpoint.md). User approval covers this successor.
 
 ## Purpose and boundary
 
