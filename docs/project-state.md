@@ -8,7 +8,10 @@ tests and independent targeted review pass. Commit `8b8e0dd` is deployed with
 the current UTC date; 26 records/profile/cached Direct reports are preserved.
 The default Event outer-route synthetic integration reaches actual EI ACCEPTED
 without a preparer override or verdict mock; the Event module's 63 tests and
-independent review pass. A new bounded World validation is being prepared.
+independent review pass. Real World run `4a9a7b56` progressed through partial
+native coverage, then stopped at Grounder output validation with no Core cases.
+Existing closed failure categories are now preserved through the World wrapper;
+World tests and independent adversarial review pass, deployment pending.
 Neither offline result proves live grounding or EI-to-Core closure; see the
 [checkpoint](current-checkpoint.md).
 

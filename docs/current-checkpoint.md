@@ -14,7 +14,22 @@ and targeted re-review passed; extra-ID rows still fail closed. No live success
 is implied. Commit `8b8e0dd` is deployed through the original launcher with
 UTC evaluation date 2026-10-23 (PID 71877/session 21702). The same database's
 26 records, profile v0.4 and three cached Direct-report hashes were preserved.
-A new bounded World validation is in preparation; old guards stay spent.
+One bounded World run completed on this release:
+`4a9a7b56-8606-4c0d-88a0-f1294b31a6dc`, HTTP 201 / BLOCKED, 0 cases and
+0 unavailable. Native output reached Grounder with partial Reddit/Digg
+coverage, rather than the previous native-model failure. Grounder returned
+`world_grounder_failed` / `world_grounder_output_invalid`; its finer cause and
+actual source/model usage were not retained. This is neither EI rejection nor
+evidence of no event. Journal is 27 records / 0 active. Private consumed guard
+and public run record: `/private/tmp/ch-world-20261023-wire.vQbQ96/`.
+
+The existing World failure-reason mechanism now additionally preserves closed
+Grounder code/check categories that its wrapper previously collapsed. Generic
+reasons remain; only exact error/string types and static allowlists pass.
+No raw output, new DTO/version, retries, budget or acceptance changes were
+introduced. World 24 tests, targeted adversarial review and compile checks
+pass. Deployment and one new bounded normal validation of this passthrough
+remain pending; no historical cause is reconstructed and old guards stay spent.
 
 The separate synthetic default Event outer-route test now passes without a
 preparer override, injected submission or mocked EI verdict. It exercises

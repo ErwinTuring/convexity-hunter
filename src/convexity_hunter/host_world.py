@@ -159,6 +159,31 @@ _WORLD_FAILURE_DIAGNOSTICS = {
     },
 }
 
+_WORLD_GROUNDER_SPECIFIC_CODE_DIAGNOSTICS = {
+    "DISCOVERY_RESPONSE_INVALID": "world_grounder_discovery_response_invalid",
+    "PRODUCER_ENVELOPE_INVALID": "world_grounder_producer_envelope_invalid",
+    "EVIDENCE_CATALOG_INVALID": "world_grounder_evidence_catalog_invalid",
+}
+
+_WORLD_GROUNDER_PRODUCER_CHECK_DIAGNOSTICS = {
+    "producer_wire_normalization": "world_grounder_producer_wire_normalization_failed",
+    "producer_run_stage_binding": "world_grounder_producer_run_stage_binding_failed",
+    "producer_coverage_order": "world_grounder_producer_coverage_order_failed",
+    "producer_binding_extraction": "world_grounder_producer_binding_extraction_failed",
+    "producer_v0_3_wire_decode": "world_grounder_producer_v0_3_wire_decode_failed",
+    "producer_v0_3_root_shape": "world_grounder_producer_v0_3_root_shape_failed",
+    "producer_v0_3_catalog_source_validation": "world_grounder_producer_v0_3_catalog_source_validation_failed",
+    "producer_v0_3_claims_catalog_expansion": "world_grounder_producer_v0_3_claims_catalog_expansion_failed",
+    "producer_v0_3_bindings_catalog_expansion": "world_grounder_producer_v0_3_bindings_catalog_expansion_failed",
+    "producer_v0_3_canonical_size": "world_grounder_producer_v0_3_canonical_size_failed",
+    "producer_v0_3_internal_v0_1_schema": "world_grounder_producer_v0_3_internal_v0_1_schema_failed",
+    "producer_v0_3_recanonicalization": "world_grounder_producer_v0_3_recanonicalization_failed",
+    "producer_v0_3_json_format": "world_grounder_producer_v0_3_json_format_failed",
+    "producer_v0_3_closed_shape": "world_grounder_producer_v0_3_closed_shape_failed",
+    "producer_v0_3_required_binding_omission_v0_9": "world_grounder_producer_v0_3_required_binding_omission_v0_9_failed",
+    "producer_v0_3_binding_omission_repair_delta": "world_grounder_producer_v0_3_binding_omission_repair_delta_failed",
+}
+
 _WORLD_MODEL_TRANSPORT_DIAGNOSTICS = {
     "REQUEST_TOO_LARGE": "world_model_request_too_large",
     "RESPONSE_TOO_LARGE": "world_model_response_too_large",
@@ -179,6 +204,35 @@ def _world_failure_diagnostic(error: Exception) -> Optional[str]:
         return None
     code = getattr(error, "code", None)
     return diagnostics.get(code) if type(code) is str else None
+
+
+def _world_grounder_specific_diagnostics(
+    error: Exception,
+) -> Tuple[str, ...]:
+    if type(error) is not HostGrounderRuntimeError:
+        return ()
+    code = getattr(error, "code", None)
+    if type(code) is not str:
+        return ()
+
+    reasons = []
+    code_reason = _WORLD_GROUNDER_SPECIFIC_CODE_DIAGNOSTICS.get(code)
+    if code_reason is not None:
+        reasons.append(code_reason)
+    if code == "PRODUCER_ENVELOPE_INVALID":
+        failure_stage = getattr(error, "failure_stage", None)
+        failure_check = getattr(error, "failure_check", None)
+        if (
+            type(failure_stage) is str
+            and failure_stage == "producer_envelope_normalization"
+            and type(failure_check) is str
+        ):
+            check_reason = _WORLD_GROUNDER_PRODUCER_CHECK_DIAGNOSTICS.get(
+                failure_check
+            )
+            if check_reason is not None:
+                reasons.append(check_reason)
+    return tuple(reasons)
 
 
 def _world_model_transport_diagnostic(error: BaseException) -> Optional[str]:
@@ -832,6 +886,7 @@ def create_world_runner(
                 diagnostic = _world_failure_diagnostic(error)
                 if diagnostic is not None:
                     reasons.append(diagnostic)
+                reasons.extend(_world_grounder_specific_diagnostics(error))
                 transport_diagnostic = _world_model_transport_diagnostic(error)
                 if transport_diagnostic is not None:
                     reasons.append(transport_diagnostic)

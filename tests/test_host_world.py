@@ -1203,6 +1203,56 @@ class HostWorldTests(unittest.TestCase):
             def code(self):
                 raise AssertionError("unallowlisted code property was accessed")
 
+        class DiagnosticString(str):
+            pass
+
+        private_url_sentinel = "https://private.invalid/PRIVATE_URL_SENTINEL"
+        tampered_code = HostGrounderRuntimeError("DISCOVERY_RESPONSE_INVALID")
+        object.__setattr__(tampered_code, "code", private_url_sentinel)
+        object.__setattr__(tampered_code, "args", (private_url_sentinel,))
+        subclassed_code = HostGrounderRuntimeError("DISCOVERY_RESPONSE_INVALID")
+        object.__setattr__(
+            subclassed_code,
+            "code",
+            DiagnosticString("DISCOVERY_RESPONSE_INVALID"),
+        )
+        object.__setattr__(subclassed_code, "args", (private_url_sentinel,))
+        tampered_check = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage="producer_envelope_normalization",
+            failure_check="producer_wire_normalization",
+        )
+        object.__setattr__(tampered_check, "failure_check", private_url_sentinel)
+        object.__setattr__(tampered_check, "args", (private_url_sentinel,))
+        subclassed_check = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage="producer_envelope_normalization",
+            failure_check="producer_wire_normalization",
+        )
+        object.__setattr__(
+            subclassed_check,
+            "failure_check",
+            DiagnosticString("producer_wire_normalization"),
+        )
+        object.__setattr__(subclassed_check, "args", (private_url_sentinel,))
+        subclassed_stage = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage="producer_envelope_normalization",
+            failure_check="producer_wire_normalization",
+        )
+        object.__setattr__(
+            subclassed_stage,
+            "failure_stage",
+            DiagnosticString("producer_envelope_normalization"),
+        )
+        object.__setattr__(subclassed_stage, "args", (private_url_sentinel,))
+
+        class DerivedGrounderError(HostGrounderRuntimeError):
+            pass
+
+        derived_grounder_error = DerivedGrounderError("DISCOVERY_RESPONSE_INVALID")
+        object.__setattr__(derived_grounder_error, "args", (private_url_sentinel,))
+
         hidden_grounder_failure = None
         try:
             raise ModelTransportError("RESPONSE_TOO_LARGE", status=413)
@@ -1222,6 +1272,20 @@ class HostWorldTests(unittest.TestCase):
             (
                 HostGrounderRuntimeError("SEMANTIC_CALL_FAILED"),
                 "world_grounder_model_call_failed",
+            ),
+            (
+                HostGrounderRuntimeError("DISCOVERY_RESPONSE_INVALID"),
+                (
+                    "world_grounder_output_invalid",
+                    "world_grounder_discovery_response_invalid",
+                ),
+            ),
+            (
+                HostGrounderRuntimeError("EVIDENCE_CATALOG_INVALID"),
+                (
+                    "world_grounder_output_invalid",
+                    "world_grounder_evidence_catalog_invalid",
+                ),
             ),
             (hidden_grounder_failure, "world_model_response_too_large"),
             (
@@ -1272,7 +1336,77 @@ class HostWorldTests(unittest.TestCase):
             (HostGrounderRuntimeError("PRIVATE_TOKEN_DO_NOT_LEAK"), None),
             (PoisonedCodeError("PRIVATE_EXCEPTION_MESSAGE"), None),
         )
-        for failure, diagnostic in failures:
+        producer_checks = (
+            ("producer_wire_normalization", "world_grounder_producer_wire_normalization_failed"),
+            ("producer_run_stage_binding", "world_grounder_producer_run_stage_binding_failed"),
+            ("producer_coverage_order", "world_grounder_producer_coverage_order_failed"),
+            ("producer_binding_extraction", "world_grounder_producer_binding_extraction_failed"),
+            ("producer_v0_3_wire_decode", "world_grounder_producer_v0_3_wire_decode_failed"),
+            ("producer_v0_3_root_shape", "world_grounder_producer_v0_3_root_shape_failed"),
+            ("producer_v0_3_catalog_source_validation", "world_grounder_producer_v0_3_catalog_source_validation_failed"),
+            ("producer_v0_3_claims_catalog_expansion", "world_grounder_producer_v0_3_claims_catalog_expansion_failed"),
+            ("producer_v0_3_bindings_catalog_expansion", "world_grounder_producer_v0_3_bindings_catalog_expansion_failed"),
+            ("producer_v0_3_canonical_size", "world_grounder_producer_v0_3_canonical_size_failed"),
+            ("producer_v0_3_internal_v0_1_schema", "world_grounder_producer_v0_3_internal_v0_1_schema_failed"),
+            ("producer_v0_3_recanonicalization", "world_grounder_producer_v0_3_recanonicalization_failed"),
+            ("producer_v0_3_json_format", "world_grounder_producer_v0_3_json_format_failed"),
+            ("producer_v0_3_closed_shape", "world_grounder_producer_v0_3_closed_shape_failed"),
+            ("producer_v0_3_required_binding_omission_v0_9", "world_grounder_producer_v0_3_required_binding_omission_v0_9_failed"),
+            ("producer_v0_3_binding_omission_repair_delta", "world_grounder_producer_v0_3_binding_omission_repair_delta_failed"),
+        )
+        producer_check_failures = tuple(
+            (
+                HostGrounderRuntimeError(
+                    "PRODUCER_ENVELOPE_INVALID",
+                    failure_stage="producer_envelope_normalization",
+                    failure_check=check,
+                ),
+                (
+                    "world_grounder_output_invalid",
+                    "world_grounder_producer_envelope_invalid",
+                    check_reason,
+                ),
+            )
+            for check, check_reason in producer_checks
+        )
+        tampered_failures = (
+            (tampered_code, None),
+            (subclassed_code, None),
+            (
+                tampered_check,
+                (
+                    "world_grounder_output_invalid",
+                    "world_grounder_producer_envelope_invalid",
+                ),
+                ("world_grounder_producer_wire_normalization_failed",),
+            ),
+            (
+                subclassed_check,
+                (
+                    "world_grounder_output_invalid",
+                    "world_grounder_producer_envelope_invalid",
+                ),
+                ("world_grounder_producer_wire_normalization_failed",),
+            ),
+            (
+                subclassed_stage,
+                (
+                    "world_grounder_output_invalid",
+                    "world_grounder_producer_envelope_invalid",
+                ),
+                ("world_grounder_producer_wire_normalization_failed",),
+            ),
+            (derived_grounder_error, None),
+        )
+        specific_reason_values = (
+            "world_grounder_discovery_response_invalid",
+            "world_grounder_producer_envelope_invalid",
+            "world_grounder_evidence_catalog_invalid",
+            *(reason for _check, reason in producer_checks),
+        )
+        for failure_case in failures + producer_check_failures + tampered_failures:
+            failure, diagnostic = failure_case[:2]
+            forbidden_diagnostics = failure_case[2] if len(failure_case) > 2 else ()
             self.grounder_calls.clear()
             self.grounder_query_calls.clear()
 
@@ -1320,7 +1454,10 @@ class HostWorldTests(unittest.TestCase):
                     market_bridge=self.lazy_bridge,
                 )
                 result = runner(self.raw_input, bounds=self.post_bounds)
+            self.assertIs(type(result), host_world_module.CoreRunResult)
             self.assertEqual(result.case_set.status, "BLOCKED")
+            self.assertEqual(result.case_set.cases, ())
+            self.assertEqual(result.case_set.unavailable, ())
             self.assertIn(
                 "world_grounder_no_submission" if failure == "empty" else "world_grounder_failed",
                 result.case_set.reasons,
@@ -1329,7 +1466,13 @@ class HostWorldTests(unittest.TestCase):
             self.assertEqual(self.grounder_query_calls, [self.raw_input])
             self.assertIs(self.grounder_query_calls[0], self.raw_input)
             if diagnostic is not None:
-                self.assertIn(diagnostic, result.case_set.reasons)
+                expected_diagnostics = (
+                    diagnostic if type(diagnostic) is tuple else (diagnostic,)
+                )
+                for expected_diagnostic in expected_diagnostics:
+                    self.assertIn(expected_diagnostic, result.case_set.reasons)
+            for forbidden_diagnostic in forbidden_diagnostics:
+                self.assertNotIn(forbidden_diagnostic, result.case_set.reasons)
             if failure is hidden_grounder_failure:
                 self.assertIn(
                     "world_grounder_model_call_failed", result.case_set.reasons
@@ -1346,12 +1489,14 @@ class HostWorldTests(unittest.TestCase):
                             "world_grounder_source_transport_failed",
                             "world_grounder_source_response_invalid",
                             "world_grounder_source_budget_failed",
+                            *specific_reason_values,
                         )
                     )
                 )
             if isinstance(failure, Exception):
                 self.assertNotIn(str(failure), repr(result.case_set.reasons))
             self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
+            self.assertNotIn(private_url_sentinel, repr(result.case_set.reasons))
             self.assertEqual(result.case_set.submissions.submissions, ())
 
     def test_capacity_and_lead_limit_refuse_grounder_before_request(self):
