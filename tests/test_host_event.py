@@ -2972,6 +2972,8 @@ class HostEventGrounderTests(unittest.TestCase):
                          "claim-generated-{}".format(run_id))
         self.assertEqual(build.context.event_date_range.start_date, datetime.date(2026, 9, 21))
         self.assertEqual(build.context.event_date_range.end_date, datetime.date(2026, 9, 21))
+        self.assertEqual(build.submission.event_description, event_text)
+        self.assertEqual(build.submission.event_date_range, build.context.event_date_range)
         date_provenance = json.loads(build.context.event_date_range.methodology)
         self.assertEqual(date_provenance["rule_version"],
                          "host-event-source-facts-v0.4/sec-primary-html-occurrence-date")
@@ -3607,6 +3609,75 @@ class HostEventGrounderTests(unittest.TestCase):
 
         self.assertIsNone(selected_claim_id)
         self.assertEqual(prepared.event_description_binding, "fact-1")
+        self.assertIsNone(prepared.event_date_range)
+        date_helper.assert_not_called()
+
+    def test_v05_unresolved_anchor_skips_legal_v04_date_derivation(self):
+        from convexity_hunter.host_event import _retain_unknown_context_v0_4
+
+        _resolved, original_context, admission, snapshot, receipt, _records = (
+            _sec_v04_fact_case(return_inputs=True)
+        )
+        envelope = json.loads(snapshot.canonical_bytes.decode("utf-8"))
+        envelope["coverage"] = [
+            {
+                "subquestion_id": "user_event_input",
+                "status": "supported",
+                "claim_ids": ["fact-1"],
+                "gap": None,
+            },
+            {
+                "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                "status": "unresolved",
+                "claim_ids": [],
+                "gap": "No unique event anchor.",
+            },
+        ]
+        canonical_bytes = json.dumps(
+            envelope,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        envelope_hash = _digest(canonical_bytes.decode("utf-8"))
+        snapshot = ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash)
+        receipt_values = dict(receipt)
+        receipt_values["envelope_hash"] = envelope_hash
+        receipt_values["coverage_outcomes"] = (
+            (0, "user_event_input", "supported", "Covered event fact."),
+            (1, _EVENT_FACT_ANCHOR_SUBQUESTION_ID, "unresolved", "No unique anchor."),
+        )
+        receipt = MappingProxyType(receipt_values)
+        admission_by_id = {admission.source_id: admission}
+
+        # The same frozen fact/date/admission evidence is sufficient for v0.4
+        # when the description binding is supplied; only the v0.5 anchor gate is unresolved here.
+        date_ready_context = replace(
+            original_context, event_description_binding="fact-1"
+        )
+        date_control = _retain_unknown_context_v0_4(
+            snapshot,
+            receipt,
+            original_context,
+            date_ready_context,
+            admission_by_id,
+        )
+        self.assertEqual(
+            date_control.event_date_range.start_date,
+            datetime.date(2026, 9, 21),
+        )
+
+        with patch(
+            "convexity_hunter.host_event._retain_unknown_context_v0_4",
+            wraps=_retain_unknown_context_v0_4,
+        ) as date_helper:
+            prepared, selected_claim_id = _retain_unknown_context_v0_5(
+                snapshot, receipt, original_context, admission_by_id
+            )
+
+        self.assertIsNone(selected_claim_id)
+        self.assertIsNone(prepared.event_description_binding)
         self.assertIsNone(prepared.event_date_range)
         date_helper.assert_not_called()
 

@@ -2,7 +2,23 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## One approved private capture and COGT run consumed; EI incomplete — 2026-10-23 UTC / 2026-10-24 Beijing
+## Bounded COGT attribution; no reproducible mapping defect found — 2026-10-25 Beijing
+
+Run `6a38dd50-f67b-4d09-8579-79629e0a69a4` is spent: v0.5 retained 5 sources, 8 claims, 1 hypothesis, 26 bindings; no semantic rejection or Builder diagnostic. Read-only coverage: `user_event_input` model/validator supported, 8 claims, gap present; `event_fact_anchor_v0_1` model/validator unresolved, 0 claims, gap present. `_decode_submission` returns EI incomplete with the four codes below; batch 0 cases / 1 unavailable.
+
+| EI missing field(s) | Bounded attribution |
+| --- | --- |
+| `missing_event_description` + `incomplete_event_date_range` | Shared anchor gate: the anchor row had 0 claims and model/validator were unresolved; with an empty original date range, default v0.5 calls v0.4 date preparation only after a selected anchor. Fine semantic reason is UNKNOWN. |
+| `missing_underlying_key` | Separate exact identity path: only two closed Nasdaq/USD formats, no generic resolver; whether COGT matches either format is UNKNOWN. |
+| `missing_temporal_applicability` | Both `expected_window` and reassessment are absent from the retained hypothesis; claim `event_date` cannot substitute. The upstream origin of the absence remains UNKNOWN. |
+
+The synthetic offline default-route fixture reaches Builder and EI ACCEPTED with description and date range preserved; it does not mean real COGT reached EI ACCEPTED. A legal v0.4 date control also confirms the date helper is skipped when v0.5 has no anchor. One test plus two assertions changed; production is unchanged. No broader acceptance change is implied.
+
+The new budget/minimal-candidate-retention authorization request is pending. No approval is recorded and no further call/capture is authorized before the user answers. The prior one-shot guard remains spent; real EI→Futu→Core success is unproven.
+
+Ops: the original launcher restored Host; Main's read-only root check returned HTTP 200 and SQLite showed 37 runs / 3 Direct archives / 0 active. No new research call occurred.
+
+## Historical: One approved private capture and COGT run consumed; EI incomplete — 2026-10-23 UTC / 2026-10-24 Beijing
 
 The user approved one private minimal capture and one normal COGT Event run,
 `6a38dd50-f67b-4d09-8579-79629e0a69a4`; this authorization is exhausted. Grounder
@@ -10,8 +26,8 @@ completed and persisted submission stage v0.5 (`submission=PRESENT`,
 `ei_status=ASSESSED`): 5 sources, 8 claims, 1 hypothesis, 26 field bindings,
 no semantic rejections and no Builder diagnostics. The
 event-fact anchor subquestion was present but selected no claim. Observer file
-exists and is empty; no rejection row was persisted. The empty file alone does
-not prove whether the validator ran or why no row was produced.
+exists and is empty; no rejection row was persisted. At that checkpoint the
+empty file alone did not prove whether the validator ran or why no row was produced.
 
 Ops consumed the spent guard `/private/tmp/ch-event-cogt-once.CZAqZW/` for
 exactly one POST; do not replay it.
@@ -19,19 +35,19 @@ exactly one POST; do not replay it.
 Offline `_decode_submission` re-assessment returns EI `incomplete`, with one each
 of `missing_event_description`, `incomplete_event_date_range`,
 `missing_underlying_key`, and `missing_temporal_applicability`. The persisted
-batch has 0 cases and 1 unavailable (`HOST_BATCH_BLOCKED`). No implementation bug
-is established; the retained projection cannot distinguish model omission from
-an earlier mapping omission. The older COGT rejection's finer cause remains
-UNKNOWN. Do not infer a relationship between the two runs.
+batch has 0 cases and 1 unavailable (`HOST_BATCH_BLOCKED`). At that checkpoint no
+implementation bug was established; the retained projection could not distinguish
+model omission from an earlier mapping omission. The older COGT rejection's finer
+cause remains UNKNOWN. Do not infer a relationship between the two runs.
 
 No production, EI, prompt or budget changes were made. Two model-role request
 provenance records are visible; token/credit usage remains UNKNOWN.
-Host PID 3426 / session 31094 is running; root returned 200, with 37 runs / 0
-active. The original three Direct archives remain preserved.
-World was not rerun; no new World result is claimed. The authorized run is spent:
-do not automatically rerun or add another capture. Real EI→Futu→Core success remains
-unproven; this checkpoint authorizes no new architecture, rule relaxation or
-capture.
+At that historical checkpoint Host PID 3426 / session 31094 was running; root
+returned 200, with 37 runs / 0 active. The original three Direct archives remain
+preserved. World was not rerun; no new World result is claimed. The authorized
+run is spent: do not automatically rerun or add another capture. Real EI→Futu→Core
+success remains unproven; this checkpoint authorized no new architecture, rule
+relaxation or capture.
 
 ## Historical checkpoint: real projection verified; concrete Event stopped at reassessment provenance — 2026-10-23 UTC
 
