@@ -2,7 +2,36 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## Bounded COGT attribution; no reproducible mapping defect found — 2026-10-25 Beijing
+## COGT semantic-size gate; no proven measurement or wrapping defect — 2026-10-26
+
+Run `051c09eb-46e6-4d08-8687-98c48306a79a` returned HTTP 201 / BLOCKED. Its
+DeepSeek discovery call was structurally accepted only (52,120 bytes sent /
+20,877 received). Semantic `attempts=[]`; Host built and hashed the body, then
+rejected locally at `len(body) > config.max_input_bytes` before dispatch.
+Actual body length was not retained and cannot be recovered from its hash;
+Builder, EI, Futu and Core were not reached; no batch archive exists.
+
+Loaded caps (input/output bytes): discovery 80000/40000; semantic 131072/40000.
+Observer capture is 0 bytes (not proof of live capture); its directory/file
+modes are 700/600. Tavily actual request/credit counts were not retained.
+Original budgets are unchanged. The one POST under
+`/private/tmp/ch-event-cogt-once.UFEC1c/` is consumed; do not replay it. Host
+PID 62140 / session 90112 is restored; Main verified HTTP 200; SQLite is
+38 runs / 0 active / 3 Direct.
+
+No measurement or wrapping defect was found: `run_input_json` and
+`ordered_subquestions` repeat subquestions, but that does not prove the cause.
+The historical four-field COGT attribution below is unchanged.
+
+The semantic-only 128→256 KiB input-cap increase plus one normal acceptance run
+is PROPOSED / PENDING, not approved; other call, output-token, time and Tavily
+caps remain unchanged, and input-token cost may rise. No config change or rerun
+is authorized. An external normal-return observer was newly prepared/reviewed
+and its offline checks were run. No repository production, test, prompt or
+config files changed; no repository suite was rerun for this docs-only outcome.
+Only these two state docs changed in the repository.
+
+## Historical: Bounded COGT attribution; no reproducible mapping defect found — 2026-10-25 Beijing
 
 Run `6a38dd50-f67b-4d09-8579-79629e0a69a4` is spent: v0.5 retained 5 sources, 8 claims, 1 hypothesis, 26 bindings; no semantic rejection or Builder diagnostic. Read-only coverage: `user_event_input` model/validator supported, 8 claims, gap present; `event_fact_anchor_v0_1` model/validator unresolved, 0 claims, gap present. `_decode_submission` returns EI incomplete with the four codes below; batch 0 cases / 1 unavailable.
 

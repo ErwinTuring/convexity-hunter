@@ -1,5 +1,11 @@
 # Project State
 
+## COGT 2026-10-26: semantic input-size gate; no proven wrapping defect
+
+Run `051c09eb-46e6-4d08-8687-98c48306a79a` returned HTTP 201 / BLOCKED; its producer was structurally accepted only (52,120 sent / 20,877 received); semantic attempts=[] and local `len(body) > max_input_bytes` gate (131072 input / 40000 output bytes) blocked before Builder/EI/Futu/Core; body length UNKNOWN and no batch archive.
+The 0-byte capture is not proof of live capture; Tavily actual request/credit counts were not retained. Discovery cap is 80000 input / 40000 output bytes; original budgets are unchanged.
+The semantic-only 128→256 KiB cap + one normal acceptance run is PROPOSED/PENDING/unapproved; no config change/rerun. Historical four-field attribution is unchanged; see [current checkpoint](current-checkpoint.md).
+
 ## COGT EI incomplete; bounded 2+1+1 attribution — 2026-10-25 Beijing
 
 Spent run `6a38dd50-f67b-4d09-8579-79629e0a69a4`: `user_event_input` model/validator supported (8 claims); anchor unresolved at both layers (0 claims). Description/date share the default anchor gate; finer cause is UNKNOWN. Identity uses two closed Nasdaq/USD formats, with COGT fit UNKNOWN. Both retained-hypothesis `expected_window` and reassessment are absent; the upstream origin of the absence remains UNKNOWN, and claim `event_date` is not a substitute. The synthetic offline default-route fixture is EI ACCEPTED; this does not mean real COGT reached EI ACCEPTED. One focused test and two assertions changed, production unchanged. A new budget/minimal-retention request is pending; no new call or approval is claimed. Real EI→Futu→Core remains unproven; see [current checkpoint](current-checkpoint.md).
