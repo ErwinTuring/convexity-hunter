@@ -1086,14 +1086,14 @@ class HostGrounderEvidenceCatalogRuntimeResult:
 
 @dataclass(frozen=True, repr=False)
 class _EventFactAnchorOutcome:
-    """Private normal-recipe evidence for the closed v0.3 stage projection."""
+    """Private normal-recipe evidence for the closed v0.6 stage projection."""
 
     subquestion_ids: tuple
     original_description_binding: Optional[str]
     selected_claim_id: Optional[str]
 
     def __post_init__(self) -> None:
-        if self.subquestion_ids != ("user_event_input", "event_fact_anchor_v0_1"):
+        if self.subquestion_ids != ("user_event_input", "event_fact_anchor_v0_2"):
             raise ValueError("Event fact-anchor outcome has an unregistered recipe")
         for name in ("original_description_binding", "selected_claim_id"):
             value = getattr(self, name)

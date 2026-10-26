@@ -521,6 +521,22 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   }
   if (innerHtmlWrites !== 0) throw new Error("v0.3 submission outcome reached innerHTML");
 
+  const v06Anchor = await scenario({
+    mode: "event", cases: [], runStatus: "RUNNING",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: {
+      ...positiveOutcome,
+      schema_version: "host-grounder-stage-outcome-v0.6",
+      event_fact_anchor: { subquestion_id: "event_fact_anchor_v0_2", selected_claim_id: "claim-v0-2" }
+    } }],
+    executors: { world: "NOT_CONFIGURED", event: "NOT_CONFIGURED", direct: "CONFIGURED" }
+  });
+  await v06Anchor.clickRun();
+  const v06AnchorText = v06Anchor.elements.get("run-events").textContent;
+  if (!v06AnchorText.includes("claim-v0-2")
+      || !v06AnchorText.includes("事实锚点不等于研究假设，也不表示 EI 通过")) {
+    throw new Error("v0.6 single-witness anchor was not displayed with its EI boundary");
+  }
+
   const semanticTransportAudit = {
     schema_version: "host-semantic-transport-retry-v0.1",
     request_body_sha256: "a".repeat(64),

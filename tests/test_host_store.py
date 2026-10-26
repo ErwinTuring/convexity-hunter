@@ -286,7 +286,7 @@ def make_grounder_no_submission_result(
     }]
     if normal_event_route:
         coverage.append({
-            "subquestion_id": "event_fact_anchor_v0_1", "status": "unresolved",
+            "subquestion_id": "event_fact_anchor_v0_2", "status": "unresolved",
             "claim_ids": [], "gap": "PRIVATE_ANCHOR_GAP_TEXT",
         })
     envelope = {
@@ -572,7 +572,7 @@ def stamp_bound_object_default_route(result):
     return _stamp_event_fact_anchor_outcome(
         result,
         _EventFactAnchorOutcome(
-            ("user_event_input", "event_fact_anchor_v0_1"),
+            ("user_event_input", "event_fact_anchor_v0_2"),
             context.event_description_binding,
             None,
         ),
@@ -635,7 +635,7 @@ class HostStoreTests(unittest.TestCase):
             _run_start_metadata(),
         )
 
-    def test_semantic_transport_success_audit_is_archived_in_stage_v04(self):
+    def test_semantic_transport_success_audit_is_archived_in_stage_v06(self):
         from convexity_hunter.host_grounder_runtime import (
             _EventFactAnchorOutcome,
             _stamp_event_fact_anchor_outcome,
@@ -653,7 +653,7 @@ class HostStoreTests(unittest.TestCase):
         result = _stamp_event_fact_anchor_outcome(
             result,
             _EventFactAnchorOutcome(
-                ("user_event_input", "event_fact_anchor_v0_1"),
+                ("user_event_input", "event_fact_anchor_v0_2"),
                 "fixture-description-binding",
                 None,
             ),
@@ -662,7 +662,7 @@ class HostStoreTests(unittest.TestCase):
 
         self.store.save_grounder_stage_result(run_id, stage_id, result)
         outcome = self.store.get_run(run_id)["events"][-1]["outcome"]
-        self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.4")
+        self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.6")
         self.assertEqual(outcome["semantic_transport"], _semantic_transport_audit())
         _validate_grounder_stage_outcome(outcome)
 
@@ -670,7 +670,7 @@ class HostStoreTests(unittest.TestCase):
         reopened = HostStore(self.db_path)
         self.addCleanup(reopened.close)
         restored = reopened.get_run(run_id)["events"][-1]["outcome"]
-        self.assertEqual(restored["schema_version"], "host-grounder-stage-outcome-v0.4")
+        self.assertEqual(restored["schema_version"], "host-grounder-stage-outcome-v0.6")
         self.assertEqual(restored["semantic_transport"], _semantic_transport_audit())
 
         submission_run_id = reopened.create_run(
@@ -689,7 +689,7 @@ class HostStoreTests(unittest.TestCase):
         submission_result = _stamp_event_fact_anchor_outcome(
             submission_result,
             _EventFactAnchorOutcome(
-                ("user_event_input", "event_fact_anchor_v0_1"),
+                ("user_event_input", "event_fact_anchor_v0_2"),
                 "fixture-description-binding",
                 None,
             ),
@@ -703,13 +703,13 @@ class HostStoreTests(unittest.TestCase):
         submission_outcome = reopened.get_run(submission_run_id)["events"][-1]["outcome"]
         self.assertEqual(
             submission_outcome["schema_version"],
-            "host-grounder-submission-stage-outcome-v0.4",
+            "host-grounder-submission-stage-outcome-v0.6",
         )
         self.assertEqual(
             submission_outcome["semantic_transport"], _semantic_transport_audit()
         )
 
-    def test_bound_object_rejection_projection_roundtrips_only_closed_rows_in_v05(self):
+    def test_bound_object_rejection_projection_roundtrips_v06_and_preserves_v05(self):
         from convexity_hunter.host_store import (
             _grounder_public_stage_outcome,
             _validate_grounder_stage_outcome,
@@ -727,11 +727,31 @@ class HostStoreTests(unittest.TestCase):
         )
         self.store.save_grounder_stage_result(run_id, stage_id, result)
         outcome = self.store.get_run(run_id)["events"][-1]["outcome"]
-        self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.5")
+        self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.6")
+        self.assertEqual(
+            outcome["event_fact_anchor"]["subquestion_id"],
+            "event_fact_anchor_v0_2",
+        )
         self.assertEqual(outcome["semantic_rejections"], [])
         self.assertNotIn("PRIVATE_CLAIM_TEXT", json.dumps(outcome))
         _validate_grounder_stage_outcome(outcome)
 
+        historical_v05 = json.loads(json.dumps(outcome))
+        historical_v05["schema_version"] = "host-grounder-stage-outcome-v0.5"
+        historical_v05["event_fact_anchor"]["subquestion_id"] = "event_fact_anchor_v0_1"
+        for row in historical_v05["coverage"]:
+            if row["subquestion_id"] == "event_fact_anchor_v0_2":
+                row["subquestion_id"] = "event_fact_anchor_v0_1"
+        _validate_grounder_stage_outcome(historical_v05)
+        self.assertEqual(
+            historical_v05["event_fact_anchor"]["subquestion_id"],
+            "event_fact_anchor_v0_1",
+        )
+
+        malformed = json.loads(json.dumps(outcome))
+        malformed["event_fact_anchor"]["subquestion_id"] = "event_fact_anchor_v0_1"
+        with self.assertRaises(ValueError):
+            _validate_grounder_stage_outcome(malformed)
         malformed = json.loads(json.dumps(outcome))
         malformed["semantic_rejections"] = [{
             "kind": "claim", "index": True, "verifier_outcome": "supported",
@@ -837,7 +857,7 @@ class HostStoreTests(unittest.TestCase):
         submission_outcome = reopened.get_run(submission_run_id)["events"][-1]["outcome"]
         self.assertEqual(
             submission_outcome["schema_version"],
-            "host-grounder-submission-stage-outcome-v0.5",
+            "host-grounder-submission-stage-outcome-v0.6",
         )
         self.assertEqual(submission_outcome["semantic_rejections"], [])
         self.assertNotIn("submission", submission_outcome)
@@ -891,7 +911,7 @@ class HostStoreTests(unittest.TestCase):
         result = _stamp_event_fact_anchor_outcome(
             result,
             _EventFactAnchorOutcome(
-                ("user_event_input", "event_fact_anchor_v0_1"),
+                ("user_event_input", "event_fact_anchor_v0_2"),
                 "fixture-description-binding",
                 None,
             ),
@@ -1491,7 +1511,7 @@ class HostStoreTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            bound_outcome["schema_version"], "host-grounder-stage-outcome-v0.5"
+            bound_outcome["schema_version"], "host-grounder-stage-outcome-v0.6"
         )
         self.assertEqual(bound_outcome["semantic_rejections"], [])
         _validate_grounder_stage_outcome(bound_outcome)

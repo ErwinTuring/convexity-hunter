@@ -26,7 +26,7 @@ from convexity_hunter.host_event import (
     HostEventGrounderConfig,
     _make_listing_source_preparer,
     _event_fact_anchor_claim_id,
-    _retain_unknown_context_v0_5,
+    _retain_unknown_context_v0_6,
     _resolve_sec_occurrence_date,
     _retain_unknown_context,
     _retain_unknown_context_v0_2,
@@ -453,6 +453,8 @@ def _source_fact_case(
     receipt_body_hash=None,
     binding_offset_delta=0,
     extra_claim=False,
+    extra_claim_text="Additional source-backed fact.",
+    second_source_claim_text=None,
     extra_interpretation=False,
     coverage_items=None,
     coverage_outcomes=None,
@@ -484,12 +486,12 @@ def _source_fact_case(
                 "kind": "observed_fact",
                 "source_id": source_id,
                 "locator": locator,
-                "quote": "Additional source-backed fact.",
-                "text": "Additional source-backed fact.",
+                "quote": extra_claim_text,
+                "text": extra_claim_text,
                 "event_date": None,
             }
         )
-        body += "Additional source-backed fact.\n"
+        body += extra_claim_text + "\n"
         source = HostSourceBody(
             body, _digest(body), locator, _NOW, "Synthetic SEC filing", None
         )
@@ -509,6 +511,33 @@ def _source_fact_case(
         body += interpretation + "\n"
         source = HostSourceBody(
             body, _digest(body), locator, _NOW, "Synthetic SEC filing", None
+        )
+    source_bodies = {source_id: source}
+    if second_source_claim_text is not None:
+        second_source_id = "sec-fact-independent"
+        second_locator = (
+            "https://www.sec.gov/Archives/edgar/data/320193/"
+            "000032019326000456/second.htm"
+        )
+        second_body = "Independent SEC filing.\n" + second_source_claim_text + "\n"
+        claims.append(
+            {
+                "claim_id": "fact-independent",
+                "kind": "observed_fact",
+                "source_id": second_source_id,
+                "locator": second_locator,
+                "quote": second_source_claim_text,
+                "text": second_source_claim_text,
+                "event_date": None,
+            }
+        )
+        source_bodies[second_source_id] = HostSourceBody(
+            second_body,
+            _digest(second_body),
+            second_locator,
+            _NOW,
+            "Independent synthetic SEC filing",
+            None,
         )
     start = body.find(sentence)
     envelope = {
@@ -560,7 +589,7 @@ def _source_fact_case(
         producer_id="convexity-hunter-event-grounder",
         producer_version="v0.1",
         observed_at=observed_at,
-        source_bodies={source_id: source},
+        source_bodies=source_bodies,
         run_id=_RUN_ID,
         canonical_input_hash="a" * 64,
         event_description_binding=description,
@@ -571,8 +600,12 @@ def _source_fact_case(
         "run_id": _RUN_ID,
         "canonical_input_hash": context.canonical_input_hash,
         "envelope_hash": envelope_hash,
-        "source_body_hashes": (
-            (source_id, receipt_body_hash or source.body_sha256),
+        "source_body_hashes": tuple(
+            (
+                key,
+                receipt_body_hash if key == source_id and receipt_body_hash else item.body_sha256,
+            )
+            for key, item in sorted(source_bodies.items())
         ),
         "verified_claim_ids": (
             tuple(claim["claim_id"] for claim in claims) if verified_claim else ()
@@ -1742,7 +1775,47 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "SEMANTIC_CALL_FAILED")
         self.assertIsNone(raised.exception.semantic_transport)
 
-    def test_independent_anchor_gate_selects_only_its_supported_fact_row(self):
+    def test_v02_anchor_question_is_versioned_in_canonical_run_input(self):
+        self.assertEqual(
+            _EVENT_FACT_ANCHOR_SUBQUESTION_ID, "event_fact_anchor_v0_2"
+        )
+        run_input = HostGrounderRunInput(
+            "anchor-question-golden",
+            UserEventInput("Event X"),
+            (
+                HostGrounderSubquestion("user_event_input", "Event X"),
+                HostGrounderSubquestion(
+                    _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                    _EVENT_FACT_ANCHOR_QUESTION,
+                ),
+            ),
+            _config().run_input_bounds,
+        )
+        expected = (
+            '{"mode":"event","schema_version":"host-grounder-run-input-v0.1",'
+            '"subquestions":[{"subquestion_id":"user_event_input","text":"Event X"},'
+            '{"subquestion_id":"event_fact_anchor_v0_2","text":"Does the registered '
+            "source-backed evidence identify exactly one event identity matching the event "
+            "described by the user's event input? If multiple observed_fact claims directly "
+            "support that same event identity, identify exactly one claim_id as the single "
+            "binding witness; that witness does not imply other supporting facts are absent. "
+            "If directly relevant observed_fact claims that are candidates for identifying "
+            "the event described by the user's event input support distinct competing event "
+            "identities, conflict, or leave the matching identity ambiguous, identify no "
+            "claim_id and state the gap. Assess only event identity and direct relevance. "
+            "Do not assess economic materiality, market impact, transmission mechanism, "
+            "underlying or listing identity, event timing, or completeness of the broader "
+            'research answer."}],"user_input":{"description":"Event X","event_date":null,'
+            '"provisional_symbols":[],"source_locators":[]}}'
+        )
+        self.assertEqual(run_input.canonical_json, expected)
+        self.assertEqual(run_input.canonical_bytes, expected.encode("utf-8"))
+        self.assertEqual(
+            hashlib.sha256(run_input.canonical_bytes).hexdigest(),
+            run_input.canonical_input_hash,
+        )
+
+    def test_independent_anchor_gate_ignores_unrelated_background_event(self):
         coverage = [
             {
                 "subquestion_id": "user_event_input",
@@ -1763,14 +1836,20 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         snapshot, receipt, context = _source_fact_case(
             extra_claim=True,
+            extra_claim_text=(
+                "On October 1, 2026, ACME HOLDINGS, INC. separately announced "
+                "an unrelated dividend."
+            ),
             coverage_items=coverage,
             coverage_outcomes=outcomes,
         )
+        self.assertEqual(len(json.loads(snapshot.canonical_bytes)["claims"]), 2)
+        self.assertEqual(len(receipt["verified_claim_ids"]), 2)
 
         self.assertEqual(
             _event_fact_anchor_claim_id(snapshot, receipt, context), "fact-1"
         )
-        prepared, selected = _retain_unknown_context_v0_5(
+        prepared, selected = _retain_unknown_context_v0_6(
             snapshot, receipt, context, {}
         )
         self.assertEqual(selected, "fact-1")
@@ -1787,6 +1866,92 @@ class HostEventGrounderTests(unittest.TestCase):
                 snapshot, MappingProxyType(bad_index_receipt), context
             )
         )
+
+    def test_independent_anchor_gate_binds_one_witness_for_same_event_in_two_sources(self):
+        coverage = [
+            {
+                "subquestion_id": "user_event_input",
+                "status": "unresolved",
+                "claim_ids": [],
+                "gap": "Economic materiality remains unresolved.",
+            },
+            {
+                "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                "status": "supported",
+                "claim_ids": ["fact-1"],
+                "gap": None,
+            },
+        ]
+        outcomes = (
+            (0, "user_event_input", "unresolved", "Research question remains incomplete."),
+            (1, _EVENT_FACT_ANCHOR_SUBQUESTION_ID, "supported", "One event identity; fact-1 is the witness."),
+        )
+        snapshot, receipt, context = _source_fact_case(
+            second_source_claim_text=(
+                "Independent report: on October 3, 2026, ACME HOLDINGS, INC. "
+                "completed its acquisition of Example Corp."
+            ),
+            coverage_items=coverage,
+            coverage_outcomes=outcomes,
+        )
+        claims = json.loads(snapshot.canonical_bytes)["claims"]
+        self.assertEqual(len(claims), 2)
+        self.assertNotEqual(claims[0]["source_id"], claims[1]["source_id"])
+        self.assertEqual(
+            set(receipt["verified_claim_ids"]), {"fact-1", "fact-independent"}
+        )
+        self.assertEqual(len(receipt["source_body_hashes"]), 2)
+        self.assertEqual(
+            _event_fact_anchor_claim_id(snapshot, receipt, context), "fact-1"
+        )
+
+        prepared, selected = _retain_unknown_context_v0_6(
+            snapshot, receipt, context, {}
+        )
+        self.assertEqual(selected, "fact-1")
+        self.assertEqual(prepared.event_description_binding, "fact-1")
+
+    def test_independent_anchor_gate_rejects_competing_candidates_without_witness(self):
+        coverage = [
+            {
+                "subquestion_id": "user_event_input",
+                "status": "supported",
+                "claim_ids": ["fact-1"],
+                "gap": None,
+            },
+            {
+                "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                "status": "unresolved",
+                "claim_ids": [],
+                "gap": "Directly relevant facts identify competing event identities.",
+            },
+        ]
+        outcomes = (
+            (0, "user_event_input", "supported", "Research coverage supports fact-1."),
+            (
+                1,
+                _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+                "unresolved",
+                "Directly relevant facts identify competing event identities.",
+            ),
+        )
+        snapshot, receipt, context = _source_fact_case(
+            second_source_claim_text=(
+                "On October 3, 2026, ACME HOLDINGS, INC. completed its acquisition "
+                "of Different Corp."
+            ),
+            coverage_items=coverage,
+            coverage_outcomes=outcomes,
+        )
+        self.assertEqual(
+            set(receipt["verified_claim_ids"]), {"fact-1", "fact-independent"}
+        )
+        self.assertIsNone(_event_fact_anchor_claim_id(snapshot, receipt, context))
+        prepared, selected = _retain_unknown_context_v0_6(
+            snapshot, receipt, context, {}
+        )
+        self.assertIsNone(selected)
+        self.assertIsNone(prepared.event_description_binding)
 
     def test_independent_anchor_gate_does_not_use_singleton_or_research_fallback(self):
         coverage = [
@@ -1811,7 +1976,7 @@ class HostEventGrounderTests(unittest.TestCase):
             coverage_items=coverage,
             coverage_outcomes=outcomes,
         )
-        prepared, selected = _retain_unknown_context_v0_5(
+        prepared, selected = _retain_unknown_context_v0_6(
             snapshot, receipt, context, {}
         )
         self.assertIsNone(selected)
@@ -1832,7 +1997,7 @@ class HostEventGrounderTests(unittest.TestCase):
             coverage_items=coverage,
             coverage_outcomes=outcomes,
         )
-        prepared, selected = _retain_unknown_context_v0_5(
+        prepared, selected = _retain_unknown_context_v0_6(
             snapshot, receipt, context, {}
         )
         self.assertIsNone(selected)
@@ -3603,7 +3768,7 @@ class HostEventGrounderTests(unittest.TestCase):
             "convexity_hunter.host_event._retain_unknown_context_v0_4",
             wraps=_retain_unknown_context_v0_4,
         ) as date_helper:
-            prepared, selected_claim_id = _retain_unknown_context_v0_5(
+            prepared, selected_claim_id = _retain_unknown_context_v0_6(
                 snapshot, receipt, prebound_context, admission_by_id
             )
 
@@ -3612,7 +3777,7 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertIsNone(prepared.event_date_range)
         date_helper.assert_not_called()
 
-    def test_v05_unresolved_anchor_skips_legal_v04_date_derivation(self):
+    def test_v06_unresolved_anchor_skips_legal_v04_date_derivation(self):
         from convexity_hunter.host_event import _retain_unknown_context_v0_4
 
         _resolved, original_context, admission, snapshot, receipt, _records = (
@@ -3672,7 +3837,7 @@ class HostEventGrounderTests(unittest.TestCase):
             "convexity_hunter.host_event._retain_unknown_context_v0_4",
             wraps=_retain_unknown_context_v0_4,
         ) as date_helper:
-            prepared, selected_claim_id = _retain_unknown_context_v0_5(
+            prepared, selected_claim_id = _retain_unknown_context_v0_6(
                 snapshot, receipt, original_context, admission_by_id
             )
 
@@ -3901,7 +4066,7 @@ class HostEventGrounderTests(unittest.TestCase):
 
         archived = _grounder_stage_outcome(result, _RUN_ID, _RAW_INPUT)
         self.assertEqual(
-            archived["schema_version"], "host-grounder-stage-outcome-v0.5"
+            archived["schema_version"], "host-grounder-stage-outcome-v0.6"
         )
         self.assertEqual(
             archived["provenance"]["verifier_wire_version"], "semantic-verdict-v0.4"
@@ -3971,7 +4136,7 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         self.assertEqual(
             submission_archived["schema_version"],
-            "host-grounder-submission-stage-outcome-v0.5",
+            "host-grounder-submission-stage-outcome-v0.6",
         )
         public_submission = _grounder_public_stage_outcome(submission_archived)
         self.assertEqual(

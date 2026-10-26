@@ -1167,7 +1167,7 @@ class HostServerGrounderProjectionTests(unittest.TestCase):
         result = _stamp_event_fact_anchor_outcome(
             result,
             _EventFactAnchorOutcome(
-                ("user_event_input", "event_fact_anchor_v0_1"),
+                ("user_event_input", "event_fact_anchor_v0_2"),
                 "fixture-description-binding",
                 None,
             ),
@@ -2070,9 +2070,9 @@ class HostServerBatchTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         outcome["schema_version"],
-                        "host-grounder-submission-stage-outcome-v0.5"
+                        "host-grounder-submission-stage-outcome-v0.6"
                         if has_submission
-                        else "host-grounder-stage-outcome-v0.5",
+                        else "host-grounder-stage-outcome-v0.6",
                     )
                     self.assertEqual(outcome["semantic_rejections"], [])
                     expected_anchor = {

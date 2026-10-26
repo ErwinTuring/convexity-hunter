@@ -714,14 +714,21 @@ _DOCUMENT = r'''<!doctype html>
       "host-grounder-stage-outcome-v0.3",
       "host-grounder-submission-stage-outcome-v0.3",
       "host-grounder-stage-outcome-v0.4",
-      "host-grounder-submission-stage-outcome-v0.4"
+      "host-grounder-submission-stage-outcome-v0.4",
+      "host-grounder-stage-outcome-v0.5",
+      "host-grounder-submission-stage-outcome-v0.5",
+      "host-grounder-stage-outcome-v0.6",
+      "host-grounder-submission-stage-outcome-v0.6"
     ].includes(outcome.schema_version)) {
       const anchor = outcome.event_fact_anchor;
+      const expectedAnchorQuestion = outcome.schema_version.endsWith("v0.6")
+        ? "event_fact_anchor_v0_2"
+        : "event_fact_anchor_v0_1";
       const validAnchor = isRecord(anchor)
         && Object.keys(anchor).length === 2
         && Object.prototype.hasOwnProperty.call(anchor, "subquestion_id")
         && Object.prototype.hasOwnProperty.call(anchor, "selected_claim_id")
-        && anchor.subquestion_id === "event_fact_anchor_v0_1"
+        && anchor.subquestion_id === expectedAnchorQuestion
         && (anchor.selected_claim_id === null
           || (typeof anchor.selected_claim_id === "string"
             && anchor.selected_claim_id.length > 0
@@ -803,12 +810,12 @@ _DOCUMENT = r'''<!doctype html>
 
   function renderKnownStageOutcome(outcome, stageName) {
     if (!isRecord(outcome)) return [];
-    if (["host-grounder-submission-stage-outcome-v0.1", "host-grounder-submission-stage-outcome-v0.2", "host-grounder-submission-stage-outcome-v0.3", "host-grounder-submission-stage-outcome-v0.4"].includes(outcome.schema_version)) {
+    if (["host-grounder-submission-stage-outcome-v0.1", "host-grounder-submission-stage-outcome-v0.2", "host-grounder-submission-stage-outcome-v0.3", "host-grounder-submission-stage-outcome-v0.4", "host-grounder-submission-stage-outcome-v0.5", "host-grounder-submission-stage-outcome-v0.6"].includes(outcome.schema_version)) {
       return stageName === "grounder"
         ? renderGrounderSubmissionStageOutcome(outcome)
         : ["阶段结果与阶段类型不匹配；其他字段未显示。"];
     }
-    if (["host-grounder-stage-outcome-v0.1", "host-grounder-stage-outcome-v0.2", "host-grounder-stage-outcome-v0.3", "host-grounder-stage-outcome-v0.4"].includes(outcome.schema_version)) {
+    if (["host-grounder-stage-outcome-v0.1", "host-grounder-stage-outcome-v0.2", "host-grounder-stage-outcome-v0.3", "host-grounder-stage-outcome-v0.4", "host-grounder-stage-outcome-v0.5", "host-grounder-stage-outcome-v0.6"].includes(outcome.schema_version)) {
       return stageName === "grounder"
         ? renderGrounderStageOutcome(outcome)
         : ["阶段结果与阶段类型不匹配；其他字段未显示。"];

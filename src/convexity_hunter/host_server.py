@@ -101,6 +101,12 @@ _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_3 = _GROUNDER_SUBMISSION_PUBLIC_FIELDS | {
 _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_4 = _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_3 | {
     "semantic_transport",
 }
+_GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_5 = _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_3 | {
+    "semantic_rejections",
+}
+_GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_5_WITH_TRANSPORT = _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_5 | {
+    "semantic_transport",
+}
 _GROUNDER_BUDGET_ERROR_CODES = frozenset((
     "REQUEST_BUDGET_EXHAUSTED",
     "CREDIT_BUDGET_EXHAUSTED",
@@ -563,6 +569,8 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
         "host-grounder-stage-outcome-v0.2",
         "host-grounder-stage-outcome-v0.3",
         "host-grounder-stage-outcome-v0.4",
+        "host-grounder-stage-outcome-v0.5",
+        "host-grounder-stage-outcome-v0.6",
     ):
         try:
             from .host_store import _validate_grounder_stage_outcome
@@ -575,6 +583,8 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
         "host-grounder-submission-stage-outcome-v0.2",
         "host-grounder-submission-stage-outcome-v0.3",
         "host-grounder-submission-stage-outcome-v0.4",
+        "host-grounder-submission-stage-outcome-v0.5",
+        "host-grounder-submission-stage-outcome-v0.6",
     ):
         try:
             if "submission" in value:
@@ -583,12 +593,26 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
                 projected = _grounder_public_stage_outcome(value)
             else:
                 projected = value
-            expected_public_fields = {
+            version = projected.get("schema_version")
+            if version == "host-grounder-submission-stage-outcome-v0.5":
+                expected_public_fields = (
+                    _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_5_WITH_TRANSPORT
+                    if "semantic_transport" in projected
+                    else _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_5
+                )
+            elif version == "host-grounder-submission-stage-outcome-v0.6":
+                expected_public_fields = _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_3
+                if "semantic_rejections" in projected:
+                    expected_public_fields |= {"semantic_rejections"}
+                if "semantic_transport" in projected:
+                    expected_public_fields |= {"semantic_transport"}
+            else:
+                expected_public_fields = {
                 "host-grounder-submission-stage-outcome-v0.3":
                     _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_3,
                 "host-grounder-submission-stage-outcome-v0.4":
                     _GROUNDER_SUBMISSION_PUBLIC_FIELDS_V0_4,
-            }.get(projected.get("schema_version"), _GROUNDER_SUBMISSION_PUBLIC_FIELDS)
+                }.get(version, _GROUNDER_SUBMISSION_PUBLIC_FIELDS)
             if (
                 type(projected) is not dict
                 or set(projected) != expected_public_fields

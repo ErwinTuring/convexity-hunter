@@ -2,7 +2,34 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## COGT semantic-size gate; no proven measurement or wrapping defect — 2026-10-26
+## COGT validated semantic receipt; no submission; v0.6 BUILD — 2026-10-26
+
+Run `558095c4-9267-4670-be0f-301764e77d2e`: `GROUNDING_NO_SUBMISSION`; 1
+Discovery, 1 Semantic, 5 source-body hashes, 9 claims, 1 hypothesis, 30 bindings.
+The 116,316-byte semantic body was below both 131,072 and approved 262,144 caps,
+so this run does not show the increase was necessary. Tavily request/credit counts
+and model-token usage were not retained; source hashes are not API request counts.
+
+The semantic receipt validated; claim 8, hypothesis 0, bindings 28/29 unresolved.
+Hypothesis 0 also failed `required_field_binding` and
+`hypothesis_dependency_closure`. Builder returned without submission;
+EI `NOT_RUN`; Futu/Core not reached. `expected_window` and reassessment were
+already null. Anchor model/validator unresolved with 0 refs; gap points to multiple
+facts. Per-item rationales for claim 8, hypothesis 0, bindings 28/29 were not
+retained; only those specific rejection reasons remain UNKNOWN.
+
+SQLite 39 runs / 0 active / 3 Direct archives; no new archive. Private candidate
+4,081 bytes, capacity 47 bytes, files 600 / dirs 700; guard spent. Host PID
+70750/session 22619, root HTTP 200. Approved semantic cap 262,144 and its 600
+backup remain; private navigation path `/private/tmp/ch-cogt-acceptance.0Z0vfhUp/`
+(guard spent/observer/config-backup); no external call or config change in this BUILD.
+
+Frozen v0.6 contract and Pascal implementation review PASS (thread `01a176cd-4f61-7e10-a262-ca24806b2f4c`); v0.1-v0.5 remain readable, no migration.
+Focused modules pass: event 67, store 59, server 58, workbench 10, runtime 34; compileall PASS. First full suite: 2,060 tests / 30 errors, all localhost-bind `PermissionError`; approved local/mock rerun: 2,060 PASS / 0 failures (312.956s).
+Doc links/fences and `git diff --check` PASS. No live event validation or external source/model call; no config change in this BUILD.
+Approximate UTC: contract + targeted review 11m (14:33–14:44); implementation/focused tests 22m (14:44–15:06); final review 2m; full-suite attempts 10m21. Coding/test split was not timed; 70/30 cannot be substantiated. Commit/push was initially blocked pending explicit Git approval; the user has now approved finalizing this reviewed work unit. This does not authorize another external acceptance run.
+
+## Historical: COGT semantic-size gate; no proven measurement or wrapping defect — 2026-10-26
 
 Run `051c09eb-46e6-4d08-8687-98c48306a79a` returned HTTP 201 / BLOCKED. Its
 DeepSeek discovery call was structurally accepted only (52,120 bytes sent /

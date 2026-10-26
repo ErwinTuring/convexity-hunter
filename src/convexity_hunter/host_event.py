@@ -75,15 +75,20 @@ __all__ = ("HostEventGrounderConfig", "create_event_grounder")
 _PRODUCER_ID = "convexity-hunter-event-grounder"
 _PRODUCER_VERSION = "v0.1"
 _SUBQUESTION_ID = "user_event_input"
-_EVENT_FACT_ANCHOR_SUBQUESTION_ID = "event_fact_anchor_v0_1"
+_EVENT_FACT_ANCHOR_SUBQUESTION_ID = "event_fact_anchor_v0_2"
 _EVENT_FACT_ANCHOR_QUESTION = (
-    "Does exactly one registered source-backed observed_fact directly state "
-    "the event described by the user's event input? Assess only event identity "
-    "and direct relevance. Do not assess economic materiality, market impact, "
-    "transmission mechanism, underlying or listing identity, event timing, or "
-    "completeness of the broader research answer. Identify exactly one "
-    "claim_id only when that fact is uniquely supported and unambiguous; "
-    "otherwise leave this subquestion unresolved and state the gap."
+    "Does the registered source-backed evidence identify exactly one event "
+    "identity matching the event described by the user's event input? If "
+    "multiple observed_fact claims directly support that same event identity, "
+    "identify exactly one claim_id as the single binding witness; that witness "
+    "does not imply other supporting facts are absent. If directly relevant "
+    "observed_fact claims that are candidates for identifying the event "
+    "described by the user's event input support distinct competing event "
+    "identities, conflict, or leave the matching identity ambiguous, identify "
+    "no claim_id and state the gap. Assess only event identity and direct "
+    "relevance. Do not assess economic materiality, market impact, transmission "
+    "mechanism, underlying or listing identity, event timing, or completeness "
+    "of the broader research answer."
 )
 _FORBIDDEN_CREDENTIAL_BASENAME = "futu_api_config.properties"
 _APPROVED_MODEL_PROVIDER = "deepseek"
@@ -682,7 +687,7 @@ def _event_fact_anchor_claim_id(
     receipt: object,
     context: HostBuildContext,
 ) -> Optional[str]:
-    """Return only the uniquely verified claim named by the fixed anchor row."""
+    """Return only the single verified witness named by the fixed anchor row."""
     evidence = _preparation_evidence(snapshot, receipt, context)
     if evidence is None:
         return None
@@ -756,13 +761,13 @@ def _event_fact_anchor_claim_id(
     return claim_id
 
 
-def _retain_unknown_context_v0_5(
+def _retain_unknown_context_v0_6(
     snapshot: object,
     receipt: object,
     original_context: HostBuildContext,
     admission_by_id: dict,
 ) -> tuple[HostBuildContext, Optional[str]]:
-    """Apply the independent anchor gate, then only v0.4 date derivation."""
+    """Apply the v0.6 single-witness gate, then only v0.4 date derivation."""
     if type(original_context) is not HostBuildContext:
         raise TypeError("original_context must be HostBuildContext")
     selected_claim_id = None
@@ -1723,7 +1728,7 @@ def _make_listing_source_preparer(
                     snapshot, receipt, original_context, prepared, admission_by_id
                 )
         else:
-            prepared, selected_claim_id = _retain_unknown_context_v0_5(
+            prepared, selected_claim_id = _retain_unknown_context_v0_6(
                 snapshot, receipt, original_context, admission_by_id
             )
             _event_fact_anchor_capture.append(
