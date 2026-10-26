@@ -2,6 +2,28 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
+## v0.6 deployed; one newly authorized acceptance remains unspent — 2026-10-27 Beijing
+
+Code baseline: `4fe141e` (verify Git freshly on resume). User explicitly approved
+one new normal COGT Event acceptance: Tavily <=2 requests/3 credits, each model
+role <=2 requests; all other budgets unchanged; no semantic reroll. If EI accepts,
+continue the existing Futu/shared Core route. No external call or POST occurred
+during deployment; this is not live EI/Core acceptance evidence.
+
+Old Host stopped; new v0.6 Host PID 76976 / session 19738 is running, root GET
+HTTP 200. Explicit evaluation date is 2026-10-26 under the existing UTC-date
+rule; recompute and validate on resume rather than replaying a stale-date guard.
+SQLite retained 39 runs / 0 active / 3 Direct archives. Private preparation root
+`/private/tmp/ch-cogt-v06-prep.lQHOZW/` (700), files 600, contains the pre-restart
+SQLite backup, observer and `guard/manifest.json` / `guard/one_shot.py`.
+The observer only updates the anchor ID to v0.2; capture allowlist is unchanged.
+`main-review.pass` and `consumed.marker` are absent: guard not released or spent.
+Do not reuse any older spent guard. Before release, verify Host/code/date/DB,
+manifest and private observer; authorization is for one fresh run, not retries.
+Five-hour quota was down to about 6% during preparation; pause before the paid
+run so it cannot be stranded by exhaustion. Weekly quota remained about 79%.
+No product code/config change or additional tests were needed for deployment.
+
 ## COGT validated semantic receipt; no submission; v0.6 BUILD — 2026-10-26
 
 Run `558095c4-9267-4670-be0f-301764e77d2e`: `GROUNDING_NO_SUBMISSION`; 1

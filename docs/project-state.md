@@ -1,4 +1,17 @@
-# Project State — COGT 2026-10-26: validated semantic receipt, no submission; v0.6 BUILD
+# Project State
+
+## v0.6 deployed; newly approved single acceptance unspent — 2026-10-27 Beijing
+
+Code `4fe141e` deployed locally; Host PID 76976/session 19738, root HTTP 200,
+explicit UTC evaluation date 2026-10-26. SQLite 39 runs/0 active/3 Direct retained
+and backed up. User approved one fresh normal COGT Event run at unchanged bounds
+(Tavily <=2 requests/3 credits, each model role <=2 requests), but no POST or
+external call was made. Private preparation `/private/tmp/ch-cogt-v06-prep.lQHOZW/`
+has no release or consumed marker. Near-quota safe pause before paid execution;
+freshly verify date/Host/DB/guard before release. Deployment is not real EI/Core
+closure. See [checkpoint](current-checkpoint.md).
+
+## COGT 2026-10-26: validated semantic receipt, no submission; v0.6 BUILD
 
 Run `558095c4-9267-4670-be0f-301764e77d2e`: Discovery 1, Semantic 1; 5 source hashes, 9 claims, 1 hypothesis, 30 bindings. The 116,316-byte body was below old 131,072 and approved 262,144 caps; this run does not show the increase was necessary. Tavily request/credit counts and model-token usage were not retained; 5 hashes are not API-request counts.
 `RECEIPT_VALIDATED`; claim 8, hypothesis 0, bindings 28/29 unresolved; hypothesis also failed required-field binding and dependency closure. Builder returned without submission: `GROUNDING_NO_SUBMISSION`, EI `NOT_RUN`, no Futu/Core. `expected_window`/reassessment were already null; anchor model/validator unresolved, 0 refs, gap points to multiple facts. Per-item rationales for claim 8, hypothesis 0, bindings 28/29 were not retained; those specific reasons remain UNKNOWN.
