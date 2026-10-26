@@ -1429,8 +1429,11 @@ class _SyntheticModelTransport:
             content = content.pop(0)
         if (
             model == "fixture-semantic"
-            and "host-grounder-semantic-verifier-prompt-v0.9"
-            in payload["messages"][0]["content"]
+            and any(
+                "host-grounder-semantic-verifier-prompt-{}".format(version)
+                in payload["messages"][0]["content"]
+                for version in ("v0.9", "v0.10")
+            )
         ):
             response = json.loads(content)
             request_data = json.loads(payload["messages"][1]["content"])
@@ -4770,6 +4773,17 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertIs(type(second), HostGrounderEvidenceCatalogRuntimeResult)
         self.assertIsNone(first.build_result.submission)
         self.assertIsNone(second.build_result.submission)
+        for result in (first, second):
+            sidecar = json.loads(result.audit.sidecar_utf8)
+            self.assertEqual(
+                sidecar["producer_prompt_version"],
+                "host-grounder-discovery-prompt-v0.10",
+            )
+            self.assertEqual(
+                sidecar["validator_version"],
+                "host-grounder-semantic-verifier-prompt-v0.10",
+            )
+            self.assertEqual(sidecar["verifier_wire_version"], "semantic-verdict-v0.4")
         self.assertEqual(len(preparation_calls), 2)
         for snapshot, receipt, context in preparation_calls:
             self.assertTrue(snapshot.envelope_hash)
@@ -4804,10 +4818,10 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertTrue(any("ACME filed a report." in content for content in model_user_content))
         system_prompts = [call["messages"][0]["content"] for call in model_transport.calls]
         self.assertTrue(
-            any("host-grounder-discovery-prompt-v0.9" in prompt for prompt in system_prompts)
+            any("host-grounder-discovery-prompt-v0.10" in prompt for prompt in system_prompts)
         )
         self.assertTrue(
-            any("host-grounder-semantic-verifier-prompt-v0.9" in prompt for prompt in system_prompts)
+            any("host-grounder-semantic-verifier-prompt-v0.10" in prompt for prompt in system_prompts)
         )
 
     def test_event_v06_explicit_budget_two_repairs_format_on_same_source_snapshot(self):

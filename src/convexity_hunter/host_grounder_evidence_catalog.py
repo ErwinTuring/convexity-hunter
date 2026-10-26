@@ -46,6 +46,7 @@ _PRODUCER_PROMPT_VERSION_V0_6 = "host-grounder-discovery-prompt-v0.6"
 _PRODUCER_PROMPT_VERSION_V0_7 = "host-grounder-discovery-prompt-v0.7"
 _PRODUCER_PROMPT_VERSION_V0_8 = "host-grounder-discovery-prompt-v0.8"
 _PRODUCER_PROMPT_VERSION_V0_9 = "host-grounder-discovery-prompt-v0.9"
+_PRODUCER_PROMPT_VERSION_V0_10 = "host-grounder-discovery-prompt-v0.10"
 _PRODUCER_PROMPT_VERSIONS = frozenset(
     (
         _PRODUCER_PROMPT_VERSION_V0_4,
@@ -54,6 +55,7 @@ _PRODUCER_PROMPT_VERSIONS = frozenset(
         _PRODUCER_PROMPT_VERSION_V0_7,
         _PRODUCER_PROMPT_VERSION_V0_8,
         _PRODUCER_PROMPT_VERSION_V0_9,
+        _PRODUCER_PROMPT_VERSION_V0_10,
     )
 )
 _PRODUCER_PROMPT_VERSION = _PRODUCER_PROMPT_VERSION_V0_4
@@ -64,6 +66,7 @@ _VERIFIER_PROMPT_VERSION_V0_6 = "host-grounder-semantic-verifier-prompt-v0.6"
 _VERIFIER_PROMPT_VERSION_V0_7 = "host-grounder-semantic-verifier-prompt-v0.7"
 _VERIFIER_PROMPT_VERSION_V0_8 = "host-grounder-semantic-verifier-prompt-v0.8"
 _VERIFIER_PROMPT_VERSION_V0_9 = "host-grounder-semantic-verifier-prompt-v0.9"
+_VERIFIER_PROMPT_VERSION_V0_10 = "host-grounder-semantic-verifier-prompt-v0.10"
 _BINDING_OMISSION_FIRST_FAILURE_CHECK = (
     "producer_v0_3_required_binding_omission_v0_9"
 )
@@ -78,6 +81,10 @@ _BINDING_OMISSION_FAILURE_ROUTE_V0_10 = (
     _PRODUCER_PROMPT_VERSION_V0_9,
     _VERIFIER_PROMPT_VERSION_V0_9,
 )
+_BINDING_OMISSION_FAILURE_ROUTE_V0_11 = (
+    _PRODUCER_PROMPT_VERSION_V0_10,
+    _VERIFIER_PROMPT_VERSION_V0_10,
+)
 _BINDING_OMISSION_FAILURE_MARKERS = frozenset((
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     _BINDING_OMISSION_DELTA_FAILURE_CHECK,
@@ -89,6 +96,7 @@ _VERIFIER_PROMPT_VERSIONS = frozenset(
         _VERIFIER_PROMPT_VERSION_V0_7,
         _VERIFIER_PROMPT_VERSION_V0_8,
         _VERIFIER_PROMPT_VERSION_V0_9,
+        _VERIFIER_PROMPT_VERSION_V0_10,
     )
 )
 
@@ -99,6 +107,8 @@ def _valid_prompt_pair(producer_prompt_version: str, semantic_prompt_version: st
         _VERIFIER_PROMPT_VERSION_V0_9,
     ):
         return producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
+    if semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_10:
+        return producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
     return True
 
 
@@ -117,11 +127,16 @@ def _producer_repair_prompt_version(
     if (
         first_status == "rejected"
         and first_failure_check == _BINDING_OMISSION_FIRST_FAILURE_CHECK
-        and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
+        and producer_prompt_version in (
+            _PRODUCER_PROMPT_VERSION_V0_9,
+            _PRODUCER_PROMPT_VERSION_V0_10,
+        )
         and semantic_prompt_version in (
             _VERIFIER_PROMPT_VERSION_V0_8,
             _VERIFIER_PROMPT_VERSION_V0_9,
+            _VERIFIER_PROMPT_VERSION_V0_10,
         )
+        and _valid_prompt_pair(producer_prompt_version, semantic_prompt_version)
     ):
         return _BINDING_OMISSION_REPAIR_PROMPT_VERSION
     return None
@@ -1250,7 +1265,10 @@ class HostEvidenceCatalogAuditHolder:
                 ],
                 "verifier_wire_version": (
                     _VERIFIER_WIRE_VERSION_V0_4
-                    if self._semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_9
+                    if self._semantic_prompt_version in (
+                        _VERIFIER_PROMPT_VERSION_V0_9,
+                        _VERIFIER_PROMPT_VERSION_V0_10,
+                    )
                     else _VERIFIER_WIRE_VERSION
                 ),
                 "validator_version": self._semantic_prompt_version,

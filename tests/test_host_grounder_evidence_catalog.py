@@ -228,6 +228,45 @@ def _wire_verdict(run_input, context, catalog, envelope, envelope_bytes):
     }
 
 
+def _wire_verdict_v0_4(
+    run_input, context, catalog, envelope, envelope_bytes, producer,
+    *, unresolved_field_paths=(),
+):
+    wire = _wire_verdict(run_input, context, catalog, envelope, envelope_bytes)
+    wire["schema_version"] = "semantic-verdict-v0.4"
+    binding_ids = tuple(item["evidence_id"] for item in producer["field_bindings"])
+    objects = catalog_module._build_host_binding_objects(
+        envelope,
+        envelope_bytes,
+        binding_ids,
+        catalog=catalog,
+        source_bodies=context.source_bodies,
+        run_id=run_input.run_id,
+        canonical_input_hash=run_input.canonical_input_hash,
+        max_string_bytes=run_input.bounds.max_string_bytes,
+        max_input_bytes=100_000,
+    )
+    unresolved = frozenset(unresolved_field_paths)
+    wire["field_bindings"] = [
+        {
+            "binding_id": item["binding_id"],
+            "outcome": (
+                "unresolved"
+                if envelope["field_bindings"][index]["field_path"] in unresolved
+                else "supported"
+            ),
+            "rationale": (
+                "The cited date is a procedural milestone, not an established impact boundary."
+                if envelope["field_bindings"][index]["field_path"] in unresolved
+                else "The registered paragraph supports this field in its declared role."
+            ),
+            "evidence_refs": [],
+        }
+        for index, item in enumerate(objects)
+    ]
+    return wire
+
+
 def _catalog_for(run_input, context, *, entries=100, byte_limit=100_000, paragraphs=100):
     return build_host_evidence_catalog(
         run_input.run_id,
@@ -275,6 +314,28 @@ def _run_v09(run_input, context, producer, verdict, *, discovery=None):
         max_catalog_bytes=32_768,
         max_catalog_paragraphs=128,
         host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+    )
+    return result, calls
+
+
+def _run_v0_10(run_input, context, producer, verdict, *, discovery=None):
+    calls = discovery.calls if discovery is not None else []
+    result = runtime_module._run_host_grounder_same_run_evidence_catalog_v0_10(
+        run_input,
+        context,
+        discovery_client=discovery or _FakeClient("discovery", _canonical(producer), calls),
+        semantic_client=_FakeClient("semantic", _canonical(verdict), calls),
+        audit_holder=HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        ),
+        max_json_bytes=100_000,
+        max_source_body_bytes=20_000,
+        max_catalog_entries=64,
+        max_catalog_bytes=32_768,
+        max_catalog_paragraphs=128,
+        host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+        default_recipe_enabled=True,
     )
     return result, calls
 
@@ -1314,6 +1375,24 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             self.assertIn(required, _DISCOVERY_SYSTEM_PROMPT_V0_9)
         self.assertNotIn("FORMAT_ONLY_INTERPRETATION_ID_DO_NOT_COPY", _DISCOVERY_SYSTEM_PROMPT_V0_8)
 
+    def test_v010_temporal_prompts_distinguish_impact_window_from_milestone(self):
+        producer = runtime_module._DISCOVERY_SYSTEM_PROMPT_V0_10
+        verifier = runtime_module._SEMANTIC_SYSTEM_PROMPT_V0_10
+        self.assertIn(
+            "Prompt version: host-grounder-discovery-prompt-v0.10.", producer
+        )
+        self.assertIn(
+            "Prompt version: host-grounder-semantic-verifier-prompt-v0.10.", verifier
+        )
+        self.assertIn("PDUFA target action date", producer)
+        self.assertIn("set the whole expected_window to null", producer)
+        self.assertIn("automatically move a milestone into reassessment", producer)
+        self.assertIn("Independently assess the whole hypothesis", verifier)
+        self.assertIn("mark the affected expected_window binding unresolved", verifier)
+        self.assertIn("Do not migrate or copy the milestone into reassessment", verifier)
+        self.assertNotIn("PDUFA target action date", _DISCOVERY_SYSTEM_PROMPT_V0_9)
+        self.assertNotIn("PDUFA target action date", runtime_module._SEMANTIC_SYSTEM_PROMPT_V0_9)
+
     def test_semantic_v06_has_literal_version_header_and_format_only_map_rule(self):
         self.assertEqual(
             hashlib.sha256(SEMANTIC_SYSTEM_PROMPT_V0_6.encode("utf-8")).hexdigest(),
@@ -1447,6 +1526,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             "host-grounder-discovery-prompt-v0.7",
             "host-grounder-discovery-prompt-v0.8",
             "host-grounder-discovery-prompt-v0.9",
+            "host-grounder-discovery-prompt-v0.10",
         ):
             with self.subTest(version=version):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1517,6 +1597,22 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             v08_holder._semantic_prompt_version,
             "host-grounder-semantic-verifier-prompt-v0.8",
         )
+        v010_holder = HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        )
+        v010_holder._begin(
+            run_input.run_id,
+            run_input.canonical_input_hash,
+            catalog.canonical_utf8,
+            catalog.catalog_sha256,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.10",
+            semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.10",
+        )
+        self.assertEqual(
+            v010_holder._semantic_prompt_version,
+            "host-grounder-semantic-verifier-prompt-v0.10",
+        )
         wrong_pair_holder = HostEvidenceCatalogAuditHolder(
             run_id=run_input.run_id,
             canonical_input_hash=run_input.canonical_input_hash,
@@ -1533,7 +1629,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         self.assertFalse(wrong_pair_holder.finalized)
 
         for invalid in (
-            "host-grounder-discovery-prompt-v0.10", "", True, 1, [], {}, object()
+            "host-grounder-discovery-prompt-v0.11", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1551,7 +1647,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertFalse(holder.finalized)
 
         for invalid in (
-            "host-grounder-semantic-verifier-prompt-v0.9", "", True, 1, [], {}, object()
+            "host-grounder-semantic-verifier-prompt-v0.11", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_semantic_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1862,6 +1958,209 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         assessment = assess_event_intelligence_submission(submission)
         self.assertIs(assessment.status, EventIntelligenceAcceptanceStatus.ACCEPTED)
         self.assertEqual(assessment.issues, ())
+
+    def test_v010_rejects_milestone_as_impact_end_and_preserves_legal_temporal_paths(self):
+        def run_case(
+            body, fact_text, interpretation_text, *, expected_window=None,
+            reassessment=None, unresolved_field_paths=(),
+        ):
+            run_input, context = _fixture(body)
+            context = replace(
+                context,
+                event_date_range=MethodologizedDateRange(
+                    datetime.date(2026, 5, 28),
+                    datetime.date(2026, 5, 28),
+                    "Source-reported disclosure date: 2026-05-28.",
+                ),
+            )
+            catalog = _catalog_for(run_input, context)
+            producer = _wire_envelope(run_input, catalog)
+            evidence_id = catalog.entries[0].evidence_id
+            producer["claims"][0].update(
+                {"text": fact_text, "event_date": "2026-05-28"}
+            )
+            producer["claims"].append({
+                "claim_id": "claim-2",
+                "kind": "interpretation",
+                "evidence_id": evidence_id,
+                "text": interpretation_text,
+                "entity_refs": [],
+                "event_date": None,
+                "published_at": None,
+                "dependency_claim_ids": ["claim-1"],
+                "uncertainty": ["The source does not quantify the distribution change."],
+                "falsification_conditions": ["A later source contradicts the impact path."],
+            })
+            hypothesis = producer["hypotheses"][0]
+            hypothesis.update({
+                "impact_path": "The event may alter ACME's distribution of outcomes.",
+                "distribution_mode": "bidirectional_expansion",
+                "distribution_hypothesis": (
+                    "The event may widen the distribution of ACME outcomes."
+                ),
+                "expected_window": expected_window,
+                "reassessment": reassessment,
+                "supporting_claim_ids": ["claim-2"],
+                "contradiction_review": "No contrary statement was supplied in this fixture.",
+                "uncertainties": ["The magnitude of the distribution change is unknown."],
+                "falsification_conditions": [
+                    "A later source shows that the impact path did not occur."
+                ],
+            })
+            producer["coverage"][0]["claim_ids"] = ["claim-1", "claim-2"]
+            binding_paths = [
+                ("/claims/0/event_date", "date"),
+                ("/hypotheses/0/underlying_symbol", "entity"),
+                ("/hypotheses/0/impact_path", "hypothesis"),
+                ("/hypotheses/0/distribution_mode", "hypothesis"),
+                ("/hypotheses/0/distribution_hypothesis", "hypothesis"),
+            ]
+            if expected_window is not None:
+                binding_paths.extend((
+                    ("/hypotheses/0/expected_window/start_date", "date"),
+                    ("/hypotheses/0/expected_window/end_date", "date"),
+                ))
+            if reassessment is not None:
+                binding_paths.append((
+                    "/hypotheses/0/reassessment/reassessment_by", "date"
+                ))
+            producer["field_bindings"] = [
+                {
+                    "field_path": field_path,
+                    "evidence_id": evidence_id,
+                    "semantic_role": semantic_role,
+                    "status": "supported",
+                }
+                for field_path, semantic_role in binding_paths
+            ]
+            envelope, envelope_bytes = parse_grounder_output_v0_3(
+                _canonical(producer),
+                100_000,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                source_bodies=context.source_bodies,
+                catalog=catalog,
+            )
+            verdict = _wire_verdict_v0_4(
+                run_input,
+                context,
+                catalog,
+                envelope,
+                envelope_bytes,
+                producer,
+                unresolved_field_paths=unresolved_field_paths,
+            )
+            return _run_v0_10(run_input, context, producer, verdict), producer, envelope
+
+        pdufa_methodology = (
+            "Start is the source-reported May 28, 2026 disclosure date; end is the "
+            "source-reported November 30, 2026 PDUFA target action date, treated "
+            "as a review target rather than approval."
+        )
+        rejected, rejected_producer, rejected_envelope = run_case(
+            "ACME disclosed the event on May 28, 2026 and expects a distribution "
+            "change. The FDA PDUFA target action date is November 30, 2026, a "
+            "review target rather than an approval.",
+            "ACME disclosed the event on May 28, 2026 and expects a distribution change; "
+            "the FDA PDUFA target action date is November 30, 2026.",
+            "The event may affect ACME's distribution of outcomes.",
+            expected_window={
+                "start_date": "2026-05-28",
+                "end_date": "2026-11-30",
+                "methodology": pdufa_methodology,
+            },
+            unresolved_field_paths=(
+                "/hypotheses/0/expected_window/start_date",
+                "/hypotheses/0/expected_window/end_date",
+            ),
+        )
+        rejected_result, rejected_calls = rejected
+        rejected_receipt = rejected_result.build_result.semantic_validation.receipt
+        end_index = next(
+            index for index, item in enumerate(rejected_envelope["field_bindings"])
+            if item["field_path"] == "/hypotheses/0/expected_window/end_date"
+        )
+        self.assertNotIn(end_index, rejected_receipt["verified_binding_indices"])
+        self.assertEqual(rejected_receipt["verified_hypothesis_ids"], ())
+        self.assertIsNone(rejected_producer["hypotheses"][0]["reassessment"])
+        self.assertIsNone(rejected_result.build_result.submission)
+        self.assertTrue(any(
+            item.code == "HYPOTHESIS_REJECTED_BY_VALIDATOR"
+            for item in rejected_result.build_result.diagnostics
+        ))
+        self.assertTrue(any(
+            item.code == "NO_PROJECTABLE_HYPOTHESIS"
+            for item in rejected_result.build_result.diagnostics
+        ))
+        self.assertEqual([call[0] for call in rejected_calls], ["discovery", "semantic"])
+        rejected_audit = json.loads(rejected_result.audit.sidecar_utf8)
+        self.assertEqual(
+            rejected_audit["producer_prompt_version"],
+            "host-grounder-discovery-prompt-v0.10",
+        )
+        self.assertEqual(
+            rejected_audit["validator_version"],
+            "host-grounder-semantic-verifier-prompt-v0.10",
+        )
+        self.assertEqual(rejected_audit["verifier_wire_version"], "semantic-verdict-v0.4")
+
+        supported_window, _producer, _envelope = run_case(
+            "ACME disclosed the event on May 28, 2026 and explicitly expects its "
+            "distribution impact to continue through November 30, 2026.",
+            "ACME expects its distribution impact to continue from May 28, 2026 "
+            "through November 30, 2026.",
+            "The event may widen ACME's distribution of outcomes during the stated impact interval.",
+            expected_window={
+                "start_date": "2026-05-28",
+                "end_date": "2026-11-30",
+                "methodology": (
+                    "The source explicitly supports distribution impact from "
+                    "May 28 through November 30, 2026."
+                ),
+            },
+        )
+        window_result, _window_calls = supported_window
+        window_submission = window_result.build_result.submission
+        self.assertIsNotNone(window_submission)
+        self.assertEqual(len(window_submission.hypotheses), 1)
+        self.assertEqual(
+            window_submission.hypotheses[0].expected_window.end_date,
+            datetime.date(2026, 11, 30),
+        )
+        self.assertIsNone(window_submission.hypotheses[0].reassessment)
+        self.assertIs(
+            assess_event_intelligence_submission(window_submission).status,
+            EventIntelligenceAcceptanceStatus.ACCEPTED,
+        )
+
+        supported_reassessment, _producer, _envelope = run_case(
+            "ACME disclosed an event on May 28, 2026. The source says it will "
+            "reassess this distribution hypothesis by 2026-09-30.",
+            "ACME disclosed an event on May 28, 2026 and will reassess the "
+            "distribution hypothesis by 2026-09-30.",
+            "The event may widen ACME's distribution of outcomes, subject to reassessment.",
+            reassessment={
+                "reassessment_by": "2026-09-30",
+                "methodology": "source-backed-milestone:claim-1:2026-09-30",
+                "basis_kind": "source_backed_milestone",
+                "basis_claim_ids": ["claim-1"],
+            },
+        )
+        reassessment_result, _reassessment_calls = supported_reassessment
+        reassessment_submission = reassessment_result.build_result.submission
+        self.assertIsNotNone(reassessment_submission)
+        self.assertEqual(len(reassessment_submission.hypotheses), 1)
+        self.assertIsNone(reassessment_submission.hypotheses[0].expected_window)
+        self.assertEqual(
+            reassessment_submission.hypotheses[0].reassessment.reassessment_by,
+            datetime.date(2026, 9, 30),
+        )
+        self.assertIs(
+            assess_event_intelligence_submission(reassessment_submission).status,
+            EventIntelligenceAcceptanceStatus.ACCEPTED,
+        )
 
     def test_v09_missing_required_binding_still_blocks_submission(self):
         run_input, context = _fixture()

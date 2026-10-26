@@ -479,6 +479,7 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
         _BINDING_OMISSION_FAILURE_MARKERS,
         _BINDING_OMISSION_FAILURE_ROUTE,
         _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+        _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
         _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     )
     from .host_grounder_runtime import HostGrounderRuntimeError
@@ -515,6 +516,7 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
         if semantic_transport_route not in (
             _BINDING_OMISSION_FAILURE_ROUTE,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
         ):
             return None
         outcome.update({
@@ -533,6 +535,7 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
             or route not in (
                 _BINDING_OMISSION_FAILURE_ROUTE,
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
             )
             or (
                 selected_route is not None

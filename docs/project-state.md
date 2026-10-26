@@ -1,6 +1,18 @@
 # Project State
 
-## v0.6 deployed; newly approved single acceptance unspent — 2026-10-27 Beijing
+## v0.10 temporal prompt strengthening — 2026-10-27
+Prompts reinforce frozen temporal semantics: impact windows are not milestones. Model assessment is fallible, not proof; EI rules and schemas are unchanged.
+Offline PDUFA-as-impact-end rejection and legal impact-window/reassessment fixtures pass. No new Event/API request; run `7a7480b4-f562-4f14-ae95-c3a673cda9de` remains EI incomplete; archives unchanged.
+Normal Host now runs the updated code: PID 85140 / exec session 53304; root GET 200; UTC date 2026-10-26; DB 40/0 active/3 Direct/20 batch.
+Validation: evidence catalog 57/57, HostStore 61/61 plus new route case 1/1, focused route/rejection/compat 9/9; Main's localhost-permitted HostServer rerun 58/58 PASS. Compileall, diff check and Banach's independent review passed. No full-suite result claimed for this unit. The single real-run authorization is spent; this correction has no new live acceptance. See [checkpoint](current-checkpoint.md).
+
+## COGT v0.6 run — 2026-10-26 UTC / 2026-10-27 Beijing
+
+Run `7a7480b4-f562-4f14-ae95-c3a673cda9de`: Builder completed; EI incomplete (`incomplete_event_date_range`, `missing_underlying_key`); no Futu/Core.
+Anchor `c1` supported/selected; `event_date=null` blocks SEC-v4 date gate (parser ID `NOT_CAPTURED`); `semantic_rejections=[]`, so the hypothesis was not rejected.
+COGT plus one verified symbol binding, but Host key absent; listing-source/format gate UNKNOWN. Archived `expected_window.methodology` used disclosure/PDUFA target dates; that alone does not establish impact boundaries, though EI reported no temporal issue. Only the per-item verifier rationale was not retained. See [checkpoint](current-checkpoint.md).
+
+## Historical pre-run deployment snapshot — 2026-10-27 Beijing
 
 Code `4fe141e` deployed locally; Host PID 76976/session 19738, root HTTP 200,
 explicit UTC evaluation date 2026-10-26. SQLite 39 runs/0 active/3 Direct retained

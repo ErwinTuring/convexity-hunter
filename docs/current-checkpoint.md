@@ -2,7 +2,67 @@
 
 Repository: `ErwinTuring/convexity-hunter`
 
-## v0.6 deployed; one newly authorized acceptance remains unspent — 2026-10-27 Beijing
+## Temporal-role prompt strengthening — 2026-10-27
+
+Discovery/verifier prompt v0.10 reinforces frozen EI Temporal Semantics v0.2:
+`expected_window` is an expected impact interval, not a regulatory workflow
+target. Unsupported boundaries remain null; milestones are not auto-migrated,
+and the verifier assesses the hypothesis plus both date bindings. This is
+fallible model guidance/assessment, not deterministic proof or a changed EI
+acceptance rule; DTO, stage schema, and reassessment requirements are unchanged.
+Offline fixtures reject the May 28 disclosure / November 30 PDUFA target as an
+impact end while preserving a supported impact interval and a valid reassessment.
+The normal Host is now deployed from the original launcher: PID 85140 / exec
+session 53304, root localhost GET returned 200. Evaluation date is 2026-10-26
+UTC. SQLite remains 40 runs / 0 active / 3 Direct / 20 batch archives. No
+COGT/Event POST or source/model/API request was made; the existing run remains
+EI-incomplete and no historical archive was recomputed or relabeled.
+Validation: evidence-catalog tests 57/57; HostStore tests 61/61 plus the new
+v0.10 failure-route case 1/1; final focused route/rejection/compat set 9/9;
+compileall and `git diff --check` passed. A broader HostStore+HostServer run
+encountered 30 sandbox loopback-bind PermissionErrors and 5 stale-version test
+expectations. The affected route cases passed in the focused rerun. Main then
+reran the entire HostServer module with localhost-listening permission:
+58/58 PASS (1.435s), using local mocks only. Banach's targeted independent review
+passed. No full-suite PASS is claimed for this work unit.
+The single authorized real acceptance above is spent; this prompt correction
+has not had a new live acceptance. Do not rerun the consumed guard or silently
+authorize another source/model batch. Remaining date/listing evidence gaps and
+the temporal-role counterexample are separate from the verified anchor change.
+
+## COGT v0.6 acceptance — 2026-10-26 UTC / 2026-10-27 Beijing
+
+Run `7a7480b4-f562-4f14-ae95-c3a673cda9de` finished `BLOCKED`:
+Builder `COMPLETED`, semantic receipt `RECEIPT_VALIDATED`, submission present,
+EI `ASSESSED/incomplete` with `incomplete_event_date_range` and
+`missing_underlying_key`; no Futu/Core. Discovery 1 (64,860 sent / 13,732
+received), Semantic 1 (102,518 / 12,374); 5 source bodies, 8 claims, 1
+hypothesis, 29 bindings. Semantic body was below the 262,144-byte cap. DB:
+40 runs / 0 active / 3 Direct archives / 20 batch archives. No rerun.
+
+Anchor `c1` was model- and validator-supported and selected as the description
+binding. Its retained kind is `observed_fact`, but `event_date` is null and
+prepared `event_date_range` is absent. The existing v0.4 derivation requires an
+authenticated SEC primary-HTML v4 occurrence plus an exact, verified date match;
+the null claim date fails that condition. `expected_window` is present
+(2026-05-28 through 2026-11-30), and EI reported no temporal issue. Archived
+methodology explicitly used the disclosure and PDUFA target dates; that does
+not establish impact boundaries and prompted the v0.10 strengthening above.
+Original per-item verifier rationale was not retained. Source parser IDs were
+`NOT_CAPTURED`, so other SEC eligibility details are UNKNOWN.
+
+`COGT` is nonempty and its underlying-symbol field binding count is 1, verified
+count 1, but no matching Host underlying binding was prepared; Builder recorded
+`UNDERLYING_UNRESOLVED`. Main's closed projection has `semantic_rejections=[]`,
+so the hypothesis was not rejected. The code requires qualifying consistent
+listing evidence (SEC/Nasdaq/Yahoo, or the existing SEC composite route), but
+capture lacks per-gate results and parser IDs; the exact listing-source/format
+gate is UNKNOWN. No deterministic field drop is established. Reassessment
+date/basis are absent, but neither is an EI issue in this assessment. Tavily
+actual requests/credits and model-token usage were not retained. Private
+artifacts remain under `/private/tmp/ch-cogt-v06-prep.lQHOZW/`.
+
+## Historical pre-run deployment snapshot — 2026-10-27 Beijing
 
 Code baseline: `4fe141e` (verify Git freshly on resume). User explicitly approved
 one new normal COGT Event acceptance: Tavily <=2 requests/3 credits, each model

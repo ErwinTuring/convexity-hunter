@@ -342,7 +342,10 @@ def make_grounder_no_submission_result(
         "source_body_hashes": source_hashes,
         "verifier_wire_version": (
             "semantic-verdict-v0.4"
-            if validator_version == "host-grounder-semantic-verifier-prompt-v0.9"
+            if validator_version in (
+                "host-grounder-semantic-verifier-prompt-v0.9",
+                "host-grounder-semantic-verifier-prompt-v0.10",
+            )
             else "semantic-verdict-v0.3"
         ),
         "validator_version": validator_version,
@@ -617,6 +620,35 @@ def make_v1_database(path):
 
 
 class HostStoreTests(unittest.TestCase):
+    def test_grounder_v010_prompt_pair_uses_existing_bound_object_wire(self):
+        from convexity_hunter.host_store import _grounder_verifier_route_is_valid
+
+        self.assertTrue(_grounder_verifier_route_is_valid(
+            "host-grounder-discovery-prompt-v0.10",
+            "host-grounder-semantic-verifier-prompt-v0.10",
+            "semantic-verdict-v0.4",
+        ))
+        self.assertTrue(_grounder_verifier_route_is_valid(
+            "host-grounder-discovery-prompt-v0.9",
+            "host-grounder-semantic-verifier-prompt-v0.9",
+            "semantic-verdict-v0.4",
+        ))
+        self.assertFalse(_grounder_verifier_route_is_valid(
+            "host-grounder-discovery-prompt-v0.9",
+            "host-grounder-semantic-verifier-prompt-v0.10",
+            "semantic-verdict-v0.4",
+        ))
+        self.assertFalse(_grounder_verifier_route_is_valid(
+            "host-grounder-discovery-prompt-v0.10",
+            "host-grounder-semantic-verifier-prompt-v0.9",
+            "semantic-verdict-v0.4",
+        ))
+        self.assertFalse(_grounder_verifier_route_is_valid(
+            "host-grounder-discovery-prompt-v0.10",
+            "host-grounder-semantic-verifier-prompt-v0.10",
+            "semantic-verdict-v0.3",
+        ))
+
     def setUp(self):
         canonical_temp_root = pathlib.Path(tempfile.gettempdir()).resolve()
         self.temporary = tempfile.TemporaryDirectory(dir=str(canonical_temp_root))
@@ -862,6 +894,43 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(submission_outcome["semantic_rejections"], [])
         self.assertNotIn("submission", submission_outcome)
 
+    def test_v010_default_event_anchor_and_rejection_projection_use_exact_new_pair(self):
+        from convexity_hunter.host_store import _validate_grounder_stage_outcome
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result = stamp_bound_object_default_route(
+            make_grounder_no_submission_result(
+                run_id,
+                producer_prompt_version="host-grounder-discovery-prompt-v0.10",
+                validator_version="host-grounder-semantic-verifier-prompt-v0.10",
+                normal_event_route=True,
+            )
+        )
+        self.store.save_grounder_stage_result(run_id, stage_id, result)
+        outcome = self.store.get_run(run_id)["events"][-1]["outcome"]
+        self.assertEqual(outcome["schema_version"], "host-grounder-stage-outcome-v0.6")
+        self.assertEqual(
+            outcome["event_fact_anchor"]["subquestion_id"], "event_fact_anchor_v0_2"
+        )
+        self.assertEqual(outcome["semantic_rejections"], [])
+        self.assertEqual(
+            outcome["provenance"]["producer_prompt_version"],
+            "host-grounder-discovery-prompt-v0.10",
+        )
+        self.assertEqual(
+            outcome["provenance"]["validator_version"],
+            "host-grounder-semantic-verifier-prompt-v0.10",
+        )
+        _validate_grounder_stage_outcome(outcome)
+
+        cross_mixed = json.loads(json.dumps(outcome))
+        cross_mixed["provenance"]["validator_version"] = (
+            "host-grounder-semantic-verifier-prompt-v0.9"
+        )
+        with self.assertRaises(ValueError):
+            _validate_grounder_stage_outcome(cross_mixed)
+
     def test_custom_bound_object_pair_roundtrips_legacy_stage_without_anchor(self):
         from convexity_hunter.host_store import _validate_grounder_stage_outcome
 
@@ -995,6 +1064,40 @@ class HostStoreTests(unittest.TestCase):
             restored["schema_version"], "host-grounder-producer-failure-audit-v0.3"
         )
         self.assertEqual(restored["semantic_transport"], _semantic_transport_audit())
+
+    def test_v010_semantic_transport_failure_audit_reopens_exact_prompt_pair(self):
+        from convexity_hunter.host_grounder_evidence_catalog import (
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+        )
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+        from convexity_hunter.host_server import _grounder_producer_failure_audit
+        from convexity_hunter.host_store import _validate_grounder_producer_failure_audit
+
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        producer_result, _omitted = make_grounder_binding_omission_result(run_id)
+        error = HostGrounderRuntimeError(
+            "SEMANTIC_CALL_FAILED",
+            producer_attempts=producer_result.audit.producer_attempts,
+            semantic_transport=_semantic_transport_audit(),
+        )
+        error._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE_V0_11
+        error._semantic_transport_route = _BINDING_OMISSION_FAILURE_ROUTE_V0_11
+        failure = _grounder_producer_failure_audit(error, "FAILED")
+        self.assertEqual(
+            (failure["producer_prompt_version"], failure["verifier_prompt_version"]),
+            (
+                "host-grounder-discovery-prompt-v0.10",
+                "host-grounder-semantic-verifier-prompt-v0.10",
+            ),
+        )
+        self.assertEqual(_validate_grounder_producer_failure_audit(failure), failure)
+        self.store.finish_stage(run_id, stage_id, "FAILED", failure, ("SEMANTIC_CALL_FAILED",))
+        self.store.finish_run(run_id, "FAILED", ("SEMANTIC_CALL_FAILED",))
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        self.assertEqual(reopened.get_run(run_id)["events"][-1]["outcome"], failure)
 
     def test_private_permissions_and_schema_identity(self):
         self.assertEqual(stat.S_IMODE(self.root.stat().st_mode), 0o700)
@@ -1447,12 +1550,12 @@ class HostStoreTests(unittest.TestCase):
         unsupported = dict(outcome)
         unsupported["provenance"] = dict(outcome["provenance"])
         unsupported["provenance"]["producer_prompt_version"] = (
-            "host-grounder-discovery-prompt-v0.10"
+            "host-grounder-discovery-prompt-v0.11"
         )
         with self.assertRaisesRegex(ValueError, "producer prompt version is not registered"):
             _validate_grounder_stage_outcome(unsupported)
 
-        sidecar["producer_prompt_version"] = "host-grounder-discovery-prompt-v0.10"
+        sidecar["producer_prompt_version"] = "host-grounder-discovery-prompt-v0.11"
         sidecar_wire = json.dumps(
             sidecar, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")

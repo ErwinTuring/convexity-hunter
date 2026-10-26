@@ -1275,41 +1275,47 @@ class HostServerGrounderProjectionTests(unittest.TestCase):
             host_server_module._grounder_producer_failure_audit(forged, "FAILED")
         )
 
-    def test_v010_omission_diagnostic_requires_exact_new_pair(self):
+    def test_v011_omission_diagnostic_requires_exact_new_pair(self):
         from convexity_hunter.host_grounder_evidence_catalog import (
             _BINDING_OMISSION_FAILURE_ROUTE,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
         )
 
         error, _calls = _normal_v09_omission_failure("delta", bound_object=True)
-        self.assertEqual(error._producer_failure_route, _BINDING_OMISSION_FAILURE_ROUTE_V0_10)
+        self.assertEqual(error._producer_failure_route, _BINDING_OMISSION_FAILURE_ROUTE_V0_11)
         self.assertEqual(
             host_server_module._grounder_producer_failure_audit(error, "FAILED")[
                 "verifier_prompt_version"
             ],
-            "host-grounder-semantic-verifier-prompt-v0.9",
+            "host-grounder-semantic-verifier-prompt-v0.10",
         )
         error._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE
         self.assertIsNone(
             host_server_module._grounder_producer_failure_audit(error, "FAILED")
         )
         error._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE_V0_10
+        self.assertIsNone(
+            host_server_module._grounder_producer_failure_audit(error, "FAILED")
+        )
+        error._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE_V0_11
         self.assertEqual(
             host_server_module._grounder_producer_failure_audit(error, "FAILED")[
                 "producer_prompt_version"
             ],
-            "host-grounder-discovery-prompt-v0.9",
+            "host-grounder-discovery-prompt-v0.10",
         )
 
     def test_failed_semantic_transport_audit_preserves_selected_verifier_route(self):
         from convexity_hunter.host_grounder_evidence_catalog import (
             _BINDING_OMISSION_FAILURE_ROUTE,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
         )
 
         for bound_object, expected_route in (
             (False, _BINDING_OMISSION_FAILURE_ROUTE),
-            (True, _BINDING_OMISSION_FAILURE_ROUTE_V0_10),
+            (True, _BINDING_OMISSION_FAILURE_ROUTE_V0_11),
         ):
             with self.subTest(bound_object=bound_object):
                 error, calls = _normal_v09_omission_failure(
@@ -1338,10 +1344,7 @@ class HostServerGrounderProjectionTests(unittest.TestCase):
                 self.assertEqual(audit["producer_prompt_version"], expected_route[0])
                 self.assertEqual(audit["verifier_prompt_version"], expected_route[1])
 
-                wrong_route = (
-                    _BINDING_OMISSION_FAILURE_ROUTE
-                    if bound_object else _BINDING_OMISSION_FAILURE_ROUTE_V0_10
-                )
+                wrong_route = _BINDING_OMISSION_FAILURE_ROUTE_V0_10
                 error._semantic_transport_route = wrong_route
                 self.assertIsNone(
                     host_server_module._grounder_producer_failure_audit(
@@ -1924,8 +1927,8 @@ class HostServerBatchTests(unittest.TestCase):
             create_event_grounder,
         )
         from convexity_hunter.host_grounder_runtime import (
-            _DISCOVERY_SYSTEM_PROMPT_V0_9,
-            _SEMANTIC_SYSTEM_PROMPT_V0_9,
+            _DISCOVERY_SYSTEM_PROMPT_V0_10,
+            _SEMANTIC_SYSTEM_PROMPT_V0_10,
         )
         from convexity_hunter.host_store import HostStore
         from tests.test_host_event import (
@@ -2023,13 +2026,13 @@ class HostServerBatchTests(unittest.TestCase):
                         json.loads(runtime_result.audit.sidecar_utf8.decode("utf-8"))[
                             "producer_prompt_version"
                         ],
-                        "host-grounder-discovery-prompt-v0.9",
+                        "host-grounder-discovery-prompt-v0.10",
                     )
                     self.assertEqual(
                         json.loads(runtime_result.audit.sidecar_utf8.decode("utf-8"))[
                             "validator_version"
                         ],
-                        "host-grounder-semantic-verifier-prompt-v0.9",
+                        "host-grounder-semantic-verifier-prompt-v0.10",
                     )
                     discovery_request = next(
                         call for call in model_transport.calls
@@ -2037,7 +2040,7 @@ class HostServerBatchTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         discovery_request["messages"][0]["content"],
-                        _DISCOVERY_SYSTEM_PROMPT_V0_9,
+                        _DISCOVERY_SYSTEM_PROMPT_V0_10,
                     )
                     semantic_request = next(
                         call for call in model_transport.calls
@@ -2045,7 +2048,7 @@ class HostServerBatchTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         semantic_request["messages"][0]["content"],
-                        _SEMANTIC_SYSTEM_PROMPT_V0_9,
+                        _SEMANTIC_SYSTEM_PROMPT_V0_10,
                     )
                     self.assertEqual(len(model_transport.calls), 2)
                     if has_submission:
@@ -2062,11 +2065,11 @@ class HostServerBatchTests(unittest.TestCase):
                     self.assertEqual(run["events"][1]["status"], "COMPLETED")
                     self.assertEqual(
                         outcome["provenance"]["producer_prompt_version"],
-                        "host-grounder-discovery-prompt-v0.9",
+                        "host-grounder-discovery-prompt-v0.10",
                     )
                     self.assertEqual(
                         outcome["provenance"]["validator_version"],
-                        "host-grounder-semantic-verifier-prompt-v0.9",
+                        "host-grounder-semantic-verifier-prompt-v0.10",
                     )
                     self.assertEqual(
                         outcome["schema_version"],
@@ -2119,13 +2122,13 @@ class HostServerBatchTests(unittest.TestCase):
                             recovered_run["events"][1]["outcome"]["provenance"][
                                 "producer_prompt_version"
                             ],
-                            "host-grounder-discovery-prompt-v0.9",
+                            "host-grounder-discovery-prompt-v0.10",
                         )
                         self.assertEqual(
                             recovered_run["events"][1]["outcome"]["provenance"][
                                 "validator_version"
                             ],
-                            "host-grounder-semantic-verifier-prompt-v0.9",
+                            "host-grounder-semantic-verifier-prompt-v0.10",
                         )
                     finally:
                         recovered.close()

@@ -223,15 +223,19 @@ _GROUNDER_PRODUCER_PROMPT_VERSIONS = frozenset((
     "host-grounder-discovery-prompt-v0.7",
     "host-grounder-discovery-prompt-v0.8",
     "host-grounder-discovery-prompt-v0.9",
+    "host-grounder-discovery-prompt-v0.10",
 ))
 _GROUNDER_VERIFIER_PROMPT_VERSIONS = frozenset((
     "host-grounder-semantic-verifier-prompt-v0.7",
     "host-grounder-semantic-verifier-prompt-v0.8",
     "host-grounder-semantic-verifier-prompt-v0.9",
+    "host-grounder-semantic-verifier-prompt-v0.10",
 ))
 _GROUNDER_VERIFIER_PROMPT_V0_8 = "host-grounder-semantic-verifier-prompt-v0.8"
 _GROUNDER_VERIFIER_PROMPT_V0_9 = "host-grounder-semantic-verifier-prompt-v0.9"
 _GROUNDER_PRODUCER_PROMPT_V0_9 = "host-grounder-discovery-prompt-v0.9"
+_GROUNDER_VERIFIER_PROMPT_V0_10 = "host-grounder-semantic-verifier-prompt-v0.10"
+_GROUNDER_PRODUCER_PROMPT_V0_10 = "host-grounder-discovery-prompt-v0.10"
 _GROUNDER_VERIFIER_WIRE_V0_3 = "semantic-verdict-v0.3"
 _GROUNDER_VERIFIER_WIRE_V0_4 = "semantic-verdict-v0.4"
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
@@ -247,12 +251,34 @@ def _grounder_verifier_route_is_valid(
             producer_prompt_version == _GROUNDER_PRODUCER_PROMPT_V0_9
             and verifier_wire_version == _GROUNDER_VERIFIER_WIRE_V0_4
         )
+    if verifier_prompt_version == _GROUNDER_VERIFIER_PROMPT_V0_10:
+        return (
+            producer_prompt_version == _GROUNDER_PRODUCER_PROMPT_V0_10
+            and verifier_wire_version == _GROUNDER_VERIFIER_WIRE_V0_4
+        )
     if verifier_prompt_version == _GROUNDER_VERIFIER_PROMPT_V0_8:
         return (
             producer_prompt_version == _GROUNDER_PRODUCER_PROMPT_V0_9
             and verifier_wire_version == _GROUNDER_VERIFIER_WIRE_V0_3
         )
     return verifier_wire_version == _GROUNDER_VERIFIER_WIRE_V0_3
+
+
+def _grounder_bound_object_route_is_valid(
+    producer_prompt_version: object,
+    verifier_prompt_version: object,
+    verifier_wire_version: object,
+) -> bool:
+    return verifier_wire_version == _GROUNDER_VERIFIER_WIRE_V0_4 and (
+        (
+            producer_prompt_version == _GROUNDER_PRODUCER_PROMPT_V0_9
+            and verifier_prompt_version == _GROUNDER_VERIFIER_PROMPT_V0_9
+        )
+        or (
+            producer_prompt_version == _GROUNDER_PRODUCER_PROMPT_V0_10
+            and verifier_prompt_version == _GROUNDER_VERIFIER_PROMPT_V0_10
+        )
+    )
 _EVENT_MODEL_SNAPSHOT_FIELDS = frozenset((
     "schema_version", "provider", "model", "base_endpoint", "role", "capabilities",
     "timeout_seconds", "request_budget", "max_tokens", "max_input_bytes",
@@ -697,6 +723,7 @@ def _validate_grounder_producer_failure_audit(
         _BINDING_OMISSION_FAILURE_MARKERS,
         _BINDING_OMISSION_FAILURE_ROUTE,
         _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+        _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
         _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     )
 
@@ -728,11 +755,13 @@ def _validate_grounder_producer_failure_audit(
             (
                 _BINDING_OMISSION_FAILURE_ROUTE,
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
             )
             if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2
             else (
                 _BINDING_OMISSION_FAILURE_ROUTE,
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
             )
         )
         if (
@@ -1060,10 +1089,10 @@ def _grounder_stage_outcome(
         or any(len(envelope[name]) > _GROUNDER_STAGE_MAX_ITEMS for name in ("claims", "hypotheses", "coverage", "field_bindings"))
     ):
         raise ValueError("Grounder validated envelope has an invalid closed shape")
-    bound_object_wire_pair = (
-        sidecar["producer_prompt_version"] == _GROUNDER_PRODUCER_PROMPT_V0_9
-        and sidecar["validator_version"] == _GROUNDER_VERIFIER_PROMPT_V0_9
-        and sidecar["verifier_wire_version"] == _GROUNDER_VERIFIER_WIRE_V0_4
+    bound_object_wire_pair = _grounder_bound_object_route_is_valid(
+        sidecar["producer_prompt_version"],
+        sidecar["validator_version"],
+        sidecar["verifier_wire_version"],
     )
     if semantic_rejection_projection is not None and not bound_object_wire_pair:
         raise ValueError("Grounder rejection projection is outside its bound-object wire pair")
@@ -1093,10 +1122,18 @@ def _grounder_stage_outcome(
         anchor_subquestions = ("user_event_input", "event_fact_anchor_v0_2")
         if (
             event_fact_anchor.subquestion_ids != anchor_subquestions
-            or sidecar["producer_prompt_version"] != _GROUNDER_PRODUCER_PROMPT_V0_9
-            or sidecar["validator_version"] not in (
-                _GROUNDER_VERIFIER_PROMPT_V0_8,
-                _GROUNDER_VERIFIER_PROMPT_V0_9,
+            or not (
+                (
+                    sidecar["producer_prompt_version"] == _GROUNDER_PRODUCER_PROMPT_V0_9
+                    and sidecar["validator_version"] in (
+                        _GROUNDER_VERIFIER_PROMPT_V0_8,
+                        _GROUNDER_VERIFIER_PROMPT_V0_9,
+                    )
+                )
+                or (
+                    sidecar["producer_prompt_version"] == _GROUNDER_PRODUCER_PROMPT_V0_10
+                    and sidecar["validator_version"] == _GROUNDER_VERIFIER_PROMPT_V0_10
+                )
             )
             or tuple(
                 row.get("subquestion_id") if type(row) is dict else None
@@ -1624,9 +1661,11 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
             _validate_semantic_rejection_rows(value["semantic_rejections"], value.get("counts"))
             if (
                 type(provenance) is not dict
-                or provenance.get("producer_prompt_version") != _GROUNDER_PRODUCER_PROMPT_V0_9
-                or provenance.get("validator_version") != _GROUNDER_VERIFIER_PROMPT_V0_9
-                or provenance.get("verifier_wire_version") != _GROUNDER_VERIFIER_WIRE_V0_4
+                or not _grounder_bound_object_route_is_valid(
+                    provenance.get("producer_prompt_version"),
+                    provenance.get("validator_version"),
+                    provenance.get("verifier_wire_version"),
+                )
             ):
                 raise ValueError("Grounder v0.6 semantic projection is outside its bound-object route")
         if "semantic_transport" in value:
@@ -1663,9 +1702,11 @@ def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
         provenance = value.get("provenance")
         if (
             type(provenance) is not dict
-            or provenance.get("producer_prompt_version") != _GROUNDER_PRODUCER_PROMPT_V0_9
-            or provenance.get("validator_version") != _GROUNDER_VERIFIER_PROMPT_V0_9
-            or provenance.get("verifier_wire_version") != _GROUNDER_VERIFIER_WIRE_V0_4
+            or not _grounder_bound_object_route_is_valid(
+                provenance.get("producer_prompt_version"),
+                provenance.get("validator_version"),
+                provenance.get("verifier_wire_version"),
+            )
         ):
             raise ValueError("Grounder v0.5 stage route is not the registered bound-object pair")
         if "semantic_transport" in value:
