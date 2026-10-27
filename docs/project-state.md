@@ -5,6 +5,7 @@ The newly authorized single run `39f555ac-8526-4278-bbc6-b33e6153f37b` is BLOCKE
 Input/config/budgets unchanged, no observer/retry/substitution; new guard `/private/tmp/ch-cogt-v06-one-shot.imVk2Q/` is spent. DB 43 runs / 3 Direct / 20 batch archives, no added case/archive. No production changes/tests in this acceptance. Event/World real positive EI→Core closure remains unproven; see [checkpoint](current-checkpoint.md).
 Offline follow-up adds only best-effort private logging of fixed Tavily transport codes and bounded HTTP status; no public contract/result or acceptance change. Four new tests plus one existing local/mock credential test pass (the latter required sandbox loopback access), compile and diff-check pass. Historical lower-level cause remains UNKNOWN; no new external call.
 Independent Godel review PASS. This is operator observability, not a proved network fix or three-entry closure.
+Reviewed `63e8159` deployed via original launcher (PID 13892 / session 64354, UTC date 2026-10-27), root HTTP 200. No post-deployment batch or external call; no case-count change.
 
 ## Offline Producer diagnostic successor — 2026-10-27
 Scope: fixed exception-type classification at the existing internal DTO failure, with versioned failure audit and old shapes preserved. No evidence, EI, retry or budget changes; no live calls. The latest real run's exact schema cause remains UNKNOWN. See [current checkpoint](current-checkpoint.md).
