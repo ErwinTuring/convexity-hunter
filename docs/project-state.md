@@ -1,5 +1,9 @@
 # Project State
 
+## SEC Global Select listing compatibility — 2026-10-27
+Exact user-authorized Common Stock / Global Select + Yahoo NasdaqGS Real Time/USD pairing is implemented as provenance v0.3; v0.2 Capital/NasdaqCM and Yahoo v1 Delayed Quote remain unchanged. Six focused synthetic tests, compileall, and diff check pass; Banach and Main guard/diff reviews PASS. Local COGT official source text was not retained, so no real-format match or prior-run root cause is claimed.
+Archived statements contain no May 28; c1 has FDA acceptance, Priority Review, and Nov 30 PDUFA only. Same-fact occurrence-date rule remains unchanged; no cross-fact date borrowing. Main confirmed World/Event share _run_source_core; no World change. No live request/POST. Reviewed unconsumed guard: /private/tmp/ch-cogt-v06-one-shot.pmOX4E/, DB baseline 40, evaluation date 2026-10-27. Await commit confirmation before Host restart, release marker, or the single POST.
+
 ## v0.10 temporal prompt strengthening — 2026-10-27
 Prompts reinforce frozen temporal semantics: impact windows are not milestones. Model assessment is fallible, not proof; EI rules and schemas are unchanged.
 Offline PDUFA-as-impact-end rejection and legal impact-window/reassessment fixtures pass. No new Event/API request; run `7a7480b4-f562-4f14-ae95-c3a673cda9de` remains EI incomplete; archives unchanged.

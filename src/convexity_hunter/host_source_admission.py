@@ -72,6 +72,9 @@ _SEC_MARKER = "(Exact name of registrant as specified in its charter)"
 _SEC_TITLE = "Title of each class"
 _SEC_TICKER = "Trading Symbol(s)"
 _SEC_EXCHANGE = "Name of each exchange on which registered"
+_SEC_PRIMARY_COMMON_STOCK = re.compile(
+    r"Common Stock(?:, par value \$[0-9]+(?:\.[0-9]+)? per share)?\Z"
+)
 _SEC_ISSUER = re.compile(r"[\x20-\x7e]+\Z")
 _SEC_MARKDOWN_UNSAFE = frozenset("\\`*_{}[]#<>|~")
 _NASDAQ_HEADING = re.compile(
@@ -82,6 +85,10 @@ _YAHOO_QUOTE = "NasdaqGS - Delayed Quote•USD"
 _YAHOO_V2_MARKET_LABEL = re.compile(
     r"Nasdaq(?:GS|GM|CM) - (?:Delayed Quote•?|Nasdaq Real Time Price) [A-Z]{3}\Z"
 )
+_YAHOO_V2_REAL_TIME_LABELS = frozenset((
+    "NasdaqCM - Nasdaq Real Time Price USD",
+    "NasdaqGS - Nasdaq Real Time Price USD",
+))
 _BLOCK_TAGS = frozenset(
     ("article", "blockquote", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "p", "section", "tr")
 )
@@ -1937,7 +1944,7 @@ def _yahoo_html_v2(source: str, target_symbol: str) -> Optional[_ParsedPage]:
         normalized = re.sub(r"[ \t]+", " ", line).strip(" \t")
         if _YAHOO_V2_MARKET_LABEL.fullmatch(normalized):
             categorical_labels.append(normalized)
-        if normalized == "NasdaqCM - Nasdaq Real Time Price USD":
+        if normalized in _YAHOO_V2_REAL_TIME_LABELS:
             labels.append((index, normalized, line, start, end))
     headings = []
     for heading in parser.headings:
@@ -1997,6 +2004,20 @@ def _yahoo_html_v2(source: str, target_symbol: str) -> Optional[_ParsedPage]:
     return _ParsedPage(body, "yahoo-quote-header-v2", anchors, symbol)
 
 
+def _is_global_select_common_stock_projection(parsed_body: str) -> bool:
+    for line in parsed_body.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = tuple(value.strip(" \t") for value in line.strip(" \t|").split("|"))
+        if (
+            len(cells) == 3
+            and _SEC_PRIMARY_COMMON_STOCK.fullmatch(cells[0])
+            and cells[2] == "The Nasdaq Global Select Market"
+        ):
+            return True
+    return False
+
+
 def _line_spans(body: str):
     offset = 0
     for line in body.splitlines(keepends=True):
@@ -2043,9 +2064,19 @@ def _parse_page(
         if family == "sec":
             parsed = _sec_html(body)
             if parsed is not None:
+                if _is_global_select_common_stock_projection(parsed.body):
+                    v4 = _sec_cover_layout_v4(body)
+                    if v4 is not None:
+                        return v4
                 return parsed
             parsed = _sec_cover_layout_v3(body)
-            return parsed if parsed is not None else _sec_cover_layout_v4(body)
+            if parsed is not None:
+                if _is_global_select_common_stock_projection(parsed.body):
+                    v4 = _sec_cover_layout_v4(body)
+                    if v4 is not None:
+                        return v4
+                return parsed
+            return _sec_cover_layout_v4(body)
         if family == "nasdaq":
             return None if target_symbol is None else _nasdaq_html(body, target_symbol)
         if family == "yahoo":

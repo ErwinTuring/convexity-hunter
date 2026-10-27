@@ -988,6 +988,16 @@ _LISTING_SEC_PRIMARY_SHARE_CLASS = re.compile(
     r"Common Stock(?:, par value \$[0-9]+(?:\.[0-9]+)? per share)?\Z"
 )
 _LISTING_SEC_PRIMARY_EXCHANGE = "The Nasdaq Capital Market"
+_LISTING_SEC_PRIMARY_MARKET_PAIRS = (
+    (
+        "The Nasdaq Capital Market",
+        "NasdaqCM - Nasdaq Real Time Price USD",
+    ),
+    (
+        "The Nasdaq Global Select Market",
+        "NasdaqGS - Nasdaq Real Time Price USD",
+    ),
+)
 _LISTING_SEC_REFERENCE_LOCATOR = (
     "https://www.sec.gov/files/company_tickers_exchange.json"
 )
@@ -1386,7 +1396,7 @@ def _parse_sec_primary_cover(
         issuer is None
         or row_symbol != symbol
         or not _LISTING_SEC_PRIMARY_SHARE_CLASS.fullmatch(share_class)
-        or exchange != _LISTING_SEC_PRIMARY_EXCHANGE
+        or exchange not in tuple(pair[0] for pair in _LISTING_SEC_PRIMARY_MARKET_PAIRS)
     ):
         return None
     excerpts = [
@@ -1476,10 +1486,15 @@ def _parse_sec_reference_selected(
     return result
 
 
-def _parse_yahoo_listing_body_v2(source_id: str, source: HostSourceBody, symbol: str):
+def _parse_yahoo_listing_body_v2(
+    source_id: str,
+    source: HostSourceBody,
+    symbol: str,
+    expected_label: str = _LISTING_YAHOO_V2_LABEL,
+):
     lines = _listing_lines(source.body)
     labels = [(index, start, end) for index, (line, start, end) in enumerate(lines)
-              if re.sub(r"[ \t]+", " ", line).strip(" \t") == _LISTING_YAHOO_V2_LABEL]
+              if re.sub(r"[ \t]+", " ", line).strip(" \t") == expected_label]
     headings = []
     for index, (line, start, end) in enumerate(lines):
         match = re.fullmatch(r"# (?P<issuer>.+) \((?P<symbol>[^()]*)\)", line)
@@ -1573,9 +1588,17 @@ def _listing_sec_primary_evidence(
     cover = _parse_sec_primary_cover(
         cover_record.source_id, cover_source, symbol, cik, cover_record
     )
+    expected_yahoo_label = (
+        dict(_LISTING_SEC_PRIMARY_MARKET_PAIRS).get(cover["registered_exchange"])
+        if cover is not None else None
+    )
     yahoo_source = source_by_record[yahoo_record.source_id]
-    yahoo = _parse_yahoo_listing_body_v2(yahoo_record.source_id, yahoo_source, symbol)
-    if cover is None or yahoo is None:
+    if expected_yahoo_label is None:
+        return None
+    yahoo = _parse_yahoo_listing_body_v2(
+        yahoo_record.source_id, yahoo_source, symbol, expected_yahoo_label
+    )
+    if yahoo is None:
         return None
     cover_issuer = _listing_ascii_field(cover["issuer"])
     yahoo_issuer = _listing_ascii_field(yahoo["issuer"])
@@ -1810,7 +1833,12 @@ def _make_listing_source_preparer(
                     continue
                 reference_source, cover_evidence, yahoo_evidence = evidence
                 source_evidence_items = (reference_source, cover_evidence, yahoo_evidence)
-                rule_version = "host-listing-source-composite-v0.2"
+                rule_version = (
+                    "host-listing-source-composite-v0.2"
+                    if cover_evidence["registered_exchange"]
+                    == _LISTING_SEC_PRIMARY_EXCHANGE
+                    else "host-listing-source-composite-v0.3"
+                )
             else:
                 if symbol not in evidence_by_symbol:
                     evidence_by_symbol[symbol] = _listing_evidence_for_symbol(

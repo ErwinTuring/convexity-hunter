@@ -2449,6 +2449,73 @@ class HostEventGrounderTests(unittest.TestCase):
             self.assertTrue(item["excerpts"])
         self.assertEqual(len(calls), 3)
 
+    def test_sec_primary_global_select_pair_is_versioned_and_cross_pairs_reject(self):
+        global_cover = _sec_primary_raw_cover_html().replace(
+            b"The Nasdaq&#13;Capital Market",
+            b"The Nasdaq Global Select Market",
+        )
+        compact_global_cover = (
+            global_cover.replace(b"<th></th>", b"")
+            .replace(b"<td></td>", b"")
+        )
+        yahoo_gs = (
+            "<html><body><div>NasdaqGS - Nasdaq Real Time Price USD</div>"
+            "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
+        )
+        capital_cover = _sec_primary_raw_cover_html()
+        yahoo_cm = (
+            "<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+            "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
+        )
+        cases = (
+            ("global-select-valid", global_cover, yahoo_gs, True),
+            ("global-select-compact-cover-valid", compact_global_cover, yahoo_gs, True),
+            ("global-select-with-capital-yahoo", global_cover, yahoo_cm, False),
+            ("capital-with-global-select-yahoo", capital_cover, yahoo_gs, False),
+        )
+        for run_id, cover, yahoo, expected in cases:
+            with self.subTest(run_id=run_id):
+                snapshot, receipt, context, client, records, _calls, hypothesis_id, _ri = (
+                    _sec_primary_listing_case(
+                        run_id=run_id,
+                        cover_html_override=cover,
+                        yahoo_override=yahoo,
+                    )
+                )
+                preparer = _make_listing_source_preparer(
+                    tuple(record.source_id for record in records),
+                    admission_records=records,
+                    sec_composite=(
+                        client, ("ACME",), records, 1_500_000, 1_500_000,
+                    ),
+                )
+                prepared = preparer(snapshot, receipt, context)
+                pair = (hypothesis_id, "ACME")
+                self.assertEqual(pair in prepared.underlying_bindings, expected)
+                if expected:
+                    self.assertEqual(
+                        records[0].parser_id, "sec-edgar-cover-layout-v4"
+                    )
+                    reference = json.loads(prepared.underlying_bindings[pair][1])
+                    self.assertEqual(
+                        reference["rule_version"],
+                        "host-listing-source-composite-v0.3",
+                    )
+                    self.assertEqual(
+                        reference["sources"][1]["registered_exchange"],
+                        "The Nasdaq Global Select Market",
+                    )
+                    self.assertIn(
+                        "NasdaqGS - Nasdaq Real Time Price USD",
+                        reference["sources"][2]["excerpts"][0]["text"],
+                    )
+                    self.assertEqual(
+                        prepared.underlying_bindings[pair][0],
+                        UnderlyingKey(
+                            "ACME", None, UnderlyingSecurityType.EQUITY, "USD"
+                        ),
+                    )
+
     def test_sec_primary_cover_uses_v4_marker_span_for_wrapped_marker(self):
         raw_cover = _sec_primary_raw_cover_html().replace(
             b"(Exact name of registrant as specified in its charter)",

@@ -541,6 +541,21 @@ class HostSourceAdmissionTests(unittest.TestCase):
         self.assertIsNotNone(reverse)
         self.assertEqual(reverse.parser_id, "yahoo-quote-header-v2")
 
+        global_select_label = "NasdaqGS - Nasdaq Real Time Price USD"
+        global_select = _yahoo_html_v2(
+            "<html><body><div>" + global_select_label + "</div>\n\n"
+            "<h1>" + heading + "</h1></body></html>",
+            "ACME",
+        )
+        self.assertIsNotNone(global_select)
+        self.assertEqual(global_select.parser_id, "yahoo-quote-header-v2")
+        self.assertEqual(global_select.body.splitlines()[0], global_select_label)
+        self.assertIsNone(_yahoo_html_v2(
+            "<html><body><div>NasdaqGM - Nasdaq Real Time Price USD</div>\n\n"
+            "<h1>" + heading + "</h1></body></html>",
+            "ACME",
+        ))
+
     def test_yahoo_v2_rejects_unscoped_or_ambiguous_visible_evidence(self):
         label = "NasdaqCM - Nasdaq Real Time Price USD"
         heading = "ACME HOLDINGS, INC. (ACME)"

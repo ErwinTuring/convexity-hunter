@@ -1,5 +1,36 @@
 # Current Checkpoint
 
+## SEC Global Select closed-format compatibility — 2026-10-27
+
+Implemented the authorized exact pairing Common Stock /
+The Nasdaq Global Select Market with Yahoo
+NasdaqGS - Nasdaq Real Time Price USD as listing provenance v0.3. SEC
+reference-v2, cover-v4, identity/CIK checks, source authentication, and USD
+requirements remain; v0.2 Capital/NasdaqCM and Yahoo v1 Delayed Quote remain
+unchanged. Cross-pairs reject. Six focused synthetic tests pass; independent
+Banach review and Main's guard/diff review PASS. This does not prove the prior COGT run matched the grammar:
+the local official source body/excerpt was not retained.
+
+For that archived run, SQL confirms no statement contains May 28; selected c1
+contains FDA acceptance, Priority Review, and Nov 30 PDUFA only. The existing
+date rule needs a unique occurrence date in the same selected verified fact's
+authenticated SEC text and binding. No cross-fact borrowing or date-rule
+change; a new normal run must use actual sources and may remain incomplete.
+Main's read-only route check confirms World/Event share _run_source_core;
+World was not changed. No external source/model call or POST has occurred in
+this work unit. Reviewed one-shot guard is prepared at
+/private/tmp/ch-cogt-v06-one-shot.pmOX4E/ (no observer, no consumed marker),
+with DB baseline 40 and evaluation date 2026-10-27; input and budgets are
+unchanged. Await Main commit confirmation before restarting the original
+launcher, verifying runtime caps, writing the release marker, or POSTing.
+
+Phase timing (UTC, approximate, from recorded checkpoints): local grounding
+00:51-00:54; implementation began about 00:52:45 and finalized about 00:59;
+focused tests/docs/compile overlapped about 00:54:46-01:00:16; Banach review
+00:59:52-01:05:41. Deployment/acceptance has not started. Main's overall start
+was about 00:45; coding and test durations were not separately instrumented,
+so no 70/30 estimate is claimed.
+
 Repository: `ErwinTuring/convexity-hunter`
 
 ## Temporal-role prompt strengthening — 2026-10-27

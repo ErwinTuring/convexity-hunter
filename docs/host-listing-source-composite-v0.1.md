@@ -90,6 +90,35 @@ Keep the existing ordinary-share v0.1 helper/path unchanged.
   locator, CIK linkage, raw/parsed hashes, original excerpt offsets/hashes,
   SEC-cover class authority and Yahoo denomination basis.
 
+### SEC-primary Global Select / NasdaqGS Real Time compatibility v0.3
+
+This is the user-authorized closed-format addition to the existing three-role
+route, not a new source platform or a relaxation of source authentication:
+SEC issuer reference v2, SEC cover v4, and Yahoo quote-header v2 remain
+required. Accept only Common Stock with the exact SEC venue
+The Nasdaq Global Select Market, paired with the exact visible Yahoo label
+NasdaqGS - Nasdaq Real Time Price USD; the reference row must still match the
+filing CIK, issuer/ticker checks remain unchanged, and denomination must be
+explicit USD. Do not cross-pair this venue with the v0.2 NasdaqCM label.
+
+New Global Select bindings carry
+host-listing-source-composite-v0.3; the existing Capital Market / NasdaqCM
+pair continues to carry v0.2. The Yahoo v1 NasdaqGS - Delayed Quote•USD
+format and its behavior are unchanged. Historical submissions are not
+recomputed or relabeled.
+
+The local COGT artifacts do not retain an official source body or a
+verifiable cover excerpt. Synthetic tests establish parser and pairing behavior
+only; they do not establish that COGT's real source matched this format or that
+this was the cause of a prior unresolved key. No live source/model call was made.
+
+The archived COGT statements contain no May 28 date; selected fact c1 contains
+only FDA acceptance, Priority Review, and the November 30 PDUFA date. The
+existing occurrence-date gate still requires one selected verified fact to
+match its authenticated SEC source text and date binding. No cross-fact date
+borrowing or date-rule change is introduced; the next normal run must use its
+actual retained sources and may remain incomplete.
+
 Required tests: valid three-role case; missing/duplicate/conflicting roles;
 wrong CIK/ticker/class/venue/USD; punctuation mismatch; source hash/anchor and
 receipt tampering; detached reference; unchanged v1 grammar; Host request and
