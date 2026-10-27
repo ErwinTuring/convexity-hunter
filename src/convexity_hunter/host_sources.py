@@ -516,6 +516,45 @@ def _validate_public_url(value: object, *, error_code: str = "UNSAFE_SOURCE_URL"
     return value
 
 
+def _validate_include_domains(value: object) -> Tuple[str, ...]:
+    if type(value) not in (tuple, list) or not 1 <= len(value) <= 20:
+        raise TavilyConfigurationError("INVALID_INCLUDE_DOMAINS")
+    domains = []
+    seen = set()
+    for domain in value:
+        if (
+            type(domain) is not str
+            or not domain
+            or domain != domain.strip()
+            or len(domain) > 253
+        ):
+            raise TavilyConfigurationError("INVALID_INCLUDE_DOMAINS")
+        labels = domain.split(".")
+        if len(labels) < 2 or any(
+            re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
+            is None
+            for label in labels
+        ):
+            raise TavilyConfigurationError("INVALID_INCLUDE_DOMAINS")
+        normalized = domain.casefold()
+        if normalized in seen:
+            raise TavilyConfigurationError("INVALID_INCLUDE_DOMAINS")
+        seen.add(normalized)
+        domains.append(normalized)
+    return tuple(domains)
+
+
+def _search_url_matches_domains(url: str, domains: Tuple[str, ...]) -> bool:
+    hostname = urlsplit(url).hostname
+    if hostname is None:
+        return False
+    normalized = hostname.casefold().rstrip(".")
+    return any(
+        normalized == domain or normalized.endswith("." + domain)
+        for domain in domains
+    )
+
+
 def _url_source_id(url: str) -> str:
     return "url:" + hashlib.sha256(url.encode("utf-8")).hexdigest()
 
@@ -857,11 +896,20 @@ class TavilySourceClient:
                 except Exception:
                     pass
 
-    def search(self, query: str, *, max_results: Optional[int] = None) -> TavilySearchResult:
+    def search(
+        self,
+        query: str,
+        *,
+        max_results: Optional[int] = None,
+        include_domains: Optional[Sequence[str]] = None,
+    ) -> TavilySearchResult:
         """Run one Basic Search.  An empty result is valid source evidence state."""
 
         if type(query) is not str or not query or query != query.strip():
             raise TavilyConfigurationError("INVALID_QUERY")
+        allowed_domains = (
+            None if include_domains is None else _validate_include_domains(include_domains)
+        )
         count = self.config.max_search_results if max_results is None else max_results
         if type(count) is not int or not 1 <= count <= self.config.max_search_results:
             raise TavilyConfigurationError("INVALID_MAX_RESULTS")
@@ -879,6 +927,9 @@ class TavilySourceClient:
             "auto_parameters": False,
             "include_usage": True,
         }
+        if allowed_domains is not None:
+            payload["include_domains"] = list(allowed_domains)
+            payload["include_domains_mode"] = "restrict"
         root, request_bytes, response_bytes, elapsed = self._call(
             "search", _SEARCH_ENDPOINT, payload, 1
         )
@@ -932,6 +983,11 @@ class TavilySourceClient:
             if type(title) is not str or not title or type(snippet) is not str:
                 raise _safe_error("MALFORMED_RESPONSE")
             url = _validate_public_url(item["url"])
+            if (
+                allowed_domains is not None
+                and not _search_url_matches_domains(url, allowed_domains)
+            ):
+                raise _safe_error("SEARCH_DOMAIN_MISMATCH")
             publication_date = _validate_publication(item.get("published_date"))
             provider_id = _validate_provider_id(item.get("id"))
             native_score = _parse_native_score(item.get("score"))

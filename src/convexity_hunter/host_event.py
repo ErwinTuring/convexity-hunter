@@ -74,6 +74,11 @@ __all__ = ("HostEventGrounderConfig", "create_event_grounder")
 
 _PRODUCER_ID = "convexity-hunter-event-grounder"
 _PRODUCER_VERSION = "v0.1"
+_SOURCE_SEARCH_POLICY_LEGACY = "host-event-source-snapshot-v0.1"
+_SOURCE_SEARCH_POLICY_OFFICIAL = "host-event-source-snapshot-v0.2"
+_GENERAL_SEARCH_RESULT_LIMIT = 3
+_OFFICIAL_SEARCH_RESULT_LIMIT = 2
+_OFFICIAL_SEARCH_DOMAINS = ("sec.gov", "nasdaq.com")
 _SUBQUESTION_ID = "user_event_input"
 _EVENT_FACT_ANCHOR_SUBQUESTION_ID = "event_fact_anchor_v0_2"
 _EVENT_FACT_ANCHOR_QUESTION = (
@@ -2743,8 +2748,53 @@ def _publication_datetime(value: Optional[str]) -> Optional[datetime.datetime]:
     return parsed
 
 
-def _safe_configuration_snapshot(config: HostEventGrounderConfig) -> bytes:
+def _event_source_search_policy_version(config: HostEventGrounderConfig) -> str:
+    source = config.source
+    if (
+        source.request_budget >= 3
+        and source.max_search_results >= _GENERAL_SEARCH_RESULT_LIMIT
+        and source.max_extract_urls
+        >= _GENERAL_SEARCH_RESULT_LIMIT + _OFFICIAL_SEARCH_RESULT_LIMIT
+        and config.run_input_bounds.max_array_items
+        >= _GENERAL_SEARCH_RESULT_LIMIT + _OFFICIAL_SEARCH_RESULT_LIMIT
+    ):
+        return _SOURCE_SEARCH_POLICY_OFFICIAL
+    return _SOURCE_SEARCH_POLICY_LEGACY
+
+
+def _merge_event_search_references(general_result, official_result):
+    """Keep fixed provider order/quotas, dedupe exact URLs, and stabilize IDs."""
+    merged = []
+    seen_urls = set()
+    for result, result_limit in (
+        (general_result, _GENERAL_SEARCH_RESULT_LIMIT),
+        (official_result, _OFFICIAL_SEARCH_RESULT_LIMIT),
+    ):
+        for reference in result.sources[:result_limit]:
+            if reference.url in seen_urls:
+                continue
+            seen_urls.add(reference.url)
+            source_id = "url:" + hashlib.sha256(
+                reference.url.encode("utf-8", errors="strict")
+            ).hexdigest()
+            merged.append(replace(reference, source_id=source_id))
+    return tuple(merged)
+
+
+def _safe_configuration_snapshot(
+    config: HostEventGrounderConfig,
+    *,
+    source_search_policy_version: Optional[str] = None,
+) -> bytes:
     """Serialize only the fixed, non-secret run-start configuration allowlist."""
+    if source_search_policy_version is None:
+        source_search_policy_version = _event_source_search_policy_version(config)
+    if source_search_policy_version not in (
+        _SOURCE_SEARCH_POLICY_LEGACY,
+        _SOURCE_SEARCH_POLICY_OFFICIAL,
+    ):
+        raise ValueError("source search policy version is invalid")
+
     def model_snapshot(model: ModelRuntimeConfig) -> dict:
         endpoint = urlsplit(model.base_endpoint)
         # ModelRuntimeConfig already rejects userinfo, query, and fragment.
@@ -2785,7 +2835,7 @@ def _safe_configuration_snapshot(config: HostEventGrounderConfig) -> bytes:
         ],
         "sources": [
             {
-                "schema_version": "host-event-source-snapshot-v0.1",
+                "schema_version": source_search_policy_version,
                 "provider": "tavily",
                 "paygo_off_confirmed": source.paygo_off_confirmed,
                 "request_budget": source.request_budget,
@@ -2865,7 +2915,10 @@ def create_event_grounder(
     )
     # Capture immutable canonical bytes now, before the host can initiate any
     # external call. The accessor below returns a detached JSON-compatible copy.
-    snapshot_bytes = _safe_configuration_snapshot(config)
+    event_search_policy_version = _event_source_search_policy_version(config)
+    snapshot_bytes = _safe_configuration_snapshot(
+        config, source_search_policy_version=event_search_policy_version
+    )
 
     def configuration_snapshot() -> dict:
         """Return a fresh JSON-safe copy of the fixed non-secret config snapshot.
@@ -2881,6 +2934,7 @@ def create_event_grounder(
         run_id: str,
         bounds: CoreOperationalBounds,
         source_query: str,
+        source_search_policy_version: str,
     ) -> HostGrounderEvidenceCatalogRuntimeResult:
         if not callable(context_preparer):
             raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
@@ -2936,25 +2990,48 @@ def create_event_grounder(
             transport=semantic_transport,
         )
 
-        # One Basic Search plus one Basic Extract (at most five URLs, one
-        # Extract credit). Fail before the first paid-capable call if the
-        # caller's own source budget cannot cover that bounded operation.
-        if source_client.remaining_request_budget < 2:
+        official_search_enabled = (
+            source_search_policy_version == _SOURCE_SEARCH_POLICY_OFFICIAL
+        )
+        required_source_requests = 3 if official_search_enabled else 2
+        required_source_credits = 3 if official_search_enabled else 2
+        # The v0.2 Event policy is fixed at general 3 + official 2 search
+        # results, then at most five URLs in one Basic Extract. Legacy and
+        # World callers retain one Search plus one Extract. Check the complete
+        # bounded request/credit budget before the first paid-capable call.
+        if source_client.remaining_request_budget < required_source_requests:
             raise TavilyTransportError("REQUEST_BUDGET_EXHAUSTED")
-        if source_client.remaining_credit_budget < 2:
+        if source_client.remaining_credit_budget < required_source_credits:
             raise TavilyTransportError("CREDIT_BUDGET_EXHAUSTED")
         if discovery_client.remaining_request_budget < 1:
             raise ModelTransportError("REQUEST_BUDGET_EXHAUSTED")
         if semantic_client.remaining_request_budget < 1:
             raise ModelTransportError("REQUEST_BUDGET_EXHAUSTED")
 
-        max_results = min(
-            active_config.source.max_search_results,
-            active_config.source.max_extract_urls,
-            active_config.run_input_bounds.max_array_items,
-        )
-        search_result = source_client.search(source_query, max_results=max_results)
-        references = search_result.sources
+        if official_search_enabled:
+            # Both queries are the unchanged caller query. The fixed result
+            # allocation is applied before observing either result set.
+            general_result = source_client.search(
+                source_query, max_results=_GENERAL_SEARCH_RESULT_LIMIT
+            )
+            official_result = source_client.search(
+                source_query,
+                max_results=_OFFICIAL_SEARCH_RESULT_LIMIT,
+                include_domains=_OFFICIAL_SEARCH_DOMAINS,
+            )
+            references = _merge_event_search_references(
+                general_result, official_result
+            )
+        else:
+            max_results = min(
+                active_config.source.max_search_results,
+                active_config.source.max_extract_urls,
+                active_config.run_input_bounds.max_array_items,
+            )
+            search_result = source_client.search(
+                source_query, max_results=max_results
+            )
+            references = search_result.sources
         if not references:
             # No result is a stage failure, not evidence that the full source
             # universe was searched or that the request has complete coverage.
@@ -3255,6 +3332,7 @@ def create_event_grounder(
             run_id=run_id,
             bounds=bounds,
             source_query=raw_input,
+            source_search_policy_version=event_search_policy_version,
         )
 
     def world_source_query_factory(
@@ -3283,6 +3361,7 @@ def create_event_grounder(
                 run_id=run_id,
                 bounds=bounds,
                 source_query=source_query,
+                source_search_policy_version=_SOURCE_SEARCH_POLICY_LEGACY,
             )
 
         return query_bound_grounder

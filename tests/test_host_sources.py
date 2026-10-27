@@ -189,8 +189,59 @@ class HostSourcesTests(unittest.TestCase):
         self.assertFalse(payload["include_answer"])
         self.assertTrue(payload["include_usage"])
         self.assertNotIn("api_key", payload)
+        self.assertNotIn("include_domains", payload)
+        self.assertNotIn("include_domains_mode", payload)
         self.assertEqual(response.read_sizes, [4097])
         self.assertTrue(response.closed)
+
+    def test_restricted_search_sends_restrict_mode_and_accepts_domain_subdomain(self):
+        allowed_url = "https://www.sec.gov/Archives/filing.htm"
+        response = SyntheticResponse(
+            response_body(
+                search_payload(
+                    [search_result(allowed_url, "SEC filing", "snippet", 0.5)]
+                )
+            ),
+            final_url="https://api.tavily.com/search",
+        )
+        transport = SyntheticTransport([response])
+        client = self.make_client(transport)
+
+        result = client.search(
+            "synthetic query",
+            max_results=1,
+            include_domains=("SEC.GOV", "nasdaq.com"),
+        )
+
+        payload = json.loads(transport.calls[0][0].data.decode("utf-8"))
+        self.assertEqual(payload["include_domains"], ["sec.gov", "nasdaq.com"])
+        self.assertEqual(payload["include_domains_mode"], "restrict")
+        self.assertEqual([source.url for source in result.sources], [allowed_url])
+
+    def test_restricted_search_rejects_off_domain_and_suffix_spoof(self):
+        for url in (
+            "https://example.com/filing.htm",
+            "https://sec.gov.attacker.example/filing.htm",
+        ):
+            with self.subTest(url=url):
+                response = SyntheticResponse(
+                    response_body(
+                        search_payload(
+                            [search_result(url, "Result", "snippet", 0.5)]
+                        )
+                    ),
+                    final_url="https://api.tavily.com/search",
+                )
+                client = self.make_client(SyntheticTransport([response]))
+
+                with self.assertRaises(TavilyTransportError) as raised:
+                    client.search(
+                        "synthetic query",
+                        max_results=1,
+                        include_domains=("sec.gov", "nasdaq.com"),
+                    )
+
+                self.assertEqual(raised.exception.code, "SEARCH_DOMAIN_MISMATCH")
 
     def test_empty_search_is_explicitly_not_complete(self):
         response = SyntheticResponse(

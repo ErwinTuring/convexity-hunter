@@ -1,5 +1,30 @@
 # Current Checkpoint
 
+## Event official-source supplement — reviewed BUILD, not live — 2026-10-27
+
+The Event route keeps the original query and fixes Search allocation before
+seeing results: general max 3, then SEC/Nasdaq-only max 2 with
+`include_domains_mode=restrict`; returned hosts are boundary-checked. Preserve
+provider order, dedupe exact URLs, then issue at most one Basic Extract for at
+most 5 URLs. Preflight requires 3 requests/3 credits. Existing source admission
+still decides authenticity; domain matching is not identity certification.
+Event source snapshot v0.2 marks this route. v0.1 callers/snapshots and the
+World query-bound 1 Search + 1 Extract path remain supported; undersized Event
+caps explicitly use v0.1. Store continues reading archived v0.1 snapshots.
+
+Compileall, 12 focused offline tests, and `git diff --check` pass. Raman
+(`01a17c17-2a3e-7c73-b527-0d696d9d7af3`) and Main reviewed the actual diff: PASS.
+No external call, config change, deployment, or live Event run. Current local
+Event config remains source budget 2 / credit budget 3, file mode 600; after
+Main confirms commit, back it up privately and change only
+`source.request_budget` to 3. Then deploy for UTC date 2026-10-27 and wait for
+Main's release before the one guard-protected run (DB baseline 41).
+
+Observed UTC phases: grounding start not instrumented; it ended 06:34:26. BUILD
+plus focused compile/tests ran 06:34:26–06:40:55 (implementation/test split
+not timed); Raman review ran 06:40:55–06:48:31 (455.8 seconds). Deployment/
+acceptance not started.
+
 ## SEC Global Select closed-format compatibility — 2026-10-27
 
 Implemented the authorized exact pairing Common Stock /

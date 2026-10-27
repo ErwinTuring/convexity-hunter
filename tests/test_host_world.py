@@ -1680,6 +1680,10 @@ class HostWorldTests(unittest.TestCase):
         self.assertTrue(callable(runner))
         snapshot = runner.configuration_snapshot()
         self.assertEqual(
+            snapshot["sources"][0]["schema_version"],
+            "host-event-source-snapshot-v0.1",
+        )
+        self.assertEqual(
             set(snapshot),
             {"models", "sources", "skills", "world_source_query_policy"},
         )
@@ -1723,6 +1727,27 @@ class HostWorldTests(unittest.TestCase):
                 "max_array_items"
             ],
             999,
+        )
+
+    def test_world_snapshot_keeps_legacy_search_policy_when_source_budget_is_three(self):
+        grounder = replace(
+            self.config.grounder,
+            source=replace(
+                self.config.grounder.source,
+                request_budget=3,
+                credit_budget=3,
+            ),
+        )
+        config = replace(self.config, grounder=grounder)
+        runner = create_world_runner(
+            config, repo_root=ROOT, market_bridge=self.lazy_bridge
+        )
+
+        source_snapshot = runner.configuration_snapshot()["sources"][0]
+        self.assertEqual(source_snapshot["request_budget"], 3)
+        self.assertEqual(
+            source_snapshot["schema_version"],
+            "host-event-source-snapshot-v0.1",
         )
 
     def test_world_source_query_preflight_accepts_400_and_rejects_invalid_without_calls(self):

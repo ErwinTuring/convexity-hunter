@@ -28,6 +28,7 @@ from convexity_hunter.host_event import (
     _event_fact_anchor_claim_id,
     _retain_unknown_context_v0_6,
     _resolve_sec_occurrence_date,
+    _merge_event_search_references,
     _retain_unknown_context,
     _retain_unknown_context_v0_2,
     _retain_unknown_context_v0_3,
@@ -58,7 +59,12 @@ from convexity_hunter.host_model import (
     ModelCredential,
     ModelRuntimeConfig,
 )
-from convexity_hunter.host_sources import TavilyCredentialRef, TavilySourceConfig
+from convexity_hunter.host_sources import (
+    TavilyCredentialRef,
+    TavilySourceConfig,
+    TavilySourceReference,
+    TavilyTransportError,
+)
 from convexity_hunter.host_source_admission import (
     AdmissionBatch,
     _Reply,
@@ -146,8 +152,18 @@ class _NoNetworkAdmissionClient:
 
 
 class _SyntheticSourceTransport:
-    def __init__(self, *, search_order=_SEARCH_ORDER, failed_urls=(), body_overrides=None):
+    def __init__(
+        self,
+        *,
+        search_order=_SEARCH_ORDER,
+        official_search_order=None,
+        failed_urls=(),
+        body_overrides=None,
+    ):
         self.search_order = tuple(search_order)
+        self.official_search_order = (
+            None if official_search_order is None else tuple(official_search_order)
+        )
         self.failed_urls = frozenset(failed_urls)
         self.body_overrides = dict(body_overrides or {})
         self.calls = []
@@ -157,6 +173,12 @@ class _SyntheticSourceTransport:
         payload = json.loads(request.data.decode("utf-8"))
         self.calls.append((request.full_url, payload))
         if request.full_url.endswith("/search"):
+            search_order = self.search_order
+            if (
+                "include_domains" in payload
+                and self.official_search_order is not None
+            ):
+                search_order = self.official_search_order
             results = [
                 {
                     "id": source_id,
@@ -165,7 +187,7 @@ class _SyntheticSourceTransport:
                     "content": "SEARCH_SNIPPET_MUST_NOT_REACH_MODELS_{}".format(source_id),
                     "published_date": "2026-10-03",
                 }
-                for source_id, url in self.search_order
+                for source_id, url in search_order
             ]
             return _SyntheticResponse(
                 {"results": results, "request_id": "synthetic-search"}
@@ -196,6 +218,24 @@ class _SyntheticSourceTransport:
 
 def _digest(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _url_source_id(url):
+    return "url:" + _digest(url)
+
+
+def _three_request_event_config():
+    config = _config()
+    return replace(
+        config,
+        source=replace(
+            config.source,
+            request_budget=3,
+            credit_budget=3,
+            max_search_results=5,
+            max_extract_urls=5,
+        ),
+    )
 
 
 def _context_and_run_input(
@@ -2164,6 +2204,43 @@ class HostEventGrounderTests(unittest.TestCase):
             "host-grounder-semantic-verifier-prompt-v0.9",
         )
 
+    def test_private_world_query_factory_keeps_one_search_at_source_budget_three(self):
+        config = _three_request_event_config()
+        query = "Assess the original World request."
+        run_id = "world-query-budget-three"
+        bodies = dict(_BODY_BY_URL)
+        discovery, semantic, _normalized = _model_outputs(
+            run_id, _RAW_INPUT, _SEARCH_ORDER, bodies, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=_SEARCH_ORDER,
+            official_search_order=(
+                ("official-id", "https://www.sec.gov/Archives/filing.htm"),
+            ),
+            body_overrides=bodies,
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        callback._world_source_query_factory(query)(
+            _RAW_INPUT,
+            run_id=run_id,
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        self.assertEqual(len(source_transport.calls), 2)
+        self.assertEqual(
+            [url for url, _payload in source_transport.calls],
+            ["https://api.tavily.com/search", "https://api.tavily.com/extract"],
+        )
+        self.assertNotIn("include_domains", source_transport.calls[0][1])
+
     def test_private_world_query_factory_rejects_invalid_bound_queries_before_calls(self):
         source_transport = _SyntheticSourceTransport()
         model_transport = _SyntheticModelTransport("{}", "{}")
@@ -2213,6 +2290,194 @@ class HostEventGrounderTests(unittest.TestCase):
             [payload["query"] for _url, payload in source_transport.calls],
             [query, query],
         )
+
+    def test_event_v02_uses_fixed_general_and_official_search_slots(self):
+        query = "Assess the reported ACME filing."
+        run_id = "event-v02-search-partition"
+        sec_url = "https://www.sec.gov/Archives/edgar/data/1/000000000026000001/filing.htm"
+        nasdaq_url = "https://www.nasdaq.com/market-activity/stocks/acme"
+        general_order = (
+            ("reused-provider-id", "https://news.example/first"),
+            ("reused-provider-id", "https://news.example/second"),
+            ("reused-provider-id", sec_url),
+        )
+        official_order = (
+            ("reused-provider-id", sec_url),
+            ("reused-provider-id", nasdaq_url),
+        )
+        expected_urls = tuple(url for _source_id, url in general_order) + (nasdaq_url,)
+        source_order = tuple(
+            (_url_source_id(url), url) for url in expected_urls
+        )
+        bodies = {url: "Synthetic source body for {}.\n".format(url) for url in expected_urls}
+        config = _three_request_event_config()
+        discovery, semantic, _normalized = _model_outputs(
+            run_id, query, source_order, bodies, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=general_order,
+            official_search_order=official_order,
+            body_overrides=bodies,
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        result = callback(
+            query,
+            run_id=run_id,
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        search_calls = [
+            payload
+            for url, payload in source_transport.calls
+            if url.endswith("/search")
+        ]
+        self.assertEqual(len(search_calls), 2)
+        self.assertEqual([item["query"] for item in search_calls], [query, query])
+        self.assertEqual([item["max_results"] for item in search_calls], [3, 2])
+        self.assertNotIn("include_domains", search_calls[0])
+        self.assertEqual(search_calls[1]["include_domains"], ["sec.gov", "nasdaq.com"])
+        self.assertEqual(search_calls[1]["include_domains_mode"], "restrict")
+        self.assertEqual(source_transport.extract_url_orders, [expected_urls])
+        self.assertLessEqual(len(source_transport.extract_url_orders[0]), 5)
+        context_sources = result.build_result.context.source_bodies
+        self.assertEqual(
+            tuple(source.final_locator for source in context_sources.values()),
+            expected_urls,
+        )
+        self.assertEqual(len(context_sources), len(set(context_sources)))
+
+        # Reused provider IDs across searches do not collide; the original
+        # provider IDs remain on the merged references while IDs are URL-derived.
+        general_reference = TavilySourceReference(
+            "reused-provider-id", sec_url, "SEC", "", None,
+            "reused-provider-id", 0.9,
+        )
+        official_reference = TavilySourceReference(
+            "reused-provider-id", nasdaq_url, "Nasdaq", "", None,
+            "reused-provider-id", 0.1,
+        )
+        merged = _merge_event_search_references(
+            SimpleNamespace(sources=(general_reference,)),
+            SimpleNamespace(sources=(official_reference,)),
+        )
+        self.assertEqual([item.url for item in merged], [sec_url, nasdaq_url])
+        self.assertEqual(
+            [item.source_id for item in merged],
+            [_url_source_id(sec_url), _url_source_id(nasdaq_url)],
+        )
+        self.assertEqual(
+            [item.provider_result_id for item in merged],
+            ["reused-provider-id", "reused-provider-id"],
+        )
+
+    def test_event_v02_accepts_either_search_when_the_other_is_empty(self):
+        query = "Assess the reported ACME filing."
+        cases = (
+            (
+                "general-empty",
+                (),
+                (("official-id", "https://www.sec.gov/Archives/filing.htm"),),
+                ("https://www.sec.gov/Archives/filing.htm",),
+            ),
+            (
+                "official-empty",
+                (("general-id", "https://news.example/filing"),),
+                (),
+                ("https://news.example/filing",),
+            ),
+        )
+        for run_id, general_order, official_order, expected_urls in cases:
+            with self.subTest(run_id=run_id):
+                config = _three_request_event_config()
+                source_order = tuple(
+                    (_url_source_id(url), url) for url in expected_urls
+                )
+                bodies = {
+                    url: "Synthetic source body for {}.\n".format(url)
+                    for url in expected_urls
+                }
+                discovery, semantic, _normalized = _model_outputs(
+                    run_id, query, source_order, bodies, config
+                )
+                source_transport = _SyntheticSourceTransport(
+                    search_order=general_order,
+                    official_search_order=official_order,
+                    body_overrides=bodies,
+                )
+                model_transport = _SyntheticModelTransport(discovery, semantic)
+                callback = create_event_grounder(
+                    config,
+                    repo_root=_ROOT,
+                    source_transport=source_transport,
+                    discovery_transport=model_transport,
+                    semantic_transport=model_transport,
+                )
+
+                callback(
+                    query,
+                    run_id=run_id,
+                    bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+                )
+
+                self.assertEqual(len(source_transport.calls), 3)
+                self.assertEqual(source_transport.extract_url_orders, [expected_urls])
+
+    def test_event_v02_checks_both_empty_searches_and_budget_before_calls(self):
+        config = _three_request_event_config()
+        empty_sources = _SyntheticSourceTransport(
+            search_order=(), official_search_order=()
+        )
+        model_transport = _SyntheticModelTransport("{}", "{}")
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=empty_sources,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            callback(
+                _RAW_INPUT,
+                run_id="event-v02-both-empty",
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+        self.assertEqual(raised.exception.code, "NO_SEARCH_RESULTS")
+        self.assertEqual(
+            [url for url, _payload in empty_sources.calls],
+            ["https://api.tavily.com/search", "https://api.tavily.com/search"],
+        )
+        self.assertEqual(model_transport.calls, [])
+
+        low_credit_config = replace(
+            config,
+            source=replace(config.source, credit_budget=2),
+        )
+        no_call_sources = _SyntheticSourceTransport()
+        no_call_models = _SyntheticModelTransport("{}", "{}")
+        low_credit_callback = create_event_grounder(
+            low_credit_config,
+            repo_root=_ROOT,
+            source_transport=no_call_sources,
+            discovery_transport=no_call_models,
+            semantic_transport=no_call_models,
+        )
+        with self.assertRaises(TavilyTransportError) as raised:
+            low_credit_callback(
+                _RAW_INPUT,
+                run_id="event-v02-low-credit",
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+        self.assertEqual(raised.exception.code, "CREDIT_BUDGET_EXHAUSTED")
+        self.assertEqual(no_call_sources.calls, [])
+        self.assertEqual(no_call_models.calls, [])
 
     def test_default_context_preparer_binds_unique_sec_fact_and_exact_date_evidence(self):
         snapshot, receipt, context = _source_fact_case()
@@ -4689,6 +4954,24 @@ class HostEventGrounderTests(unittest.TestCase):
         snapshot["models"][0]["model"] = "caller-mutated-copy"
         fresh_snapshot = callback.configuration_snapshot()
         self.assertEqual(fresh_snapshot["models"][0]["model"], "fixture-discovery")
+
+    def test_event_search_snapshot_versions_fixed_official_policy_and_small_cap_fallback(self):
+        callback = create_event_grounder(
+            _three_request_event_config(), repo_root=_ROOT
+        )
+        source = callback.configuration_snapshot()["sources"][0]
+        self.assertEqual(source["schema_version"], "host-event-source-snapshot-v0.2")
+
+        config = _three_request_event_config()
+        small_cap_config = replace(
+            config,
+            source=replace(config.source, max_search_results=2),
+        )
+        fallback = create_event_grounder(small_cap_config, repo_root=_ROOT)
+        self.assertEqual(
+            fallback.configuration_snapshot()["sources"][0]["schema_version"],
+            "host-event-source-snapshot-v0.1",
+        )
 
     def test_factory_revalidates_constructor_bypassed_model_role_and_source_budget(self):
         wrong_role = _config()

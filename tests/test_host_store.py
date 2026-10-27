@@ -2216,6 +2216,39 @@ class HostStoreTests(unittest.TestCase):
             {"models": [], "sources": [], "skills": []},
         )
 
+    def test_event_source_snapshot_v02_is_versioned_and_legacy_v01_remains_readable(self):
+        snapshot = _event_configuration_snapshot()
+        snapshot["sources"][0]["schema_version"] = "host-event-source-snapshot-v0.2"
+        metadata = _run_start_metadata()
+        metadata["configuration_snapshot"] = snapshot
+        run_id = self.store.create_run(
+            "event", "fixed 3+2 source policy", BOUNDS,
+            STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+        )
+        self.assertEqual(
+            self.store.get_run(run_id)["metadata"]["configuration_snapshot"],
+            snapshot,
+        )
+
+        invalid = _event_configuration_snapshot()
+        invalid["sources"][0]["schema_version"] = "host-event-source-snapshot-v0.2"
+        invalid["sources"][0]["request_budget"] = 2
+        invalid_metadata = _run_start_metadata()
+        invalid_metadata["configuration_snapshot"] = invalid
+        with self.assertRaises(ValueError):
+            self.store.create_run(
+                "event", "undersized v0.2 source policy", BOUNDS,
+                STANDARD_RESEARCH_PROFILE.snapshot(), invalid_metadata,
+            )
+
+        world_metadata = _run_start_metadata()
+        world_metadata["configuration_snapshot"] = snapshot
+        with self.assertRaises(ValueError):
+            self.store.create_run(
+                "world", "Event-only source policy", BOUNDS,
+                STANDARD_RESEARCH_PROFILE.snapshot(), world_metadata,
+            )
+
     def test_event_configuration_snapshot_rejects_unknown_and_unapproved_values(self):
         invalid_snapshots = []
 

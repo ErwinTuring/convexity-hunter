@@ -550,13 +550,22 @@ def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[st
             raise ValueError("Event model snapshot must be remote, fee-authorized, and non-local")
 
     source = sources[0]
+    source_schema_version = (
+        source.get("schema_version") if type(source) is dict else None
+    )
     if (
         type(source) is not dict
         or set(source) != _EVENT_SOURCE_SNAPSHOT_FIELDS
-        or source["schema_version"] != "host-event-source-snapshot-v0.1"
+        or source_schema_version
+        not in (
+            "host-event-source-snapshot-v0.1",
+            "host-event-source-snapshot-v0.2",
+        )
         or source["provider"] != "tavily"
     ):
         raise ValueError("Event source snapshot has an invalid closed shape or provider")
+    if source_schema_version == "host-event-source-snapshot-v0.2" and mode != "event":
+        raise ValueError("Official supplemental search policy is Event-only")
     grounder_limits = source["grounder_limits"]
     if (
         type(grounder_limits) is not dict
@@ -583,6 +592,13 @@ def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[st
             credential_ref=TavilyCredentialRef(env_name="HOST_STORE_VALIDATION_ONLY"),
             **source_values
         )
+        if source_schema_version == "host-event-source-snapshot-v0.2" and (
+            source_values["request_budget"] < 3
+            or source_values["max_search_results"] < 3
+            or source_values["max_extract_urls"] < 5
+            or grounder_limits["run_input_bounds"]["max_array_items"] < 5
+        ):
+            raise ValueError("Event v0.2 search policy lacks its fixed 3+2 capacity")
     except (TypeError, ValueError) as error:
         raise ValueError("Event source snapshot fails typed configuration validation") from error
     return _canonical_value(value, "configuration_snapshot")

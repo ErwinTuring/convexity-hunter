@@ -1,5 +1,13 @@
 # Project State
 
+## Event source-search supplement — reviewed, not live — 2026-10-27
+Event query policy: original query, fixed general Search 3 + SEC/Nasdaq restricted Search 2, exact-URL dedupe in provider order, then one Basic Extract for at most 5 URLs; preflight 3 requests/3 credits.
+Restricted result hosts are validated; existing source admission/authentication and EI acceptance rules remain unchanged.
+Event source snapshot v0.2 records the new route; v0.1 snapshots/custom small-budget callers remain readable, and World query-bound retains one Search + one Extract.
+Compileall, 12 focused offline tests, and diff-check PASS; Raman `01a17c17-2a3e-7c73-b527-0d696d9d7af3` and Main actual-diff review PASS.
+No config change, deployment, or live call yet. Current event-config is mode 600 with source budget 2 / credit budget 3; after Main confirms commit, privately back up and change only source.request_budget to 3.
+Next: UTC date 2026-10-27 deployment, safe snapshot/cap verification, then await Main release for the single guard-protected acceptance at DB baseline 41.
+
 ## SEC Global Select listing compatibility — 2026-10-27
 Exact user-authorized Common Stock / Global Select + Yahoo NasdaqGS Real Time/USD pairing is implemented as provenance v0.3; v0.2 Capital/NasdaqCM and Yahoo v1 Delayed Quote remain unchanged. Six focused synthetic tests, compileall, and diff check pass; Banach and Main guard/diff reviews PASS. Local COGT official source text was not retained, so no real-format match or prior-run root cause is claimed.
 Archived statements contain no May 28; prior c1 has FDA acceptance, Priority Review, and Nov 30 PDUFA only. Same-fact occurrence-date rule remains unchanged; no cross-fact date borrowing. Main confirmed World/Event share _run_source_core; no World change. A separate normal run is recorded below; it does not prove actual COGT listing-format match or change B.

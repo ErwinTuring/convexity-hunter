@@ -31,6 +31,7 @@ from .host_grounder_evidence_catalog import (
 from .host_grounder_runtime import HostGrounderRuntimeError
 from .host_event import (
     HostEventGrounderConfig,
+    _SOURCE_SEARCH_POLICY_LEGACY,
     _revalidate_config,
     _safe_configuration_snapshot,
     create_event_grounder,
@@ -675,7 +676,8 @@ def create_world_runner(
         raise TypeError("injected transports and test seams must be callable")
 
     world_configuration_snapshot_bytes = _safe_configuration_snapshot(
-        _revalidate_config(config.grounder)
+        _revalidate_config(config.grounder),
+        source_search_policy_version=_SOURCE_SEARCH_POLICY_LEGACY,
     )
 
     # Each existing per-role budget is the run-wide authorization. Reserve one
