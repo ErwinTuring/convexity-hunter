@@ -4,6 +4,7 @@
 Scope: fixed exception-type classification at the existing internal DTO failure, with versioned failure audit and old shapes preserved. No evidence, EI, retry or budget changes; no live calls. The latest real run's exact schema cause remains UNKNOWN. See [current checkpoint](current-checkpoint.md).
 Implementation and public projection completed; 3 new focused + 10 compatibility/retry tests, compileall and diff-check pass. Independent Godel review and targeted fix re-review pass. No full suite or new real EI/Core evidence.
 The normal local Host has been restored via its original launcher (UTC evaluation date 2026-10-27); root HTTP 200 does not establish Event/World EI/Core closure.
+Reviewed code `67c1056` is deployed (PID 12659 / session 47267); DB remains 42 runs / 3 Direct / 20 batch archives. No external call or new research run. Prior one-shot authorization remains spent.
 
 ## Event v0.2 one-shot — 2026-10-27
 Run `2657b316-904d-467e-b39f-49f68e593045` is terminal BLOCKED at producer validation (`PRODUCER_ENVELOPE_INVALID` / `PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA`); no submission, Builder, EI, Futu, or Core.

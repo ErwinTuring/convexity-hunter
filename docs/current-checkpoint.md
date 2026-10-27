@@ -24,6 +24,18 @@ that omission was fixed and targeted re-review passed. No full-suite or live
 acceptance result is claimed. The patch does not identify or repair the
 unknown historical DTO cause and does not establish three-entry completion.
 
+Deployment: reviewed code `67c1056` is running from the original launcher as
+PID 12659 / exec session 47267; root HTTP 200. Database counts remain
+42 runs / 3 Direct cases / 20 batch archives. No Event/World POST or source,
+model, or Futu request was made. A fresh live batch requires fresh bounded
+authorization; the prior one-shot remains spent.
+
+Observed UTC timing: worker coding 14:29:53–14:34:44 (4m51s); tests began
+14:34:44; final deployment check completed by 14:41:02. Earlier grounding,
+diagnostic design, review and Main activity were not separately timed. This
+is diagnostic work, not three-entry feature completion; no 70/30 compliance
+claim is made from these incomplete/overlapping timings.
+
 ## Event v0.2 deployment and one-shot result — 2026-10-27
 
 The reviewed `5924873` build is deployed for UTC evaluation date 2026-10-27.
