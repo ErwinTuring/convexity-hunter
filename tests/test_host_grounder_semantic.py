@@ -352,13 +352,71 @@ class HostGrounderSemanticTests(unittest.TestCase):
         verdict["field_bindings"][0]["outcome"] = "unresolved"
         verdict["field_bindings"][0]["rationale"] = "PRIVATE_BINDING_RATIONALE"
         verdict["field_bindings"][0]["evidence_refs"] = []
-        _receipt, projection = _build_with_projection(envelope, verdict, bodies)
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            _receipt, projection = _build_with_projection(envelope, verdict, bodies)
         self.assertEqual(
             projection.rows,
             (
                 ("hypothesis", 0, "supported", ("required_field_binding",)),
                 ("field_binding", 0, "unresolved", ("verifier_unresolved",)),
             ),
+        )
+        self.assertEqual(
+            captured.records[0].getMessage(),
+            'semantic_validation_rejection_checks required_field_binding=1 '
+            'verifier_unresolved=1 relations=[{"matching_binding_indices":[0],'
+            '"owner_index":0,"owner_kind":"hypothesis",'
+            '"schema_field":"UNDERLYING_SYMBOL","status":"unverified",'
+            '"tag":"required_field_binding","unverified_binding_indices":[0]}] '
+            'relations_omitted=0',
+        )
+
+        envelope, verdict, bodies = _case()
+        envelope["field_bindings"] = []
+        verdict["field_bindings"] = []
+        envelope = _refresh_envelope_hash(envelope, verdict)
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            _receipt, projection = _build_with_projection(envelope, verdict, bodies)
+        self.assertEqual(
+            projection.rows,
+            (("hypothesis", 0, "supported", ("required_field_binding",)),),
+        )
+        self.assertIn(
+            '"schema_field":"UNDERLYING_SYMBOL","status":"missing",'
+            '"tag":"required_field_binding","unverified_binding_indices":[]',
+            captured.records[0].getMessage(),
+        )
+
+        envelope, verdict, bodies = _case()
+        envelope["claims"][0]["entity_refs"] = [
+            "SYNTHETIC_ENTITY_{}".format(index) for index in range(9)
+        ]
+        envelope["hypotheses"][0]["supporting_claim_ids"] = []
+        envelope = _refresh_envelope_hash(envelope, verdict)
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            _receipt, projection = _build_with_projection(envelope, verdict, bodies)
+        event = captured.records[0].getMessage()
+        relations_json = event.split("relations=", 1)[1].split(
+            " relations_omitted=", 1
+        )[0]
+        relations = json.loads(relations_json)
+        self.assertEqual(len(relations), 8)
+        self.assertEqual(
+            [relation["owner_subindex"] for relation in relations], list(range(8))
+        )
+        self.assertTrue(
+            all(
+                relation["schema_field"] == "ENTITY_REF"
+                and relation["status"] == "missing"
+                and relation["matching_binding_indices"] == []
+                and relation["unverified_binding_indices"] == []
+                for relation in relations
+            )
+        )
+        self.assertIn("relations_omitted=1", event)
+        self.assertEqual(
+            projection.rows[0],
+            ("claim", 0, "supported", ("required_field_binding",)),
         )
 
     def test_supported_verdict_builds_existing_receipt_shape_and_hash_bindings(self):
@@ -690,12 +748,52 @@ class HostGrounderSemanticTests(unittest.TestCase):
             }
         )
         # Existing supported binding remains only for hypothesis-1.
-        receipt = _build(envelope, verdict, bodies)
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            receipt = _build(envelope, verdict, bodies)
 
         self.assertEqual(receipt["verified_claim_ids"], ("claim-1",))
         self.assertEqual(receipt["rejected_claims"][0][0], "claim-2")
         self.assertEqual(receipt["verified_hypothesis_ids"], ("hypothesis-1",))
         self.assertEqual(receipt["rejected_hypotheses"][0][0], "hypothesis-2")
+        event = captured.records[0].getMessage()
+        relations_json = event.split("relations=", 1)[1].split(
+            " relations_omitted=", 1
+        )[0]
+        relations = json.loads(relations_json)
+        closure = next(
+            relation
+            for relation in relations
+            if relation["tag"] == "hypothesis_dependency_closure"
+        )
+        self.assertEqual(
+            closure,
+            {
+                "tag": "hypothesis_dependency_closure",
+                "owner_kind": "hypothesis",
+                "owner_index": 1,
+                "unverified_root_claim_indices": [1],
+                "unknown_root_count": 0,
+            },
+        )
+
+        envelope, verdict, bodies = _reassessment_case(
+            support=["UNKNOWN_ROOT_SENTINEL"], basis=[]
+        )
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            _build(envelope, verdict, bodies)
+        event = captured.records[0].getMessage()
+        relations_json = event.split("relations=", 1)[1].split(
+            " relations_omitted=", 1
+        )[0]
+        relations = json.loads(relations_json)
+        closure = next(
+            relation
+            for relation in relations
+            if relation["tag"] == "hypothesis_dependency_closure"
+        )
+        self.assertEqual(closure["unverified_root_claim_indices"], [])
+        self.assertEqual(closure["unknown_root_count"], 1)
+        self.assertNotIn("UNKNOWN_ROOT_SENTINEL", event)
 
     def test_unknown_dependency_claim_id_rejects_claim_and_hypothesis_closure(self):
         envelope, verdict, bodies = _case()
@@ -911,8 +1009,23 @@ class HostGrounderSemanticTests(unittest.TestCase):
 
         envelope, verdict, bodies = _case()
         verdict["claims"][0]["outcome"] = "unresolved"
+        verdict["claims"][0]["rationale"] = "PRIVATE_MODEL_RATIONALE_SENTINEL"
         verdict["claims"][0]["evidence_refs"] = []
-        expected = _build(envelope, verdict, bodies)
+        with self.assertLogs(semantic_module._LOGGER, level="WARNING") as captured:
+            expected = _build(envelope, verdict, bodies)
+        event = "\n".join(captured.output)
+        self.assertNotIn(
+            "PRIVATE_MODEL_RATIONALE_SENTINEL",
+            event,
+        )
+        for private_value in (
+            "claim-1",
+            "hypothesis-1",
+            "source-z",
+            "Acme Corp filed an 8-K.",
+            "/hypotheses/0/underlying_symbol",
+        ):
+            self.assertNotIn(private_value, event)
 
         class FailingLogger:
             def warning(self, *_args, **_kwargs):

@@ -1,5 +1,9 @@
 # Project State
 
+## Offline binding attribution — 2026-10-27
+Existing focused examples pass; no reproducible acceptance bug found. Added bounded private relation logging only (fixed schema tags and array positions; missing/unverified and dependency links), no content/IDs, no acceptance/wire/store/EI/budget change. Shared path-helper compatibility is preserved. Four focused patch checks, compile and diff-check pass; no full suite or live call. Historical COGT binding relations remain UNKNOWN; see [checkpoint](current-checkpoint.md).
+Independent Godel review PASS after Main's intermediate helper-compatibility correction. This does not prove a historical bug or real EI/Core closure. Verify deployment live rather than assuming a historical PID remains current.
+
 ## COGT: Grounder completed, no submission — 2026-10-27
 New authorized one-shot `07e7c8cf-faf7-4b57-83c7-bc9ccddc83cc` ended BLOCKED / `GROUNDING_NO_SUBMISSION`: anchor supported/selected c1; claim 7 required_field_binding, hypothesis 0 hypothesis_dependency_closure, binding 29 verifier_unresolved. Grounder/Builder completed, submission MISSING, EI NOT_RUN; no Futu/Core. These indices do not establish an exact cross-item causal mapping or a software defect.
 Discovery 2 + Semantic 1 within existing caps; no source-transport error in this run, no proof of the previous failure's cause. Guard qEfp7FfP spent, no retry/substitution/config/code changes. DB 44 runs / 3 Direct / 20 batch archives; no new case/archive. Real Event/World positive EI→Core closure remains unproven. See [checkpoint](current-checkpoint.md).

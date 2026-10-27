@@ -264,6 +264,30 @@ logs do not restore missing historical explanations or create a durable schema.
 A runtime discarding stderr may discard this log; do not claim World archival
 coverage. A new live run requires separate bounded authorization.
 
+### Bounded private binding attribution — 2026-10-27
+
+The existing required-binding and hypothesis-dependency rejection branches may
+retain at most eight private relation rows, in validation order, and an omitted
+row count. Emit only after final receipt validation succeeds, alongside the
+existing category-count log; logger failures must not affect the receipt.
+
+Required-binding rows contain owner kind (`claim`/`hypothesis`), owner array
+index, a fixed schema tag, optional entity-reference array index, `missing` or
+`unverified`, and matching/unverified binding array indices. The fixed tags are
+`EVENT_DATE`, `ENTITY_REF`, `UNDERLYING_SYMBOL`, `IMPACT_PATH`,
+`DISTRIBUTION_MODE`, `DISTRIBUTION_HYPOTHESIS`, `EXPECTED_WINDOW_START`,
+`EXPECTED_WINDOW_END`, and `REASSESSMENT_BY`. Never emit a dynamic path or
+field name. Dependency rows contain hypothesis array index and unverified
+direct-root claim array indices; nonexistent roots are represented only by a
+count, never their identifiers.
+
+No source/claim/hypothesis IDs, values, text, quotes, URLs, model rationale or
+exception content may be retained. These private logs neither authenticate
+facts nor create a new archive schema. They cannot recover the missing
+relations in historical runs. Public receipt/outcome, acceptance, first-failure
+behavior, retries and budgets remain unchanged. This bounded offline addition
+does not authorize a new source/model/provider call.
+
 ## Receipt-failure category compatibility addendum — 2026-10-23
 
 Status: FROZEN / IMPLEMENTED after independent contract and implementation

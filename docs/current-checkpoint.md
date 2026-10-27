@@ -1,5 +1,33 @@
 # Current Checkpoint
 
+## Bounded offline binding-attribution follow-up — 2026-10-27
+
+Fresh Git grounding matched `1cd2805`, clean. Five existing focused checks
+confirmed supported facts/interpretations/hypotheses can pass and rejection
+propagation preserves an independent valid branch. No reproducible acceptance
+bug was found; no historical DTO was reconstructed.
+
+The implementation adds only bounded private relation logging at the existing
+required-binding/dependency rejection branches. It distinguishes missing from
+unverified bindings and connects fixed schema tags/owner array positions to
+binding/root positions, without content or identifiers. At most eight rows
+are emitted after receipt validation, plus omitted count; logger failure is
+isolated. See the [bounded logging boundary](host-grounder-context-preparation-v0.1.md#bounded-private-binding-attribution--2026-10-27).
+
+Shared `_paths_for_claim` / `_paths_for_hypothesis` return values and original
+acceptance conditions remain unchanged; the runtime omission-repair caller
+still consumes the original string paths. Three semantic focused tests and
+one existing omission-repair test pass; compile and diff-check pass. These
+checks overlap the earlier five and are not nine distinct new tests. No full
+suite, source/model/Futu call, new batch or change to EI/receipt/store schema.
+Run `07e7c8cf` remains historical NO_SUBMISSION with finer relations UNKNOWN.
+This is operator attribution, not a three-entry positive-closure claim.
+Main caught an intermediate shared-helper return-shape regression before
+acceptance; it was removed, and independent Godel review of the final diff
+passed. This was a new-patch compatibility issue, not the historical COGT
+cause. Deployment must be verified from the live listener, not old PIDs in
+historical entries below. No new live batch is authorized by this offline work.
+
 ## Normal Event: supported anchor, no projectable hypothesis — 2026-10-27
 
 Grounded HEAD/main/origin/main `d0b3537`, clean; deployed `63e8159` Host

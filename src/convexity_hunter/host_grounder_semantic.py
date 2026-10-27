@@ -111,7 +111,7 @@ def _record_verifier_rejection(checks: dict, outcome: object) -> None:
         _record_rejection_check(checks, "unknown")
 
 
-def _emit_rejection_checks(checks: object) -> None:
+def _emit_rejection_checks(checks: object, relations=(), omitted_relations=0) -> None:
     """Emit counts from the closed check vocabulary, swallowing logger failures."""
     try:
         if type(checks) is not dict:
@@ -131,7 +131,23 @@ def _emit_rejection_checks(checks: object) -> None:
             "{}={}".format(category, safe_counts[category])
             for category in sorted(safe_counts)
         )
-        _LOGGER.warning("semantic_validation_rejection_checks %s", fields)
+        if type(relations) is list and relations:
+            omitted = (
+                omitted_relations
+                if type(omitted_relations) is int and omitted_relations >= 0
+                else 0
+            )
+            safe_relations = json.dumps(
+                relations, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+            )
+            _LOGGER.warning(
+                "semantic_validation_rejection_checks %s relations=%s relations_omitted=%s",
+                fields,
+                safe_relations,
+                omitted,
+            )
+        else:
+            _LOGGER.warning("semantic_validation_rejection_checks %s", fields)
     except Exception:
         # Observability must never alter receipt construction or rejection policy.
         return
@@ -483,6 +499,15 @@ def _build_semantic_validation_receipt_with_projection(
     binding_projection_checks = {}
     claim_projection_checks = {}
     hypothesis_projection_checks = {}
+    private_relations = []
+    omitted_private_relations = 0
+
+    def record_private_relation(relation: dict) -> None:
+        nonlocal omitted_private_relations
+        if len(private_relations) < 8:
+            private_relations.append(relation)
+        else:
+            omitted_private_relations += 1
 
     def mark_projection_check(bucket: dict, index: int, check: str) -> None:
         bucket.setdefault(index, set()).add(check)
@@ -546,6 +571,24 @@ def _build_semantic_validation_receipt_with_projection(
                 mark_projection_check(
                     claim_projection_checks, i, "required_field_binding"
                 )
+                if path == "/claims/{}/event_date".format(i):
+                    schema_field, owner_subindex = "EVENT_DATE", None
+                else:
+                    schema_field = "ENTITY_REF"
+                    owner_subindex = int(path.rsplit("/", 1)[1])
+                unverified_indexes = [j for j in indexes if j not in verified_bindings]
+                relation = {
+                    "tag": "required_field_binding",
+                    "owner_kind": "claim",
+                    "owner_index": i,
+                    "schema_field": schema_field,
+                    "status": "missing" if not indexes else "unverified",
+                    "matching_binding_indices": list(indexes),
+                    "unverified_binding_indices": unverified_indexes,
+                }
+                if owner_subindex is not None:
+                    relation["owner_subindex"] = owner_subindex
+                record_private_relation(relation)
                 failures.append("required field binding is not supported: {}".format(path))
         claim_failures[claim_id] = failures
 
@@ -634,6 +677,26 @@ def _build_semantic_validation_receipt_with_projection(
             mark_projection_check(
                 hypothesis_projection_checks, i, "hypothesis_dependency_closure"
             )
+            unverified_roots = [
+                root for root in roots if root not in verified_claim_set
+            ]
+            record_private_relation(
+                {
+                    "tag": "hypothesis_dependency_closure",
+                    "owner_kind": "hypothesis",
+                    "owner_index": i,
+                    "unverified_root_claim_indices": sorted(
+                        {
+                            claim_map[root][0]
+                            for root in unverified_roots
+                            if root in claim_map
+                        }
+                    ),
+                    "unknown_root_count": sum(
+                        1 for root in unverified_roots if root not in claim_map
+                    ),
+                }
+            )
             failures.append("hypothesis claim dependency closure is incomplete")
         support_closure = closure(support) if support else set()
         support_sources = {
@@ -651,6 +714,27 @@ def _build_semantic_validation_receipt_with_projection(
                 _record_rejection_check(rejection_checks, "required_field_binding")
                 mark_projection_check(
                     hypothesis_projection_checks, i, "required_field_binding"
+                )
+                schema_field = {
+                    "/hypotheses/{}/underlying_symbol".format(i): "UNDERLYING_SYMBOL",
+                    "/hypotheses/{}/impact_path".format(i): "IMPACT_PATH",
+                    "/hypotheses/{}/distribution_mode".format(i): "DISTRIBUTION_MODE",
+                    "/hypotheses/{}/distribution_hypothesis".format(i): "DISTRIBUTION_HYPOTHESIS",
+                    "/hypotheses/{}/expected_window/start_date".format(i): "EXPECTED_WINDOW_START",
+                    "/hypotheses/{}/expected_window/end_date".format(i): "EXPECTED_WINDOW_END",
+                    "/hypotheses/{}/reassessment/reassessment_by".format(i): "REASSESSMENT_BY",
+                }[path]
+                unverified_indexes = [j for j in indexes if j not in verified_bindings]
+                record_private_relation(
+                    {
+                        "tag": "required_field_binding",
+                        "owner_kind": "hypothesis",
+                        "owner_index": i,
+                        "schema_field": schema_field,
+                        "status": "missing" if not indexes else "unverified",
+                        "matching_binding_indices": list(indexes),
+                        "unverified_binding_indices": unverified_indexes,
+                    }
                 )
                 failures.append("required field binding is not supported: {}".format(path))
         if failures:
@@ -705,7 +789,9 @@ def _build_semantic_validation_receipt_with_projection(
         max_array_items=max_array_items,
         expected_schema_version=receipt_schema_version,
     )
-    _emit_rejection_checks(rejection_checks)
+    _emit_rejection_checks(
+        rejection_checks, private_relations, omitted_private_relations
+    )
     if not _collect_projection:
         return receipt, None
     projection_rows = []
