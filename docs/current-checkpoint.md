@@ -1,5 +1,44 @@
 # Current Checkpoint
 
+## Normal Event: supported anchor, no projectable hypothesis — 2026-10-27
+
+Grounded HEAD/main/origin/main `d0b3537`, clean; deployed `63e8159` Host
+PID 13892 / session 64354 returned HTTP 200. User approved exactly one new
+normal COGT batch at unchanged input/config/profile and caps (Tavily 3
+requests/3 credits; each model role at most 2). Reviewed new guard
+`/private/tmp/ch-cogt-v06-one-shot.qEfp7FfP/` differs only by baseline 43 and
+manifest hash, plus the matching preflight count text. It is now spent.
+
+Run `07e7c8cf-faf7-4b57-83c7-bc9ccddc83cc`, created
+2026-10-27T15:16:46.098Z, ended BLOCKED / `GROUNDING_NO_SUBMISSION`.
+Grounder and Builder completed; submission MISSING, EI NOT_RUN, no Futu/Core.
+Closed stage outcome v0.6 contains 5 source bodies, 10 claims, 1 hypothesis,
+38 bindings and 2 coverage items. The event-anchor model/validator supported
+the anchor with selected claim `c1`.
+
+Exact retained rejections: claim index 7 `required_field_binding` (verifier
+supported); hypothesis index 0 `hypothesis_dependency_closure` (verifier
+supported); binding index 29 `verifier_unresolved` (verifier unresolved).
+Private safe log reported `hypothesis_roots=1 required_field_binding=1
+verifier_unresolved=1`. These records do not identify the rejected field's
+path/content or establish that binding 29 caused claim 7's rejection; no such
+relationship is inferred. No deterministic code defect is established.
+
+Actual retained calls: Discovery 2 (first rejected at
+`producer_v0_3_required_binding_omission_v0_9`, second accepted under the
+existing bounded repair), Semantic 1. The model_calls discovery entry repeats
+the second producer attempt and must not be double-counted. Actual Tavily
+request/credit counts are not retained; 5 bodies are not 5 API calls.
+No source-transport error is recorded in this run; this does not explain the
+previous run's transport failure or prove a network repair.
+
+DB now 44 runs / 3 Direct cases / 20 batch archives. No added case/archive,
+no production/config change, no new tests or further external call after
+termination. This is a completed honest abstention before EI, not real EI
+ACCEPTED or three-entry positive Core closure. Do not blindly replay it or
+weaken evidence to force a submission. Historical finer binding causes remain
+UNKNOWN; no new diagnostic framework or repeated historical reconstruction.
+
 ## Single authorized Event acceptance — 2026-10-27
 
 Fresh grounding: HEAD/main/origin/main `357d2f0`, clean. The user authorized

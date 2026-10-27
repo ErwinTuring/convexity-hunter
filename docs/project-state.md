@@ -1,5 +1,9 @@
 # Project State
 
+## COGT: Grounder completed, no submission — 2026-10-27
+New authorized one-shot `07e7c8cf-faf7-4b57-83c7-bc9ccddc83cc` ended BLOCKED / `GROUNDING_NO_SUBMISSION`: anchor supported/selected c1; claim 7 required_field_binding, hypothesis 0 hypothesis_dependency_closure, binding 29 verifier_unresolved. Grounder/Builder completed, submission MISSING, EI NOT_RUN; no Futu/Core. These indices do not establish an exact cross-item causal mapping or a software defect.
+Discovery 2 + Semantic 1 within existing caps; no source-transport error in this run, no proof of the previous failure's cause. Guard qEfp7FfP spent, no retry/substitution/config/code changes. DB 44 runs / 3 Direct / 20 batch archives; no new case/archive. Real Event/World positive EI→Core closure remains unproven. See [checkpoint](current-checkpoint.md).
+
 ## Normal Event acceptance stopped at source transport — 2026-10-27
 The newly authorized single run `39f555ac-8526-4278-bbc6-b33e6153f37b` is BLOCKED / `SOURCE_TRANSPORT_FAILURE` in persisted stage/run events. Tavily source acquisition precedes model execution; Producer/Semantic/Builder/EI/Futu/Core were not reached. Exact transport/response code, failed request and actual credits remain UNKNOWN; no schema failure or EI rejection is implied.
 Input/config/budgets unchanged, no observer/retry/substitution; new guard `/private/tmp/ch-cogt-v06-one-shot.imVk2Q/` is spent. DB 43 runs / 3 Direct / 20 batch archives, no added case/archive. No production changes/tests in this acceptance. Event/World real positive EI→Core closure remains unproven; see [checkpoint](current-checkpoint.md).
