@@ -1,5 +1,9 @@
 # Project State
 
+## Normal World acceptance — Beijing 2026-10-28
+Run `4fcb4def-08b7-4a3e-8108-62f2496ae5ae`: BLOCKED / HOST_BATCH_BLOCKED. Archived reasons: last30days partial; native Reddit/Digg not_ok; shared Grounder no submission. Finer native states, actual call counts and Grounder rejection details UNKNOWN. EI audit has 0 submissions, 0 cases; no real EI/Futu/Core research proof. DB 45 runs / 3 Direct / 21 batches. One approved POST, no retry/code/config change. See [checkpoint](current-checkpoint.md).
+Pending decision: frozen World policy passes the original domain directly to Search/Extract, while native leads enrich only model context. Main recommends a fixed bounded event-discovery query from scope/lanes/window with unchanged budgets and evidence gates; not approved or implemented, and not claimed as this batch's proven root cause.
+
 ## Offline binding attribution — 2026-10-27
 Existing focused examples pass; no reproducible acceptance bug found. Added bounded private relation logging only (fixed schema tags and array positions; missing/unverified and dependency links), no content/IDs, no acceptance/wire/store/EI/budget change. Shared path-helper compatibility is preserved. Four focused patch checks, compile and diff-check pass; no full suite or live call. Historical COGT binding relations remain UNKNOWN; see [checkpoint](current-checkpoint.md).
 Independent Godel review PASS after Main's intermediate helper-compatibility correction. This does not prove a historical bug or real EI/Core closure. Verify deployment live rather than assuming a historical PID remains current.

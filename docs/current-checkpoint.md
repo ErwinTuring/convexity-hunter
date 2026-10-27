@@ -1,5 +1,62 @@
 # Current Checkpoint
 
+## One normal World acceptance — Beijing 2026-10-28 / UTC 2026-10-27
+
+Grounded HEAD/main/origin/main `99c0d3b`, clean; normal Host PID 15598 /
+session 69359, UTC evaluation date 2026-10-27, root HTTP 200. The user approved
+one World run using existing configuration/budgets. Main froze the neutral
+domain `US listed companies` before execution; no event was selected.
+Pin remains last30days 3.21.1, seven-day live discovery / 3600-second handoff
+TTL, allowed Reddit/X/HN/Digg, at most 3 stages of 120 seconds. Configured
+caps remained Tavily 3 requests/3 credits and 2 requests per model role;
+World bounds 1/10/400/200/10 remained unchanged. These caps are not usage.
+
+Reviewed guard `/private/tmp/ch-world-live-20261028.0sYj3G/` is spent.
+Manifest SHA-256 `967a0b5327a36b5f6194083a69328e84aff5005496c3990a487773c2d88773aa`;
+script SHA-256 `91ff105c34b77f688beb0bcb466efb6c31af16842731583da20fe225842fb2d0`.
+One POST created `4fcb4def-08b7-4a3e-8108-62f2496ae5ae` at
+2026-10-27T23:22:41.003Z. Terminal BLOCKED / `HOST_BATCH_BLOCKED`.
+The stored World reasons are exactly `world_last30days_partial`,
+`world_last30days_native_source_reddit_not_ok`,
+`world_last30days_native_source_digg_not_ok`, and
+`world_grounder_no_submission`. The native finer states/counts and actual
+source/model usage are not retained; do not infer authentication/network
+failure, quiet sources, zero calls, or complete X/HN coverage.
+
+The deployed branch producing that reason sequence had nonempty provisional
+native leads and returned normally from the shared Grounder without a nonempty
+submission batch. Exact lead count/content, Grounder rejection details and
+model-call counts are UNKNOWN. No binding-attribution line was observed in
+the normal Host session; that does not establish an all-supported verdict.
+The persisted EI submission audit has 0 submissions, cases=0, unavailable=0;
+no real EI ACCEPTED or Futu/Core research case is established. Saving a batch
+archive is not positive Core execution. DB: 45 runs / 3 Direct / 21 batches.
+No retry, new provider, Skill upgrade, config/code change or test execution.
+
+Measured parent wall-clock window 23:12:03–23:31:28 UTC: real World execution
+72.608 seconds (6.2%); preparation/reading/inspection/recording 93.8%; production
+coding 0%. This is elapsed time, not token usage or additive agent work time.
+It falls short of the user's 70% main-flow target; no diagnostic activity is
+relabeled as product implementation. Future approved runs should use the
+existing product entry directly rather than rebuilding per-run ops wrappers.
+
+### Explicit query-policy decision pending
+
+Code and [the frozen query contract](host-world-source-query-v0.1.md) require
+Tavily Search/Extract query to equal the original World request. Native leads
+enrich the model context only. Here the query was exactly the bare market
+domain; event-discovery intent and the declared window were not encoded in
+that query. This is a demonstrated design limitation, not proof that it caused
+this run's missing submission; fetched source content was not retained here.
+
+Main recommends an explicit bounded amendment permitting one deterministic
+event-discovery query from the original market scope, frozen Discovery Policy
+lanes and current window. Preserve original input/provenance, query length
+checks, one Search/one Extract, existing budgets and all EI/source gates;
+no lead ranking, model-driven query expansion or results-driven retuning.
+This recommendation is PENDING, not approved or implemented. Do not silently
+rewrite the frozen exact-original-request policy or start another live batch.
+
 ## Bounded offline binding-attribution follow-up — 2026-10-27
 
 Fresh Git grounding matched `1cd2805`, clean. Five existing focused checks
