@@ -1,6 +1,14 @@
 # Project State
 
-## Event source-search supplement — reviewed, not live — 2026-10-27
+## Event v0.2 one-shot — 2026-10-27
+Run `2657b316-904d-467e-b39f-49f68e593045` is terminal BLOCKED at producer validation (`PRODUCER_ENVELOPE_INVALID` / `PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA`); no submission, Builder, EI, Futu, or Core.
+Closed audit: one rejected Discovery attempt, DeepSeek Flash, finish `stop`, 61,994 sent / 7,224 received; no binding-omission category or exact DTO error retained.
+The 68-byte `url:`+SHA-256 ID is accepted as a bounded string and preserved through catalog expansion; prefix incompatibility is statically excluded, but the concrete schema failure remains unknown.
+Configured source snapshot v0.2 uses general3 + official2 under 3 credits; actual Tavily request/credit counts were not retained. Only config delta: `source.request_budget` 2→3.
+Backup `/private/tmp/ch-event-config.wmJNBH/event-config.json.backup`; guard `/private/tmp/ch-cogt-v06-one-shot.N539LB/` spent; no retry or further external call.
+Host PID 97778 / session 9408, UTC date 2026-10-27; DB 42 runs / 0 active / 3 Direct / 20 batch archives. No deterministic fix or cap increase is indicated; see [checkpoint](current-checkpoint.md).
+
+## Historical: Event source-search supplement BUILD before deployment — 2026-10-27
 Event query policy: original query, fixed general Search 3 + SEC/Nasdaq restricted Search 2, exact-URL dedupe in provider order, then one Basic Extract for at most 5 URLs; preflight 3 requests/3 credits.
 Restricted result hosts are validated; existing source admission/authentication and EI acceptance rules remain unchanged.
 Event source snapshot v0.2 records the new route; v0.1 snapshots/custom small-budget callers remain readable, and World query-bound retains one Search + one Extract.

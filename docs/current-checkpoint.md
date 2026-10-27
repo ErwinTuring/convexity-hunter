@@ -1,6 +1,35 @@
 # Current Checkpoint
 
-## Event official-source supplement — reviewed BUILD, not live — 2026-10-27
+## Event v0.2 deployment and one-shot result — 2026-10-27
+
+The reviewed `5924873` build is deployed for UTC evaluation date 2026-10-27.
+Private backup: `/private/tmp/ch-event-config.wmJNBH/event-config.json.backup`;
+the only config delta is `source.request_budget` 2→3. The configured Event
+snapshot is v0.2 (general Search 3 + SEC/Nasdaq-restricted Search 2; 3-credit
+cap); actual Tavily request/credit counts were not retained.
+
+The one-shot guard `/private/tmp/ch-cogt-v06-one-shot.N539LB/` is spent. Its
+single accepted POST created run `2657b316-904d-467e-b39f-49f68e593045`,
+terminal BLOCKED at producer validation: `PRODUCER_ENVELOPE_INVALID` /
+`PRODUCER_FAILURE_CHECK_V0_3_INTERNAL_V0_1_SCHEMA`. The closed audit is
+`host-grounder-producer-failure-audit-v0.1`: one attempt (index 1, rejected),
+one Discovery call (DeepSeek Flash), `finish_reason=stop`, 61,994 bytes sent /
+7,224 received. No semantic attempt or submission is recorded; Builder/EI/
+Futu/Core were not reached. Binding-omission categories and the exact internal
+DTO error were not retained; do not infer either from the schema check.
+
+The `url:` plus 64-hex source ID is 68 UTF-8 bytes. The inspected schema applies
+bounded-string validation without a colon prohibition, and catalog expansion
+maps evidence IDs back to the original source ID before the internal v0.1
+parser. This rules out the prefix/length as a static incompatibility, but does
+not identify the specific DTO error or prove a source/binding outcome. No
+deterministic implementation bug is established; no cap change or retry.
+
+Host PID 97778 / exec session 9408 was launched with the original launcher;
+DB after termination: 42 runs / 0 active / 3 Direct / 20 batch archives. No
+observer was used and no further external call was made.
+
+## Historical: Event official-source supplement BUILD checkpoint before deployment — 2026-10-27
 
 The Event route keeps the original query and fixes Search allocation before
 seeing results: general max 3, then SEC/Nasdaq-only max 2 with
