@@ -1,5 +1,33 @@
 # Current Checkpoint
 
+## Single authorized Event acceptance — 2026-10-27
+
+Fresh grounding: HEAD/main/origin/main `357d2f0`, clean. The user authorized
+one new normal COGT Event at unchanged caps: Tavily 3 requests/3 credits,
+each model role at most 2 requests. The original 384-byte input, profile v0.4,
+model configuration and execution bounds were unchanged; no observer.
+
+Guard `/private/tmp/ch-cogt-v06-one-shot.imVk2Q/` was reviewed against the
+spent predecessor: only the baseline 41→42 and manifest hash changed.
+One POST created `39f555ac-8526-4278-bbc6-b33e6153f37b` at
+2026-10-27T14:57:58.420Z. The guard is spent; no retry or replacement batch.
+
+The persisted `stage_finished` and `run_finished` events both report BLOCKED
+with `SOURCE_TRANSPORT_FAILURE`. This is a Tavily source-client failure before
+producer/model execution, not a producer-schema, semantic or EI rejection.
+No producer-failure audit or schema class is expected for this earlier stage.
+The diagnostic groups multiple transport/response error codes; the exact
+lower-level code/HTTP status, failed Search/Extract operation and actual
+request/credit counts were not retained. Do not infer zero consumption or
+attribute it specifically to network, credentials, quota or response shape.
+
+Builder/EI/Futu/Core were not reached. DB is 43 runs / 3 Direct cases /
+20 batch archives; this run added no case or batch archive. Direct's historical
+closure is unchanged; Event/World positive EI→Core closure is not established.
+No production/config change or new test execution belongs to this acceptance.
+Next live execution needs a new bounded authorization; do not replay the spent
+guard or weaken acceptance to work around this operational failure.
+
 ## Offline Producer failure classification — 2026-10-27
 
 The next bounded change adds only fixed exception-type classification at the
