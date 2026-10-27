@@ -28,6 +28,24 @@ No production/config change or new test execution belongs to this acceptance.
 Next live execution needs a new bounded authorization; do not replay the spent
 guard or weaken acceptance to work around this operational failure.
 
+Bounded offline follow-up: the Host previously discarded the source client's
+existing safe code/status at this mapping. Add a best-effort operator log for
+only `HTTP_ERROR`, `NETWORK_ERROR`, `TIMEOUT`, `TRANSPORT_FAILED`, and
+`REDIRECT_REJECTED`; all other codes become `UNKNOWN`. Only exact integer
+HTTP status 100–599 may be logged; all other values become null. Never log
+exception text/args, URLs, response content, credentials or identifiers.
+Logger failures cannot change existing classification. No public diagnostic,
+stored outcome, EI, retry or budget change. These private logs are not a new
+durable audit schema and cannot recover this historical run's lower-level
+cause. This follow-up includes no source/model/Futu call or new batch.
+Four new offline logging tests pass. The existing credential/classification
+test first hit the sandbox's loopback permission restriction; rerunning only
+that local/mock test with loopback access passed. Changed Python files compile
+and diff-check passes; no full-suite result is claimed.
+Godel's independent review of the actual two-file implementation/test diff
+passed. The change narrows future operator diagnosis only; it neither fixes
+an established Tavily service/network defect nor changes this run's outcome.
+
 ## Offline Producer failure classification — 2026-10-27
 
 The next bounded change adds only fixed exception-type classification at the

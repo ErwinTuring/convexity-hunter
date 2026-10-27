@@ -13,6 +13,7 @@ import datetime
 import decimal
 import hashlib
 import json
+import logging
 import math
 import re
 import secrets
@@ -42,6 +43,7 @@ from .host_profile import (
 
 
 LOOPBACK_HOST = "127.0.0.1"
+_LOGGER = logging.getLogger(__name__)
 DEFAULT_PORT = 8080
 REQUEST_TIMEOUT_SECONDS = 5.0
 MAX_REQUEST_BODY_BYTES = 64 * 1024
@@ -112,6 +114,13 @@ _GROUNDER_BUDGET_ERROR_CODES = frozenset((
     "CREDIT_BUDGET_EXHAUSTED",
     "TIME_BUDGET_EXHAUSTED",
     "BYTE_BUDGET_EXHAUSTED",
+))
+_TAVILY_TRANSPORT_LOG_CODES = frozenset((
+    "HTTP_ERROR",
+    "NETWORK_ERROR",
+    "TIMEOUT",
+    "TRANSPORT_FAILED",
+    "REDIRECT_REJECTED",
 ))
 _SEMANTIC_FAILURE_STAGE_DIAGNOSTICS = {
     "semantic_wire_parse": "SEMANTIC_FAILURE_STAGE_WIRE_PARSE",
@@ -387,6 +396,25 @@ def _grounder_failure_status(error: Exception) -> Tuple[str, str]:
             return "BLOCKED", error.code
         return "FAILED", "RUN_CONTEXT_INVALID"
     if type(error) is TavilyTransportError:
+        try:
+            code = error.code
+            safe_code = (
+                code
+                if type(code) is str and code in _TAVILY_TRANSPORT_LOG_CODES
+                else "UNKNOWN"
+            )
+            status = error.status
+            safe_status = (
+                status if type(status) is int and 100 <= status <= 599 else None
+            )
+            _LOGGER.warning(
+                "tavily_transport_failure code=%s status=%s",
+                safe_code,
+                safe_status,
+            )
+        except Exception:
+            # Private observability must not change failure classification.
+            pass
         if type(error.status) is int and error.status == 401:
             return "BLOCKED", "SOURCE_CREDENTIAL_UNAVAILABLE"
         diagnostic = (

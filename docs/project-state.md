@@ -3,6 +3,8 @@
 ## Normal Event acceptance stopped at source transport — 2026-10-27
 The newly authorized single run `39f555ac-8526-4278-bbc6-b33e6153f37b` is BLOCKED / `SOURCE_TRANSPORT_FAILURE` in persisted stage/run events. Tavily source acquisition precedes model execution; Producer/Semantic/Builder/EI/Futu/Core were not reached. Exact transport/response code, failed request and actual credits remain UNKNOWN; no schema failure or EI rejection is implied.
 Input/config/budgets unchanged, no observer/retry/substitution; new guard `/private/tmp/ch-cogt-v06-one-shot.imVk2Q/` is spent. DB 43 runs / 3 Direct / 20 batch archives, no added case/archive. No production changes/tests in this acceptance. Event/World real positive EI→Core closure remains unproven; see [checkpoint](current-checkpoint.md).
+Offline follow-up adds only best-effort private logging of fixed Tavily transport codes and bounded HTTP status; no public contract/result or acceptance change. Four new tests plus one existing local/mock credential test pass (the latter required sandbox loopback access), compile and diff-check pass. Historical lower-level cause remains UNKNOWN; no new external call.
+Independent Godel review PASS. This is operator observability, not a proved network fix or three-entry closure.
 
 ## Offline Producer diagnostic successor — 2026-10-27
 Scope: fixed exception-type classification at the existing internal DTO failure, with versioned failure audit and old shapes preserved. No evidence, EI, retry or budget changes; no live calls. The latest real run's exact schema cause remains UNKNOWN. See [current checkpoint](current-checkpoint.md).

@@ -2957,6 +2957,133 @@ class HostServerBatchTests(unittest.TestCase):
         finally:
             self._stop_server()
 
+    def test_grounder_tavily_transport_log_uses_closed_code_allowlist(self):
+        from convexity_hunter.host_sources import TavilyTransportError
+
+        for code in (
+            "HTTP_ERROR",
+            "NETWORK_ERROR",
+            "TIMEOUT",
+            "TRANSPORT_FAILED",
+            "REDIRECT_REJECTED",
+        ):
+            with self.subTest(code=code):
+                with self.assertLogs(host_server_module._LOGGER, level="WARNING") as captured:
+                    result = host_server_module._grounder_failure_status(
+                        TavilyTransportError(code, status=503)
+                    )
+                self.assertEqual(result, ("BLOCKED", "SOURCE_TRANSPORT_FAILURE"))
+                self.assertEqual(
+                    captured.output,
+                    [
+                        "WARNING:{}:tavily_transport_failure code={} status=503".format(
+                            host_server_module._LOGGER.name, code
+                        )
+                    ],
+                )
+
+    def test_grounder_tavily_transport_log_redacts_unknown_and_custom_fields(self):
+        from convexity_hunter.host_sources import TavilyTransportError
+
+        class ForgedCode(str):
+            def __str__(self):
+                return "CODE_STRING_SENTINEL"
+
+            def __repr__(self):
+                return "CODE_REPR_SENTINEL"
+
+        class ForgedStatus(int):
+            def __str__(self):
+                return "STATUS_STRING_SENTINEL"
+
+            def __repr__(self):
+                return "STATUS_REPR_SENTINEL"
+
+        error = TavilyTransportError("HTTP_ERROR", status=503)
+        error.code = ForgedCode("CODE_VALUE_SENTINEL")
+        error.status = ForgedStatus(503)
+        error.args = ("EXCEPTION_TEXT_SENTINEL",)
+
+        with self.assertLogs(host_server_module._LOGGER, level="WARNING") as captured:
+            result = host_server_module._grounder_failure_status(error)
+
+        self.assertEqual(result, ("BLOCKED", "SOURCE_TRANSPORT_FAILURE"))
+        self.assertEqual(
+            captured.output,
+            [
+                "WARNING:{}:tavily_transport_failure code=UNKNOWN status=None".format(
+                    host_server_module._LOGGER.name
+                )
+            ],
+        )
+        for secret in (
+            "CODE_VALUE_SENTINEL",
+            "CODE_STRING_SENTINEL",
+            "CODE_REPR_SENTINEL",
+            "STATUS_STRING_SENTINEL",
+            "STATUS_REPR_SENTINEL",
+            "EXCEPTION_TEXT_SENTINEL",
+        ):
+            self.assertNotIn(secret, "\n".join(captured.output))
+
+    def test_grounder_tavily_transport_log_accepts_only_exact_http_status(self):
+        from convexity_hunter.host_sources import TavilyTransportError
+
+        class IntSubclass(int):
+            pass
+
+        for status, expected in (
+            (100, "100"),
+            (599, "599"),
+            (99, "None"),
+            (600, "None"),
+            (True, "None"),
+            (IntSubclass(503), "None"),
+        ):
+            with self.subTest(status=type(status).__name__):
+                with self.assertLogs(host_server_module._LOGGER, level="WARNING") as captured:
+                    result = host_server_module._grounder_failure_status(
+                        TavilyTransportError("HTTP_ERROR", status=status)
+                    )
+                self.assertEqual(result, ("BLOCKED", "SOURCE_TRANSPORT_FAILURE"))
+                self.assertEqual(
+                    captured.output,
+                    [
+                        "WARNING:{}:tavily_transport_failure code=HTTP_ERROR status={}".format(
+                            host_server_module._LOGGER.name, expected
+                        )
+                    ],
+                )
+
+    def test_grounder_tavily_transport_log_failure_preserves_classification_and_error(self):
+        from convexity_hunter.host_sources import TavilyTransportError
+
+        with patch.object(
+            host_server_module._LOGGER,
+            "warning",
+            side_effect=RuntimeError("PRIVATE_LOGGER_SENTINEL"),
+        ) as warning:
+            self.assertEqual(
+                host_server_module._grounder_failure_status(
+                    TavilyTransportError("HTTP_ERROR", status=503)
+                ),
+                ("BLOCKED", "SOURCE_TRANSPORT_FAILURE"),
+            )
+            malformed = TavilyTransportError("HTTP_ERROR")
+            malformed.code = []
+            with self.assertRaises(TypeError):
+                host_server_module._grounder_failure_status(malformed)
+
+        self.assertEqual(warning.call_count, 2)
+        self.assertEqual(
+            warning.call_args_list[0].args,
+            ("tavily_transport_failure code=%s status=%s", "HTTP_ERROR", 503),
+        )
+        self.assertEqual(
+            warning.call_args_list[1].args,
+            ("tavily_transport_failure code=%s status=%s", "UNKNOWN", None),
+        )
+
     def test_staged_event_configuration_is_validated_by_store_before_callback(self):
         temporary_directory, store = self._new_grounder_store("grounder-invalid-config.sqlite3")
         called = []
