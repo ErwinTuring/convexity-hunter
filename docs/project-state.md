@@ -2,7 +2,13 @@
 
 ## SEC Global Select listing compatibility — 2026-10-27
 Exact user-authorized Common Stock / Global Select + Yahoo NasdaqGS Real Time/USD pairing is implemented as provenance v0.3; v0.2 Capital/NasdaqCM and Yahoo v1 Delayed Quote remain unchanged. Six focused synthetic tests, compileall, and diff check pass; Banach and Main guard/diff reviews PASS. Local COGT official source text was not retained, so no real-format match or prior-run root cause is claimed.
-Archived statements contain no May 28; c1 has FDA acceptance, Priority Review, and Nov 30 PDUFA only. Same-fact occurrence-date rule remains unchanged; no cross-fact date borrowing. Main confirmed World/Event share _run_source_core; no World change. No live request/POST. Reviewed unconsumed guard: /private/tmp/ch-cogt-v06-one-shot.pmOX4E/, DB baseline 40, evaluation date 2026-10-27. Await commit confirmation before Host restart, release marker, or the single POST.
+Archived statements contain no May 28; prior c1 has FDA acceptance, Priority Review, and Nov 30 PDUFA only. Same-fact occurrence-date rule remains unchanged; no cross-fact date borrowing. Main confirmed World/Event share _run_source_core; no World change. A separate normal run is recorded below; it does not prove actual COGT listing-format match or change B.
+
+## COGT normal Event run after A — 2026-10-27
+Run abe52465-55ae-4699-9919-21fa71a68f42: BLOCKED / GROUNDING_NO_SUBMISSION. Grounder/Builder COMPLETED; semantic receipt RECEIPT_VALIDATED; source status UNKNOWN; submission MISSING; EI NOT_RUN; no Futu/Core. DB 41 runs/0 active/3 Direct/20 batch; this run added no direct case or batch archive. Counts: 5 source bodies, 14 claims, 1 hypothesis, 46 bindings.
+Closed refusal counts: claims 3 (indexes 1 required_field_binding, 12 dependency_closure, 13 verifier_unresolved); binding 0 verifier_unresolved; hypothesis 0 verifier_unresolved, dependency_closure, support_source; 1 NO_PROJECTABLE_HYPOTHESIS. Anchor coverage was supported by model/verifier with 2 claims, but selected_claim_id=null under the existing single-witness rule. No rule change.
+Actual model audit: Discovery 1 call; Semantic 1 call (response_received, 18.463s, 40,298 reported total tokens). Tavily request/credit counts were not retained and are not inferred from source-body count. No final submission was retained; upstream date/window/reassessment presence is not established by this closed audit. No further call/retry.
+Host PID 89614/session 85747 remains running on UTC date 2026-10-27; root GET 200/profile v0.4; guard /private/tmp/ch-cogt-v06-one-shot.pmOX4E/ spent. One existing offline World/Event/Direct shared-Core regression passed 1/1; no full suite or live World/Direct operation.
 
 ## v0.10 temporal prompt strengthening — 2026-10-27
 Prompts reinforce frozen temporal semantics: impact windows are not milestones. Model assessment is fallible, not proof; EI rules and schemas are unchanged.

@@ -17,19 +17,51 @@ date rule needs a unique occurrence date in the same selected verified fact's
 authenticated SEC text and binding. No cross-fact borrowing or date-rule
 change; a new normal run must use actual sources and may remain incomplete.
 Main's read-only route check confirms World/Event share _run_source_core;
-World was not changed. No external source/model call or POST has occurred in
-this work unit. Reviewed one-shot guard is prepared at
-/private/tmp/ch-cogt-v06-one-shot.pmOX4E/ (no observer, no consumed marker),
-with DB baseline 40 and evaluation date 2026-10-27; input and budgets are
-unchanged. Await Main commit confirmation before restarting the original
-launcher, verifying runtime caps, writing the release marker, or POSTing.
+World was not changed.
 
-Phase timing (UTC, approximate, from recorded checkpoints): local grounding
-00:51-00:54; implementation began about 00:52:45 and finalized about 00:59;
-focused tests/docs/compile overlapped about 00:54:46-01:00:16; Banach review
-00:59:52-01:05:41. Deployment/acceptance has not started. Main's overall start
-was about 00:45; coding and test durations were not separately instrumented,
-so no 70/30 estimate is claimed.
+## COGT normal Event run after A — 2026-10-27
+
+The released single POST completed as run
+abe52465-55ae-4699-9919-21fa71a68f42, terminal BLOCKED /
+GROUNDING_NO_SUBMISSION. Grounder and Builder COMPLETED; semantic receipt
+RECEIPT_VALIDATED; source status UNKNOWN; submission MISSING; EI NOT_RUN;
+Futu/Core not reached. DB is 41 runs / 0 active / 3 Direct / 20 batch archives;
+this run created no direct case or batch archive.
+
+Closed audit counts: 5 source bodies, 14 claims, 1 hypothesis, 46 bindings.
+Refusal counts: CLAIM_REJECTED_BY_VALIDATOR 3,
+FIELD_BINDING_NOT_VERIFIED 1, HYPOTHESIS_REJECTED_BY_VALIDATOR 1,
+NO_PROJECTABLE_HYPOTHESIS 1. Anchor coverage was model/verifier supported
+with 2 claims, but selected_claim_id was null; Main identifies the existing
+single-witness rule as the deterministic rejection. Other rejected objects:
+claim 1 required_field_binding (verifier supported), claim 12 dependency_closure
+(verifier supported), claim 13 verifier_unresolved; hypothesis 0
+verifier_unresolved / dependency_closure / support_source; binding 0
+verifier_unresolved. No anchor or date semantics changed.
+
+Actual model audit: Discovery 1 call (66,678 bytes sent / 19,229 received);
+Semantic 1 call (134,465 sent / 17,010 received), response_received in
+18.463 seconds, 40,298 reported total tokens. Tavily request/credit counts were
+not retained; the 5 source bodies are not an API request count. No final
+submission was retained; this closed audit does not establish whether upstream
+candidate date/window/reassessment fields were present. EI time rules were
+not reached. This run does not show that COGT's actual listing
+format was exercised. No further call or retry.
+
+The reviewed one-shot guard at /private/tmp/ch-cogt-v06-one-shot.pmOX4E/ is
+spent; no observer was used. Host is running PID 89614 / exec session 85747,
+evaluation date 2026-10-27; local GET root 200, status READY, profile v0.4,
+DB 41/0 active. Loaded caps were Tavily 2 requests / 3 credits, each model role
+2 requests, Semantic input 262144 bytes; token/output/time limits unchanged.
+One existing offline World/Event/Direct shared-Core regression passed 1/1;
+no full suite or live World/Direct run.
+
+Phase timing (UTC, approximate, from recorded checkpoints): Main start about
+00:45; local grounding 00:51-00:54; implementation about 00:52:45-00:59;
+focused tests/docs/compile overlapped 00:54:46-01:00:16; Banach review
+00:59:52-01:05:41; deployment and single acceptance occurred between
+01:11:46 and 01:17:34. The build/test phases overlapped and were not separately
+instrumented, so no 70/30 estimate is claimed.
 
 Repository: `ErwinTuring/convexity-hunter`
 
