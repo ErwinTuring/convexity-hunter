@@ -1065,6 +1065,58 @@ class HostStoreTests(unittest.TestCase):
         )
         self.assertEqual(restored["semantic_transport"], _semantic_transport_audit())
 
+    def test_schema_failure_audit_v04_reopens_and_rejects_unbound_classes(self):
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+        from convexity_hunter.host_server import _grounder_producer_failure_audit
+        from convexity_hunter.host_store import _validate_grounder_producer_failure_audit
+
+        run_id = self.create_run("event", "synthetic schema failure")
+        stage_id = self.store.start_stage(run_id, "grounder")
+        result, _malformed = make_grounder_retry_result(run_id)
+        attempt = replace(
+            result.audit.producer_attempts[-1],
+            index=1,
+            status="rejected",
+            failure_check="producer_v0_3_internal_v0_1_schema",
+        )
+        error = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            producer_attempts=(attempt,),
+            schema_failure_class="CLOSED_SHAPE",
+        )
+        failure = _grounder_producer_failure_audit(error, "FAILED")
+        self.assertEqual(
+            failure["schema_version"], "host-grounder-producer-failure-audit-v0.4"
+        )
+        self.assertEqual(failure["schema_failure_class"], "CLOSED_SHAPE")
+        self.assertEqual(_validate_grounder_producer_failure_audit(failure), failure)
+        self.assertNotIn("synthetic schema failure", json.dumps(failure))
+
+        bad_class = dict(failure, schema_failure_class="UNLISTED")
+        with self.assertRaises(ValueError):
+            _validate_grounder_producer_failure_audit(bad_class)
+        missing_class = dict(failure)
+        del missing_class["schema_failure_class"]
+        with self.assertRaises(ValueError):
+            _validate_grounder_producer_failure_audit(missing_class)
+        wrong_check = dict(failure)
+        wrong_check["producer_attempts"] = [dict(
+            failure["producer_attempts"][0],
+            failure_check="producer_v0_3_wire_decode",
+        )]
+        with self.assertRaises(ValueError):
+            _validate_grounder_producer_failure_audit(wrong_check)
+
+        self.store.finish_stage(
+            run_id, stage_id, "FAILED", failure, ("PRODUCER_ENVELOPE_INVALID",)
+        )
+        self.store.finish_run(run_id, "FAILED", ("PRODUCER_ENVELOPE_INVALID",))
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        restored = reopened.get_run(run_id)["events"][-1]["outcome"]
+        self.assertEqual(restored, failure)
+
     def test_v010_semantic_transport_failure_audit_reopens_exact_prompt_pair(self):
         from convexity_hunter.host_grounder_evidence_catalog import (
             _BINDING_OMISSION_FAILURE_ROUTE_V0_11,

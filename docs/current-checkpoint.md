@@ -1,5 +1,29 @@
 # Current Checkpoint
 
+## Offline Producer failure classification — 2026-10-27
+
+The next bounded change adds only fixed exception-type classification at the
+existing internal v0.1 schema failure boundary; see the explicitly versioned
+[failure-audit successor](host-grounder-producer-diagnostics-v0.2.md#bounded-failure-audit-successor--2026-10-27).
+It changes no producer acceptance, EI semantics, prompt, retry, or API budget.
+The spent run below is not replayed and its exact DTO cause remains UNKNOWN.
+No new live Event/World/Direct run is part of this work unit.
+
+Fresh `origin/main` fetch succeeded after a transient proxy/TLS failure.
+The previous Host process was no longer listening. The original private
+launcher restored localhost:8080 for UTC evaluation date 2026-10-27;
+offline configuration check returned READY and the root returned HTTP 200
+(PID 11831 / exec session 15653, before the new patch is deployed).
+This is service availability, not EI/Core acceptance evidence.
+
+Implemented in runtime, failure-audit serialization/store validation and public
+projection. Three new focused tests and ten existing compatibility/retry tests
+pass; changed Python modules/tests compile; `git diff --check` passes.
+Godel's independent review found a missing v0.4 public-projection dispatch;
+that omission was fixed and targeted re-review passed. No full-suite or live
+acceptance result is claimed. The patch does not identify or repair the
+unknown historical DTO cause and does not establish three-entry completion.
+
 ## Event v0.2 deployment and one-shot result — 2026-10-27
 
 The reviewed `5924873` build is deployed for UTC evaluation date 2026-10-27.

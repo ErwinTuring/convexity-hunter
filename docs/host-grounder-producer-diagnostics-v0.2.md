@@ -1,5 +1,30 @@
 # Host Grounder Producer Diagnostics v0.2
 
+## Bounded failure-audit successor — 2026-10-27
+
+The frozen v0.2 diagnostic labels below remain unchanged. A separately
+versioned producer failure audit v0.4 may add `schema_failure_class` only for
+the final rejected attempt at `producer_v0_3_internal_v0_1_schema`:
+
+- exact `ProducerClosedShapeError`: `CLOSED_SHAPE`;
+- exact `ValueError`: `VALUE_VALIDATION`;
+- other exceptions already caught by the existing handler: `OTHER`.
+
+Classify by exact exception type, never by exception text, arguments, field
+names, values, or model/source content. Do not enlarge the catch or change
+acceptance, first-failure precedence, retries, prompts, or budgets. Historical
+v0.1–v0.3 audits retain their closed shapes. A missing class does not upgrade
+an old audit. No new runtime route or public callable is needed.
+
+This narrows only the failure category, not its exact field or factual cause.
+Run `2657b316-904d-467e-b39f-49f68e593045` remains historically UNKNOWN at
+that finer level; no replay, recovery, or new live call is authorized here.
+
+Successor implementation validation: 3 new focused tests plus 10 existing
+compatibility/retry tests pass, changed modules/tests compile, and independent
+review plus targeted public-projection fix re-review pass. These are offline
+results only; no current full-suite or live acceptance claim.
+
 Status: **CONTRACT FROZEN — IMPLEMENTED AND INDEPENDENTLY REVIEWED.**
 Independent contract and final code reviews passed. No model/source request
 or new live attempt is part of this unit.

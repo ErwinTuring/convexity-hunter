@@ -141,10 +141,12 @@ _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_6 = "host-grounder-submission-stag
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION = "host-grounder-producer-failure-audit-v0.1"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2 = "host-grounder-producer-failure-audit-v0.2"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3 = "host-grounder-producer-failure-audit-v0.3"
+_GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4 = "host-grounder-producer-failure-audit-v0.4"
 _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS = frozenset((
     _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION,
     _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
     _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
+    _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4,
 ))
 _GROUNDER_STAGE_DIAGNOSTIC = "GROUNDING_NO_SUBMISSION"
 _GROUNDER_STAGE_OUTCOME_VERSIONS = frozenset((
@@ -753,6 +755,18 @@ def _validate_grounder_producer_failure_audit(
         fields = base_fields | {
             "producer_prompt_version", "verifier_prompt_version", "semantic_transport"
         }
+    elif version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4:
+        schema_class_fields = base_fields | {"schema_failure_class"}
+        schema_class_route_fields = schema_class_fields | {
+            "producer_prompt_version", "verifier_prompt_version"
+        }
+        fields = set(value) if type(value) is dict else set()
+        if fields not in (
+            schema_class_fields,
+            schema_class_route_fields,
+            schema_class_route_fields | {"semantic_transport"},
+        ):
+            fields = set()
     else:
         fields = set()
     if (
@@ -762,10 +776,14 @@ def _validate_grounder_producer_failure_audit(
         or (expected_status is not None and value["status"] != expected_status)
     ):
         raise ValueError("Grounder producer failure audit has an invalid closed shape")
-    if version in (
+    has_prompt_route = version in (
         _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
         _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
-    ):
+    ) or (
+        version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4
+        and "producer_prompt_version" in fields
+    )
+    if has_prompt_route:
         route = (value["producer_prompt_version"], value["verifier_prompt_version"])
         expected_routes = (
             (
@@ -808,9 +826,13 @@ def _validate_grounder_producer_failure_audit(
             )
         ):
             raise ValueError("Grounder producer failure audit has an invalid omission sequence")
-    elif version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3 and has_omission_marker:
+    elif version in (
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4,
+    ) and has_omission_marker:
         if (
-            attempts[0]["status"] != "rejected"
+            (version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4 and not has_prompt_route)
+            or attempts[0]["status"] != "rejected"
             or attempts[0]["failure_check"] != _BINDING_OMISSION_FIRST_FAILURE_CHECK
             or any(check == _BINDING_OMISSION_FIRST_FAILURE_CHECK for check in checks[1:])
             or any(
@@ -825,18 +847,35 @@ def _validate_grounder_producer_failure_audit(
         "status": value["status"],
         "producer_attempts": attempts,
     }
-    if version in (
-        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
-        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
-    ):
+    if has_prompt_route:
         result["producer_prompt_version"] = value["producer_prompt_version"]
         result["verifier_prompt_version"] = value["verifier_prompt_version"]
-    if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3:
+    if version in (
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4,
+    ) and "semantic_transport" in fields:
         from .host_grounder_runtime import _validate_semantic_transport_retry_audit
 
         result["semantic_transport"] = _validate_semantic_transport_retry_audit(
             value["semantic_transport"]
         )
+    if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4:
+        schema_failure_classes = ("CLOSED_SHAPE", "VALUE_VALIDATION", "OTHER")
+        final_attempt = attempts[-1]
+        if (
+            type(value["schema_failure_class"]) is not str
+            or value["schema_failure_class"] not in schema_failure_classes
+            or final_attempt["status"] != "rejected"
+            or final_attempt["failure_check"]
+            != "producer_v0_3_internal_v0_1_schema"
+            or (
+                has_prompt_route
+                and not has_omission_marker
+                and "semantic_transport" not in fields
+            )
+        ):
+            raise ValueError("Grounder producer failure audit has an invalid schema failure class")
+        result["schema_failure_class"] = value["schema_failure_class"]
     if len(_canonical_json(result, "Grounder producer failure audit").encode("utf-8")) > 100_000:
         raise ValueError("Grounder producer failure audit exceeds its archive bound")
     return result

@@ -1100,6 +1100,7 @@ class HostServerGrounderProjectionTests(unittest.TestCase):
 
     def test_producer_failure_audit_is_public_only_through_closed_projection(self):
         from tests.test_host_store import make_grounder_retry_result
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
 
         result, _malformed = make_grounder_retry_result("grounder-failure-run")
         first, accepted = result.audit.producer_attempts
@@ -1140,6 +1141,48 @@ class HostServerGrounderProjectionTests(unittest.TestCase):
         legacy_omission.pop("producer_prompt_version")
         legacy_omission.pop("verifier_prompt_version")
         self.assertIsNone(host_server_module._public_outcome(legacy_omission))
+
+        schema_attempt = replace(
+            accepted,
+            index=1,
+            status="rejected",
+            failure_check="producer_v0_3_internal_v0_1_schema",
+        )
+        legacy_schema_error = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            producer_attempts=(schema_attempt,),
+        )
+        legacy_schema_outcome = host_server_module._grounder_producer_failure_audit(
+            legacy_schema_error, "FAILED"
+        )
+        self.assertEqual(
+            legacy_schema_outcome["schema_version"],
+            "host-grounder-producer-failure-audit-v0.1",
+        )
+        self.assertNotIn("schema_failure_class", legacy_schema_outcome)
+
+        schema_error = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            producer_attempts=(schema_attempt,),
+            schema_failure_class="VALUE_VALIDATION",
+        )
+        schema_outcome = host_server_module._grounder_producer_failure_audit(
+            schema_error, "FAILED"
+        )
+        self.assertEqual(
+            schema_outcome["schema_version"],
+            "host-grounder-producer-failure-audit-v0.4",
+        )
+        self.assertEqual(schema_outcome["schema_failure_class"], "VALUE_VALIDATION")
+        self.assertEqual(
+            host_server_module._public_outcome(schema_outcome), schema_outcome
+        )
+        schema_error.schema_failure_class = "PRIVATE_DIAGNOSTIC_SENTINEL"
+        self.assertIsNone(
+            host_server_module._grounder_producer_failure_audit(
+                schema_error, "FAILED"
+            )
+        )
 
     def test_semantic_transport_success_and_failure_audits_have_closed_public_projection(self):
         from tests.test_host_store import (

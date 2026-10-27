@@ -472,7 +472,7 @@ def _semantic_failure_diagnostic_codes(error: Exception) -> Tuple[str, ...]:
 
 
 def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[Dict[str, Any]]:
-    """Build only route-bound omission audits; retain legacy format audits as v0.1."""
+    """Build closed producer failure audits without retaining parser exceptions."""
 
     from .host_grounder_evidence_catalog import (
         HostEvidenceCatalogProducerAttempt,
@@ -487,6 +487,7 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
         _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION,
         _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2,
         _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_3,
+        _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4,
         _validate_grounder_producer_failure_audit,
     )
 
@@ -556,6 +557,12 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
                 "producer_prompt_version": route[0],
                 "verifier_prompt_version": route[1],
             })
+    schema_failure_class = getattr(error, "schema_failure_class", None)
+    if schema_failure_class is not None:
+        outcome.update({
+            "schema_version": _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_4,
+            "schema_failure_class": schema_failure_class,
+        })
     try:
         return _validate_grounder_producer_failure_audit(outcome)
     except (TypeError, ValueError):
@@ -670,6 +677,7 @@ def _public_outcome(value: Any) -> Optional[Dict[str, Any]]:
         "host-grounder-producer-failure-audit-v0.1",
         "host-grounder-producer-failure-audit-v0.2",
         "host-grounder-producer-failure-audit-v0.3",
+        "host-grounder-producer-failure-audit-v0.4",
     ):
         try:
             from .host_store import _validate_grounder_producer_failure_audit

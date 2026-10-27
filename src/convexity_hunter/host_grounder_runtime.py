@@ -104,6 +104,12 @@ _VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.2"
 _QUOTE_LOCALIZED_PRODUCER_PROMPT_VERSION = "host-grounder-discovery-prompt-v0.3"
 _QUOTE_LOCALIZED_VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.4"
 _QUOTE_LOCALIZATION_AUDIT_SCHEMA_VERSION = "host-grounder-quote-localization-audit-v0.2"
+_PRODUCER_V0_3_INTERNAL_SCHEMA_FAILURE_CHECK = (
+    "producer_v0_3_internal_v0_1_schema"
+)
+_PRODUCER_SCHEMA_FAILURE_CLASSES = (
+    "CLOSED_SHAPE", "VALUE_VALIDATION", "OTHER",
+)
 _PRODUCER_V0_3_FAILURE_CHECKS = (
     "producer_v0_3_wire_decode",
     "producer_v0_3_root_shape",
@@ -111,7 +117,7 @@ _PRODUCER_V0_3_FAILURE_CHECKS = (
     "producer_v0_3_claims_catalog_expansion",
     "producer_v0_3_bindings_catalog_expansion",
     "producer_v0_3_canonical_size",
-    "producer_v0_3_internal_v0_1_schema",
+    _PRODUCER_V0_3_INTERNAL_SCHEMA_FAILURE_CHECK,
     "producer_v0_3_recanonicalization",
     "producer_v0_3_json_format",
     "producer_v0_3_closed_shape",
@@ -953,6 +959,7 @@ class HostGrounderRuntimeError(RuntimeError):
         failure_check: Optional[str] = None,
         producer_attempts: Optional[tuple] = None,
         semantic_transport: Optional[dict] = None,
+        schema_failure_class: Optional[str] = None,
     ) -> None:
         producer_failure_checks = (
             "producer_wire_normalization",
@@ -979,6 +986,27 @@ class HostGrounderRuntimeError(RuntimeError):
             )
         ):
             raise ValueError("invalid producer attempt audit")
+        if schema_failure_class is not None:
+            final_attempt = attempts[-1] if attempts else None
+            if (
+                type(schema_failure_class) is not str
+                or schema_failure_class not in _PRODUCER_SCHEMA_FAILURE_CLASSES
+                or code != "PRODUCER_ENVELOPE_INVALID"
+                or final_attempt is None
+                or final_attempt.status != "rejected"
+                or final_attempt.failure_check
+                != _PRODUCER_V0_3_INTERNAL_SCHEMA_FAILURE_CHECK
+                or (
+                    failure_stage is not None
+                    and failure_stage != "producer_envelope_normalization"
+                )
+                or (
+                    failure_check is not None
+                    and failure_check
+                    != _PRODUCER_V0_3_INTERNAL_SCHEMA_FAILURE_CHECK
+                )
+            ):
+                raise ValueError("invalid schema_failure_class")
         if failure_stage is not None and (
             type(failure_stage) is not str
             or failure_stage not in (
@@ -1036,6 +1064,7 @@ class HostGrounderRuntimeError(RuntimeError):
         self.failure_stage = failure_stage
         self.failure_check = failure_check
         self.producer_attempts = attempts
+        self.schema_failure_class = schema_failure_class
         self.semantic_transport = (
             None
             if semantic_transport is None
@@ -1052,6 +1081,7 @@ class HostGrounderRuntimeError(RuntimeError):
             failure_check=self.failure_check,
             producer_attempts=attempts,
             semantic_transport=self.semantic_transport,
+            schema_failure_class=self.schema_failure_class,
         )
 
     def with_semantic_transport(
@@ -1063,6 +1093,7 @@ class HostGrounderRuntimeError(RuntimeError):
             failure_check=self.failure_check,
             producer_attempts=self.producer_attempts,
             semantic_transport=audit,
+            schema_failure_class=self.schema_failure_class,
         )
 
     def __repr__(self) -> str:
@@ -2625,6 +2656,22 @@ def _run_host_grounder_same_run_evidence_catalog(
                 )
                 retain_attempt(attempt)
                 attempts = tuple(producer_attempts)
+            schema_failure_class = None
+            final_attempt = attempts[-1] if attempts else None
+            if (
+                failure_check == _PRODUCER_V0_3_INTERNAL_SCHEMA_FAILURE_CHECK
+                and status == "rejected"
+                and final_attempt is not None
+                and final_attempt.status == "rejected"
+                and final_attempt.failure_check
+                == _PRODUCER_V0_3_INTERNAL_SCHEMA_FAILURE_CHECK
+            ):
+                if type(error) is ProducerClosedShapeError:
+                    schema_failure_class = "CLOSED_SHAPE"
+                elif type(error) is ValueError:
+                    schema_failure_class = "VALUE_VALIDATION"
+                else:
+                    schema_failure_class = "OTHER"
             return None, HostGrounderRuntimeError(
                 "PRODUCER_ENVELOPE_INVALID",
                 failure_stage=(
@@ -2635,6 +2682,7 @@ def _run_host_grounder_same_run_evidence_catalog(
                     failure_check if context_preparer is not None else None
                 ),
                 producer_attempts=attempts,
+                schema_failure_class=schema_failure_class,
             )
         return (
             envelope, normalized_bytes, envelope_text, binding_ids,

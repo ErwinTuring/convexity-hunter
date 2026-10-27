@@ -401,6 +401,103 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
             preparer.assert_not_called()
             builder.assert_not_called()
 
+    def test_internal_schema_failure_classification_is_closed_and_clone_safe(self):
+        from dataclasses import replace
+        from convexity_hunter.host_grounder_schema import ProducerClosedShapeError
+        from tests.test_host_store import _semantic_transport_audit
+
+        class DerivedValueError(ValueError):
+            pass
+
+        class DerivedClosedShapeError(ProducerClosedShapeError):
+            pass
+
+        for error_type, expected_class in (
+            (ProducerClosedShapeError, "CLOSED_SHAPE"),
+            (ValueError, "VALUE_VALIDATION"),
+            (DerivedClosedShapeError, "OTHER"),
+            (DerivedValueError, "OTHER"),
+            (TypeError, "OTHER"),
+        ):
+            calls = []
+            discovery = _FakeClient("discovery", _canonical(self.producer), calls)
+            semantic = _FakeClient("semantic", _canonical(self.verdict), calls)
+            preparer = Mock()
+
+            def fail_at_internal_schema(*args, progress, **kwargs):
+                progress("producer_v0_3_internal_v0_1_schema")
+                raise error_type("PRIVATE_DIAGNOSTIC_SENTINEL")
+
+            with self.subTest(error_type=error_type), patch.object(
+                runtime_module,
+                "_parse_grounder_output_v0_3_with_progress",
+                side_effect=fail_at_internal_schema,
+            ), patch.object(runtime_module, "_build_host_grounder_v0_2") as builder:
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    runtime_module._run_host_grounder_same_run_evidence_catalog_v0_9(
+                        self.run_input,
+                        self.context,
+                        discovery_client=discovery,
+                        semantic_client=semantic,
+                        audit_holder=HostEvidenceCatalogAuditHolder(
+                            run_id=self.run_input.run_id,
+                            canonical_input_hash=self.run_input.canonical_input_hash,
+                        ),
+                        max_json_bytes=100_000,
+                        max_source_body_bytes=20_000,
+                        max_catalog_entries=100,
+                        max_catalog_bytes=100_000,
+                        max_catalog_paragraphs=100,
+                        host_context_preparer=preparer,
+                    )
+            error = raised.exception
+            self.assertEqual(
+                error.schema_failure_class,
+                expected_class,
+                (error.failure_check, [
+                    (attempt.status, attempt.failure_check)
+                    for attempt in error.producer_attempts
+                ]),
+            )
+            self.assertEqual(error.args, ("PRODUCER_ENVELOPE_INVALID",))
+            self.assertEqual(str(error), "PRODUCER_ENVELOPE_INVALID")
+            self.assertEqual(
+                repr(error),
+                "HostGrounderRuntimeError(code='PRODUCER_ENVELOPE_INVALID')",
+            )
+            self.assertEqual(error.producer_attempts[-1].status, "rejected")
+            self.assertEqual(
+                error.producer_attempts[-1].failure_check,
+                "producer_v0_3_internal_v0_1_schema",
+            )
+            self.assertNotIn("PRIVATE_DIAGNOSTIC_SENTINEL", str(error) + repr(error))
+            self.assertEqual(
+                error.with_producer_attempts(error.producer_attempts).schema_failure_class,
+                expected_class,
+            )
+            self.assertEqual(
+                error.with_semantic_transport(_semantic_transport_audit()).schema_failure_class,
+                expected_class,
+            )
+            wrong_attempt = replace(
+                error.producer_attempts[-1],
+                failure_check="producer_v0_3_wire_decode",
+            )
+            with self.assertRaisesRegex(ValueError, "invalid schema_failure_class"):
+                HostGrounderRuntimeError(
+                    "PRODUCER_ENVELOPE_INVALID",
+                    producer_attempts=(wrong_attempt,),
+                    schema_failure_class=expected_class,
+                )
+            with self.assertRaisesRegex(ValueError, "invalid schema_failure_class"):
+                HostGrounderRuntimeError(
+                    "PRODUCER_ENVELOPE_INVALID",
+                    producer_attempts=error.producer_attempts,
+                    schema_failure_class="PRIVATE_DIAGNOSTIC_SENTINEL",
+                )
+            preparer.assert_not_called()
+            builder.assert_not_called()
+
     def test_v03_parser_failures_surface_only_the_eight_closed_checks_and_stop_early(self):
         fine_checks = (
             "producer_v0_3_wire_decode",
