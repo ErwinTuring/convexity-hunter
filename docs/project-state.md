@@ -1,5 +1,8 @@
 # Project State
 
+## Final lower-cap service restored — 2026-10-28
+Post-run code `ddc5fbf` started via the original launcher with restored original budgets (PID46791/session72595, UTC evaluation date2026-10-28). Status READY, all three executors configured; DB47/3/23 unchanged after read-only UI history selection. Per-unit lossless projection has 120 relevant tests/review PASS but no new live proof. One-batch authorization is spent; do not resubmit. This deployment verification supersedes the pending deployment wording in the earlier stages below.
+
 ## Single World acceptance completed; EI/Core still unproven — 2026-10-28
 `3be8b93` deployed for ONE UI run `ac93f2d3-4939-4820-ba1d-1fa12c02109e` (12:38:06.454–12:40:21.753Z), terminal BLOCKED. Five provisional units: 1/2/5 Grounder failed, 3/4 no submission; 0 EI submissions/0 Core cases. Global catalog paragraph-limit failure is known, but its exact per-unit mapping is UNKNOWN. No retry or gate relaxation. DB47/Direct3/batches23. Post-run lossless per-unit fixed-diagnostic projection passes focused tests/review; no new live proof. Used high-cap config preserved; original World config restored byte-for-byte and Event unchanged, so one-run allowance is not recurring. Final lower-cap deployment must be verified. See [checkpoint](current-checkpoint.md).
 

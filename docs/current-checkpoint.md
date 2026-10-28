@@ -55,8 +55,12 @@ The used v0.2 private config was preserved as
 `/private/tmp/ch-world-config-v02.eMbV1c/world-config.used-v02.json` (600).
 The original World config was restored byte-for-byte from its backup (600),
 and Event file hash/caps stayed unchanged. PID46048 was stopped only after
-confirming 0 active runs. Restart the reviewed final code with the ORIGINAL
-lower caps; the spent single-batch grant must not remain a recurring allowance.
+confirming 0 active runs. Post-run code `ddc5fbf` was restarted through the
+original launcher with ORIGINAL lower caps: PID46791 / session72595, explicit
+UTC evaluation date2026-10-28. `/api/status` READY with all three executors
+configured is service readiness, not EI/Core proof. Read-only UI reload and
+selection of the existing result left DB47/3/23 unchanged, with no new POST.
+The spent single-batch grant is not a recurring allowance.
 Next external operation requires new bounded authorization. No automatic
 directory-limit escalation, new Grounder project or repeated World trial.
 
