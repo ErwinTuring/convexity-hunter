@@ -1,5 +1,69 @@
 # Current Checkpoint
 
+## v0.4 single World acceptance completed — 2026-10-29
+
+Reviewed code `0b3d51b` deployed through the original launcher. ONE normal
+Host API run `903d3b69-eeeb-42ea-aa39-32144c28da2a` completed BLOCKED /
+HOST_BATCH_BLOCKED, 2026-10-28T22:28:20.964Z–22:31:21.050Z (180.086s;
+Beijing2026-10-29 06:28–06:31). The normal page handler and CSRF/Origin
+checks were used after browser binding failed; no UI-success claim.
+Persisted original scope/window/bounds and source20/20/models11/11 INCLUDING
+Skill match the preregistration. Entries256/arrays256/scan1024/catalog65536
+verified; other config limits unchanged. This single grant is consumed.
+
+Five provisional units: unit1 yielded ONE submission assessed by shared EI
+as INCOMPLETE; units2–5 returned no submission. The retained submission has
+1 source, 2 statements and 1 hypothesis (these are retained EI counts, NOT
+provider/model totals). EI issues: missing_event_description,
+incomplete_event_date_range, missing_underlying_key, missing_distribution_mode,
+missing_distribution_hypothesis, missing_temporal_applicability and
+missing_contradiction_review. No catalog/paragraph/entry capacity failure
+diagnostics were retained in this batch. Different source/model outputs mean
+this does not prove that the prior batch's lost catalogs would now pass.
+No unsupported causal attribution to source insufficiency, model semantics or
+Builder field loss; finer no-submission causes remain UNKNOWN.
+
+Native coverage partial: Reddit/Digg not_ok; actual causes, source/model call
+counts, credits/tokens/costs UNKNOWN. Configured limits are not usage. No
+second POST, retry, source cropping, new capacity increase or EI relaxation.
+EI accepted0, numeric Core cases0, no Futu/Core execution; unavailable5.
+DB49 runs /3 historical Direct cases /25 batch archives. World→EI invocation
+is proven, positive World/Event→EI→Futu/Core closure remains unproven.
+
+Original and used World configs retained mode600 at
+`/private/tmp/ch-world-entry-v04.xI2pRj/`; original World v0.1 restored
+byte-for-byte and offline launcher check PASS. Event config unchanged.
+Original launcher restored lower-cap service, PID59368/session52314,
+explicit UTC date2026-10-28; status READY/all three executors configured.
+No new POST during restoration. No production code change
+or full-suite repetition in this live-exercise work unit. Further paid
+validation needs new explicit authority; do not keep increasing resource
+limits when this batch did not report a catalog-capacity blocker.
+
+## One fresh v0.4 World acceptance authorized — 2026-10-29
+
+Fresh HEAD/main/origin/main `0b3d51b`, clean before checkpoint update. User
+explicitly approved ONE new batch, at most10 units, source20 requests/20
+credits total, each model role11 INCLUDING Skill; no retry. Preregister original
+scope `US listed companies`; actual UTC evaluation date2026-10-28, seven UTC
+calendar dates2026-10-22..28 (local Beijing execution date2026-10-29). UI
+bounds10/10/400/200/10. World v0.4 explicit entries256/shared arrays256,
+scan1024; catalog65536/source-body20000/inputs80000 and262144 unchanged.
+All other source/model/factual/EI/Core boundaries remain unchanged. Capacity
+overflow is a result, not authority to crop or increase another limit.
+Original World private config backed up mode600 in
+`/private/tmp/ch-world-entry-v04.xI2pRj/`; Event hash unchanged; initial
+DB48/Direct3/batches24 and no active runs. Deploy via original launcher,
+submit once, preserve used config, then restore original lower caps.
+Browser binding failed before any UI mutation. Submitted ONE normal
+POST /api/runs through the same Host handler used by the page, with its
+normal CSRF/Origin checks (not a fixture or hand-built EI submission).
+Run `903d3b69-eeeb-42ea-aa39-32144c28da2a` started at
+2026-10-28T22:28:20.964Z. Persisted budgets20/20/11/11 and catalog limits
+entries256/arrays256/scan1024/bytes65536 verified; terminal result pending.
+The result must distinguish EI invocation, EI acceptance and actual
+Futu/Core execution. Historical spent batches remain unchanged.
+
 ## Approved entry-capacity correction in BUILD — 2026-10-29
 
 Fresh origin/main/HEAD/main `d3d0a82`, initially clean. User approved handling
