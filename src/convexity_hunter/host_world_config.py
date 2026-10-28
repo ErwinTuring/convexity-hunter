@@ -21,6 +21,8 @@ from .host_world import HostWorldConfig
 from .option_chain_discovery import OptionMaturityAuthority
 
 HOST_WORLD_CONFIG_SCHEMA_VERSION = "host-world-config-v0.1"
+_HOST_WORLD_CONFIG_SCHEMA_VERSION_V0_3 = "host-world-config-v0.3"
+_MAX_CATALOG_SCAN_PARAGRAPHS_V0_3 = 1024
 APPROVED_SKILL_PATH = Path("/Users/erwinlee/.codex/skills/last30days")
 APPROVED_SKILL_VERSION = "3.21.1"
 APPROVED_SKILL_SHA256 = "74f97a97dcf4382bb4bf19521971bda4d6fbc09c2c0a656d1353eaf28e874920"
@@ -60,20 +62,32 @@ def load_world_config(
     """Reuse Event's 64 KiB external/strict reader; never resolve credentials."""
     try:
         parsed = _parse_json(_read_external_config(config_path, repo_root))
+        v0_3 = (
+            type(parsed) is dict
+            and parsed.get("schema_version") == _HOST_WORLD_CONFIG_SCHEMA_VERSION_V0_3
+        )
         v0_2 = (
             type(parsed) is dict
             and parsed.get("schema_version") == "host-world-config-v0.2"
         )
-        fields = (
-            frozenset(("schema_version", "skill", "bounds", "grounder_budgets"))
-            if v0_2
-            else frozenset(("schema_version", "skill", "bounds"))
-        )
+        if v0_3:
+            fields = frozenset((
+                "schema_version", "skill", "bounds", "grounder_budgets",
+                "catalog_scan_paragraphs",
+            ))
+        elif v0_2:
+            fields = frozenset(("schema_version", "skill", "bounds", "grounder_budgets"))
+        else:
+            fields = frozenset(("schema_version", "skill", "bounds"))
         value = _require_object(parsed, fields)
-        if not v0_2 and value["schema_version"] != HOST_WORLD_CONFIG_SCHEMA_VERSION:
+        if (
+            not v0_2
+            and not v0_3
+            and value["schema_version"] != HOST_WORLD_CONFIG_SCHEMA_VERSION
+        ):
             raise HostWorldConfigurationError("UNSUPPORTED_SCHEMA_VERSION")
         world_grounder = grounder_config
-        if v0_2:
+        if v0_2 or v0_3:
             budgets = _require_object(
                 value["grounder_budgets"],
                 frozenset((
@@ -93,6 +107,14 @@ def load_world_config(
                 )
             ):
                 raise HostWorldConfigurationError("INVALID_CONFIGURATION")
+            catalog_scan_paragraphs = grounder_config.max_catalog_paragraphs
+            if v0_3:
+                catalog_scan_paragraphs = value["catalog_scan_paragraphs"]
+                if (
+                    type(catalog_scan_paragraphs) is not int
+                    or not 1 <= catalog_scan_paragraphs <= _MAX_CATALOG_SCAN_PARAGRAPHS_V0_3
+                ):
+                    raise HostWorldConfigurationError("INVALID_CONFIGURATION")
             world_grounder = replace(
                 grounder_config,
                 source=replace(
@@ -108,6 +130,7 @@ def load_world_config(
                     grounder_config.semantic_model,
                     request_budget=budgets["semantic_requests"],
                 ),
+                max_catalog_paragraphs=catalog_scan_paragraphs,
             )
         skill = dict(_require_object(value["skill"], _SKILL_FIELDS))
         pin = _require_object(

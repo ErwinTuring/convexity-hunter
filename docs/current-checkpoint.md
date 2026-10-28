@@ -1,5 +1,25 @@
 # Current Checkpoint
 
+## Approved lossless scan-capacity correction — 2026-10-28
+
+Fresh fetch: HEAD/main/origin/main `28e4c28`, clean. User approved bounded
+capacity correction plus ONE subsequent World acceptance at source20/20 and
+each model role11 INCLUDING Skill. This is a fresh grant, not a replay of
+`ac93f2d3`. Main's read-only catalog/loader/snapshot preflight distinguishes
+scan work from the smaller eligible-entry catalog. Freeze World-only scan1024
+through additive config v0.3, keeping entries128, catalog65536 bytes,
+configured source-body bound20000, input80000/262144 bytes and every other
+evidence/model/resource limit unchanged. See [contract](host-world-source-query-v0.1.md#approved-bounded-scan-capacity-correction--2026-10-28).
+BUILD complete: 68 focused tests, 2 Store snapshot/recovery tests, compilation,
+added documentation links/fences and diff-check PASS. Independent Luna review
+PASS. No new private config change or POST yet. No guarantee that
+the next entry/byte limit or EI semantics will pass. No cropping, coalescing,
+selection, further auto-increase or retry. Pre-register the same original
+scope `US listed companies`, UTC evaluation date2026-10-28/window10-22..10-28,
+UI bounds10/10/400/200/10; existing shared pipeline automatically continues
+any lawful EI-accepted hypotheses to Futu/Core. Preserve both used/original
+private configs and restore original caps after this one batch.
+
 ## Completed single World acceptance; positive EI/Core still blocked — 2026-10-28
 
 Reviewed implementation `3be8b93` committed/pushed and deployed through the

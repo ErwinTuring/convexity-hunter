@@ -1,5 +1,8 @@
 # Project State
 
+## Approved scan-capacity correction implemented — 2026-10-28
+User approved World-only scan1024 via additive config v0.3 and ONE fresh World acceptance (source20/20, each role11 including Skill). All eligible-entry/byte/model/EI boundaries remain unchanged; overflow still fails without truncation. Main's bounded preflight and [contract freeze](host-world-source-query-v0.1.md#approved-bounded-scan-capacity-correction--2026-10-28) complete; implementation, 68 focused tests, 2 Store snapshot/recovery tests, compilation, added links/fences, diff-check and independent Luna review PASS. No new POST/config change yet, and no positive outcome promised. Historical one-shot `ac93f2d3` remains spent.
+
 ## Final lower-cap service restored — 2026-10-28
 Post-run code `ddc5fbf` started via the original launcher with restored original budgets (PID46791/session72595, UTC evaluation date2026-10-28). Status READY, all three executors configured; DB47/3/23 unchanged after read-only UI history selection. Per-unit lossless projection has 120 relevant tests/review PASS but no new live proof. One-batch authorization is spent; do not resubmit. This deployment verification supersedes the pending deployment wording in the earlier stages below.
 

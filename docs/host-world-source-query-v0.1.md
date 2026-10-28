@@ -1,5 +1,46 @@
 # Host World source-query separation v0.1
 
+## Approved bounded scan-capacity correction — 2026-10-28
+
+Status: CONTRACT FROZEN / IMPLEMENTED / independent review PASS; 68 focused
+tests and 2 Store snapshot/recovery tests PASS, compile and diff checks PASS.
+User approved this correction and ONE subsequent
+normal World batch under source20 requests/20 credits and models11 requests
+per role INCLUDING Skill. No repeated batches or further automatic escalation.
+
+The catalog counts scanned paragraphs BEFORE applying its existing nonunique
+and overlong exclusions. A 128-scan ceiling can therefore reject a source set
+whose complete eligible catalog still fits all existing evidence/input bounds.
+Raise ONLY the World scan ceiling to 1024 for this bounded run. It is a CPU
+resource allowance, not evidence authority, narrative duration or a promise
+that sources/hypotheses fit. Retain entries128, catalog bytes65536, configured
+source-body bound20000, Discovery input80000, Semantic input262144, all
+run-input/JSON/string/array/token/timeout/source-byte/source-time limits, and
+all source/hash/quote/field-binding/EI/Core checks. Do not change the catalog
+generator or its paragraph/exclusion grammar, coalesce/crop sources, filter
+claims to fit, or select a source/event prefix. Overflow still fails closed.
+
+Add `host-world-config-v0.3` with the exact v0.2 four root fields plus required
+`catalog_scan_paragraphs`: exact non-Boolean int in [1,1024]. Derive the
+existing immutable World-only config copy with this one additional field
+`max_catalog_paragraphs` replaced; retain v0.1/v0.2 semantics and public
+constant/signature unchanged. No credentials resolved or calls during loading.
+Event config/identity/caps remain unchanged. Existing source-snapshot
+`grounder_limits.max_catalog_paragraphs` already records the actual value;
+reuse that field and all existing readers, not a new audit/schema framework.
+
+Prove old/new valid catalog canonical bytes and hashes are identical when the
+old bound suffices; >128 scanned paragraphs with repeated exclusions can
+produce the complete eligible catalog under1024; 1024/1025 scan boundaries,
+entry/byte/array/hash guards remain fail-closed with no partial output. Prove
+strict v0.3 shape/range, legacy identity and all other config fields unchanged,
+detached persisted scan limit and lazy factory construction. Use synthetic
+fixtures only. No historical raw-output reconstruction or retroactive labeling.
+After focused checks and independent review, deploy via the original launcher,
+back up the private World config, submit ONE normal World run, then preserve
+the used config and restore original caps. Source/evidence/model failures are
+results, not authority to increase a second bound or rerun.
+
 ## Event-unit composition successor v0.3 — 2026-10-28
 
 Status: CONTRACT FROZEN / IMPLEMENTED / VALIDATED / INDEPENDENT REVIEW PASS;

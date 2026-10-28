@@ -462,7 +462,7 @@ class EvidenceCatalogGenerationTests(unittest.TestCase):
             {"s": source},
             max_catalog_entries=10,
             max_catalog_bytes=10_000,
-            max_catalog_paragraphs=10,
+            max_catalog_paragraphs=128,
             max_string_bytes=500,
             max_array_items=20,
         )
@@ -479,6 +479,22 @@ class EvidenceCatalogGenerationTests(unittest.TestCase):
             ],
         )
         self.assertEqual(catalog.catalog_sha256, "dc2da2ffaa91e19b7690e80095aaac872b62bae7771de22f7574cdf32eb38031")
+        expanded_scan_catalog = build_host_evidence_catalog(
+            "golden-run",
+            "a" * 64,
+            {"s": source},
+            max_catalog_entries=10,
+            max_catalog_bytes=10_000,
+            max_catalog_paragraphs=1024,
+            max_string_bytes=500,
+            max_array_items=20,
+        )
+        self.assertEqual(expanded_scan_catalog.canonical_utf8, catalog.canonical_utf8)
+        self.assertEqual(expanded_scan_catalog.catalog_sha256, catalog.catalog_sha256)
+        self.assertEqual(
+            hashlib.sha256(expanded_scan_catalog.canonical_utf8).hexdigest(),
+            catalog.catalog_sha256,
+        )
         wire = json.loads(catalog.canonical_utf8)
         self.assertEqual(
             set(wire),
@@ -516,6 +532,102 @@ class EvidenceCatalogGenerationTests(unittest.TestCase):
                 max_catalog_paragraphs=3, max_string_bytes=80, max_array_items=20,
             )
 
+    def test_repeated_exclusions_beyond_legacy_scan_cap_keep_complete_catalog(self):
+        body = "\n\n".join(["repeated"] * 128 + ["eligible evidence"]) + "\n"
+        source = HostSourceBody(body, _sha(body), "https://s.example", _NOW)
+        with self.assertRaises(ValueError):
+            build_host_evidence_catalog(
+                "scan-cap-run", "d" * 64, {"s": source},
+                max_catalog_entries=10, max_catalog_bytes=10_000,
+                max_catalog_paragraphs=128, max_string_bytes=500,
+                max_array_items=20,
+            )
+
+        catalog = build_host_evidence_catalog(
+            "scan-cap-run", "d" * 64, {"s": source},
+            max_catalog_entries=10, max_catalog_bytes=10_000,
+            max_catalog_paragraphs=1024, max_string_bytes=500,
+            max_array_items=20,
+        )
+        self.assertEqual([entry.quote for entry in catalog.entries], ["eligible evidence\n"])
+        exclusion, = json.loads(catalog.canonical_utf8)["exclusions"]
+        self.assertEqual(
+            exclusion,
+            {"source_id": "s", "nonunique_paragraphs": 128, "overlong_paragraphs": 0},
+        )
+
+    def test_1024_paragraph_scan_boundary_and_guard_failures_return_no_catalog(self):
+        def make_source(paragraphs):
+            body = "\n\n".join(["repeated"] * (paragraphs - 1) + ["eligible"]) + "\n"
+            return HostSourceBody(body, _sha(body), "https://s.example", _NOW)
+
+        boundary_source = make_source(1024)
+        boundary_catalog = build_host_evidence_catalog(
+            "boundary-run", "e" * 64, {"s": boundary_source},
+            max_catalog_entries=10, max_catalog_bytes=100_000,
+            max_catalog_paragraphs=1024, max_string_bytes=500,
+            max_array_items=2048,
+        )
+        self.assertEqual([entry.quote for entry in boundary_catalog.entries], ["eligible\n"])
+        exclusion, = json.loads(boundary_catalog.canonical_utf8)["exclusions"]
+        self.assertEqual(exclusion["nonunique_paragraphs"], 1023)
+
+        for label, source, overrides, expected_message in (
+            (
+                "scan 1025",
+                make_source(1025),
+                {"max_catalog_paragraphs": 1024},
+                "max_catalog_paragraphs",
+            ),
+            (
+                "entry cap",
+                HostSourceBody("one\n\ntwo\n", _sha("one\n\ntwo\n"), "https://s.example", _NOW),
+                {"max_catalog_entries": 1},
+                "entry bound",
+            ),
+            (
+                "byte cap",
+                HostSourceBody("eligible\n", _sha("eligible\n"), "https://s.example", _NOW),
+                {"max_catalog_bytes": 1},
+                "max_catalog_bytes",
+            ),
+            (
+                "array cap",
+                HostSourceBody("one\n\ntwo\n\nthree\n", _sha("one\n\ntwo\n\nthree\n"), "https://s.example", _NOW),
+                {"max_array_items": 2},
+                "entry bound",
+            ),
+        ):
+            kwargs = {
+                "max_catalog_entries": 10,
+                "max_catalog_bytes": 100_000,
+                "max_catalog_paragraphs": 1024,
+                "max_string_bytes": 500,
+                "max_array_items": 2048,
+            }
+            kwargs.update(overrides)
+            result = None
+            with self.subTest(guard=label):
+                with self.assertRaisesRegex(ValueError, expected_message):
+                    result = build_host_evidence_catalog(
+                        "guard-run", "f" * 64, {"s": source}, **kwargs
+                    )
+                self.assertIsNone(result)
+
+        bad_hash_source = HostSourceBody(
+            "eligible\n", _sha("eligible\n"), "https://s.example", _NOW
+        )
+        object.__setattr__(bad_hash_source, "body_sha256", "0" * 64)
+        result = None
+        with self.assertRaisesRegex(ValueError, "source body hash mismatch"):
+            result = build_host_evidence_catalog(
+                "guard-run", "f" * 64, {"s": bad_hash_source},
+                max_catalog_entries=10, max_catalog_bytes=100_000,
+                max_catalog_paragraphs=1024, max_string_bytes=500,
+                max_array_items=2048,
+            )
+        self.assertIsNone(result)
+
     def test_each_complete_catalog_bound_and_empty_catalog_fail_before_model_calls(self):
         run_input, context = _fixture("ACME filed a report.\n\nA possible distribution shift may follow.\n")
         producer = {"unused": True}
@@ -549,6 +661,9 @@ class EvidenceCatalogGenerationTests(unittest.TestCase):
                     **kwargs,
                 )
             self.assertEqual(calls, [])
+            self.assertIsNone(holder.catalog_utf8)
+            self.assertIsNone(holder.catalog_sha256)
+            self.assertIsNone(holder.audit)
 
         no_evidence_context = _fixture("same\n\nsame\n")[1]
         calls = []

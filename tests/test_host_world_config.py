@@ -68,6 +68,13 @@ def _document_v0_2():
     return document
 
 
+def _document_v0_3():
+    document = _document_v0_2()
+    document["schema_version"] = "host-world-config-v0.3"
+    document["catalog_scan_paragraphs"] = 1024
+    return document
+
+
 class HostWorldConfigTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -170,6 +177,85 @@ class HostWorldConfigTests(unittest.TestCase):
             (2, 2, 1, 1),
         )
 
+    def test_v0_3_applies_only_world_budgets_and_detached_scan_limit(self):
+        document = _document_v0_3()
+        with patch(
+            "convexity_hunter.host_sources.TavilyCredentialRef.resolve",
+            side_effect=AssertionError("must not resolve credentials while loading"),
+        ), patch(
+            "convexity_hunter.host_model.ModelCredential.resolve",
+            side_effect=AssertionError("must not resolve credentials while loading"),
+        ):
+            config = self.load(json.dumps(document))
+
+        self.assertEqual(HOST_WORLD_CONFIG_SCHEMA_VERSION, "host-world-config-v0.1")
+        self.assertIsNot(config.grounder, self.grounder)
+        self.assertEqual(
+            (
+                config.grounder.source.request_budget,
+                config.grounder.source.credit_budget,
+                config.grounder.discovery_model.request_budget,
+                config.grounder.semantic_model.request_budget,
+                config.grounder.max_catalog_paragraphs,
+            ),
+            (7, 8, 9, 10, 1024),
+        )
+        self.assertEqual(self.grounder.max_catalog_paragraphs, 128)
+        self.assertIs(
+            config.grounder.source.credential_ref,
+            self.grounder.source.credential_ref,
+        )
+        self.assertIs(
+            config.grounder.discovery_credential,
+            self.grounder.discovery_credential,
+        )
+        self.assertIs(
+            config.grounder.semantic_credential,
+            self.grounder.semantic_credential,
+        )
+        for config_part, event_part, changed_fields in (
+            (
+                config.grounder.source,
+                self.grounder.source,
+                {"request_budget", "credit_budget"},
+            ),
+            (
+                config.grounder.discovery_model,
+                self.grounder.discovery_model,
+                {"request_budget"},
+            ),
+            (
+                config.grounder.semantic_model,
+                self.grounder.semantic_model,
+                {"request_budget"},
+            ),
+        ):
+            for descriptor in fields(event_part):
+                if descriptor.name not in changed_fields:
+                    self.assertEqual(
+                        getattr(config_part, descriptor.name),
+                        getattr(event_part, descriptor.name),
+                        descriptor.name,
+                    )
+        for descriptor in fields(self.grounder):
+            if descriptor.name not in {
+                "source", "discovery_model", "semantic_model", "max_catalog_paragraphs"
+            }:
+                self.assertIs(
+                    getattr(config.grounder, descriptor.name),
+                    getattr(self.grounder, descriptor.name),
+                    descriptor.name,
+                )
+        self.assertEqual(
+            (
+                self.grounder.source.request_budget,
+                self.grounder.source.credit_budget,
+                self.grounder.discovery_model.request_budget,
+                self.grounder.semantic_model.request_budget,
+            ),
+            (2, 2, 1, 1),
+        )
+
     def test_v0_2_requires_exact_positive_integer_grounder_budgets(self):
         invalid = []
         for field in (
@@ -203,7 +289,7 @@ class HostWorldConfigTests(unittest.TestCase):
         document["grounder_budgets"] = []
         invalid.append(("non-object budgets", document, "INVALID_CONFIGURATION"))
         document = _document()
-        document["schema_version"] = "host-world-config-v0.3"
+        document["schema_version"] = "host-world-config-v0.4"
         invalid.append(("unknown version", document, "UNSUPPORTED_SCHEMA_VERSION"))
 
         for label, document, code in invalid:
@@ -211,6 +297,49 @@ class HostWorldConfigTests(unittest.TestCase):
                 with self.assertRaises(HostWorldConfigurationError) as raised:
                     self.load(json.dumps(document))
                 self.assertEqual(raised.exception.code, code)
+
+    def test_v0_3_requires_exact_shape_and_bounded_non_boolean_scan_limit(self):
+        invalid = []
+        for value in (True, False, 0, -1, 1.0, 1024.0, "1", None, 1025):
+            document = _document_v0_3()
+            document["catalog_scan_paragraphs"] = value
+            invalid.append(("invalid scan limit {!r}".format(value), document, "INVALID_CONFIGURATION"))
+
+        document = _document_v0_3()
+        document.pop("catalog_scan_paragraphs")
+        invalid.append(("missing scan limit", document, "MISSING_FIELD"))
+        document = _document_v0_3()
+        document["extra"] = "reject"
+        invalid.append(("extra root field", document, "UNKNOWN_FIELD"))
+        document = _document_v0_3()
+        document.pop("grounder_budgets")
+        invalid.append(("missing v0.2 root field", document, "MISSING_FIELD"))
+        document = _document_v0_3()
+        document["grounder_budgets"].pop("source_requests")
+        invalid.append(("missing budget field", document, "MISSING_FIELD"))
+        document = _document_v0_3()
+        document["grounder_budgets"]["extra"] = 1
+        invalid.append(("extra budget field", document, "UNKNOWN_FIELD"))
+        document = _document_v0_3()
+        document["grounder_budgets"] = []
+        invalid.append(("non-object budgets", document, "INVALID_CONFIGURATION"))
+        document = _document_v0_3()
+        document["grounder_budgets"]["source_requests"] = True
+        invalid.append(("boolean budget", document, "INVALID_CONFIGURATION"))
+        document = _document_v0_3()
+        document["api_key"] = "PRIVATE_SENTINEL"
+        invalid.append(("credential field", document, "FORBIDDEN_CREDENTIAL_FIELD"))
+
+        for label, document, code in invalid:
+            with self.subTest(label=label):
+                with self.assertRaises(HostWorldConfigurationError) as raised:
+                    self.load(json.dumps(document))
+                self.assertEqual(raised.exception.code, code)
+                self.assertNotIn("PRIVATE_SENTINEL", str(raised.exception))
+
+        document = _document_v0_3()
+        document["catalog_scan_paragraphs"] = 1
+        self.assertEqual(self.load(json.dumps(document)).grounder.max_catalog_paragraphs, 1)
 
     def test_strict_json_and_external_byte_cap_fail_closed(self):
         raw = json.dumps(_document())
@@ -279,7 +408,7 @@ class HostWorldConfigTests(unittest.TestCase):
         def unexpected_call(*_args, **_kwargs):
             self.fail("configuration/factory construction must remain lazy")
 
-        for document in (_document(), _document_v0_2()):
+        for document in (_document(), _document_v0_2(), _document_v0_3()):
             with self.subTest(schema_version=document["schema_version"]):
                 config = self.load(json.dumps(document))
                 runner = create_world_runner(
