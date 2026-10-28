@@ -1,5 +1,66 @@
 # Host World source-query separation v0.1
 
+## Native URL consumption correction — 2026-10-29
+
+Status: Main bounded read-only preflight and freeze complete; IMPLEMENTED,
+177 relevant tests/compile/diff PASS; independent review and accepted P2
+provenance-pair fix re-review PASS. This is an explicit retrieval-policy amendment, not a claim that
+the previous implementation violated its frozen hints-only contract. It is
+not a new EI authority, provider, Grounder or paid-run authorization.
+
+Evidence: retained run903d3b69's sole partial submission cites a generic
+stock-catalyst tutorial; its two statements discuss an illustrative industry
+example, and its hypothesis acknowledges no specific event/issuer/date.
+EI INCOMPLETE is lawful. Eight focused existing EI/anchor/Builder checks pass;
+no Builder field-loss defect established. Other four no-submission causes
+remain UNKNOWN. Code separately proves Native URLs are only model hints;
+the current Search→Extract path need not read them. That is a product gap,
+not proof of the cause of every historical failure.
+
+For each Native unit, pass its complete exact-deduplicated URL tuple through
+a private World-only factory argument (default empty for compatibility).
+Validate all seeds with the existing public-URL guard BEFORE paid source
+calls. Let L=min(max_extract_urls, max_array_items, 5). More than L seeds or
+unsafe/non-string seeds reject the unit before its source/model calls; do not
+keep a prefix. Native URL order is existing neutral lexical order.
+
+Reserve all seeds first. If seeds<L, make ONE existing scoped Search with
+max_results=min(max_search_results,L-seeds). Keep all returned results in
+provider order, deduplicate by exact URL against seeds, and do not refill
+unused slots. If seeds=L, skip Search. Then ONE Basic Extract reads the
+entire seed-plus-search union; any missing/failed extraction rejects the unit,
+not a surviving prefix. Zero seeds preserves the current bounded Search→
+Extract behavior. Both paths still reserve at most2 Tavily requests/2 credits
+per unit; total World budget allocation, source bytes/time, admission-client
+limits and all model/catalog limits stay unchanged. No extra requests/retries.
+
+Do not manufacture Search-result records for Native seeds. Extract supports
+URL-derived source IDs without source_refs; use that existing path for this
+World policy. Match IDs to exact URL hashes. Only actual Search references
+may supply their title/publication metadata by exact URL; seed-only title and
+publication remain unknown. Never derive event dates from these metadata.
+All bodies still go through existing source admission, catalog/hashes,
+semantic verification, binding, Builder, shared EI and Core. Native URLs and
+names stay unverified hints; reading them does not authenticate their claims.
+
+Version World producer as world-v0.5 and five-field query-policy snapshot as
+world-source-query-v0.4, basis
+independent_native_event_units_seed_urls_plus_search. Template, scope, seven
+UTC dates, max400 and full research context remain unchanged. Use same-shape
+source snapshot host-event-source-snapshot-v0.3 ONLY for World; it describes
+the seed-plus-search policy including empty-seed fallback. Preserve reading
+all historical snapshots; normal Event source policy and Direct unchanged.
+No database schema migration. Persist actual policy, not a replay label.
+
+Focused tests: all seeds consumed despite unrelated search results; seed-only
+metadata unknown; exact URL/hash mapping; neutral complete union/dedupe;
+fixed search allocation, no refill, full-capacity skip; invalid/private/too
+many seeds fail before calls; partial Extract fails closed; fallback/normal
+Event unchanged; all-unit budget preflight/no hidden prefix preserved;
+World-only snapshot validation and historical persistence. Synthetic source
+and model fixtures only. Independent review and focused relevant regressions
+must pass before commit. No live replay or new external batch in this unit.
+
 ## Approved bounded entry-capacity correction — 2026-10-29
 
 Status: CONTRACT FROZEN / IMPLEMENTED; 74 focused tests, compilation and

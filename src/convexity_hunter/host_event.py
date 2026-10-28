@@ -57,6 +57,8 @@ from .host_sources import (
     TavilySourceClient,
     TavilySourceConfig,
     TavilyTransportError,
+    _url_source_id,
+    _validate_public_url,
 )
 from .host_source_admission import (
     AdmissionBatch,
@@ -76,6 +78,7 @@ _PRODUCER_ID = "convexity-hunter-event-grounder"
 _PRODUCER_VERSION = "v0.1"
 _SOURCE_SEARCH_POLICY_LEGACY = "host-event-source-snapshot-v0.1"
 _SOURCE_SEARCH_POLICY_OFFICIAL = "host-event-source-snapshot-v0.2"
+_SOURCE_SEARCH_POLICY_WORLD_NATIVE = "host-event-source-snapshot-v0.3"
 _GENERAL_SEARCH_RESULT_LIMIT = 3
 _OFFICIAL_SEARCH_RESULT_LIMIT = 2
 _OFFICIAL_SEARCH_DOMAINS = ("sec.gov", "nasdaq.com")
@@ -2762,6 +2765,32 @@ def _event_source_search_policy_version(config: HostEventGrounderConfig) -> str:
     return _SOURCE_SEARCH_POLICY_LEGACY
 
 
+def _validate_world_seed_urls(
+    seed_urls: object, config: HostEventGrounderConfig
+) -> tuple:
+    """Validate the complete World seed tuple without changing URL identity."""
+    if type(seed_urls) is not tuple:
+        raise HostGrounderRuntimeError("SOURCE_SEEDS_INVALID")
+    limit = min(
+        config.source.max_extract_urls,
+        config.run_input_bounds.max_array_items,
+        5,
+    )
+    if (
+        any(type(url) is not str for url in seed_urls)
+        or len(seed_urls) > limit
+        or len(set(seed_urls)) != len(seed_urls)
+    ):
+        raise HostGrounderRuntimeError("SOURCE_SEEDS_INVALID")
+    try:
+        for url in seed_urls:
+            url.encode("utf-8", "strict")
+            _validate_public_url(url)
+    except (TavilyTransportError, UnicodeError):
+        raise HostGrounderRuntimeError("SOURCE_SEEDS_INVALID") from None
+    return seed_urls
+
+
 def _merge_event_search_references(general_result, official_result):
     """Keep fixed provider order/quotas, dedupe exact URLs, and stabilize IDs."""
     merged = []
@@ -2792,6 +2821,7 @@ def _safe_configuration_snapshot(
     if source_search_policy_version not in (
         _SOURCE_SEARCH_POLICY_LEGACY,
         _SOURCE_SEARCH_POLICY_OFFICIAL,
+        _SOURCE_SEARCH_POLICY_WORLD_NATIVE,
     ):
         raise ValueError("source search policy version is invalid")
 
@@ -2935,6 +2965,7 @@ def create_event_grounder(
         bounds: CoreOperationalBounds,
         source_query: str,
         source_search_policy_version: str,
+        seed_urls: tuple = (),
     ) -> HostGrounderEvidenceCatalogRuntimeResult:
         if not callable(context_preparer):
             raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
@@ -2951,6 +2982,13 @@ def create_event_grounder(
         except (AttributeError, TypeError, ValueError):
             raise TypeError("bounds must be a valid CoreOperationalBounds") from None
         active_config = _revalidate_config(config)
+        world_source_policy = (
+            source_search_policy_version == _SOURCE_SEARCH_POLICY_WORLD_NATIVE
+        )
+        if world_source_policy:
+            seed_urls = _validate_world_seed_urls(seed_urls, active_config)
+        elif seed_urls:
+            raise HostGrounderRuntimeError("SOURCE_SEEDS_INVALID")
         user_input = UserEventInput(raw_input)
         subquestion = HostGrounderSubquestion(_SUBQUESTION_ID, raw_input)
         default_recipe = host_context_preparer is None
@@ -2997,8 +3035,9 @@ def create_event_grounder(
         required_source_credits = 3 if official_search_enabled else 2
         # The v0.2 Event policy is fixed at general 3 + official 2 search
         # results, then at most five URLs in one Basic Extract. Legacy and
-        # World callers retain one Search plus one Extract. Check the complete
-        # bounded request/credit budget before the first paid-capable call.
+        # World callers reserve one Search plus one Extract; World may skip
+        # the Search when native seeds fill the Extract slots. Check the full
+        # bounded reservation before the first paid-capable call.
         if source_client.remaining_request_budget < required_source_requests:
             raise TavilyTransportError("REQUEST_BUDGET_EXHAUSTED")
         if source_client.remaining_credit_budget < required_source_credits:
@@ -3022,6 +3061,40 @@ def create_event_grounder(
             references = _merge_event_search_references(
                 general_result, official_result
             )
+            requested_urls = tuple(reference.url for reference in references)
+            extract_source_refs = references
+        elif world_source_policy:
+            source_limit = min(
+                active_config.source.max_extract_urls,
+                active_config.run_input_bounds.max_array_items,
+                5,
+            )
+            search_slots = source_limit - len(seed_urls)
+            references = ()
+            if search_slots > 0:
+                search_result = source_client.search(
+                    source_query,
+                    max_results=min(
+                        active_config.source.max_search_results, search_slots
+                    ),
+                )
+                seen_search_urls = set()
+                retained_references = []
+                for reference in search_result.sources:
+                    if reference.url in seen_search_urls:
+                        continue
+                    seen_search_urls.add(reference.url)
+                    retained_references.append(reference)
+                references = tuple(retained_references)
+            seed_set = set(seed_urls)
+            requested_urls = seed_urls + tuple(
+                reference.url
+                for reference in references
+                if reference.url not in seed_set
+            )
+            # World uses Extract's URL-hash identity path for Native seeds and
+            # Search results; Search metadata is joined separately by URL.
+            extract_source_refs = None
         else:
             max_results = min(
                 active_config.source.max_search_results,
@@ -3032,22 +3105,23 @@ def create_event_grounder(
                 source_query, max_results=max_results
             )
             references = search_result.sources
-        if not references:
+            requested_urls = tuple(reference.url for reference in references)
+            extract_source_refs = references
+        if not requested_urls:
             # No result is a stage failure, not evidence that the full source
             # universe was searched or that the request has complete coverage.
             raise HostGrounderRuntimeError("NO_SEARCH_RESULTS")
 
-        requested_urls = tuple(reference.url for reference in references)
         extracted = source_client.extract(
             requested_urls,
             query=source_query,
-            source_refs=references,
+            source_refs=extract_source_refs,
         )
         if (
             not extracted.coverage.is_complete
             or extracted.failed_extracts
             or extracted.urls != requested_urls
-            or len(extracted.bodies) != len(references)
+            or len(extracted.bodies) != len(requested_urls)
             or tuple(body.url for body in extracted.bodies) != requested_urls
         ):
             # A partial Extract is a conservative pre-model failure, not a
@@ -3062,20 +3136,29 @@ def create_event_grounder(
         for body in extracted.bodies:
             reference = reference_by_url.get(body.url)
             if (
-                reference is None
-                or body.source_id != reference.source_id
+                (
+                    body.source_id != _url_source_id(body.url)
+                    if world_source_policy
+                    else reference is None or body.source_id != reference.source_id
+                )
                 or not body.body.strip()
                 or body.source_id in source_bodies
             ):
                 raise HostGrounderRuntimeError("EXTRACTION_FAILURE")
             encoded_body = body.body.encode("utf-8", errors="strict")
+            if world_source_policy:
+                publication_value = (
+                    None if reference is None else reference.publication_date
+                )
+            else:
+                publication_value = body.publication_date
             source_bodies[body.source_id] = HostSourceBody(
                 body=body.body,
                 body_sha256=hashlib.sha256(encoded_body).hexdigest(),
                 final_locator=body.url,
                 retrieved_at=retrieved_at,
-                title=reference.title,
-                published_at=_publication_datetime(body.publication_date),
+                title=None if reference is None else reference.title,
+                published_at=_publication_datetime(publication_value),
             )
 
         # Direct admission is a separate, Host-owned read. A failure for one
@@ -3337,6 +3420,8 @@ def create_event_grounder(
 
     def world_source_query_factory(
         source_query: object,
+        *,
+        seed_urls: object = (),
     ) -> Callable[..., HostGrounderEvidenceCatalogRuntimeResult]:
         if (
             type(source_query) is not str
@@ -3349,6 +3434,9 @@ def create_event_grounder(
             source_query.encode("utf-8", "strict")
         except UnicodeEncodeError:
             raise HostGrounderRuntimeError("SOURCE_QUERY_INVALID") from None
+        validated_seed_urls = _validate_world_seed_urls(
+            seed_urls, _revalidate_config(config)
+        )
 
         def query_bound_grounder(
             raw_input: str,
@@ -3361,7 +3449,8 @@ def create_event_grounder(
                 run_id=run_id,
                 bounds=bounds,
                 source_query=source_query,
-                source_search_policy_version=_SOURCE_SEARCH_POLICY_LEGACY,
+                source_search_policy_version=_SOURCE_SEARCH_POLICY_WORLD_NATIVE,
+                seed_urls=validated_seed_urls,
             )
 
         return query_bound_grounder

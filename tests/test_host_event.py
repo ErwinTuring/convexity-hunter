@@ -61,6 +61,7 @@ from convexity_hunter.host_model import (
 )
 from convexity_hunter.host_sources import (
     TavilyCredentialRef,
+    TavilySourceClient,
     TavilySourceConfig,
     TavilySourceReference,
     TavilyTransportError,
@@ -159,6 +160,7 @@ class _SyntheticSourceTransport:
         official_search_order=None,
         failed_urls=(),
         body_overrides=None,
+        publication_dates=None,
     ):
         self.search_order = tuple(search_order)
         self.official_search_order = (
@@ -166,6 +168,7 @@ class _SyntheticSourceTransport:
         )
         self.failed_urls = frozenset(failed_urls)
         self.body_overrides = dict(body_overrides or {})
+        self.publication_dates = dict(publication_dates or {})
         self.calls = []
         self.extract_url_orders = []
 
@@ -185,7 +188,9 @@ class _SyntheticSourceTransport:
                     "url": url,
                     "title": "Unverified source title",
                     "content": "SEARCH_SNIPPET_MUST_NOT_REACH_MODELS_{}".format(source_id),
-                    "published_date": "2026-10-03",
+                    "published_date": self.publication_dates.get(
+                        url, "2026-10-03"
+                    ),
                 }
                 for source_id, url in search_order
             ]
@@ -2059,11 +2064,14 @@ class HostEventGrounderTests(unittest.TestCase):
         discovery_outputs = []
         semantic_outputs = []
         run_ids = ("world-query-run-one", "world-query-run-two")
+        world_source_order = tuple(
+            (_url_source_id(url), url) for _source_id, url in _SEARCH_ORDER
+        )
         for run_id, full_context in zip(run_ids, contexts):
             discovery, semantic, _normalized = _model_outputs(
                 run_id,
                 full_context,
-                _SEARCH_ORDER,
+                world_source_order,
                 bodies,
                 config,
             )
@@ -2209,8 +2217,11 @@ class HostEventGrounderTests(unittest.TestCase):
         query = "Assess the original World request."
         run_id = "world-query-budget-three"
         bodies = dict(_BODY_BY_URL)
+        world_source_order = tuple(
+            (_url_source_id(url), url) for _source_id, url in _SEARCH_ORDER
+        )
         discovery, semantic, _normalized = _model_outputs(
-            run_id, _RAW_INPUT, _SEARCH_ORDER, bodies, config
+            run_id, _RAW_INPUT, world_source_order, bodies, config
         )
         source_transport = _SyntheticSourceTransport(
             search_order=_SEARCH_ORDER,
@@ -2240,6 +2251,228 @@ class HostEventGrounderTests(unittest.TestCase):
             ["https://api.tavily.com/search", "https://api.tavily.com/extract"],
         )
         self.assertNotIn("include_domains", source_transport.calls[0][1])
+
+    def test_private_world_query_factory_merges_seed_urls_and_joins_search_metadata_by_url(self):
+        run_id = "world-native-seed-union"
+        seed_only = "https://seed.example/native-only"
+        seed_overlap = "https://search.example/overlap"
+        search_extra = "https://search.example/extra"
+        requested_urls = (seed_only, seed_overlap, search_extra)
+        bodies = {
+            url: "Synthetic source body for {}.\n".format(url)
+            for url in requested_urls
+        }
+        base_config = _config()
+        config = replace(
+            base_config,
+            source=replace(
+                base_config.source,
+                max_search_results=5,
+                max_extract_urls=5,
+            ),
+            run_input_bounds=replace(
+                base_config.run_input_bounds, max_array_items=5
+            ),
+        )
+        source_order = tuple((_url_source_id(url), url) for url in requested_urls)
+        discovery, semantic, _normalized = _model_outputs(
+            run_id, _RAW_INPUT, source_order, bodies, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=(
+                ("search-overlap", seed_overlap),
+                ("search-extra", search_extra),
+                ("duplicate-extra", search_extra),
+            ),
+            publication_dates={
+                seed_overlap: "2026-10-03T11:30:00Z",
+                search_extra: "2026-10-03T12:00:00Z",
+            },
+            body_overrides=bodies,
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+        original_extract = TavilySourceClient.extract
+
+        def extract_with_body_publication(client, urls, **kwargs):
+            extracted = original_extract(client, urls, **kwargs)
+            return replace(
+                extracted,
+                bodies=tuple(
+                    replace(body, publication_date="2026-10-01T10:00:00Z")
+                    for body in extracted.bodies
+                ),
+            )
+
+        with patch.object(
+            TavilySourceClient, "extract", new=extract_with_body_publication
+        ):
+            result = callback._world_source_query_factory(
+                "Assess the native lead.",
+                seed_urls=(seed_only, seed_overlap),
+            )(
+                _RAW_INPUT,
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        self.assertEqual(source_transport.extract_url_orders, [requested_urls])
+        search_call = next(
+            payload
+            for url, payload in source_transport.calls
+            if url.endswith("/search")
+        )
+        self.assertEqual(search_call["max_results"], 3)
+        context_sources = result.build_result.context.source_bodies
+        self.assertEqual(
+            tuple(source.final_locator for source in context_sources.values()),
+            requested_urls,
+        )
+        self.assertEqual(
+            set(context_sources),
+            {_url_source_id(url) for url in requested_urls},
+        )
+        seed_source = context_sources[_url_source_id(seed_only)]
+        self.assertIsNone(seed_source.title)
+        # Extract body metadata cannot manufacture publication time for a
+        # seed-only URL; only an exact-URL Search reference may supply it.
+        self.assertIsNone(seed_source.published_at)
+        overlap_source = context_sources[_url_source_id(seed_overlap)]
+        self.assertEqual(overlap_source.title, "Unverified source title")
+        self.assertEqual(
+            overlap_source.published_at,
+            datetime.datetime(2026, 10, 3, 11, 30, tzinfo=datetime.timezone.utc),
+        )
+
+    def test_private_world_query_factory_skips_search_when_native_seeds_fill_limit(self):
+        run_id = "world-native-seed-full-limit"
+        seed_urls = (
+            "https://seed.example/one",
+            "https://seed.example/two",
+        )
+        bodies = {
+            url: "Synthetic source body for {}.\n".format(url)
+            for url in seed_urls
+        }
+        base_config = _config()
+        config = replace(
+            base_config,
+            source=replace(
+                base_config.source,
+                max_search_results=5,
+                max_extract_urls=2,
+            ),
+            run_input_bounds=replace(
+                base_config.run_input_bounds, max_array_items=5
+            ),
+        )
+        source_order = tuple((_url_source_id(url), url) for url in seed_urls)
+        discovery, semantic, _normalized = _model_outputs(
+            run_id, _RAW_INPUT, source_order, bodies, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=(), body_overrides=bodies
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        callback._world_source_query_factory(
+            "Assess the native lead.", seed_urls=seed_urls
+        )(
+            _RAW_INPUT,
+            run_id=run_id,
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        self.assertEqual(
+            [url for url, _payload in source_transport.calls],
+            ["https://api.tavily.com/extract"],
+        )
+        self.assertEqual(source_transport.extract_url_orders, [seed_urls])
+        source_snapshot = callback.configuration_snapshot()["sources"][0]
+        self.assertEqual(source_snapshot["request_budget"], 2)
+        self.assertEqual(source_snapshot["credit_budget"], 2)
+
+    def test_private_world_query_factory_rejects_invalid_seed_urls_before_calls(self):
+        source_transport = _SyntheticSourceTransport()
+        model_transport = _SyntheticModelTransport("{}", "{}")
+        callback = create_event_grounder(
+            _config(),
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+        invalid_seed_sets = (
+            ("http://127.0.0.1/private",),
+            (
+                "https://seed.example/one",
+                "https://seed.example/two",
+                "https://seed.example/three",
+            ),
+            ("https://seed.example/one", "https://seed.example/one"),
+            ["https://seed.example/one"],
+        )
+        for seed_urls in invalid_seed_sets:
+            with self.subTest(seed_urls=seed_urls):
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    callback._world_source_query_factory(
+                        "Assess the native lead.", seed_urls=seed_urls
+                    )
+                self.assertEqual(raised.exception.code, "SOURCE_SEEDS_INVALID")
+        self.assertEqual(source_transport.calls, [])
+        self.assertEqual(model_transport.calls, [])
+
+    def test_private_world_query_factory_fails_closed_on_partial_native_extract(self):
+        run_id = "world-native-seed-partial-extract"
+        seed_url = "https://seed.example/native"
+        search_order = _SEARCH_ORDER[:1]
+        requested_urls = (seed_url, search_order[0][1])
+        bodies = {
+            url: "Synthetic source body for {}.\n".format(url)
+            for url in requested_urls
+        }
+        config = _config()
+        source_order = tuple((_url_source_id(url), url) for url in requested_urls)
+        discovery, semantic, _normalized = _model_outputs(
+            run_id, _RAW_INPUT, source_order, bodies, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=search_order,
+            failed_urls=(seed_url,),
+            body_overrides=bodies,
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            callback._world_source_query_factory(
+                "Assess the native lead.", seed_urls=(seed_url,)
+            )(
+                _RAW_INPUT,
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+        self.assertEqual(raised.exception.code, "EXTRACTION_FAILURE")
+        self.assertEqual(model_transport.calls, [])
 
     def test_private_world_query_factory_rejects_invalid_bound_queries_before_calls(self):
         source_transport = _SyntheticSourceTransport()

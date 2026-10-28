@@ -467,7 +467,12 @@ def _direct_report_version(profile_snapshot: Any) -> str:
     return _DIRECT_REPORT_VERSION_BY_PROFILE[profile.version]
 
 
-def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[str, Any]:
+def _validated_event_configuration_snapshot(
+    value: Any,
+    *,
+    mode: str,
+    _world_native_seed_policy_v0_4_validated: bool = False,
+) -> Dict[str, Any]:
     """Accept the legacy empty shell or the exact non-secret Event snapshot."""
 
     if type(value) is dict and set(value) == (
@@ -497,6 +502,7 @@ def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[st
         elif policy["schema_version"] in (
             "world-source-query-v0.2",
             "world-source-query-v0.3",
+            "world-source-query-v0.4",
         ):
             policy_fields = {
                 "schema_version",
@@ -515,11 +521,11 @@ def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[st
                     )
                 except ValueError:
                     pass
-            expected_basis = (
-                "scope_three_lanes_seven_day_window"
-                if policy["schema_version"] == "world-source-query-v0.2"
-                else "independent_native_event_units_seven_day_window"
-            )
+            expected_basis = {
+                "world-source-query-v0.2": "scope_three_lanes_seven_day_window",
+                "world-source-query-v0.3": "independent_native_event_units_seven_day_window",
+                "world-source-query-v0.4": "independent_native_event_units_seed_urls_plus_search",
+            }[policy["schema_version"]]
             valid_policy = (
                 set(policy) == policy_fields
                 and type(policy["basis"]) is str
@@ -534,11 +540,36 @@ def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[st
             valid_policy = False
         if not valid_policy:
             raise ValueError("World source-query policy has an invalid closed shape or value")
+        if policy["schema_version"] == "world-source-query-v0.4":
+            source_items = value.get("sources")
+            if (
+                type(source_items) is not list
+                or len(source_items) != 1
+                or type(source_items[0]) is not dict
+                or source_items[0].get("schema_version")
+                != "host-event-source-snapshot-v0.3"
+            ):
+                raise ValueError("World v0.4 query policy requires source snapshot v0.3")
         legacy = {
             name: value[name]
             for name in ("models", "sources", "skills")
         }
-        validated = _validated_event_configuration_snapshot(legacy, mode=mode)
+        validated = _validated_event_configuration_snapshot(
+            legacy,
+            mode=mode,
+            _world_native_seed_policy_v0_4_validated=(
+                policy["schema_version"] == "world-source-query-v0.4"
+            ),
+        )
+        source_version = (
+            validated["sources"][0]["schema_version"]
+            if validated["sources"]
+            else None
+        )
+        if (source_version == "host-event-source-snapshot-v0.3") != (
+            policy["schema_version"] == "world-source-query-v0.4"
+        ):
+            raise ValueError("World source and query policy versions do not match")
         validated["world_source_query_policy"] = dict(policy)
         return _canonical_value(validated, "configuration_snapshot")
 
@@ -601,12 +632,20 @@ def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[st
         not in (
             "host-event-source-snapshot-v0.1",
             "host-event-source-snapshot-v0.2",
+            "host-event-source-snapshot-v0.3",
         )
         or source["provider"] != "tavily"
     ):
         raise ValueError("Event source snapshot has an invalid closed shape or provider")
     if source_schema_version == "host-event-source-snapshot-v0.2" and mode != "event":
         raise ValueError("Official supplemental search policy is Event-only")
+    if source_schema_version == "host-event-source-snapshot-v0.3" and mode != "world":
+        raise ValueError("Native seed URL source policy is World-only")
+    if (
+        source_schema_version == "host-event-source-snapshot-v0.3"
+        and not _world_native_seed_policy_v0_4_validated
+    ):
+        raise ValueError("Native seed URL source policy requires World query policy v0.4")
     grounder_limits = source["grounder_limits"]
     if (
         type(grounder_limits) is not dict

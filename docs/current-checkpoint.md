@@ -1,5 +1,37 @@
 # Current Checkpoint
 
+## Offline attribution and bounded source plumbing — 2026-10-29
+
+Fresh HEAD/main/origin/main `ef3715c`, clean. Main read ONLY the retained
+structured EI submission from903d3b69 (no API/credentials). Its source is
+`https://nownews.dev/blog/how-to-identify-stock-catalysts-2026`; observed fact
+and interpretation describe an illustrative industry catalyst, not an
+identified real event. The hypothesis itself says no specific event, issuer,
+listing, date or magnitude established. NULL event/date/identity/temporal
+fields here are lawful; do not fill them from tutorial publication or sector
+names. Other four no-submission causes remain UNKNOWN. Independent Luna
+offline inspection found no demonstrated Builder loss; 8 existing positive/
+negative EI, anchor/date and exact listing-binding tests PASS (not a new live
+semantic verdict on the tutorial, nor new EI/Core proof).
+
+Main's separate code preflight confirms Native evidence URLs are only model
+hints; actual source acquisition re-searches and extracts Search results only.
+This is a bounded capability gap, not proven causality for all old failures.
+Choose the [explicit retrieval-policy correction](host-world-source-query-v0.1.md#native-url-consumption-correction--2026-10-29): consume all safe Native
+URLs, use preallocated remaining source slots for one scoped Search, then one
+complete Extract; unchanged per-unit2requests/2credits and all verification
+boundaries. Version the changed policy, do not silently label it an old-spec
+bug. Main freeze and BUILD complete; 177 relevant Event/World/Store tests,
+changed-file compilation and diff-check PASS. Independent review and targeted
+re-review PASS after rejecting policy-less v0.3 source snapshots; valid v0.4
+query/source pairs and historical snapshots remain readable. No full repo
+suite repeated. Main's new documentation links/fences check PASS.
+Deployment of code under original lower caps pending; no real new-path proof.
+Whole-phase timing was not completely captured; no numerical70/30 claim is
+made. The scope includes actual source plumbing, not a diagnostic framework.
+No new paid batch, no private
+config change, no new provider/skills/Engine work or invented EI evidence.
+
 ## v0.4 single World acceptance completed — 2026-10-29
 
 Reviewed code `0b3d51b` deployed through the original launcher. ONE normal

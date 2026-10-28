@@ -1,5 +1,8 @@
 # Project State
 
+## Native URL plumbing correction in BUILD — 2026-10-29
+Latest retained partial submission is a generic catalyst tutorial/example, not an identified event; EI incompleteness is lawful. 8 focused offline EI/anchor/Builder tests PASS, no proven Builder field loss. Main separately confirmed actual World acquisition need not read Native URLs (hints-only old policy). Implemented the explicitly versioned seed-URL+remaining-search-slot correction using the SAME shared Grounder/admission/EI/Core, no increased request/credit/cap limits or factual authority. 177 relevant tests, compile/diff checks, independent review and accepted snapshot-provenance fix re-review PASS. Lower-cap deployment pending; no fresh external grant/calls or live new-path proof. See [checkpoint](current-checkpoint.md) and [scope](host-world-source-query-v0.1.md#native-url-consumption-correction--2026-10-29).
+
 ## One v0.4 World acceptance completed — 2026-10-29
 `0b3d51b` deployed; ONE normal Host API run `903d3b69` ended BLOCKED in180.086s. Five units: one partial submission reached shared EI (INCOMPLETE), four no-submission returns. No catalog-capacity failure retained; not a controlled replay or proof the previous lost payloads fit. EI accepted0/Futu0/Core0; DB49/Direct3/batches25. Native coverage partial, finer no-submission causes and actual spend UNKNOWN. No retry/relaxed evidence; grant spent. Private World restored byte-for-byte, Event unchanged, lower-cap original launcher READY at PID59368/session52314. No new production code. See [checkpoint](current-checkpoint.md).
 

@@ -35,9 +35,10 @@ from .host_grounder_evidence_catalog import (
 from .host_grounder_runtime import HostGrounderRuntimeError
 from .host_event import (
     HostEventGrounderConfig,
-    _SOURCE_SEARCH_POLICY_LEGACY,
+    _SOURCE_SEARCH_POLICY_WORLD_NATIVE,
     _revalidate_config,
     _safe_configuration_snapshot,
+    _validate_world_seed_urls,
     create_event_grounder,
 )
 from .host_grounder_run_input import HostGrounderRunInput, HostGrounderSubquestion
@@ -64,10 +65,10 @@ __all__ = (
 
 _RUN_ID_RE = re.compile(r"[A-Za-z0-9._~-]{1,128}\Z", re.ASCII)
 _WORLD_PRODUCER_ID = "convexity-hunter-world"
-_WORLD_PRODUCER_VERSION = "world-v0.4"
+_WORLD_PRODUCER_VERSION = "world-v0.5"
 _WORLD_SOURCE_QUERY_POLICY = {
-    "schema_version": "world-source-query-v0.3",
-    "basis": "independent_native_event_units_seven_day_window",
+    "schema_version": "world-source-query-v0.4",
+    "basis": "independent_native_event_units_seed_urls_plus_search",
     "max_characters": 400,
     "full_research_context_preserved": True,
 }
@@ -851,7 +852,7 @@ def create_world_runner(
 
     world_configuration_snapshot_bytes = _safe_configuration_snapshot(
         _revalidate_config(config.grounder),
-        source_search_policy_version=_SOURCE_SEARCH_POLICY_LEGACY,
+        source_search_policy_version=_SOURCE_SEARCH_POLICY_WORLD_NATIVE,
     )
 
     # Each existing per-role budget is the run-wide authorization. Reserve one
@@ -1140,10 +1141,23 @@ def create_world_runner(
                         if fallback
                         else _grounding_input(raw_request, (lead,))
                     )
+                    seed_urls = () if lead is None else lead[1]
+                    validated_seed_urls = _validate_world_seed_urls(
+                        seed_urls, unit_grounder_config
+                    )
                     run_id = uuid.uuid4().hex
                     _preflight_grounder_input(
                         unit_input, run_id, unit_grounder_config
                     )
+                except HostGrounderRuntimeError as error:
+                    reason = (
+                        "world_unit_source_seed_invalid"
+                        if error.code == "SOURCE_SEEDS_INVALID"
+                        else "world_unit_input_invalid"
+                    )
+                    unit_failures.append((unit_id, reason))
+                    reasons.append(reason)
+                    continue
                 except HostWorldError as error:
                     reason = (
                         "world_unit_source_query_invalid"
@@ -1159,7 +1173,9 @@ def create_world_runner(
                     unit_failures.append((unit_id, "world_unit_input_invalid"))
                     reasons.append("world_unit_input_invalid")
                     continue
-                plans.append((unit_id, query, unit_input, run_id))
+                plans.append(
+                    (unit_id, query, unit_input, run_id, validated_seed_urls)
+                )
 
             if not plans:
                 return _empty_batch(raw_request)
@@ -1179,7 +1195,7 @@ def create_world_runner(
                     reasons.append("world_grounder_failed")
                     unit_failures.extend(
                         (unit_id, "world_unit_grounder_failed")
-                        for unit_id, _query, _unit_input, _run_id in plans
+                        for unit_id, _query, _unit_input, _run_id, _seeds in plans
                     )
                     return _empty_batch(raw_request)
 
@@ -1190,15 +1206,19 @@ def create_world_runner(
                 reasons.append("world_grounder_failed")
                 unit_failures.extend(
                     (unit_id, "world_unit_grounder_failed")
-                    for unit_id, _query, _unit_input, _run_id in plans
+                    for unit_id, _query, _unit_input, _run_id, _seeds in plans
                 )
                 return _empty_batch(raw_request)
 
             submissions = []
             seen_submission_ids = set()
-            for unit_id, query, unit_input, run_id in plans:
+            for unit_id, query, unit_input, run_id, seed_urls in plans:
                 try:
-                    query_bound_grounder = unit_query_factory(query)
+                    query_bound_grounder = (
+                        unit_query_factory(query, seed_urls=seed_urls)
+                        if seed_urls
+                        else unit_query_factory(query)
+                    )
                     grounded = query_bound_grounder(
                         unit_input,
                         run_id=run_id,

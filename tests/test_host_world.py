@@ -293,6 +293,7 @@ class HostWorldTests(unittest.TestCase):
         )
         self.grounder_calls = []
         self.grounder_query_calls = []
+        self.grounder_seed_calls = []
         self.policies = []
         self.grounder_query_error = None
 
@@ -307,8 +308,9 @@ class HostWorldTests(unittest.TestCase):
                 build_result=SimpleNamespace(raw_input=event_input, source_batch=batch)
             )
 
-        def world_source_query_factory(query):
+        def world_source_query_factory(query, *, seed_urls=()):
             self.grounder_query_calls.append(query)
+            self.grounder_seed_calls.append(seed_urls)
 
             def query_bound_grounder(text, *, run_id, bounds):
                 if self.grounder_query_error is not None:
@@ -880,7 +882,7 @@ class HostWorldTests(unittest.TestCase):
             {"convexity-hunter-world"},
         )
         for item in result.case_set.submissions.submissions:
-            self.assertIn("world-v0.4", item.producer_version)
+            self.assertIn("world-v0.5", item.producer_version)
             self.assertIn("web=tavily", item.producer_version)
             self.assertIn("lead=last30days@3.21.1", item.producer_version)
             self.assertIn("grounder=convexity-hunter-event-grounder@grounder-v-test", item.producer_version)
@@ -1632,7 +1634,7 @@ class HostWorldTests(unittest.TestCase):
                         )
                     )
 
-                def world_source_query_factory(query):
+                def world_source_query_factory(query, *, seed_urls=()):
                     self.grounder_query_calls.append(query)
                     return grounder
 
@@ -1737,7 +1739,7 @@ class HostWorldTests(unittest.TestCase):
                 grounder_calls.append((text, run_id, bounds))
                 raise failures[index]
 
-            def query_factory(query):
+            def query_factory(query, *, seed_urls=()):
                 query_calls.append(query)
                 return grounder
 
@@ -1898,6 +1900,41 @@ class HostWorldTests(unittest.TestCase):
             ),
         )
 
+    def test_invalid_native_seed_is_rejected_before_that_unit_grounder_call(self):
+        self.config = _config(model_budget=3, source_budget=4)
+        skill = _native_result(
+            [
+                _topic(
+                    "Alpha private lead",
+                    "http://127.0.0.1/private",
+                    rank=1,
+                    score=1,
+                    angle="x",
+                ),
+                _topic(
+                    "Zulu safe lead",
+                    "https://lead.example/safe",
+                    rank=2,
+                    score=2,
+                    angle="y",
+                ),
+            ]
+        )
+
+        result, _captured, _discovery, _semantic = self._run_through_real_core(
+            skill_result=skill
+        )
+
+        self.assertEqual(len(self.grounder_calls), 1)
+        self.assertEqual(
+            self.grounder_seed_calls,
+            [("https://lead.example/safe",)],
+        )
+        self.assertIn(
+            ("world_unit_source_seed_invalid",),
+            tuple(item.reasons for item in result.case_set.unavailable),
+        )
+
     def test_capacity_unavailable_rows_aggregate_without_a_truncated_prefix(self):
         self.config = _config(model_budget=6, source_budget=10)
         skill = _native_result(
@@ -2001,9 +2038,9 @@ class HostWorldTests(unittest.TestCase):
                     callback = real_factory(grounder_config, **kwargs)
                     query_factory = callback._world_source_query_factory
 
-                    def track_query_factory(query):
+                    def track_query_factory(query, *, seed_urls=()):
                         query_factory_calls.append(query)
-                        return query_factory(query)
+                        return query_factory(query, seed_urls=seed_urls)
 
                     callback._world_source_query_factory = track_query_factory
                     return callback
@@ -2059,6 +2096,7 @@ class HostWorldTests(unittest.TestCase):
             _config as event_grounder_config,
             _listing_runtime_wires,
             _listing_source_material,
+            _url_source_id,
             _NoNetworkAdmissionClient,
         )
 
@@ -2093,16 +2131,23 @@ class HostWorldTests(unittest.TestCase):
         _source_ids, full_source_order, _source_bodies, bodies_by_url = (
             _listing_source_material(run_ids[0], "ACME")
         )
-        source_order = (full_source_order[0],)
+        search_url = full_source_order[0][1]
+        source_order = ((_url_source_id(search_url), search_url),)
         discovery_outputs = []
         semantic_outputs = []
+        source_bodies_by_url = dict(bodies_by_url)
         for run_id, lead in zip(run_ids, leads):
             unit_input = host_world_module._grounding_input(self.raw_input, (lead,))
+            seed_url = lead[1][0]
+            source_bodies_by_url[seed_url] = "Fetched source body.\n"
+            unit_bodies_by_url = dict(bodies_by_url)
+            unit_bodies_by_url[seed_url] = "Fetched source body.\n"
+            unit_source_order = source_order + ((_url_source_id(seed_url), seed_url),)
             discovery, semantic, _normalized = _listing_runtime_wires(
                 run_id,
                 "ACME",
-                source_order,
-                bodies_by_url,
+                unit_source_order,
+                unit_bodies_by_url,
                 event_config,
                 raw_input=unit_input,
             )
@@ -2110,7 +2155,7 @@ class HostWorldTests(unittest.TestCase):
             semantic_outputs.append(semantic)
 
         source_transport = _SyntheticSourceTransport(
-            search_order=source_order, body_overrides=bodies_by_url
+            search_order=source_order, body_overrides=source_bodies_by_url
         )
         model_transport = _SyntheticModelTransport(
             discovery_outputs, semantic_outputs
@@ -2177,6 +2222,8 @@ class HostWorldTests(unittest.TestCase):
         )
         self.assertEqual(initial_grounder_config.source.byte_budget, 100_000)
         self.assertEqual(unit_source_config.byte_budget, 50_000)
+        self.assertEqual(unit_source_config.request_budget, 2)
+        self.assertEqual(unit_source_config.credit_budget, 2)
         self.assertEqual(
             unit_source_config.time_budget_seconds, math.nextafter(10.0, 0.0)
         )
@@ -2198,6 +2245,13 @@ class HostWorldTests(unittest.TestCase):
                 _expected_world_unit_query(
                     self.raw_input, self.config.evaluation_date, ["Beta lead"]
                 ),
+            ],
+        )
+        self.assertEqual(
+            source_transport.extract_url_orders,
+            [
+                (leads[0][1][0], search_url),
+                (leads[1][1][0], search_url),
             ],
         )
         discovery_messages = [
@@ -2266,7 +2320,7 @@ class HostWorldTests(unittest.TestCase):
         snapshot = runner.configuration_snapshot()
         self.assertEqual(
             snapshot["sources"][0]["schema_version"],
-            "host-event-source-snapshot-v0.1",
+            "host-event-source-snapshot-v0.3",
         )
         self.assertEqual(
             set(snapshot),
@@ -2275,8 +2329,8 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(
             snapshot["world_source_query_policy"],
             {
-                "schema_version": "world-source-query-v0.3",
-                "basis": "independent_native_event_units_seven_day_window",
+                "schema_version": "world-source-query-v0.4",
+                "basis": "independent_native_event_units_seed_urls_plus_search",
                 "max_characters": 400,
                 "full_research_context_preserved": True,
                 "evaluation_date": "2026-10-07",
@@ -2338,7 +2392,7 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(source_snapshot["request_budget"], 3)
         self.assertEqual(
             source_snapshot["schema_version"],
-            "host-event-source-snapshot-v0.1",
+            "host-event-source-snapshot-v0.3",
         )
 
     def test_world_source_query_preflight_accepts_400_and_rejects_invalid_without_calls(self):
