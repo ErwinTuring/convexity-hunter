@@ -1,5 +1,47 @@
 # Current Checkpoint
 
+## World v0.2 deployed and one normal acceptance completed — 2026-10-28
+
+Contract `20f5b58`, implementation `534381b` committed/pushed after focused
+validation and independent static review PASS. Original launcher deployed
+Host PID 28927 / session 51753 with explicit UTC evaluation date 2026-10-28;
+UI/root and World/Event/Direct executor configuration responded normally.
+No private config, budgets, EI rules or economic policy changed.
+
+Exactly one normal UI submission of `US listed companies` with bounds
+1/10/400/200/10 created `9f5e0ed7-fd0a-4411-a2c7-eebe2c3f276a` at
+2026-10-28T00:17:36.085Z; terminal BLOCKED / `HOST_BATCH_BLOCKED` at
+00:19:29.595Z (113.510 seconds). The persisted five-field query snapshot
+confirms v0.2, `scope_three_lanes_seven_day_window`, exact evaluation date,
+400-character limit and preserved full research context. The deployed query
+window is 2026-10-22 through 2026-10-28 inclusive.
+
+Stored reasons are exactly `world_last30days_partial`,
+`world_last30days_native_source_reddit_not_ok`,
+`world_last30days_native_source_digg_not_ok`, and
+`world_grounder_no_submission`. The branch establishes nonempty provisional
+native leads reached shared Grounder context, not their exact count or quality.
+Native finer statuses, actual source/model usage and exact Grounder rejection
+details remain UNKNOWN. No private binding-rejection line appeared in the
+normal Host output; absence is not proof of supported evidence. Reddit/Digg
+not_ok is not sufficient to attribute authentication or transport failure.
+
+SQLite EI audit: 0 submissions; 0 cases; 0 unavailable branches. EI acceptance
+and Futu/Core execution were NOT established. The empty batch archive is not
+Core research. DB now 46 runs / 3 retained Direct cases / 22 batch archives.
+No retry, alternate event, extra batch, raw payload retention or weakened gate.
+The single post-fix acceptance authorization is spent. Direct's historical
+engineering closure remains intact; Event/World positive EI→Core closure is
+still unproven. This result does not prove the prior query caused missing
+submissions, nor does it prove there are no valid events in the market.
+
+Execution accounting: actual implementation and compatibility repair completed;
+the real run took 113.510 seconds. Coding versus auxiliary phase times were
+not separately recorded, so no 70/30 compliance or token-share claim is made.
+Next external attempt requires a new explicit bounded authorization; do not
+repeat the same run merely to seek a positive submission or start another
+diagnostic framework from these unknowns.
+
 ## World fixed-query v0.2 implementation — 2026-10-28
 
 User approved the bounded amendment and one subsequent normal World acceptance
@@ -20,8 +62,9 @@ than being swallowed as an empty batch. The minimal World-only correction,
 current-runtime and legacy-route regressions pass; final World+Store 92/92,
 related compileall, Markdown local-link/fence and diff checks pass. No full
 suite is claimed for this bounded change. Independent final static review PASS. No new
-external batch has been submitted yet; deployment and real outcome remain
-pending. This amendment is not a proven causal fix for the prior empty run.
+external batch had been submitted at this pre-deployment checkpoint. The
+subsequent deployment/outcome is recorded above. This amendment is not a proven
+causal fix for the prior empty run.
 
 ## One normal World acceptance — Beijing 2026-10-28 / UTC 2026-10-27
 

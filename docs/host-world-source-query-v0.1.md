@@ -2,8 +2,9 @@
 
 ## Approved successor v0.2 — 2026-10-28
 
-Status: user-approved contract; implementation, focused validation and independent
-review PASS; deployment pending. This is not a real EI/Core
+Status: user-approved contract; implementation, focused validation, independent
+review and deployment completed. One authorized normal World acceptance was
+BLOCKED / no submission; see the current checkpoint. This is not a real EI/Core
 closure claim. The v0.1 record below remains historical.
 
 Replace only World's exact-original-query rule with this literal template:
