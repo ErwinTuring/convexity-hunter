@@ -2118,7 +2118,7 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(len(semantic_calls), 2)
         for call in semantic_calls:
             self.assertIn(
-                "host-grounder-semantic-verifier-prompt-v0.9",
+                "host-grounder-semantic-verifier-prompt-v0.10",
                 call["messages"][0]["content"],
             )
             semantic_input = json.loads(call["messages"][1]["content"])
@@ -2201,7 +2201,7 @@ class HostEventGrounderTests(unittest.TestCase):
         )
         self.assertEqual(
             json.loads(result.audit.sidecar_utf8)["validator_version"],
-            "host-grounder-semantic-verifier-prompt-v0.9",
+            "host-grounder-semantic-verifier-prompt-v0.10",
         )
 
     def test_private_world_query_factory_keeps_one_search_at_source_budget_three(self):

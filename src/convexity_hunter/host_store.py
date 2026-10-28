@@ -476,24 +476,55 @@ def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[st
         if mode != "world":
             raise ValueError("World source-query policy is permitted only in World mode")
         policy = value["world_source_query_policy"]
-        policy_fields = {
-            "schema_version",
-            "basis",
-            "max_characters",
-            "full_research_context_preserved",
-        }
-        if (
-            type(policy) is not dict
-            or set(policy) != policy_fields
-            or type(policy["schema_version"]) is not str
-            or policy["schema_version"] != "world-source-query-v0.1"
-            or type(policy["basis"]) is not str
-            or policy["basis"] != "exact_original_world_request"
-            or type(policy["max_characters"]) is not int
-            or policy["max_characters"] != 400
-            or type(policy["full_research_context_preserved"]) is not bool
-            or policy["full_research_context_preserved"] is not True
-        ):
+        if type(policy) is not dict or type(policy.get("schema_version")) is not str:
+            raise ValueError("World source-query policy has an invalid closed shape or value")
+        if policy["schema_version"] == "world-source-query-v0.1":
+            policy_fields = {
+                "schema_version",
+                "basis",
+                "max_characters",
+                "full_research_context_preserved",
+            }
+            valid_policy = (
+                set(policy) == policy_fields
+                and type(policy["basis"]) is str
+                and policy["basis"] == "exact_original_world_request"
+                and type(policy["max_characters"]) is int
+                and policy["max_characters"] == 400
+                and type(policy["full_research_context_preserved"]) is bool
+                and policy["full_research_context_preserved"] is True
+            )
+        elif policy["schema_version"] == "world-source-query-v0.2":
+            policy_fields = {
+                "schema_version",
+                "basis",
+                "max_characters",
+                "full_research_context_preserved",
+                "evaluation_date",
+            }
+            evaluation_date = policy.get("evaluation_date")
+            canonical_evaluation_date = False
+            if type(evaluation_date) is str:
+                try:
+                    canonical_evaluation_date = (
+                        _datetime.date.fromisoformat(evaluation_date).isoformat()
+                        == evaluation_date
+                    )
+                except ValueError:
+                    pass
+            valid_policy = (
+                set(policy) == policy_fields
+                and type(policy["basis"]) is str
+                and policy["basis"] == "scope_three_lanes_seven_day_window"
+                and type(policy["max_characters"]) is int
+                and policy["max_characters"] == 400
+                and type(policy["full_research_context_preserved"]) is bool
+                and policy["full_research_context_preserved"] is True
+                and canonical_evaluation_date
+            )
+        else:
+            valid_policy = False
+        if not valid_policy:
             raise ValueError("World source-query policy has an invalid closed shape or value")
         legacy = {
             name: value[name]

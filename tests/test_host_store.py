@@ -124,6 +124,18 @@ def _world_configuration_snapshot():
     return snapshot
 
 
+def _world_configuration_snapshot_v0_2():
+    snapshot = _event_configuration_snapshot()
+    snapshot["world_source_query_policy"] = {
+        "schema_version": "world-source-query-v0.2",
+        "basis": "scope_three_lanes_seven_day_window",
+        "max_characters": 400,
+        "full_research_context_preserved": True,
+        "evaluation_date": "2026-10-07",
+    }
+    return snapshot
+
+
 def _semantic_transport_audit():
     return {
         "schema_version": "host-semantic-transport-retry-v0.1",
@@ -2360,6 +2372,14 @@ class HostStoreTests(unittest.TestCase):
             "world", "legacy three-key configuration", BOUNDS,
             STANDARD_RESEARCH_PROFILE.snapshot(), legacy_metadata,
         )
+        v0_2_metadata = _run_start_metadata()
+        v0_2_metadata["configuration_snapshot"] = (
+            _world_configuration_snapshot_v0_2()
+        )
+        v0_2_id = self.store.create_run(
+            "world", "successor source-query configuration", BOUNDS,
+            STANDARD_RESEARCH_PROFILE.snapshot(), v0_2_metadata,
+        )
 
         self.store.close()
         recovered = HostStore(self.db_path)
@@ -2375,16 +2395,26 @@ class HostStoreTests(unittest.TestCase):
             legacy_run["metadata"]["configuration_snapshot"],
             {"models": [], "sources": [], "skills": []},
         )
+        v0_2_run = recovered.get_run(v0_2_id)
+        self.assertEqual(v0_2_run["status"], "INTERRUPTED")
+        self.assertEqual(
+            v0_2_run["metadata"]["configuration_snapshot"],
+            _world_configuration_snapshot_v0_2(),
+        )
 
         for mode in ("event", "direct"):
             with self.subTest(mode=mode):
-                disallowed = _run_start_metadata()
-                disallowed["configuration_snapshot"] = _world_configuration_snapshot()
-                with self.assertRaises(ValueError):
-                    recovered.create_run(
-                        mode, "legacy-compatible input", BOUNDS,
-                        STANDARD_RESEARCH_PROFILE.snapshot(), disallowed,
-                    )
+                for snapshot in (
+                    _world_configuration_snapshot(),
+                    _world_configuration_snapshot_v0_2(),
+                ):
+                    disallowed = _run_start_metadata()
+                    disallowed["configuration_snapshot"] = snapshot
+                    with self.assertRaises(ValueError):
+                        recovered.create_run(
+                            mode, "legacy-compatible input", BOUNDS,
+                            STANDARD_RESEARCH_PROFILE.snapshot(), disallowed,
+                        )
 
         for mode in ("event", "direct"):
             with self.subTest(legacy_mode=mode):
@@ -2399,11 +2429,11 @@ class HostStoreTests(unittest.TestCase):
                     _event_configuration_snapshot(),
                 )
 
-    def test_world_source_query_snapshot_rejects_noncanonical_policy(self):
+    def test_world_source_query_v0_1_snapshot_rejects_noncanonical_policy(self):
         valid = _world_configuration_snapshot()
         invalid = []
         for field, value in (
-            ("schema_version", "world-source-query-v0.2"),
+            ("schema_version", "world-source-query-v0.3"),
             ("basis", "enriched_context"),
             ("max_characters", True),
             ("max_characters", 401),
@@ -2417,6 +2447,43 @@ class HostStoreTests(unittest.TestCase):
         snapshot["world_source_query_policy"]["extra"] = "reject"
         invalid.append(snapshot)
         snapshot = _world_configuration_snapshot()
+        snapshot["extra"] = "reject"
+        invalid.append(snapshot)
+
+        for snapshot in invalid:
+            with self.subTest(policy=snapshot["world_source_query_policy"]):
+                metadata = _run_start_metadata()
+                metadata["configuration_snapshot"] = snapshot
+                with self.assertRaises((TypeError, ValueError)):
+                    self.store.create_run(
+                        "world", "request", BOUNDS,
+                        STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+                    )
+        self.assertEqual(self.store.list_runs(), [])
+
+    def test_world_source_query_v0_2_snapshot_rejects_noncanonical_policy(self):
+        invalid = []
+        for field, value in (
+            ("schema_version", "world-source-query-v0.3"),
+            ("basis", "exact_original_world_request"),
+            ("max_characters", True),
+            ("max_characters", 401),
+            ("full_research_context_preserved", 1),
+            ("full_research_context_preserved", False),
+            ("evaluation_date", "2026-10-7"),
+            ("evaluation_date", "2026-02-30"),
+            ("evaluation_date", True),
+        ):
+            snapshot = _world_configuration_snapshot_v0_2()
+            snapshot["world_source_query_policy"][field] = value
+            invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_2()
+        snapshot["world_source_query_policy"].pop("evaluation_date")
+        invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_2()
+        snapshot["world_source_query_policy"]["extra"] = "reject"
+        invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_2()
         snapshot["extra"] = "reject"
         invalid.append(snapshot)
 

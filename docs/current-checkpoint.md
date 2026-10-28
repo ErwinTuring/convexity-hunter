@@ -1,5 +1,28 @@
 # Current Checkpoint
 
+## World fixed-query v0.2 implementation — 2026-10-28
+
+User approved the bounded amendment and one subsequent normal World acceptance
+at unchanged budgets. Contract commit `20f5b58` freezes original scope plus the
+three Discovery lanes and inclusive configured evaluation-date D-6..D query.
+Implementation uses the same rendered query for Search/Extract, retains the
+original Skill/model/journal input, rejects invalid or over-400-character
+rendered queries before external work, and records the exact evaluation date
+in a closed five-field v0.2 snapshot. Historical v0.1 remains readable.
+Producer provenance is `world-v0.3`; Event/Direct and EI standards unchanged.
+
+World+Store passed 92 tests, and the existing Event full-context
+regression passed. Two stale route/prompt expectations were reproduced on an
+isolated archive of the pre-BUILD HEAD. Independent review additionally found
+a real pre-existing World omission-error route compatibility gap: current
+Grounder v0.11 must propagate alongside historical v0.10/base routes, rather
+than being swallowed as an empty batch. The minimal World-only correction,
+current-runtime and legacy-route regressions pass; final World+Store 92/92,
+related compileall, Markdown local-link/fence and diff checks pass. No full
+suite is claimed for this bounded change. Independent final static review PASS. No new
+external batch has been submitted yet; deployment and real outcome remain
+pending. This amendment is not a proven causal fix for the prior empty run.
+
 ## One normal World acceptance — Beijing 2026-10-28 / UTC 2026-10-27
 
 Grounded HEAD/main/origin/main `99c0d3b`, clean; normal Host PID 15598 /

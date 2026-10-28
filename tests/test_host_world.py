@@ -137,6 +137,17 @@ def _config(*, bounds=None, final_output_path=None, model_budget=2):
     )
 
 
+def _expected_world_source_query(scope, evaluation_date):
+    return (
+        "Public company events for {} from {} through {} inclusive: "
+        "explicit catalysts; narrative/belief shifts; second-order transmission."
+    ).format(
+        scope,
+        (evaluation_date - datetime.timedelta(days=6)).isoformat(),
+        evaluation_date.isoformat(),
+    )
+
+
 def _persist_world_result(raw_input, bounds, result):
     metadata = {
         "configuration_snapshot": {"models": [], "sources": [], "skills": []},
@@ -425,7 +436,16 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(result.case_set.status, "COMPLETE")
         self.assertIn("lead=last30days@3.21.1", result.case_set.submissions.submissions[0].producer_version)
         self.assertEqual(len(self.grounder_calls), 1)
-        self.assertEqual(self.grounder_query_calls, [self.raw_input])
+        self.assertEqual(
+            self.grounder_query_calls,
+            [
+                "Public company events for research a synthetic event from "
+                "2026-10-01 through 2026-10-07 inclusive: explicit catalysts; "
+                "narrative/belief shifts; second-order transmission."
+            ],
+        )
+        self.assertIn(self.raw_input, self.grounder_calls[0][0])
+        self.assertIn("Provisional last30days lead hints only", self.grounder_calls[0][0])
         self.assertEqual(
             [row["id"] for row in stage_runner.judgments["judgments"]],
             ["n1", "n2"],
@@ -561,46 +581,87 @@ class HostWorldTests(unittest.TestCase):
         from convexity_hunter.host_grounder_evidence_catalog import (
             _BINDING_OMISSION_FAILURE_ROUTE,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
         )
 
         empty_skill = HostSkillResult("empty", None, (), (), (), 0)
-        for bound_object, expected_route in (
-            (False, _BINDING_OMISSION_FAILURE_ROUTE),
-            (True, _BINDING_OMISSION_FAILURE_ROUTE_V0_10),
-        ):
-            omission_error, _calls = _normal_v09_omission_failure(
+
+        def omission_failure(bound_object, historical_route=None):
+            error, calls = _normal_v09_omission_failure(
                 "delta", bound_object=bound_object
             )
-            self.assertEqual(omission_error._producer_failure_route, expected_route)
-            self.grounder_query_error = omission_error
-            with self.assertRaises(HostGrounderRuntimeError) as raised:
-                self._run_through_real_core(skill_result=empty_skill)
-            self.assertIs(raised.exception, omission_error)
+            if historical_route is not None:
+                error._producer_failure_route = historical_route
+                error._semantic_transport_route = historical_route
+            return error, calls
 
-            invalid_routes = (
-                None,
-                _BINDING_OMISSION_FAILURE_ROUTE_V0_10
-                if not bound_object else _BINDING_OMISSION_FAILURE_ROUTE,
+        accepted_fixtures = (
+            (
+                "legacy-v0.9-v0.8",
+                _BINDING_OMISSION_FAILURE_ROUTE,
+                lambda: omission_failure(False)[0],
+            ),
+            (
+                "legacy-v0.10",
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+                lambda: omission_failure(
+                    True, _BINDING_OMISSION_FAILURE_ROUTE_V0_10
+                )[0],
+            ),
+            (
+                "current-v0.11",
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+                lambda: omission_failure(True)[0],
+            ),
+        )
+        for label, expected_route, make_error in accepted_fixtures:
+            with self.subTest(accepted_route=label):
+                omission_error = make_error()
+                self.assertEqual(
+                    omission_error._producer_failure_route, expected_route
+                )
+                self.assertEqual(
+                    omission_error._semantic_transport_route, expected_route
+                )
+                self.grounder_query_error = omission_error
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    self._run_through_real_core(skill_result=empty_skill)
+                self.assertIs(raised.exception, omission_error)
+
+        invalid_fixtures = (
+            ("unstamped", None, None),
+            (
+                "route-mismatch",
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+            ),
+            (
+                "unrelated-route",
                 (
                     "host-grounder-discovery-prompt-v0.8",
                     "host-grounder-semantic-verifier-prompt-v0.7",
                 ),
-            )
-            for route in invalid_routes:
-                with self.subTest(bound_object=bound_object, route=route):
-                    error, _calls = _normal_v09_omission_failure(
-                        "delta", bound_object=bound_object
-                    )
-                    if route is None:
-                        del error._producer_failure_route
-                    else:
-                        error._producer_failure_route = route
-                    self.grounder_query_error = error
-                    result, captured, _discovery, _semantic = self._run_through_real_core(
-                        skill_result=empty_skill
-                    )
-                    self.assertIn("world_grounder_failed", result.case_set.reasons)
-                    self.assertEqual(captured[0].submissions, ())
+                (
+                    "host-grounder-discovery-prompt-v0.8",
+                    "host-grounder-semantic-verifier-prompt-v0.7",
+                ),
+            ),
+        )
+        for label, producer_route, semantic_route in invalid_fixtures:
+            with self.subTest(rejected_route=label):
+                error, _calls = omission_failure(True)
+                if producer_route is None:
+                    del error._producer_failure_route
+                else:
+                    error._producer_failure_route = producer_route
+                if semantic_route is not None:
+                    error._semantic_transport_route = semantic_route
+                self.grounder_query_error = error
+                result, captured, _discovery, _semantic = self._run_through_real_core(
+                    skill_result=empty_skill
+                )
+                self.assertIn("world_grounder_failed", result.case_set.reasons)
+                self.assertEqual(captured[0].submissions, ())
 
     def test_world_batch_failure_is_archived_with_v02_attempt_hashes(self):
         from tests.test_host_server import _normal_v09_omission_failure
@@ -756,7 +817,10 @@ class HostWorldTests(unittest.TestCase):
         self.assertTrue(run_id)
         self.assertIs(bounds, self.post_bounds)
         self.assertEqual(len(captured), 1)
-        self.assertEqual(self.grounder_query_calls, [self.raw_input])
+        self.assertEqual(
+            self.grounder_query_calls,
+            [_expected_world_source_query(self.raw_input, self.config.evaluation_date)],
+        )
         policy = self.policies[-1]
         self.assertEqual(policy.evaluation_date, datetime.date(2026, 10, 7))
         self.assertIs(
@@ -783,7 +847,7 @@ class HostWorldTests(unittest.TestCase):
             {"convexity-hunter-world"},
         )
         for item in result.case_set.submissions.submissions:
-            self.assertIn("world-v0.2", item.producer_version)
+            self.assertIn("world-v0.3", item.producer_version)
             self.assertIn("web=tavily", item.producer_version)
             self.assertIn("lead=last30days@3.21.1", item.producer_version)
             self.assertIn("grounder=convexity-hunter-event-grounder@grounder-v-test", item.producer_version)
@@ -903,7 +967,7 @@ class HostWorldTests(unittest.TestCase):
                 self.assertNotIn(str(error), repr(result.case_set.reasons))
                 self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
 
-    def test_hidden_skill_model_transport_context_is_closed_and_query_is_unchanged(self):
+    def test_hidden_skill_model_transport_context_is_closed_and_query_uses_template(self):
         def hidden_skill_error(code, *, status=None):
             try:
                 raise ModelTransportError(code, status=status)
@@ -929,8 +993,10 @@ class HostWorldTests(unittest.TestCase):
         self.assertIn("world_last30days_model_failed", result.case_set.reasons)
         self.assertIn("world_model_http_error", result.case_set.reasons)
         self.assertNotIn("503", repr(result.case_set.reasons))
-        self.assertEqual(self.grounder_query_calls, [self.raw_input])
-        self.assertIs(self.grounder_query_calls[0], self.raw_input)
+        self.assertEqual(
+            self.grounder_query_calls,
+            [_expected_world_source_query(self.raw_input, self.config.evaluation_date)],
+        )
         self.assertIs(self.grounder_calls[0][0], self.raw_input)
         self.assertIs(captured[0].raw_input, self.raw_input)
         self.assertEqual(discovery_calls, [])
@@ -946,7 +1012,10 @@ class HostWorldTests(unittest.TestCase):
         self.assertIn("world_last30days_model_failed", result.case_set.reasons)
         self.assertFalse(any(reason.startswith("world_model_") for reason in result.case_set.reasons))
         self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
-        self.assertEqual(self.grounder_query_calls, [self.raw_input])
+        self.assertEqual(
+            self.grounder_query_calls,
+            [_expected_world_source_query(self.raw_input, self.config.evaluation_date)],
+        )
         self.assertIs(self.grounder_calls[0][0], self.raw_input)
 
     def test_model_transport_context_diagnostics_are_exact_type_closed_and_bounded(self):
@@ -1029,8 +1098,8 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(callback_calls, {"stage": 0, "model": 0})
 
         # Exercise World's HostSkill error mapping with an otherwise valid
-        # source query; the 401-character case was already rejected above.
-        self.raw_input = "x" * 313
+        # formatted query; both query limits now include template overhead.
+        self.raw_input = "x" * 100
         result, captured, discovery_calls, semantic_calls = self._run_through_real_core(
             skill_result=None, skill_error=caught.exception
         )
@@ -1552,8 +1621,10 @@ class HostWorldTests(unittest.TestCase):
                 result.case_set.reasons,
             )
             self.assertIs(result.case_set.raw_input, self.raw_input)
-            self.assertEqual(self.grounder_query_calls, [self.raw_input])
-            self.assertIs(self.grounder_query_calls[0], self.raw_input)
+            self.assertEqual(
+                self.grounder_query_calls,
+                [_expected_world_source_query(self.raw_input, self.config.evaluation_date)],
+            )
             if diagnostic is not None:
                 expected_diagnostics = (
                     diagnostic if type(diagnostic) is tuple else (diagnostic,)
@@ -1690,10 +1761,11 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(
             snapshot["world_source_query_policy"],
             {
-                "schema_version": "world-source-query-v0.1",
-                "basis": "exact_original_world_request",
+                "schema_version": "world-source-query-v0.2",
+                "basis": "scope_three_lanes_seven_day_window",
                 "max_characters": 400,
                 "full_research_context_preserved": True,
+                "evaluation_date": "2026-10-07",
             },
         )
         self.assertEqual(
@@ -1719,8 +1791,13 @@ class HostWorldTests(unittest.TestCase):
             "max_array_items"
         ] = 999
         snapshot["world_source_query_policy"]["max_characters"] = 401
+        snapshot["world_source_query_policy"]["evaluation_date"] = "2026-10-08"
         fresh_snapshot = runner.configuration_snapshot()
         self.assertEqual(fresh_snapshot["world_source_query_policy"]["max_characters"], 400)
+        self.assertEqual(
+            fresh_snapshot["world_source_query_policy"]["evaluation_date"],
+            "2026-10-07",
+        )
         self.assertNotIn("caller-mutation", fresh_snapshot["models"][0]["capabilities"])
         self.assertNotEqual(
             fresh_snapshot["sources"][0]["grounder_limits"]["run_input_bounds"][
@@ -1751,8 +1828,15 @@ class HostWorldTests(unittest.TestCase):
         )
 
     def test_world_source_query_preflight_accepts_400_and_rejects_invalid_without_calls(self):
-        exactly_313 = "q" * 313
-        exactly_400 = "q" * 400
+        prefix = "Public company events for "
+        suffix = (
+            " from 2026-10-01 through 2026-10-07 inclusive: explicit catalysts; "
+            "narrative/belief shifts; second-order transmission."
+        )
+        max_scope_characters = 400 - len(prefix) - len(suffix)
+        exactly_400 = "q" * max_scope_characters
+        expected_query = prefix + exactly_400 + suffix
+        overflow_401 = "q" * (max_scope_characters + 1)
         empty = HostSkillResult("empty", None, (), (), (), 0)
         skill_queries = []
 
@@ -1770,29 +1854,37 @@ class HostWorldTests(unittest.TestCase):
             runner = create_world_runner(
                 self.config, repo_root=ROOT, market_bridge=self.lazy_bridge
             )
-            accepted_313 = runner(exactly_313, bounds=self.post_bounds)
             accepted = runner(exactly_400, bounds=self.post_bounds)
             accepted_second = runner(
                 "second original request", bounds=self.post_bounds
             )
-        self.assertNotIn("world_source_query_invalid", accepted_313.case_set.reasons)
         self.assertNotIn("world_source_query_invalid", accepted.case_set.reasons)
-        self.assertEqual(self.grounder_query_calls[0], exactly_313)
-        self.assertEqual(self.grounder_calls[0][0], exactly_313)
-        self.assertEqual(self.grounder_calls[1][0], exactly_400)
+        self.assertEqual(self.grounder_query_calls[0], expected_query)
+        self.assertEqual(self.grounder_calls[0][0], exactly_400)
         self.assertNotIn(
             "world_source_query_invalid", accepted_second.case_set.reasons
         )
         self.assertEqual(
             self.grounder_query_calls,
-            [exactly_313, exactly_400, "second original request"],
+            [
+                expected_query,
+                "Public company events for second original request from "
+                "2026-10-01 through 2026-10-07 inclusive: explicit catalysts; "
+                "narrative/belief shifts; second-order transmission.",
+            ],
         )
         self.assertEqual(
             skill_queries,
-            [exactly_313, exactly_400, "second original request"],
+            [exactly_400, "second original request"],
         )
 
-        for invalid in ("q" * 401, "request ", "\ud800"):
+        for invalid in (
+            "q" * 401,
+            overflow_401,
+            "q" * 400,
+            "request ",
+            "\ud800",
+        ):
             with self.subTest(length=len(invalid), invalid=repr(invalid)):
                 self.grounder_calls.clear()
                 self.grounder_query_calls.clear()
@@ -1816,6 +1908,58 @@ class HostWorldTests(unittest.TestCase):
                 self.assertEqual(result.case_set.cases, ())
                 self.assertEqual(self.grounder_calls, [])
                 self.assertEqual(self.grounder_query_calls, [])
+
+    def test_world_source_query_date_underflow_fails_closed_before_calls(self):
+        config = replace(self.config, evaluation_date=datetime.date.min)
+        with mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            side_effect=self._fake_grounder,
+        ), mock.patch(
+            "convexity_hunter.host_world.run_last30days_discovery",
+            side_effect=AssertionError("Skill must not run"),
+        ):
+            runner = create_world_runner(
+                config, repo_root=ROOT, market_bridge=self.lazy_bridge
+            )
+            result = runner("market scope", bounds=self.post_bounds)
+
+        self.assertIn("world_source_query_invalid", result.case_set.reasons)
+        self.assertEqual(result.case_set.submissions.submissions, ())
+        self.assertEqual(result.case_set.cases, ())
+        self.assertEqual(self.grounder_calls, [])
+        self.assertEqual(self.grounder_query_calls, [])
+
+    def test_world_source_query_uses_frozen_evaluation_date_for_window_and_snapshot(self):
+        config = replace(
+            self.config, evaluation_date=datetime.date(2026, 10, 28)
+        )
+        empty = HostSkillResult("empty", None, (), (), (), 0)
+        with mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            side_effect=self._fake_grounder,
+        ), mock.patch(
+            "convexity_hunter.host_world.run_last30days_discovery",
+            return_value=empty,
+        ):
+            runner = create_world_runner(
+                config, repo_root=ROOT, market_bridge=self.lazy_bridge
+            )
+            runner("US listed companies", bounds=self.post_bounds)
+
+        self.assertEqual(
+            self.grounder_query_calls,
+            [
+                "Public company events for US listed companies from "
+                "2026-10-22 through 2026-10-28 inclusive: explicit catalysts; "
+                "narrative/belief shifts; second-order transmission."
+            ],
+        )
+        self.assertEqual(
+            runner.configuration_snapshot()["world_source_query_policy"][
+                "evaluation_date"
+            ],
+            "2026-10-28",
+        )
 
     def test_role_total_budget_preflights_before_grounder_or_skill(self):
         config = _config(model_budget=1)

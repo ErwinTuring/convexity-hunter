@@ -2,8 +2,9 @@
 
 ## Approved successor v0.2 — 2026-10-28
 
-Status: user-approved target, frozen for the bounded BUILD; not a claim of
-implemented or deployed runtime. The v0.1 record below remains historical.
+Status: user-approved contract; implementation, focused validation and independent
+review PASS; deployment pending. This is not a real EI/Core
+closure claim. The v0.1 record below remains historical.
 
 Replace only World's exact-original-query rule with this literal template:
 
@@ -50,6 +51,8 @@ queries, per-run isolation, detached snapshots, old/new journal recovery and
 mode rejection. Retain ordinary Event/Direct and accepted-branch regressions.
 Independent review and proportional validation precede deployment and the
 single user-authorized normal World acceptance. No positive result is promised.
+
+## Historical v0.1 contract and implementation record
 
 Status: CONTRACT_FROZEN / IMPLEMENTED / VALIDATED / DEPLOYED.
 Independent contract review passed on 2026-10-14.

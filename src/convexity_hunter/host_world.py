@@ -26,6 +26,7 @@ from .host_grounder_evidence_catalog import (
     _BINDING_OMISSION_FAILURE_MARKERS,
     _BINDING_OMISSION_FAILURE_ROUTE,
     _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
 )
 from .host_grounder_runtime import HostGrounderRuntimeError
@@ -60,13 +61,17 @@ __all__ = (
 
 _RUN_ID_RE = re.compile(r"[A-Za-z0-9._~-]{1,128}\Z", re.ASCII)
 _WORLD_PRODUCER_ID = "convexity-hunter-world"
-_WORLD_PRODUCER_VERSION = "world-v0.2"
+_WORLD_PRODUCER_VERSION = "world-v0.3"
 _WORLD_SOURCE_QUERY_POLICY = {
-    "schema_version": "world-source-query-v0.1",
-    "basis": "exact_original_world_request",
+    "schema_version": "world-source-query-v0.2",
+    "basis": "scope_three_lanes_seven_day_window",
     "max_characters": 400,
     "full_research_context_preserved": True,
 }
+_WORLD_SOURCE_QUERY_TEMPLATE = (
+    "Public company events for {scope} from {start} through {end} inclusive: "
+    "explicit catalysts; narrative/belief shifts; second-order transmission."
+)
 _GROUNDING_SUBQUESTION_ID = "user_event_input"
 _SKILL_MODEL_REQUESTS_PER_ROLE = 1
 _GROUNDER_MODEL_REQUESTS_PER_ROLE = 1
@@ -299,6 +304,25 @@ def _valid_world_source_query(value: object) -> bool:
     except UnicodeEncodeError:
         return False
     return True
+
+
+def _render_world_source_query(
+    market_scope: str, evaluation_date: datetime.date
+) -> Optional[str]:
+    if type(market_scope) is not str or type(evaluation_date) is not datetime.date:
+        return None
+    try:
+        end_date = evaluation_date.isoformat()
+        start_date = (
+            evaluation_date - datetime.timedelta(days=6)
+        ).isoformat()
+    except (OverflowError, ValueError):
+        return None
+    return _WORLD_SOURCE_QUERY_TEMPLATE.format(
+        scope=market_scope,
+        start=start_date,
+        end=end_date,
+    )
 
 
 @dataclass(frozen=True, repr=False)
@@ -742,6 +766,23 @@ def create_world_runner(
                 policy=policy,
             )
             return _append_reasons(result, ("world_source_query_invalid",))
+        source_query = _render_world_source_query(
+            raw_input, config.evaluation_date
+        )
+        if source_query is None or not _valid_world_source_query(source_query):
+            policy = create_core_research_policy(
+                APPROVED_STANDARD_RESEARCH_PROFILE,
+                evaluation_date=config.evaluation_date,
+                maturity_authority=config.maturity_authority,
+                bounds=bounds,
+            )
+            result = run_world_core(
+                raw_input,
+                source_producer=_empty_batch,
+                market_bridge=market_bridge,
+                policy=policy,
+            )
+            return _append_reasons(result, ("world_source_query_invalid",))
         if not _bounds_within_cap(bounds, config.bounds):
             result = run_world_core(
                 raw_input,
@@ -776,7 +817,7 @@ def create_world_runner(
             if raw_request is not raw_input:
                 raise HostWorldError("WORLD_INPUT_IDENTITY_MISMATCH")
             try:
-                query_bound_grounder = world_source_query_factory(raw_request)
+                query_bound_grounder = world_source_query_factory(source_query)
             except HostGrounderRuntimeError as error:
                 if error.code == "SOURCE_QUERY_INVALID":
                     reasons.append("world_source_query_invalid")
@@ -905,6 +946,7 @@ def create_world_runner(
                         and route in (
                             _BINDING_OMISSION_FAILURE_ROUTE,
                             _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+                            _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
                         )
                         and getattr(error, "_semantic_transport_route", route)
                         == route
@@ -952,7 +994,9 @@ def create_world_runner(
         snapshot = json.loads(
             world_configuration_snapshot_bytes.decode("utf-8")
         )
-        snapshot["world_source_query_policy"] = dict(_WORLD_SOURCE_QUERY_POLICY)
+        query_policy = dict(_WORLD_SOURCE_QUERY_POLICY)
+        query_policy["evaluation_date"] = config.evaluation_date.isoformat()
+        snapshot["world_source_query_policy"] = query_policy
         return snapshot
 
     world_runner.configuration_snapshot = configuration_snapshot
