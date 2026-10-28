@@ -1,5 +1,8 @@
 # Project State
 
+## Continuation decision boundary — 2026-10-28
+Five focused offline checks pass; no production change/live call. Current World packages scope and multiple provisional leads as one Event input and can emit only one event submission. This is a confirmed composition limit, not proof of the latest no-submission cause; missing anchor alone does not prevent a partial submission. Main proposes independent event units reusing the SAME Grounder/EI/Core, with total-budget preflight and explicit unprocessed units, no new Grounder or relaxed gates. Composition amendment is pending user decision; see [checkpoint](current-checkpoint.md).
+
 ## World fixed query deployed; single acceptance still blocked — 2026-10-28
 Reviewed implementation `534381b` pushed and deployed through the original Host launcher, UTC evaluation date 2026-10-28. One normal UI World run `9f5e0ed7-fd0a-4411-a2c7-eebe2c3f276a` confirms persisted query-policy v0.2 and unchanged budgets. Terminal BLOCKED/HOST_BATCH_BLOCKED: last30days partial, native Reddit/Digg not_ok, Grounder no submission. Exact finer causes and actual usage UNKNOWN; EI audit 0 submissions, 0 cases, no Futu/Core proof. DB 46 runs / 3 Direct / 22 batch archives. No retry or gate change; this one-run authorization is spent. Direct historical closure remains; Event/World positive EI→Core closure remains unproven. See [checkpoint](current-checkpoint.md). No measured phase split is available to substantiate a 70/30 work-share claim.
 

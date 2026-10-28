@@ -1,5 +1,29 @@
 # Current Checkpoint
 
+## Offline continuation: World single-event composition boundary — 2026-10-28
+
+Fresh fetch confirms HEAD/main/origin/main `839b82f`, clean. Five existing
+focused offline checks pass: default Event preparation, unrelated background,
+multiple facts supporting one event, competing event identities, and Builder
+without a bound description. No production change or external call.
+
+World currently sends market scope plus unverified native leads as one
+`UserEventInput`. The default anchor proves one event identity; Builder emits
+one submission, not one per independent event. Missing anchor alone can still
+yield a partial submission for EI; no readable source or no projectable
+hypothesis yields no batch. This confirms a multi-event composition limitation,
+NOT the cause of run `9f5e0ed7`'s no-submission result. Scope-only uniqueness
+and that historical run's finer rejection cause remain UNKNOWN.
+
+Pending Main recommendation: permit World to prepare independent event units
+and invoke the SAME Event Grounder/EI/Core per unit, rather than treating all
+leads as one user-specified event. Preserve fact/interpretation separation and
+single-event evidence gates; preflight total work against explicit existing
+budgets, disclose unprocessed units, never silently select one, increase spend,
+or call unverified leads accepted events. This is a composition/contract
+decision, not an authorized implementation or new live-run approval. Do not
+weaken anchor/EI rules or infer this would ensure positive acceptance.
+
 ## World v0.2 deployed and one normal acceptance completed — 2026-10-28
 
 Contract `20f5b58`, implementation `534381b` committed/pushed after focused
