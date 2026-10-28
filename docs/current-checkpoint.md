@@ -1,5 +1,43 @@
 # Current Checkpoint
 
+## Scan correction deployed; single fresh World result — 2026-10-28
+
+Implementation `91037fe` passed 68 focused tests, 2 Store snapshot/recovery
+tests, compile/diff checks and independent Luna review; pushed to origin/main.
+ONE normal World UI POST: `76ec8a31-36ae-4624-876d-97008754920a`,
+2026-10-28T15:50:33.943Z–15:53:15.080Z (161.137 seconds), BLOCKED.
+Scope `US listed companies`, UTC window10-22..10-28, bounds10/10/400/200/10;
+persisted scan1024 and source20/20/models11/11 INCLUDING Skill. All other
+config values stayed unchanged; Event file hash unchanged.
+
+Six provisional units: unit2 produced ONE submission and the existing shared
+EI acceptance ran, returning INCOMPLETE: missing event description, incomplete
+event date range, missing underlying key, temporal applicability, supporting
+interpretation and contradiction review. Units1/5 returned no submission.
+Units3/4/6 each retained catalog-entry-limit diagnostics (not paragraph-limit
+diagnostics). Raising the scan allowance did not waive entries128 or other
+input/evidence bounds. No inference that absent fields prove absent real-world
+mechanisms or that every failure shares one cause. Native coverage remained
+partial with Reddit/Digg not_ok; exact causes/actual calls, credits and token
+costs UNKNOWN. No source prefix, cropping, auto-increase, retry or second run.
+
+EI accepted0; Futu acquisition0; numeric Core cases0; unavailable branches6.
+DB48 runs /3 historical Direct cases /24 batch archives. This proves normal
+World-to-EI invocation, NOT positive EI-to-Core closure. Direct historical
+closure remains; positive Event/World EI-to-Futu/Core remains unproven.
+The single fresh authorization is consumed. Any further source/model batch or
+capacity/evidence-policy change needs a new bounded decision; do not rerun.
+Private original and used configs preserved mode600 under
+`/private/tmp/ch-world-scan-v03.vEZ6sT/`; World restored byte-for-byte to original
+v0.1 caps and Event unchanged. No new credentials/raw payloads persisted.
+Original launcher restarted with lower caps: PID51291/session66736, explicit
+UTC evaluation date2026-10-28; status READY/all three configured. Initial
+restart encountered occupied/releasing socket; subsequent start succeeded.
+No new POST during restoration. No defensible coding-vs-diagnostic percentage
+is available for the interrupted/mixed execution periods; do not manufacture
+a 70/30 claim. This unit includes an actual loader change and focused tests,
+not merely diagnostics.
+
 ## Approved lossless scan-capacity correction — 2026-10-28
 
 Fresh fetch: HEAD/main/origin/main `28e4c28`, clean. User approved bounded

@@ -1,5 +1,8 @@
 # Project State
 
+## Single post-scan World acceptance completed — 2026-10-28
+Reviewed/tested `91037fe` deployed; ONE fresh World run `76ec8a31` completed BLOCKED in161.137s. Six units: one submission reached shared EI but was INCOMPLETE (required event/date/identity/temporal/interpretation/contradiction fields missing); two no-submission returns; three explicit catalog-entry-limit failures. No paragraph-limit diagnostic retained; entries128/evidence/model bounds unchanged. EI accepted0/Futu0/Core0, DB48/Direct3/batches24. This is World-to-EI invocation, not positive closure. No retry/cap growth; authorization spent. Private World restored byte-for-byte, Event unchanged; original lower-cap launcher READY at PID51291/session66736. See [checkpoint](current-checkpoint.md).
+
 ## Approved scan-capacity correction implemented — 2026-10-28
 User approved World-only scan1024 via additive config v0.3 and ONE fresh World acceptance (source20/20, each role11 including Skill). All eligible-entry/byte/model/EI boundaries remain unchanged; overflow still fails without truncation. Main's bounded preflight and [contract freeze](host-world-source-query-v0.1.md#approved-bounded-scan-capacity-correction--2026-10-28) complete; implementation, 68 focused tests, 2 Store snapshot/recovery tests, compilation, added links/fences, diff-check and independent Luna review PASS. No new POST/config change yet, and no positive outcome promised. Historical one-shot `ac93f2d3` remains spent.
 
