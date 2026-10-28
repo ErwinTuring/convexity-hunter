@@ -1,5 +1,66 @@
 # Current Checkpoint
 
+## Native-URL-policy single batch completed; Native path not live-proven — 2026-10-29
+
+ONE normal Host API run `a026659a-5661-4afa-a1f5-efc0d116529b`, implementation
+`d305e8e`, completed BLOCKED/HOST_BATCH_BLOCKED at2026-10-28T23:05:29.312Z
+(started23:03:26.954Z;122.358s). Persisted queryv0.4/sourcev0.3 and configured
+20/20/11/11 budgets/capacities match the preregistration below.
+
+Native last30days failed in its model path (`world_last30days_failed` /
+`world_last30days_model_failed`). The existing empty-seed scoped Web fallback
+ran and produced ONE submission, EI INCOMPLETE: missing event description,
+event date range, underlying key and temporal applicability. It retained a
+secondary-source commentary about possible reporting-frequency changes, not
+verified event/listing/time completion. Do not turn those missing values into
+facts. No numeric Core/Futu execution; unavailable1. DB50/Direct3/batches26.
+The nonempty Native seed-URL flow was NOT exercised by this batch. This is
+neither a positive test nor a negative causal test of that new path.
+
+Actual calls/credits/tokens and Native finer failure code/phase remain UNKNOWN;
+caps are not usage. Existing transport-diagnostic projection was already used
+but no transport hint was retained; do not infer HTTP/auth/network success or
+failure. Main verified one narrow information loss: known Skill enums
+MODEL_CALLBACK_FAILED and MODEL_OUTPUT_INVALID are collapsed into the same
+World model-failed label, and any known phase is not projected. A bounded
+additive fixed-enum projection is complete: 34 World tests, compilation,
+diff-check and independent targeted review PASS; no raw text/payload, unknown
+values, generic framework or changed source/model/EI behavior. It cannot
+recover this historical batch's lost exact code/phase.
+
+This single grant is consumed. No retry, alternate event, new limit or paid
+request. Original/used World configs preserved mode600 at
+`/private/tmp/ch-world-native-urls.wveJeI/`; original restored byte-for-byte,
+offline check PASS. Reviewed final code started via original lower-cap
+launcher, PID61595/session62572, UTC evaluation date2026-10-28. Status READY;
+GETs of this blocked World and a historical completed Direct run return200;
+DB50/3/26 unchanged by these reads. No POST during restoration and no fresh
+Native failure category inferred from the restored service. Both new source
+plumbing and additive failure projection are code/test complete; nonempty
+Native source flow and positive Event/World→EI→Futu/Core remain live-unproven.
+
+## One Native-URL-policy World acceptance authorized — 2026-10-29
+
+Reviewed implementation `d305e8e` pushed; user explicitly approved ONE new
+normal World batch. Fresh Git HEAD/main/origin/main equal and clean before
+this checkpoint. Preregister scope `US listed companies`, actual UTC date
+2026-10-28 and seven UTC calendar dates10-22..28 (Beijing execution10-29).
+Bounds10/10/400/200/10; source20 requests/20 credits total, each model role11
+INCLUDING Skill; entries256/arrays256/scan1024/catalog65536, remaining
+source/model/evidence limits unchanged. No retries, seed prefix, capacity
+escalation or forced EI acceptance. Normal Host API (same page handler and
+CSRF/Origin checks), not a fixture. ONE normal POST created
+`a026659a-5661-4afa-a1f5-efc0d116529b` at2026-10-28T23:03:26.954Z.
+Persisted queryv0.4/sourcev0.3, budgets20/20/11/11 and entries256/arrays256/
+scan1024 verified; result pending. Do not submit again.
+
+Expected persisted policies: World producerworld-v0.5/queryv0.4,
+sourcev0.3. Existing source admission, shared Grounder/EI and Core unchanged.
+DB baseline49/Direct3/batches25; no active run. Original private World config
+backed up mode600 under `/private/tmp/ch-world-native-urls.wveJeI/`; Event
+unchanged. After ONE result preserve used config and restore original caps.
+This grant is new and does not replay or relabel previous spent batches.
+
 ## Offline attribution and bounded source plumbing — 2026-10-29
 
 Fresh HEAD/main/origin/main `ef3715c`, clean. Main read ONLY the retained
@@ -26,7 +87,8 @@ changed-file compilation and diff-check PASS. Independent review and targeted
 re-review PASS after rejecting policy-less v0.3 source snapshots; valid v0.4
 query/source pairs and historical snapshots remain readable. No full repo
 suite repeated. Main's new documentation links/fences check PASS.
-Deployment of code under original lower caps pending; no real new-path proof.
+Subsequent deployment and the single authorized result are recorded above;
+nonempty Native source-flow proof is still absent.
 Whole-phase timing was not completely captured; no numerical70/30 claim is
 made. The scope includes actual source plumbing, not a diagnostic framework.
 No new paid batch, no private

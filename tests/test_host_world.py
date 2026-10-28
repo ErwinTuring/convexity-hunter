@@ -1003,6 +1003,76 @@ class HostWorldTests(unittest.TestCase):
                 self.assertNotIn(str(error), repr(result.case_set.reasons))
                 self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
 
+    def test_last30days_model_diagnostics_keep_closed_code_and_phase_without_leakage(self):
+        class PhaseStr(str):
+            pass
+
+        cases = (
+            (
+                "MODEL_CALLBACK_FAILED",
+                "judgments",
+                "world_last30days_model_callback_failed",
+                "world_last30days_model_phase_judgments",
+                "world_last30days_model_failed",
+            ),
+            (
+                "MODEL_OUTPUT_INVALID",
+                "angles",
+                "world_last30days_model_output_invalid",
+                "world_last30days_model_phase_angles",
+                "world_last30days_model_failed",
+            ),
+            (
+                "MODEL_CALLBACK_FAILED",
+                "PRIVATE_PHASE_DO_NOT_LEAK",
+                "world_last30days_model_callback_failed",
+                None,
+                "world_last30days_model_failed",
+            ),
+            (
+                "MODEL_OUTPUT_INVALID",
+                PhaseStr("judgments"),
+                "world_last30days_model_output_invalid",
+                None,
+                "world_last30days_model_failed",
+            ),
+            (
+                "SKILL_STAGE_FAILED",
+                "judgments",
+                None,
+                None,
+                "world_last30days_stage_failed",
+            ),
+        )
+        for code, phase, code_diagnostic, phase_diagnostic, coarse_diagnostic in cases:
+            with self.subTest(code=code, phase=phase):
+                self.grounder_calls.clear()
+                self.grounder_query_calls.clear()
+                error = HostSkillError(code, phase=phase)
+                result, captured, discovery_calls, semantic_calls = (
+                    self._run_through_real_core(
+                        skill_result=None, skill_error=error
+                    )
+                )
+                reasons = result.case_set.reasons
+                self.assertIn("world_last30days_failed", reasons)
+                self.assertIn(coarse_diagnostic, reasons)
+                self.assertIn("world_native_scope_fallback", reasons)
+                if code_diagnostic is not None:
+                    self.assertIn(code_diagnostic, reasons)
+                if phase_diagnostic is not None:
+                    self.assertIn(phase_diagnostic, reasons)
+                else:
+                    self.assertFalse(
+                        any("model_phase_" in reason for reason in reasons)
+                    )
+                self.assertNotIn("PRIVATE_PHASE_DO_NOT_LEAK", repr(reasons))
+                self.assertEqual(len(self.grounder_calls), 1)
+                self.assertEqual(len(self.grounder_query_calls), 1)
+                self.assertEqual(len(captured), 1)
+                self.assertEqual(discovery_calls, [])
+                self.assertEqual(semantic_calls, [])
+
     def test_hidden_skill_model_transport_context_is_closed_and_query_uses_template(self):
         def hidden_skill_error(code, *, status=None):
             try:

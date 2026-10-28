@@ -1047,6 +1047,29 @@ def create_world_runner(
                 diagnostic = _world_failure_diagnostic(error)
                 if diagnostic is not None:
                     reasons.append(diagnostic)
+                if type(error) is HostSkillError:
+                    code = getattr(error, "code", None)
+                    model_diagnostic = (
+                        {
+                            "MODEL_CALLBACK_FAILED": "world_last30days_model_callback_failed",
+                            "MODEL_OUTPUT_INVALID": "world_last30days_model_output_invalid",
+                        }.get(code)
+                        if type(code) is str
+                        else None
+                    )
+                    if model_diagnostic is not None:
+                        reasons.append(model_diagnostic)
+                        phase = getattr(error, "phase", None)
+                        phase_diagnostic = (
+                            {
+                                "judgments": "world_last30days_model_phase_judgments",
+                                "angles": "world_last30days_model_phase_angles",
+                            }.get(phase)
+                            if type(phase) is str
+                            else None
+                        )
+                        if phase_diagnostic is not None:
+                            reasons.append(phase_diagnostic)
                 transport_diagnostic = _world_model_transport_diagnostic(error)
                 if transport_diagnostic is not None:
                     reasons.append(transport_diagnostic)

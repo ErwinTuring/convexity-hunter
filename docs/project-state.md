@@ -1,6 +1,9 @@
 # Project State
 
-## Native URL plumbing correction in BUILD — 2026-10-29
+## Single new-policy run used fallback; positive closure still absent — 2026-10-29
+`d305e8e` deployed for ONE authorized World run `a026659a`, BLOCKED in122.358s. Native model path failed; normal empty-seed Web fallback produced1 submission, EI INCOMPLETE (event/date/listing/temporal fields missing). Core/Futu0; DB50/Direct3/batches26. Nonempty Native URL path NOT live-exercised; no claim of success/failure for it. No retry/new fees; grant spent and original private caps restored. Additive projection of ALREADY known Skill model error enums/whitelisted phases passes34 World tests/compile/diff and independent targeted review; cannot reconstruct lost history. Final lower-cap original launcher READY at PID61595/session62572; cached World/Direct reads200, DBcounts unchanged. See [checkpoint](current-checkpoint.md).
+
+## Native URL plumbing correction implemented — 2026-10-29
 Latest retained partial submission is a generic catalyst tutorial/example, not an identified event; EI incompleteness is lawful. 8 focused offline EI/anchor/Builder tests PASS, no proven Builder field loss. Main separately confirmed actual World acquisition need not read Native URLs (hints-only old policy). Implemented the explicitly versioned seed-URL+remaining-search-slot correction using the SAME shared Grounder/admission/EI/Core, no increased request/credit/cap limits or factual authority. 177 relevant tests, compile/diff checks, independent review and accepted snapshot-provenance fix re-review PASS. Lower-cap deployment pending; no fresh external grant/calls or live new-path proof. See [checkpoint](current-checkpoint.md) and [scope](host-world-source-query-v0.1.md#native-url-consumption-correction--2026-10-29).
 
 ## One v0.4 World acceptance completed — 2026-10-29
