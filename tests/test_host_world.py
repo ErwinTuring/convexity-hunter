@@ -3,6 +3,7 @@
 import datetime
 import inspect
 import json
+import math
 import pathlib
 import sys
 import tempfile
@@ -92,7 +93,7 @@ def _model(role, model, *, request_budget=2):
     )
 
 
-def _config(*, bounds=None, final_output_path=None, model_budget=2):
+def _config(*, bounds=None, final_output_path=None, model_budget=2, source_budget=2):
     skill = HostSkillConfig(
         skill_pin=Last30DaysSkillPin("/synthetic/skill", "3.21.1", "a" * 64),
         python_executable=sys.executable,
@@ -109,8 +110,8 @@ def _config(*, bounds=None, final_output_path=None, model_budget=2):
         source=TavilySourceConfig(
             credential_ref=TavilyCredentialRef(env_name="SYNTHETIC_TAVILY_KEY"),
             paygo_off_confirmed=True,
-            request_budget=2,
-            credit_budget=2,
+            request_budget=source_budget,
+            credit_budget=source_budget,
             max_request_bytes=100_000,
             max_response_bytes=100_000,
             timeout_seconds=1,
@@ -145,6 +146,14 @@ def _expected_world_source_query(scope, evaluation_date):
         scope,
         (evaluation_date - datetime.timedelta(days=6)).isoformat(),
         evaluation_date.isoformat(),
+    )
+
+
+def _expected_world_unit_query(scope, evaluation_date, names):
+    return _expected_world_source_query(scope, evaluation_date) + (
+        " Provisional event lead: {}.".format(
+            json.dumps(names, ensure_ascii=False, separators=(",", ":"))
+        )
     )
 
 
@@ -288,9 +297,11 @@ class HostWorldTests(unittest.TestCase):
 
     def _fake_grounder(self, _config, **_kwargs):
         def grounder(text, *, run_id, bounds):
+            submission_index = len(self.grounder_calls)
             self.grounder_calls.append((text, run_id, bounds))
             event_input = UserEventInput(text)
-            batch = SourceSubmissionBatch(event_input, self.submissions)
+            submissions = self.submissions[submission_index : submission_index + 1]
+            batch = SourceSubmissionBatch(event_input, submissions)
             return SimpleNamespace(
                 build_result=SimpleNamespace(raw_input=event_input, source_batch=batch)
             )
@@ -417,6 +428,7 @@ class HostWorldTests(unittest.TestCase):
         return result, stage_runner, observed
 
     def test_world_model_callback_passes_frozen_native_skill_wire(self):
+        self.config = _config(model_budget=3, source_budget=4)
         outputs = {
             "judgments": {
                 "judgments": [
@@ -435,13 +447,22 @@ class HostWorldTests(unittest.TestCase):
 
         self.assertEqual(result.case_set.status, "COMPLETE")
         self.assertIn("lead=last30days@3.21.1", result.case_set.submissions.submissions[0].producer_version)
-        self.assertEqual(len(self.grounder_calls), 1)
+        self.assertEqual(len(self.grounder_calls), 2)
+        self.assertEqual(len(self.grounder_query_calls), 2)
+        self.assertTrue(all("Provisional event lead: [" in query for query in self.grounder_query_calls))
+        for text, _run_id, _bounds in self.grounder_calls:
+            lead_payload = json.loads(text.split("grounded:\n", 1)[1])
+            self.assertEqual(len(lead_payload), 1)
+        self.assertEqual(len(result.case_set.submissions.submissions), 2)
         self.assertEqual(
             self.grounder_query_calls,
             [
-                "Public company events for research a synthetic event from "
-                "2026-10-01 through 2026-10-07 inclusive: explicit catalysts; "
-                "narrative/belief shifts; second-order transmission."
+                _expected_world_unit_query(
+                    self.raw_input, self.config.evaluation_date, ["Model topic one"]
+                ),
+                _expected_world_unit_query(
+                    self.raw_input, self.config.evaluation_date, ["Model topic two"]
+                ),
             ],
         )
         self.assertIn(self.raw_input, self.grounder_calls[0][0])
@@ -788,38 +809,49 @@ class HostWorldTests(unittest.TestCase):
                 store.close()
 
     def test_both_producers_reach_grounder_all_submissions_reach_core(self):
+        self.config = _config(model_budget=3, source_budget=4)
         url = "https://lead.example/a%2Fb?x=1"
-        long_topic_name = "Zeta lead " + ("x" * 450)
+        long_url = "https://lead.example/" + ("u" * 450)
+        long_topic_name = "Zeta lead"
         result, captured, discovery_calls, semantic_calls = self._run_through_real_core(
             skill_result=_native_result(
                 [
-                    _topic(long_topic_name, "https://lead.example/z", rank=1, score=99, angle="discard angle"),
+                    _topic(long_topic_name, long_url, rank=1, score=99, angle="discard angle"),
                     _topic("Alpha lead", url, rank=9, score=1, angle="discard angle"),
                     _topic("alpha  lead", url, rank=2, score=88, angle="discard angle"),
                 ]
             )
         )
-        self.assertEqual(len(self.grounder_calls), 1)
-        text, run_id, bounds = self.grounder_calls[0]
-        self.assertTrue(text.startswith(self.raw_input))
-        self.assertGreater(len(text), 400)
-        self.assertIn(long_topic_name, text)
-        self.assertIn("Alpha lead", text)
-        self.assertIn(url, text)
-        self.assertNotIn("velocity_score", text)
-        self.assertNotIn("discard angle", text)
-        leads = json.loads(text.split("grounded:\n", 1)[1])
-        self.assertEqual(len(leads), 2)
-        self.assertIn("Alpha lead", leads[0]["topic_names"])
-        self.assertTrue(
-            any(name.startswith("Zeta lead") for name in leads[1]["topic_names"])
-        )
-        self.assertTrue(run_id)
-        self.assertIs(bounds, self.post_bounds)
+        self.assertEqual(len(self.grounder_calls), 2)
+        expected_contexts = [
+            (("Alpha lead", "alpha  lead"), (url,)),
+            ((long_topic_name,), (long_url,)),
+        ]
+        for (text, run_id, bounds), expected_group in zip(
+            self.grounder_calls, expected_contexts
+        ):
+            self.assertTrue(text.startswith(self.raw_input))
+            self.assertNotIn("velocity_score", text)
+            self.assertNotIn("discard angle", text)
+            leads = json.loads(text.split("grounded:\n", 1)[1])
+            self.assertEqual(len(leads), 1)
+            self.assertEqual(tuple(leads[0]["topic_names"]), expected_group[0])
+            self.assertEqual(tuple(leads[0]["evidence_urls"]), expected_group[1])
+            self.assertTrue(run_id)
+            self.assertIs(bounds, self.post_bounds)
         self.assertEqual(len(captured), 1)
         self.assertEqual(
             self.grounder_query_calls,
-            [_expected_world_source_query(self.raw_input, self.config.evaluation_date)],
+            [
+                _expected_world_unit_query(
+                    self.raw_input,
+                    self.config.evaluation_date,
+                    ["Alpha lead", "alpha  lead"],
+                ),
+                _expected_world_unit_query(
+                    self.raw_input, self.config.evaluation_date, [long_topic_name]
+                ),
+            ],
         )
         policy = self.policies[-1]
         self.assertEqual(policy.evaluation_date, datetime.date(2026, 10, 7))
@@ -847,7 +879,7 @@ class HostWorldTests(unittest.TestCase):
             {"convexity-hunter-world"},
         )
         for item in result.case_set.submissions.submissions:
-            self.assertIn("world-v0.3", item.producer_version)
+            self.assertIn("world-v0.4", item.producer_version)
             self.assertIn("web=tavily", item.producer_version)
             self.assertIn("lead=last30days@3.21.1", item.producer_version)
             self.assertIn("grounder=convexity-hunter-event-grounder@grounder-v-test", item.producer_version)
@@ -873,7 +905,8 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(len(self.grounder_calls), 1)
         self.assertEqual(self.grounder_calls[0][0], self.raw_input)
         self.assertIn("world_last30days_empty", result.case_set.reasons)
-        self.assertEqual(len(captured[0].submissions), 2)
+        self.assertIn("world_native_scope_fallback", result.case_set.reasons)
+        self.assertEqual(len(captured[0].submissions), 1)
         self.assertTrue(
             all(
                 "last30days_status=empty@3.21.1" in s.producer_version
@@ -1103,14 +1136,17 @@ class HostWorldTests(unittest.TestCase):
         result, captured, discovery_calls, semantic_calls = self._run_through_real_core(
             skill_result=None, skill_error=caught.exception
         )
-        self.assertEqual(result.case_set.status, "BLOCKED")
+        self.assertEqual(result.case_set.status, "COMPLETE")
         self.assertIs(result.case_set.raw_input, self.raw_input)
         self.assertIn("world_last30days_failed", result.case_set.reasons)
         self.assertIn("world_last30days_input_invalid", result.case_set.reasons)
         self.assertIn("world_grounder_no_submission", result.case_set.reasons)
         self.assertEqual(result.case_set.submissions.submissions, ())
         self.assertEqual(result.case_set.cases, ())
-        self.assertEqual(result.case_set.unavailable, ())
+        self.assertEqual(len(result.case_set.unavailable), 1)
+        self.assertEqual(
+            result.case_set.unavailable[0].reasons, ("world_unit_no_submission",)
+        )
         self.assertEqual(captured[0].submissions, ())
         self.assertEqual(len(self.grounder_calls), 1)
         self.assertIs(self.grounder_calls[0][0], self.raw_input)
@@ -1271,8 +1307,12 @@ class HostWorldTests(unittest.TestCase):
             _topic("lead", "https://lead.example/1", rank=1, score=1, angle="x")
         ])
         result, captured, _, _ = self._run_through_real_core(skill_result=skill)
-        self.assertEqual(result.case_set.status, "BLOCKED")
-        self.assertEqual(result.case_set.reasons, ("world_grounding_input_limit",))
+        self.assertEqual(result.case_set.status, "COMPLETE")
+        self.assertIn("world_grounding_input_limit", result.case_set.reasons)
+        self.assertEqual(
+            result.case_set.unavailable[0].reasons,
+            ("world_unit_input_invalid",),
+        )
         self.assertEqual(captured[0].submissions, ())
         self.assertEqual(self.grounder_calls, [])
         self.assertIs(result.case_set.raw_input, self.raw_input)
@@ -1280,7 +1320,7 @@ class HostWorldTests(unittest.TestCase):
             result, ValidatedRunRequest("world", self.raw_input, self.post_bounds)
         )
         saved = _persist_world_result(self.raw_input, self.post_bounds, result)
-        self.assertEqual(saved["reasons"], ["world_grounding_input_limit"])
+        self.assertIn("world_grounding_input_limit", saved["reasons"])
 
     def test_grounder_empty_and_failure_retain_no_source_reasons(self):
         skill = _native_result([_topic("lead", "https://lead.example/1", rank=1, score=1, angle="x")])
@@ -1451,6 +1491,14 @@ class HostWorldTests(unittest.TestCase):
                 TavilyTransportError("CREDIT_BUDGET_EXHAUSTED"),
                 "world_grounder_source_budget_failed",
             ),
+            (
+                TavilyTransportError("BYTE_BUDGET_EXHAUSTED"),
+                "world_grounder_source_budget_failed",
+            ),
+            (
+                TavilyTransportError("TIME_BUDGET_EXHAUSTED"),
+                "world_grounder_source_budget_failed",
+            ),
             (TavilyTransportError("PRIVATE_TOKEN_DO_NOT_LEAK"), None),
             (HostGrounderRuntimeError("PRIVATE_TOKEN_DO_NOT_LEAK"), None),
             (PoisonedCodeError("PRIVATE_EXCEPTION_MESSAGE"), None),
@@ -1613,9 +1661,9 @@ class HostWorldTests(unittest.TestCase):
                 )
                 result = runner(self.raw_input, bounds=self.post_bounds)
             self.assertIs(type(result), host_world_module.CoreRunResult)
-            self.assertEqual(result.case_set.status, "BLOCKED")
+            self.assertEqual(result.case_set.status, "COMPLETE")
             self.assertEqual(result.case_set.cases, ())
-            self.assertEqual(result.case_set.unavailable, ())
+            self.assertEqual(len(result.case_set.unavailable), 1)
             self.assertIn(
                 "world_grounder_no_submission" if failure == "empty" else "world_grounder_failed",
                 result.case_set.reasons,
@@ -1623,7 +1671,11 @@ class HostWorldTests(unittest.TestCase):
             self.assertIs(result.case_set.raw_input, self.raw_input)
             self.assertEqual(
                 self.grounder_query_calls,
-                [_expected_world_source_query(self.raw_input, self.config.evaluation_date)],
+                [
+                    _expected_world_unit_query(
+                        self.raw_input, self.config.evaluation_date, ["lead"]
+                    )
+                ],
             )
             if diagnostic is not None:
                 expected_diagnostics = (
@@ -1659,7 +1711,7 @@ class HostWorldTests(unittest.TestCase):
             self.assertNotIn(private_url_sentinel, repr(result.case_set.reasons))
             self.assertEqual(result.case_set.submissions.submissions, ())
 
-    def test_capacity_and_lead_limit_refuse_grounder_before_request(self):
+    def test_capacity_preflight_and_core_hypothesis_limit_are_all_or_none(self):
         empty_capacity = _config(bounds=CoreOperationalBounds(0, 8, 400, 200, 10))
         with mock.patch("convexity_hunter.host_world.create_event_grounder", side_effect=self._fake_grounder), \
                 mock.patch("convexity_hunter.host_world.run_last30days_discovery", side_effect=AssertionError("Skill must not run")):
@@ -1669,7 +1721,11 @@ class HostWorldTests(unittest.TestCase):
         self.assertIn("world_operational_capacity_zero", result.case_set.reasons)
         self.assertEqual(self.grounder_calls, [])
 
-        limited = _config(bounds=CoreOperationalBounds(4, 1, 400, 200, 10))
+        limited = _config(
+            bounds=CoreOperationalBounds(4, 1, 400, 200, 10),
+            model_budget=3,
+            source_budget=4,
+        )
         skill = _native_result(
             [
                 _topic("one", "https://lead.example/1", rank=1, score=1, angle="x"),
@@ -1681,14 +1737,18 @@ class HostWorldTests(unittest.TestCase):
                 mock.patch.object(ModelCredential, "resolve", return_value="synthetic-token"):
             runner = create_world_runner(limited, repo_root=ROOT, market_bridge=self.lazy_bridge)
             result = runner(self.raw_input, bounds=limited.bounds)
-        self.assertEqual(result.case_set.status, "BLOCKED")
-        self.assertEqual(result.case_set.reasons, ("world_leads_capacity_exceeded",))
-        self.assertEqual(self.grounder_calls, [])
+        self.assertEqual(result.case_set.status, "LIMIT_EXCEEDED")
+        self.assertEqual(
+            result.case_set.reasons, ("LIMIT_EXCEEDED", "hypotheses:2>1")
+        )
+        self.assertEqual(len(self.grounder_calls), 2)
+        self.assertEqual(result.case_set.unavailable, ())
+        self.assertEqual(len(result.case_set.submissions.submissions), 2)
         saved_summary = _persist_world_result(
             self.raw_input, limited.bounds, result
         )
         self.assertEqual(
-            saved_summary["reasons"], ["world_leads_capacity_exceeded"]
+            saved_summary["reasons"], ["LIMIT_EXCEEDED", "hypotheses:2>1"]
         )
 
     def test_raw_native_persistence_is_rejected_at_factory(self):
@@ -1696,6 +1756,368 @@ class HostWorldTests(unittest.TestCase):
         with self.assertRaises(HostWorldError) as raised:
             create_world_runner(config, repo_root=ROOT, market_bridge=self.lazy_bridge)
         self.assertEqual(raised.exception.code, "NATIVE_PERSISTENCE_FORBIDDEN")
+
+    def test_mixed_unit_preflight_failures_keep_their_own_reasons(self):
+        base_config = _config(model_budget=3, source_budget=4)
+        self.config = replace(
+            base_config,
+            grounder=replace(
+                base_config.grounder,
+                run_input_bounds=HostGrounderRunInputBounds(100_000, 400, 20),
+            ),
+        )
+        skill = _native_result(
+            [
+                _topic(
+                    "Alpha " + ("x" * 300),
+                    "https://lead.example/alpha",
+                    rank=1,
+                    score=1,
+                    angle="x",
+                ),
+                _topic(
+                    "Zulu",
+                    "https://lead.example/" + ("u" * 500),
+                    rank=2,
+                    score=2,
+                    angle="y",
+                ),
+            ]
+        )
+        result, captured, _, _ = self._run_through_real_core(skill_result=skill)
+
+        self.assertEqual(self.grounder_calls, [])
+        self.assertEqual(captured[0].submissions, ())
+        self.assertEqual(
+            tuple(item.reasons for item in result.case_set.unavailable),
+            (
+                ("world_unit_source_query_invalid",),
+                ("world_unit_input_invalid",),
+            ),
+        )
+        self.assertIn("world_unit_source_query_invalid", result.case_set.reasons)
+        self.assertIn("world_unit_input_invalid", result.case_set.reasons)
+        saved = _persist_world_result(self.raw_input, self.post_bounds, result)
+        self.assertEqual(
+            tuple(tuple(item["reasons"]) for item in saved["unavailable_cases"]),
+            (
+                ("world_unit_source_query_invalid",),
+                ("world_unit_input_invalid",),
+            ),
+        )
+
+    def test_capacity_unavailable_rows_aggregate_without_a_truncated_prefix(self):
+        self.config = _config(model_budget=6, source_budget=10)
+        skill = _native_result(
+            [
+                _topic(
+                    "Lead {}".format(index),
+                    "https://lead.example/{}".format(index),
+                    rank=index,
+                    score=index,
+                    angle="synthetic",
+                )
+                for index in range(5)
+            ]
+        )
+        bounds = CoreOperationalBounds(1, 1, 1, 1, 5)
+        result, _captured, _, _ = self._run_through_real_core(
+            skill_result=skill, bounds=bounds
+        )
+
+        self.assertEqual(self.grounder_calls, [])
+        self.assertIn("world_event_unit_capacity_insufficient", result.case_set.reasons)
+        self.assertEqual(len(result.case_set.unavailable), 1)
+        self.assertEqual(
+            result.case_set.unavailable[0].case_id, "world-units-aggregate"
+        )
+        self.assertEqual(
+            result.case_set.unavailable[0].reasons,
+            (
+                "world_unit_capacity_insufficient",
+                "world_event_units_unprocessed_count:5",
+            ),
+        )
+        saved = _persist_world_result(self.raw_input, bounds, result)
+        self.assertEqual(len(saved["unavailable_cases"]), 1)
+        self.assertEqual(
+            saved["unavailable_cases"][0]["reasons"],
+            [
+                "world_unit_capacity_insufficient",
+                "world_event_units_unprocessed_count:5",
+            ],
+        )
+
+    def test_two_unit_capacity_matrix_blocks_before_any_grounder_request(self):
+        base = _config(model_budget=3, source_budget=4)
+        skill = _native_result(
+            [
+                _topic("Alpha lead", "https://lead.example/a", rank=1, score=1, angle="x"),
+                _topic("Beta lead", "https://lead.example/b", rank=2, score=2, angle="y"),
+            ]
+        )
+        scenarios = []
+
+        def with_source(**changes):
+            return replace(
+                base,
+                grounder=replace(
+                    base.grounder,
+                    source=replace(base.grounder.source, **changes),
+                ),
+            )
+
+        def with_model(role, budget):
+            model_config = getattr(base.grounder, role)
+            return replace(
+                base,
+                grounder=replace(
+                    base.grounder,
+                    **{role: replace(model_config, request_budget=budget)},
+                ),
+            )
+
+        scenarios.extend(
+            (
+                (
+                    "max_submissions",
+                    base,
+                    CoreOperationalBounds(1, 7, 123, 90, 5),
+                ),
+                ("source_requests", with_source(request_budget=3), self.post_bounds),
+                ("source_credits", with_source(credit_budget=3), self.post_bounds),
+                ("discovery_model", with_model("discovery_model", 2), self.post_bounds),
+                ("semantic_model", with_model("semantic_model", 2), self.post_bounds),
+                ("source_byte_budget", with_source(byte_budget=1), self.post_bounds),
+                (
+                    "source_time_budget",
+                    with_source(time_budget_seconds=5e-324),
+                    self.post_bounds,
+                ),
+            )
+        )
+
+        for name, config, bounds in scenarios:
+            with self.subTest(capacity=name):
+                query_factory_calls = []
+                source_calls = []
+                model_calls = []
+                skill_calls = []
+                real_factory = host_event_module.create_event_grounder
+
+                def instrumented_factory(grounder_config, **kwargs):
+                    callback = real_factory(grounder_config, **kwargs)
+                    query_factory = callback._world_source_query_factory
+
+                    def track_query_factory(query):
+                        query_factory_calls.append(query)
+                        return query_factory(query)
+
+                    callback._world_source_query_factory = track_query_factory
+                    return callback
+
+                def forbidden_transport(calls):
+                    def transport(_request, _timeout):
+                        calls.append("called")
+                        raise AssertionError("capacity preflight must precede transport")
+
+                    return transport
+
+                def native_skill(*_args, **_kwargs):
+                    skill_calls.append("called")
+                    return skill
+
+                with mock.patch.object(
+                    ModelCredential, "resolve", return_value="offline-test-only"
+                ), mock.patch(
+                    "convexity_hunter.host_world.create_event_grounder",
+                    side_effect=instrumented_factory,
+                ), mock.patch(
+                    "convexity_hunter.host_world.run_last30days_discovery",
+                    side_effect=native_skill,
+                ):
+                    runner = create_world_runner(
+                        config,
+                        repo_root=ROOT,
+                        market_bridge=self.lazy_bridge,
+                        source_transport=forbidden_transport(source_calls),
+                        discovery_transport=forbidden_transport(model_calls),
+                        semantic_transport=forbidden_transport(model_calls),
+                    )
+                    result = runner(self.raw_input, bounds=bounds)
+
+                self.assertEqual(skill_calls, ["called"])
+                self.assertEqual(query_factory_calls, [])
+                self.assertEqual(source_calls, [])
+                self.assertEqual(model_calls, [])
+                self.assertIn("world_event_unit_capacity_insufficient", result.case_set.reasons)
+                self.assertEqual(len(result.case_set.unavailable), 2)
+                self.assertEqual(
+                    tuple(item.reasons for item in result.case_set.unavailable),
+                    (
+                        ("world_unit_capacity_insufficient",),
+                        ("world_unit_capacity_insufficient",),
+                    ),
+                )
+
+    def test_shared_real_grounder_processes_two_units_with_offline_transports(self):
+        from tests.test_host_event import (
+            _SyntheticModelTransport,
+            _SyntheticSourceTransport,
+            _config as event_grounder_config,
+            _listing_runtime_wires,
+            _listing_source_material,
+            _NoNetworkAdmissionClient,
+        )
+
+        base_event_config = event_grounder_config()
+        event_config = replace(
+            base_event_config,
+            source=replace(
+                base_event_config.source,
+                byte_budget=100_000,
+                time_budget_seconds=20.0,
+            ),
+        )
+        world_grounder_config = replace(
+            event_config,
+            source=replace(event_config.source, request_budget=4, credit_budget=4),
+            discovery_model=replace(event_config.discovery_model, request_budget=5),
+            semantic_model=replace(event_config.semantic_model, request_budget=5),
+        )
+        self.config = replace(
+            _config(model_budget=5, source_budget=4),
+            grounder=world_grounder_config,
+        )
+        skill = _native_result(
+            [
+                _topic("Beta lead", "https://lead.example/beta", rank=2, score=2, angle="x"),
+                _topic("Alpha lead", "https://lead.example/alpha", rank=1, score=1, angle="y"),
+            ]
+        )
+        report = json.loads(skill.provider_native.raw_json.decode("utf-8"))
+        leads = host_world_module._native_leads(report)
+        run_ids = ("world-unit-run-alpha", "world-unit-run-beta")
+        _source_ids, full_source_order, _source_bodies, bodies_by_url = (
+            _listing_source_material(run_ids[0], "ACME")
+        )
+        source_order = (full_source_order[0],)
+        discovery_outputs = []
+        semantic_outputs = []
+        for run_id, lead in zip(run_ids, leads):
+            unit_input = host_world_module._grounding_input(self.raw_input, (lead,))
+            discovery, semantic, _normalized = _listing_runtime_wires(
+                run_id,
+                "ACME",
+                source_order,
+                bodies_by_url,
+                event_config,
+                raw_input=unit_input,
+            )
+            discovery_outputs.append(discovery)
+            semantic_outputs.append(semantic)
+
+        source_transport = _SyntheticSourceTransport(
+            search_order=source_order, body_overrides=bodies_by_url
+        )
+        model_transport = _SyntheticModelTransport(
+            discovery_outputs, semantic_outputs
+        )
+        captured = []
+
+        def core_spy(raw_request, *, source_producer, market_bridge, policy):
+            batch = source_producer(raw_request)
+            captured.append(batch)
+            return real_run_world_core(
+                raw_request,
+                source_producer=lambda _raw: batch,
+                market_bridge=market_bridge,
+                policy=policy,
+            )
+
+        with mock.patch.dict(
+            "os.environ", {"SYNTHETIC_TAVILY_KEY": "offline-test-only"}
+        ), mock.patch.object(
+            ModelCredential, "resolve", return_value="offline-test-only"
+        ), mock.patch(
+            "convexity_hunter.host_event._create_source_admission_client",
+            return_value=_NoNetworkAdmissionClient(),
+        ), mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            wraps=host_event_module.create_event_grounder,
+        ) as grounder_factory, mock.patch(
+            "convexity_hunter.host_world.run_last30days_discovery",
+            return_value=skill,
+        ), mock.patch(
+            "convexity_hunter.host_world.run_world_core", side_effect=core_spy
+        ), mock.patch(
+            "convexity_hunter.host_world.uuid.uuid4",
+            side_effect=[SimpleNamespace(hex=run_id) for run_id in run_ids],
+        ):
+            runner = create_world_runner(
+                self.config,
+                repo_root=ROOT,
+                market_bridge=self.lazy_bridge,
+                source_transport=source_transport,
+                discovery_transport=model_transport,
+                semantic_transport=model_transport,
+            )
+            result = runner(self.raw_input, bounds=self.post_bounds)
+
+        self.assertEqual(len(captured), 1)
+        self.assertIs(captured[0].raw_input, self.raw_input)
+        self.assertEqual(
+            len(captured[0].submissions),
+            2,
+            "offline Grounder returned no complete pair: reasons={!r}, unavailable={!r}, queries={!r}".format(
+                result.case_set.reasons,
+                tuple(item.reasons for item in result.case_set.unavailable),
+                [payload["query"] for _url, payload in source_transport.calls],
+            ),
+        )
+        self.assertEqual(len(result.case_set.submissions.submissions), 2)
+        self.assertEqual(grounder_factory.call_count, 2)
+        initial_grounder_config = grounder_factory.call_args_list[0].args[0]
+        unit_source_config = grounder_factory.call_args_list[1].args[0].source
+        self.assertEqual(
+            grounder_factory.call_args_list[1].args[0].discovery_model.request_budget,
+            initial_grounder_config.discovery_model.request_budget,
+        )
+        self.assertEqual(initial_grounder_config.source.byte_budget, 100_000)
+        self.assertEqual(unit_source_config.byte_budget, 50_000)
+        self.assertEqual(
+            unit_source_config.time_budget_seconds, math.nextafter(10.0, 0.0)
+        )
+        self.assertTrue(
+            all(len(submission.hypotheses) == 1 for submission in captured[0].submissions)
+        )
+        self.assertEqual(
+            [payload["query"] for _url, payload in source_transport.calls],
+            [
+                _expected_world_unit_query(
+                    self.raw_input, self.config.evaluation_date, ["Alpha lead"]
+                ),
+                _expected_world_unit_query(
+                    self.raw_input, self.config.evaluation_date, ["Alpha lead"]
+                ),
+                _expected_world_unit_query(
+                    self.raw_input, self.config.evaluation_date, ["Beta lead"]
+                ),
+                _expected_world_unit_query(
+                    self.raw_input, self.config.evaluation_date, ["Beta lead"]
+                ),
+            ],
+        )
+        discovery_messages = [
+            call["messages"][1]["content"]
+            for call in model_transport.calls
+            if call["model"] == event_config.discovery_model.model
+        ]
+        self.assertEqual(len(discovery_messages), 2)
+        self.assertIn("Alpha lead", discovery_messages[0])
+        self.assertNotIn("Beta lead", discovery_messages[0])
+        self.assertIn("Beta lead", discovery_messages[1])
+        self.assertNotIn("Alpha lead", discovery_messages[1])
 
     def test_host_executor_signature_and_run_wide_model_budget_allocation(self):
         captured = {}
@@ -1761,8 +2183,8 @@ class HostWorldTests(unittest.TestCase):
         self.assertEqual(
             snapshot["world_source_query_policy"],
             {
-                "schema_version": "world-source-query-v0.2",
-                "basis": "scope_three_lanes_seven_day_window",
+                "schema_version": "world-source-query-v0.3",
+                "basis": "independent_native_event_units_seven_day_window",
                 "max_characters": 400,
                 "full_research_context_preserved": True,
                 "evaluation_date": "2026-10-07",

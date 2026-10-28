@@ -534,7 +534,19 @@ _DOCUMENT = r'''<!doctype html>
       }
       appendCompactField(row, "case_key", item.case_key);
       const reasons = document.createElement("div");
-      setText(reasons, "原因：" + compactStringList(item.reasons));
+      const aggregateReason = Array.isArray(item.reasons)
+        ? item.reasons.find((reason) => typeof reason === "string"
+          && /^world_event_units_unprocessed_count:[0-9]+$/.test(reason))
+        : null;
+      const aggregateCount = typeof aggregateReason === "string"
+        ? aggregateReason.slice("world_event_units_unprocessed_count:".length)
+        : null;
+      setText(
+        reasons,
+        "原因：" + compactStringList(item.reasons)
+          + (aggregateCount === null ? "" : "；聚合未处理 World 单元数：" + aggregateCount
+            + "，不表示 EI 接受、Core 案例或分类。")
+      );
       row.appendChild(reasons);
       list.appendChild(row);
     }
@@ -590,13 +602,35 @@ _DOCUMENT = r'''<!doctype html>
     const worldReasonExplanations = {
       world_grounder_no_submission: "本次 World 流程未形成可交给 EI 评估的非空合法 submission；这不表示 Last30Days 原生 leads 为零、所有 hypotheses 均被拒绝，也不表示 EI 结果为 INCOMPLETE。World 批量存档未保留 Grounder 计数或具体诊断，因此 hypothesis 数和具体原因不可用。",
       world_last30days_empty: "本次 Last30Days 结果未提供 leads；这不证明现实中没有相关事件，也不证明所有来源都已覆盖。",
-      world_grounder_failed: "本次 Grounder 执行失败；这不是 hypothesis 数为零的结果。失败原因及 Grounder 计数/诊断未在 World 批量存档中保留，当前不可用。"
+      world_grounder_failed: "本次 Grounder 执行失败；这不是 hypothesis 数为零的结果。",
+      world_native_scope_fallback: "Native leads 为空或获取失败；World 仅按原始 scope 执行一次有界 Web fallback，不表示发现了多个已核实事件。",
+      world_event_unit_capacity_insufficient: "整组 World 单元的现有预算或 max_submissions 不足；未调用任何单元 Grounder，也未保留截断前缀。",
+      world_grounding_input_limit: "至少一个单元输入超出既有 Grounder 输入边界；该单元未发起 Grounder 请求。",
+      world_unit_capacity_insufficient: "此 World 单元未处理：整组计划无法在现有容量内完成。",
+      world_unit_source_query_invalid: "此 World 单元的完整检索查询未通过 UTF-8/400 字符预检，未发起该单元检索。",
+      world_unit_input_invalid: "此 World 单元输入未通过既有 Grounder 输入预检，未发起该单元模型请求。",
+      world_unit_no_submission: "此 World 单元没有产生可交给 EI 评估的唯一 submission；这不是 EI 拒绝或 Core 分类。",
+      world_unit_submission_identity_conflict: "此 World 单元的 submission 标识冲突，未交由 EI/Core 分类。",
+      world_unit_grounder_failed: "此 World 单元的 Grounder 执行失败；不推断其 hypothesis 数或 EI 结果。"
+    };
+    const explainedWorldReasons = new Set();
+    const explainWorldReason = (reason) => {
+      if (typeof reason === "string"
+        && Object.prototype.hasOwnProperty.call(worldReasonExplanations, reason)
+        && !explainedWorldReasons.has(reason)) {
+        explainedWorldReasons.add(reason);
+        lines.push("说明（" + reason + "）:" + worldReasonExplanations[reason]);
+      }
     };
     if (summary.entry_origin === "WORLD" && Array.isArray(summary.reasons)) {
       for (const reason of summary.reasons) {
-        if (typeof reason === "string"
-          && Object.prototype.hasOwnProperty.call(worldReasonExplanations, reason)) {
-          lines.push("说明（" + reason + "）:" + worldReasonExplanations[reason]);
+        explainWorldReason(reason);
+      }
+    }
+    if (summary.entry_origin === "WORLD" && Array.isArray(summary.unavailable_cases)) {
+      for (const item of summary.unavailable_cases) {
+        if (isRecord(item) && Array.isArray(item.reasons)) {
+          for (const reason of item.reasons) explainWorldReason(reason);
         }
       }
     }

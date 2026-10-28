@@ -4,8 +4,9 @@ import datetime
 import json
 import tempfile
 import unittest
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
+from unittest.mock import patch
 
 from convexity_hunter.host_world_config import (
     APPROVED_SKILL_PATH,
@@ -55,6 +56,18 @@ def _document():
     }
 
 
+def _document_v0_2():
+    document = _document()
+    document["schema_version"] = "host-world-config-v0.2"
+    document["grounder_budgets"] = {
+        "source_requests": 7,
+        "source_credits": 8,
+        "discovery_requests": 9,
+        "semantic_requests": 10,
+    }
+    return document
+
+
 class HostWorldConfigTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -79,6 +92,125 @@ class HostWorldConfigTests(unittest.TestCase):
         self.assertEqual(config.bounds.max_cases, 200)
         self.assertEqual(config.evaluation_date, datetime.date(2030, 1, 1))
         self.assertEqual(repr(config), "HostWorldConfig(<redacted>)")
+
+    def test_v0_2_applies_only_world_grounder_budgets(self):
+        document = _document_v0_2()
+        with patch(
+            "convexity_hunter.host_sources.TavilyCredentialRef.resolve",
+            side_effect=AssertionError("must not resolve credentials while loading"),
+        ), patch(
+            "convexity_hunter.host_model.ModelCredential.resolve",
+            side_effect=AssertionError("must not resolve credentials while loading"),
+        ):
+            config = self.load(json.dumps(document))
+
+        self.assertEqual(HOST_WORLD_CONFIG_SCHEMA_VERSION, "host-world-config-v0.1")
+        self.assertIsNot(config.grounder, self.grounder)
+        self.assertEqual(
+            (
+                config.grounder.source.request_budget,
+                config.grounder.source.credit_budget,
+                config.grounder.discovery_model.request_budget,
+                config.grounder.semantic_model.request_budget,
+            ),
+            (7, 8, 9, 10),
+        )
+        for config_part, event_part, changed_fields in (
+            (
+                config.grounder.source,
+                self.grounder.source,
+                {"request_budget", "credit_budget"},
+            ),
+            (
+                config.grounder.discovery_model,
+                self.grounder.discovery_model,
+                {"request_budget"},
+            ),
+            (
+                config.grounder.semantic_model,
+                self.grounder.semantic_model,
+                {"request_budget"},
+            ),
+        ):
+            for descriptor in fields(event_part):
+                if descriptor.name not in changed_fields:
+                    self.assertEqual(
+                        getattr(config_part, descriptor.name),
+                        getattr(event_part, descriptor.name),
+                        descriptor.name,
+                    )
+        for descriptor in fields(self.grounder):
+            if descriptor.name not in {
+                "source", "discovery_model", "semantic_model"
+            }:
+                self.assertIs(
+                    getattr(config.grounder, descriptor.name),
+                    getattr(self.grounder, descriptor.name),
+                    descriptor.name,
+                )
+        self.assertIs(
+            config.grounder.source.credential_ref,
+            self.grounder.source.credential_ref,
+        )
+        self.assertIs(
+            config.grounder.discovery_credential,
+            self.grounder.discovery_credential,
+        )
+        self.assertIs(
+            config.grounder.semantic_credential,
+            self.grounder.semantic_credential,
+        )
+        self.assertEqual(
+            (
+                self.grounder.source.request_budget,
+                self.grounder.source.credit_budget,
+                self.grounder.discovery_model.request_budget,
+                self.grounder.semantic_model.request_budget,
+            ),
+            (2, 2, 1, 1),
+        )
+
+    def test_v0_2_requires_exact_positive_integer_grounder_budgets(self):
+        invalid = []
+        for field in (
+            "source_requests",
+            "source_credits",
+            "discovery_requests",
+            "semantic_requests",
+        ):
+            for value in (True, 0, -1, 1.5, "1", None):
+                document = _document_v0_2()
+                document["grounder_budgets"][field] = value
+                invalid.append((
+                    "invalid {}={!r}".format(field, value),
+                    document,
+                    "INVALID_CONFIGURATION",
+                ))
+
+        document = _document_v0_2()
+        document.pop("grounder_budgets")
+        invalid.append(("missing top-level budgets", document, "MISSING_FIELD"))
+        document = _document_v0_2()
+        document["extra"] = "reject"
+        invalid.append(("extra top-level field", document, "UNKNOWN_FIELD"))
+        document = _document_v0_2()
+        document["grounder_budgets"].pop("source_requests")
+        invalid.append(("missing budget field", document, "MISSING_FIELD"))
+        document = _document_v0_2()
+        document["grounder_budgets"]["extra"] = 1
+        invalid.append(("extra budget field", document, "UNKNOWN_FIELD"))
+        document = _document_v0_2()
+        document["grounder_budgets"] = []
+        invalid.append(("non-object budgets", document, "INVALID_CONFIGURATION"))
+        document = _document()
+        document["schema_version"] = "host-world-config-v0.3"
+        invalid.append(("unknown version", document, "UNSUPPORTED_SCHEMA_VERSION"))
+
+        for label, document, code in invalid:
+            with self.subTest(label=label):
+                with self.assertRaises(HostWorldConfigurationError) as raised:
+                    self.load(json.dumps(document))
+                self.assertEqual(raised.exception.code, code)
 
     def test_strict_json_and_external_byte_cap_fail_closed(self):
         raw = json.dumps(_document())
@@ -144,17 +276,18 @@ class HostWorldConfigTests(unittest.TestCase):
             discovery_model=replace(self.grounder.discovery_model, request_budget=2),
             semantic_model=replace(self.grounder.semantic_model, request_budget=2),
         )
-        config = self.load(json.dumps(_document()))
-
         def unexpected_call(*_args, **_kwargs):
             self.fail("configuration/factory construction must remain lazy")
 
-        runner = create_world_runner(
-            config, repo_root=ROOT,
-            market_bridge=FutuMarketBridge(quote_context_factory=unexpected_call),
-            source_transport=unexpected_call,
-            discovery_transport=unexpected_call,
-            semantic_transport=unexpected_call,
-            stage_runner=unexpected_call,
-        )
-        self.assertTrue(callable(runner))
+        for document in (_document(), _document_v0_2()):
+            with self.subTest(schema_version=document["schema_version"]):
+                config = self.load(json.dumps(document))
+                runner = create_world_runner(
+                    config, repo_root=ROOT,
+                    market_bridge=FutuMarketBridge(quote_context_factory=unexpected_call),
+                    source_transport=unexpected_call,
+                    discovery_transport=unexpected_call,
+                    semantic_transport=unexpected_call,
+                    stage_runner=unexpected_call,
+                )
+                self.assertTrue(callable(runner))

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
+import math
 import re
 import unicodedata
 import uuid
@@ -12,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Protocol, Tuple, Union
 
 from .core_application import (
+    CoreUnavailableCase,
     CoreOperationalBounds,
     CoreRunResult,
     SourceSubmissionBatch,
@@ -61,10 +64,10 @@ __all__ = (
 
 _RUN_ID_RE = re.compile(r"[A-Za-z0-9._~-]{1,128}\Z", re.ASCII)
 _WORLD_PRODUCER_ID = "convexity-hunter-world"
-_WORLD_PRODUCER_VERSION = "world-v0.3"
+_WORLD_PRODUCER_VERSION = "world-v0.4"
 _WORLD_SOURCE_QUERY_POLICY = {
-    "schema_version": "world-source-query-v0.2",
-    "basis": "scope_three_lanes_seven_day_window",
+    "schema_version": "world-source-query-v0.3",
+    "basis": "independent_native_event_units_seven_day_window",
     "max_characters": 400,
     "full_research_context_preserved": True,
 }
@@ -163,6 +166,8 @@ _WORLD_FAILURE_DIAGNOSTICS = {
         "MALFORMED_JSON": "world_grounder_source_response_invalid",
         "REQUEST_BUDGET_EXHAUSTED": "world_grounder_source_budget_failed",
         "CREDIT_BUDGET_EXHAUSTED": "world_grounder_source_budget_failed",
+        "BYTE_BUDGET_EXHAUSTED": "world_grounder_source_budget_failed",
+        "TIME_BUDGET_EXHAUSTED": "world_grounder_source_budget_failed",
     },
 }
 
@@ -633,6 +638,118 @@ def _empty_batch(raw_request: object) -> SourceSubmissionBatch:
     return SourceSubmissionBatch(raw_request, ())
 
 
+def _world_unit_id(index: int, lead: Optional[tuple] = None) -> str:
+    if lead is None:
+        identity = b"world-scope-fallback-v0.1"
+    else:
+        names, urls = lead
+        payload = json.dumps(
+            {"topic_names": list(names), "evidence_urls": list(urls)},
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        identity = payload.encode("utf-8", errors="strict")
+    digest = hashlib.sha256(identity).hexdigest()[:16]
+    return "world-unit-{:04d}-{}".format(index, digest)
+
+
+def _world_unit_source_query(source_query: str, lead: tuple) -> str:
+    names = json.dumps(
+        list(lead[0]),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return source_query + " Provisional event lead: {}.".format(names)
+
+
+def _world_unavailable_limit(bounds: CoreOperationalBounds) -> int:
+    return (
+        bounds.max_submissions
+        + bounds.max_hypotheses
+        + bounds.max_browser_rows
+        + bounds.max_cases
+    )
+
+
+def _unprocessed_unit_rows(
+    units: tuple, reason: str, archive_limit: int
+) -> Tuple[CoreUnavailableCase, ...]:
+    if not units or archive_limit <= 0:
+        return ()
+    if len(units) > archive_limit:
+        return (
+            CoreUnavailableCase(
+                "world-units-aggregate",
+                (reason, "world_event_units_unprocessed_count:{}".format(len(units))),
+                None,
+            ),
+        )
+    return tuple(CoreUnavailableCase(unit_id, (reason,), None) for unit_id in units)
+
+
+def _merge_world_unit_failures(
+    result: CoreRunResult,
+    *,
+    failures: tuple,
+    reasons: tuple,
+    bounds: CoreOperationalBounds,
+    all_unprocessed: bool = False,
+) -> CoreRunResult:
+    case_set = result.case_set
+    # Core's frozen all-or-none limit result has exactly two reasons and no
+    # branch rows. Do not mix Host per-unit diagnostics into that shape.
+    if "LIMIT_EXCEEDED" in case_set.reasons:
+        return result
+
+    archive_limit = _world_unavailable_limit(bounds)
+    room = max(0, archive_limit - len(case_set.unavailable))
+    unit_rows = []
+    overflow = 0
+    if all_unprocessed:
+        unit_ids = tuple(unit_id for unit_id, _reason in failures)
+        unit_reason = failures[0][1] if failures else "world_unit_not_processed"
+        unit_rows = list(_unprocessed_unit_rows(unit_ids, unit_reason, room))
+        if room == 0 and unit_ids:
+            overflow = len(unit_ids)
+    elif len(failures) <= room:
+        unit_rows = [CoreUnavailableCase(unit_id, (reason,), None) for unit_id, reason in failures]
+    elif room > 0:
+        unit_rows = [
+            CoreUnavailableCase(unit_id, (reason,), None)
+            for unit_id, reason in failures[: room - 1]
+        ]
+        overflow = len(failures) - len(unit_rows)
+        unit_rows.append(
+            CoreUnavailableCase(
+                "world-units-aggregate",
+                (
+                    "world_event_units_unprocessed_count:{}".format(overflow),
+                ),
+                None,
+            )
+        )
+    elif failures:
+        overflow = len(failures)
+
+    merged_reasons = tuple(dict.fromkeys(case_set.reasons + reasons))
+    if overflow:
+        merged_reasons = tuple(
+            dict.fromkeys(
+                merged_reasons
+                + ("world_event_units_unprocessed_count:{}".format(overflow),)
+            )
+        )
+    updated = replace(
+        case_set,
+        unavailable=case_set.unavailable + tuple(unit_rows),
+        reasons=merged_reasons,
+    )
+    return CoreRunResult(updated, compact_summary(updated))
+
+
 def _pipeline_provenance(
     submission: EventIntelligenceSubmission,
     *,
@@ -717,6 +834,11 @@ def create_world_runner(
     )
     grounder_config = replace(
         config.grounder,
+        source=replace(
+            config.grounder.source,
+            request_budget=2,
+            credit_budget=2,
+        ),
         discovery_model=replace(
             config.grounder.discovery_model,
             request_budget=min(
@@ -812,23 +934,16 @@ def create_world_runner(
             return _append_reasons(result, ("world_operational_capacity_zero",))
 
         reasons = []
+        unit_failures = []
+        all_units_unprocessed = False
 
         def produce(raw_request: object) -> SourceSubmissionBatch:
+            nonlocal all_units_unprocessed
             if raw_request is not raw_input:
                 raise HostWorldError("WORLD_INPUT_IDENTITY_MISMATCH")
-            try:
-                query_bound_grounder = world_source_query_factory(source_query)
-            except HostGrounderRuntimeError as error:
-                if error.code == "SOURCE_QUERY_INVALID":
-                    reasons.append("world_source_query_invalid")
-                else:
-                    reasons.append("world_grounder_failed")
-                return _empty_batch(raw_request)
-            except Exception:
-                reasons.append("world_grounder_failed")
-                return _empty_batch(raw_request)
-            web_and_leads_input = raw_request
+
             last30days_status = "failed"
+            leads = ()
             try:
                 discovery_client = ChatCompletionsClient(
                     skill_discovery_model,
@@ -842,13 +957,17 @@ def create_world_runner(
                     repo_root=repo_root,
                     transport=semantic_transport,
                 )
-                if discovery_client.remaining_request_budget < 1 or semantic_client.remaining_request_budget < 1:
+                if (
+                    discovery_client.remaining_request_budget < 1
+                    or semantic_client.remaining_request_budget < 1
+                ):
                     raise HostWorldError("MODEL_BUDGET_INSUFFICIENT")
-                skill_callback = _skill_model_callback(discovery_client, semantic_client)
                 skill_result = run_last30days_discovery(
                     config.skill,
                     domain=raw_request,
-                    model_callback=skill_callback,
+                    model_callback=_skill_model_callback(
+                        discovery_client, semantic_client
+                    ),
                     stage_runner=stage_runner,
                     clock=skill_clock,
                 )
@@ -868,30 +987,20 @@ def create_world_runner(
                         type(value) is not dict or value.get("state") != "ok"
                         for value in source_status.values()
                     )
-                    if source_partial:
-                        if "world_last30days_partial" not in reasons:
-                            reasons.append("world_last30days_partial")
-                    if (
-                        "world_last30days_partial" in reasons
-                        and (outcome_partial or source_partial)
-                    ):
+                    if source_partial and "world_last30days_partial" not in reasons:
+                        reasons.append("world_last30days_partial")
+                    if outcome_partial or source_partial:
                         reasons.extend(
                             _native_diagnostic_reasons(
                                 report, config.skill.source_allowlist
                             )
                         )
-                    if not leads:
+                    if leads:
+                        last30days_status = "consumed"
+                    else:
                         last30days_status = "empty"
                         if "world_last30days_empty" not in reasons:
                             reasons.append("world_last30days_empty")
-                    else:
-                        if len(leads) > bounds.max_hypotheses:
-                            reasons.append("world_leads_capacity_exceeded")
-                            return _empty_batch(raw_request)
-                        web_and_leads_input = _grounding_input(
-                            raw_request, leads
-                        )
-                        last30days_status = "consumed"
             except HostWorldError as error:
                 last30days_status = "failed"
                 reasons.append("world_last30days_failed")
@@ -911,76 +1020,226 @@ def create_world_runner(
                 last30days_status = "failed"
                 reasons.append("world_last30days_failed")
 
-            run_id = uuid.uuid4().hex
-            try:
-                _preflight_grounder_input(web_and_leads_input, run_id, grounder_config)
-            except HostWorldError:
-                reasons.append("world_grounding_input_limit")
-                return _empty_batch(raw_request)
-
-            try:
-                grounded = query_bound_grounder(
-                    web_and_leads_input,
-                    run_id=run_id,
-                    bounds=bounds,
+            if leads:
+                units = tuple(
+                    (lead, _world_unit_id(index, lead), False)
+                    for index, lead in enumerate(leads, 1)
                 )
-            except Exception as error:
-                if type(error) is HostGrounderRuntimeError:
-                    attempts = error.producer_attempts
-                    route = getattr(error, "_producer_failure_route", None)
-                    if (
-                        type(attempts) is tuple
-                        and 1 <= len(attempts) <= 2
-                        and all(
-                            type(item) is HostEvidenceCatalogProducerAttempt
-                            for item in attempts
-                        )
-                        and attempts[0].status == "rejected"
-                        and attempts[0].failure_check
-                        == _BINDING_OMISSION_FIRST_FAILURE_CHECK
-                        and any(
-                            item.failure_check in _BINDING_OMISSION_FAILURE_MARKERS
-                            for item in attempts
-                        )
-                        and type(route) is tuple
-                        and route in (
-                            _BINDING_OMISSION_FAILURE_ROUTE,
-                            _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
-                            _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
-                        )
-                        and getattr(error, "_semantic_transport_route", route)
-                        == route
-                    ):
-                        raise
-                reasons.append("world_grounder_failed")
-                diagnostic = _world_failure_diagnostic(error)
-                if diagnostic is not None:
-                    reasons.append(diagnostic)
-                reasons.extend(_world_grounder_specific_diagnostics(error))
-                transport_diagnostic = _world_model_transport_diagnostic(error)
-                if transport_diagnostic is not None:
-                    reasons.append(transport_diagnostic)
-                return _empty_batch(raw_request)
+            else:
+                units = ((None, _world_unit_id(1), True),)
+                reasons.append("world_native_scope_fallback")
 
-            build_result = getattr(grounded, "build_result", None)
-            grounded_batch = getattr(build_result, "source_batch", None)
-            if (
-                type(grounded_batch) is not SourceSubmissionBatch
-                or grounded_batch.raw_input is not getattr(build_result, "raw_input", None)
-                or not grounded_batch.submissions
-            ):
-                reasons.append("world_grounder_no_submission")
-                return _empty_batch(raw_request)
-
-            submissions = tuple(
-                _pipeline_provenance(
-                    submission,
-                    skill_version=config.skill.skill_pin.version,
-                    skill_status=last30days_status,
-                )
-                for submission in grounded_batch.submissions
+            unit_count = len(units)
+            discovery_total = config.grounder.discovery_model.request_budget
+            semantic_total = config.grounder.semantic_model.request_budget
+            source_request_total = config.grounder.source.request_budget
+            source_credit_total = config.grounder.source.credit_budget
+            source_byte_total = config.grounder.source.byte_budget
+            source_time_total = config.grounder.source.time_budget_seconds
+            source_bytes_per_unit = (
+                None
+                if source_byte_total is None
+                else source_byte_total // unit_count
             )
-            return SourceSubmissionBatch(raw_request, submissions)
+            source_time_per_unit = (
+                source_time_total
+                if source_time_total is None or unit_count == 1
+                else math.nextafter(
+                    float(source_time_total) / unit_count, 0.0
+                )
+            )
+            if (
+                unit_count > bounds.max_submissions
+                or source_request_total < 2 * unit_count
+                or source_credit_total < 2 * unit_count
+                or discovery_total < 1 + unit_count
+                or semantic_total < 1 + unit_count
+                or (
+                    source_bytes_per_unit is not None
+                    and source_bytes_per_unit <= 0
+                )
+                or (
+                    source_time_per_unit is not None
+                    and source_time_per_unit <= 0.0
+                )
+            ):
+                all_units_unprocessed = True
+                reasons.append("world_event_unit_capacity_insufficient")
+                unit_failures.extend(
+                    (unit_id, "world_unit_capacity_insufficient")
+                    for _lead, unit_id, _fallback in units
+                )
+                return _empty_batch(raw_request)
+
+            discovery_per_unit = min(
+                _GROUNDER_DISCOVERY_MODEL_REQUESTS,
+                (discovery_total - _SKILL_MODEL_REQUESTS_PER_ROLE) // unit_count,
+            )
+            unit_grounder_config = replace(
+                grounder_config,
+                source=replace(
+                    grounder_config.source,
+                    byte_budget=source_bytes_per_unit,
+                    time_budget_seconds=source_time_per_unit,
+                ),
+                discovery_model=replace(
+                    grounder_config.discovery_model,
+                    request_budget=discovery_per_unit,
+                ),
+            )
+
+            plans = []
+            for lead, unit_id, fallback in units:
+                try:
+                    query = (
+                        source_query
+                        if fallback
+                        else _world_unit_source_query(source_query, lead)
+                    )
+                    if not _valid_world_source_query(query):
+                        unit_failures.append(
+                            (unit_id, "world_unit_source_query_invalid")
+                        )
+                        reasons.append("world_unit_source_query_invalid")
+                        continue
+                    unit_input = (
+                        raw_request
+                        if fallback
+                        else _grounding_input(raw_request, (lead,))
+                    )
+                    run_id = uuid.uuid4().hex
+                    _preflight_grounder_input(
+                        unit_input, run_id, unit_grounder_config
+                    )
+                except HostWorldError as error:
+                    reason = (
+                        "world_unit_source_query_invalid"
+                        if error.code == "SOURCE_QUERY_INVALID"
+                        else "world_unit_input_invalid"
+                    )
+                    unit_failures.append((unit_id, reason))
+                    reasons.append(reason)
+                    if error.code == "GROUNDING_INPUT_LIMIT":
+                        reasons.append("world_grounding_input_limit")
+                    continue
+                except (TypeError, ValueError, UnicodeError):
+                    unit_failures.append((unit_id, "world_unit_input_invalid"))
+                    reasons.append("world_unit_input_invalid")
+                    continue
+                plans.append((unit_id, query, unit_input, run_id))
+
+            if not plans:
+                return _empty_batch(raw_request)
+
+            if unit_grounder_config == grounder_config:
+                unit_grounder = grounder
+            else:
+                try:
+                    unit_grounder = create_event_grounder(
+                        unit_grounder_config,
+                        repo_root=repo_root,
+                        source_transport=source_transport,
+                        discovery_transport=discovery_transport,
+                        semantic_transport=semantic_transport,
+                    )
+                except Exception:
+                    reasons.append("world_grounder_failed")
+                    unit_failures.extend(
+                        (unit_id, "world_unit_grounder_failed")
+                        for unit_id, _query, _unit_input, _run_id in plans
+                    )
+                    return _empty_batch(raw_request)
+
+            unit_query_factory = getattr(
+                unit_grounder, "_world_source_query_factory", None
+            )
+            if not callable(unit_query_factory):
+                reasons.append("world_grounder_failed")
+                unit_failures.extend(
+                    (unit_id, "world_unit_grounder_failed")
+                    for unit_id, _query, _unit_input, _run_id in plans
+                )
+                return _empty_batch(raw_request)
+
+            submissions = []
+            seen_submission_ids = set()
+            for unit_id, query, unit_input, run_id in plans:
+                try:
+                    query_bound_grounder = unit_query_factory(query)
+                    grounded = query_bound_grounder(
+                        unit_input,
+                        run_id=run_id,
+                        bounds=bounds,
+                    )
+                except Exception as error:
+                    if type(error) is HostGrounderRuntimeError:
+                        attempts = error.producer_attempts
+                        route = getattr(error, "_producer_failure_route", None)
+                        if (
+                            type(attempts) is tuple
+                            and 1 <= len(attempts) <= 2
+                            and all(
+                                type(item) is HostEvidenceCatalogProducerAttempt
+                                for item in attempts
+                            )
+                            and attempts[0].status == "rejected"
+                            and attempts[0].failure_check
+                            == _BINDING_OMISSION_FIRST_FAILURE_CHECK
+                            and any(
+                                item.failure_check in _BINDING_OMISSION_FAILURE_MARKERS
+                                for item in attempts
+                            )
+                            and type(route) is tuple
+                            and route in (
+                                _BINDING_OMISSION_FAILURE_ROUTE,
+                                _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
+                                _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+                            )
+                            and getattr(error, "_semantic_transport_route", route)
+                            == route
+                        ):
+                            raise
+                    unit_failures.append(
+                        (unit_id, "world_unit_grounder_failed")
+                    )
+                    reasons.append("world_grounder_failed")
+                    diagnostic = _world_failure_diagnostic(error)
+                    if diagnostic is not None:
+                        reasons.append(diagnostic)
+                    reasons.extend(_world_grounder_specific_diagnostics(error))
+                    transport_diagnostic = _world_model_transport_diagnostic(error)
+                    if transport_diagnostic is not None:
+                        reasons.append(transport_diagnostic)
+                    continue
+
+                build_result = getattr(grounded, "build_result", None)
+                grounded_batch = getattr(build_result, "source_batch", None)
+                if (
+                    type(grounded_batch) is not SourceSubmissionBatch
+                    or grounded_batch.raw_input
+                    is not getattr(build_result, "raw_input", None)
+                    or len(grounded_batch.submissions) != 1
+                ):
+                    unit_failures.append((unit_id, "world_unit_no_submission"))
+                    reasons.append("world_grounder_no_submission")
+                    continue
+
+                submission = grounded_batch.submissions[0]
+                if submission.submission_id in seen_submission_ids:
+                    unit_failures.append(
+                        (unit_id, "world_unit_submission_identity_conflict")
+                    )
+                    reasons.append("world_grounder_output_invalid")
+                    continue
+                seen_submission_ids.add(submission.submission_id)
+                submissions.append(
+                    _pipeline_provenance(
+                        submission,
+                        skill_version=config.skill.skill_pin.version,
+                        skill_status=last30days_status,
+                    )
+                )
+            return SourceSubmissionBatch(raw_request, tuple(submissions))
 
         result = run_world_core(
             raw_input,
@@ -988,7 +1247,13 @@ def create_world_runner(
             market_bridge=market_bridge,
             policy=policy,
         )
-        return _append_reasons(result, tuple(reasons))
+        return _merge_world_unit_failures(
+            result,
+            failures=tuple(unit_failures),
+            reasons=tuple(dict.fromkeys(reasons)),
+            bounds=bounds,
+            all_unprocessed=all_units_unprocessed,
+        )
 
     def configuration_snapshot() -> dict:
         snapshot = json.loads(

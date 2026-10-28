@@ -494,7 +494,10 @@ def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[st
                 and type(policy["full_research_context_preserved"]) is bool
                 and policy["full_research_context_preserved"] is True
             )
-        elif policy["schema_version"] == "world-source-query-v0.2":
+        elif policy["schema_version"] in (
+            "world-source-query-v0.2",
+            "world-source-query-v0.3",
+        ):
             policy_fields = {
                 "schema_version",
                 "basis",
@@ -512,10 +515,15 @@ def _validated_event_configuration_snapshot(value: Any, *, mode: str) -> Dict[st
                     )
                 except ValueError:
                     pass
+            expected_basis = (
+                "scope_three_lanes_seven_day_window"
+                if policy["schema_version"] == "world-source-query-v0.2"
+                else "independent_native_event_units_seven_day_window"
+            )
             valid_policy = (
                 set(policy) == policy_fields
                 and type(policy["basis"]) is str
-                and policy["basis"] == "scope_three_lanes_seven_day_window"
+                and policy["basis"] == expected_basis
                 and type(policy["max_characters"]) is int
                 and policy["max_characters"] == 400
                 and type(policy["full_research_context_preserved"]) is bool

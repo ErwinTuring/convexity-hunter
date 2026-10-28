@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import datetime
 import os
 from pathlib import Path
@@ -58,12 +59,56 @@ def load_world_config(
 ) -> HostWorldConfig:
     """Reuse Event's 64 KiB external/strict reader; never resolve credentials."""
     try:
-        value = _require_object(
-            _parse_json(_read_external_config(config_path, repo_root)),
-            frozenset(("schema_version", "skill", "bounds")),
+        parsed = _parse_json(_read_external_config(config_path, repo_root))
+        v0_2 = (
+            type(parsed) is dict
+            and parsed.get("schema_version") == "host-world-config-v0.2"
         )
-        if value["schema_version"] != HOST_WORLD_CONFIG_SCHEMA_VERSION:
+        fields = (
+            frozenset(("schema_version", "skill", "bounds", "grounder_budgets"))
+            if v0_2
+            else frozenset(("schema_version", "skill", "bounds"))
+        )
+        value = _require_object(parsed, fields)
+        if not v0_2 and value["schema_version"] != HOST_WORLD_CONFIG_SCHEMA_VERSION:
             raise HostWorldConfigurationError("UNSUPPORTED_SCHEMA_VERSION")
+        world_grounder = grounder_config
+        if v0_2:
+            budgets = _require_object(
+                value["grounder_budgets"],
+                frozenset((
+                    "source_requests",
+                    "source_credits",
+                    "discovery_requests",
+                    "semantic_requests",
+                )),
+            )
+            if any(
+                type(budgets[name]) is not int or budgets[name] <= 0
+                for name in (
+                    "source_requests",
+                    "source_credits",
+                    "discovery_requests",
+                    "semantic_requests",
+                )
+            ):
+                raise HostWorldConfigurationError("INVALID_CONFIGURATION")
+            world_grounder = replace(
+                grounder_config,
+                source=replace(
+                    grounder_config.source,
+                    request_budget=budgets["source_requests"],
+                    credit_budget=budgets["source_credits"],
+                ),
+                discovery_model=replace(
+                    grounder_config.discovery_model,
+                    request_budget=budgets["discovery_requests"],
+                ),
+                semantic_model=replace(
+                    grounder_config.semantic_model,
+                    request_budget=budgets["semantic_requests"],
+                ),
+            )
         skill = dict(_require_object(value["skill"], _SKILL_FIELDS))
         pin = _require_object(
             skill["skill_pin"], frozenset(("path", "version", "content_sha256"))
@@ -89,7 +134,7 @@ def load_world_config(
             skill[field] = tuple(skill[field])
         return HostWorldConfig(
             skill=HostSkillConfig(**skill),
-            grounder=grounder_config,
+            grounder=world_grounder,
             evaluation_date=evaluation_date,
             maturity_authority=maturity_authority,
             bounds=CoreOperationalBounds(**_require_object(value["bounds"], _BOUNDS_FIELDS)),

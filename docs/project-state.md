@@ -1,5 +1,8 @@
 # Project State
 
+## Approved World event-unit successor — 2026-10-28
+User approved [v0.3](host-world-source-query-v0.1.md#event-unit-composition-successor-v03--2026-10-28); composition and independent World-only config v0.2 are implemented. Final 282 related regressions, compileall and independent review PASS; finite byte/time allocation and reuse guard are covered. ONE World batch <=10 units, source20/20 and each modelrole11 including Skill is approved, other caps unchanged. Deployment/private World config change and the single normal POST remain pending; no positive real EI/Core claim. See the [checkpoint](current-checkpoint.md) for preregistered input/bounds and honest timing limits.
+
 ## Continuation decision boundary — 2026-10-28
 Five focused offline checks pass; no production change/live call. Current World packages scope and multiple provisional leads as one Event input and can emit only one event submission. This is a confirmed composition limit, not proof of the latest no-submission cause; missing anchor alone does not prevent a partial submission. Main proposes independent event units reusing the SAME Grounder/EI/Core, with total-budget preflight and explicit unprocessed units, no new Grounder or relaxed gates. Composition amendment is pending user decision; see [checkpoint](current-checkpoint.md).
 

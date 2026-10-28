@@ -136,6 +136,18 @@ def _world_configuration_snapshot_v0_2():
     return snapshot
 
 
+def _world_configuration_snapshot_v0_3():
+    snapshot = _event_configuration_snapshot()
+    snapshot["world_source_query_policy"] = {
+        "schema_version": "world-source-query-v0.3",
+        "basis": "independent_native_event_units_seven_day_window",
+        "max_characters": 400,
+        "full_research_context_preserved": True,
+        "evaluation_date": "2026-10-07",
+    }
+    return snapshot
+
+
 def _semantic_transport_audit():
     return {
         "schema_version": "host-semantic-transport-retry-v0.1",
@@ -2380,6 +2392,28 @@ class HostStoreTests(unittest.TestCase):
             "world", "successor source-query configuration", BOUNDS,
             STANDARD_RESEARCH_PROFILE.snapshot(), v0_2_metadata,
         )
+        v0_3_metadata = _run_start_metadata()
+        v0_3_metadata["configuration_snapshot"] = (
+            _world_configuration_snapshot_v0_3()
+        )
+        v0_3_id = self.store.create_run(
+            "world", "event-unit source-query configuration", BOUNDS,
+            STANDARD_RESEARCH_PROFILE.snapshot(), v0_3_metadata,
+        )
+        expected_v0_3 = _world_configuration_snapshot_v0_3()
+        v0_3_metadata["configuration_snapshot"]["world_source_query_policy"][
+            "basis"
+        ] = "mutated after create"
+        detached_v0_3 = self.store.get_run(v0_3_id)["metadata"][
+            "configuration_snapshot"
+        ]
+        detached_v0_3["world_source_query_policy"]["evaluation_date"] = (
+            "2020-01-01"
+        )
+        self.assertEqual(
+            self.store.get_run(v0_3_id)["metadata"]["configuration_snapshot"],
+            expected_v0_3,
+        )
 
         self.store.close()
         recovered = HostStore(self.db_path)
@@ -2401,12 +2435,18 @@ class HostStoreTests(unittest.TestCase):
             v0_2_run["metadata"]["configuration_snapshot"],
             _world_configuration_snapshot_v0_2(),
         )
+        v0_3_run = recovered.get_run(v0_3_id)
+        self.assertEqual(v0_3_run["status"], "INTERRUPTED")
+        self.assertEqual(
+            v0_3_run["metadata"]["configuration_snapshot"], expected_v0_3
+        )
 
         for mode in ("event", "direct"):
             with self.subTest(mode=mode):
                 for snapshot in (
                     _world_configuration_snapshot(),
                     _world_configuration_snapshot_v0_2(),
+                    _world_configuration_snapshot_v0_3(),
                 ):
                     disallowed = _run_start_metadata()
                     disallowed["configuration_snapshot"] = snapshot
@@ -2484,6 +2524,46 @@ class HostStoreTests(unittest.TestCase):
         snapshot["world_source_query_policy"]["extra"] = "reject"
         invalid.append(snapshot)
         snapshot = _world_configuration_snapshot_v0_2()
+        snapshot["extra"] = "reject"
+        invalid.append(snapshot)
+
+        for snapshot in invalid:
+            with self.subTest(policy=snapshot["world_source_query_policy"]):
+                metadata = _run_start_metadata()
+                metadata["configuration_snapshot"] = snapshot
+                with self.assertRaises((TypeError, ValueError)):
+                    self.store.create_run(
+                        "world", "request", BOUNDS,
+                        STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+                    )
+        self.assertEqual(self.store.list_runs(), [])
+
+    def test_world_source_query_v0_3_snapshot_rejects_noncanonical_policy(self):
+        invalid = []
+        for field, value in (
+            ("schema_version", "world-source-query-v0.4"),
+            ("basis", "scope_three_lanes_seven_day_window"),
+            ("basis", 1),
+            ("max_characters", True),
+            ("max_characters", "400"),
+            ("max_characters", 401),
+            ("full_research_context_preserved", 1),
+            ("full_research_context_preserved", False),
+            ("evaluation_date", "2026-10-7"),
+            ("evaluation_date", "20261007"),
+            ("evaluation_date", "2026-02-30"),
+            ("evaluation_date", True),
+        ):
+            snapshot = _world_configuration_snapshot_v0_3()
+            snapshot["world_source_query_policy"][field] = value
+            invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_3()
+        snapshot["world_source_query_policy"].pop("evaluation_date")
+        invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_3()
+        snapshot["world_source_query_policy"]["extra"] = "reject"
+        invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_3()
         snapshot["extra"] = "reject"
         invalid.append(snapshot)
 

@@ -1,5 +1,73 @@
 # Current Checkpoint
 
+## World event-unit implementation ready for deployment — 2026-10-28
+
+Composition and World-only external config v0.2 are implemented; final
+independent static review PASS. One final related regression group passed
+282 tests in 2.771 seconds; src/tests compileall and diff checks passed.
+This is not a full repository suite or real-source evidence. Earlier focused
+41/Store4/config7 counts overlap that final group and are not added together.
+An earlier sandbox-only attempt had 30 loopback-bind errors; its permitted
+HostServer rerun passed, and the final group also passed with local sockets.
+
+Finite source request/credit/byte/time allocations are run-bounded; the
+same-Discovery-allocation reuse case uses full config equality. Core/EI
+contracts, Event/Direct production and market/Kernel arithmetic are unchanged.
+All valid unit submissions reach one common Core call; unprocessed units are
+explicit, and Core's exact aggregate limit shape is preserved.
+
+Pre-register ONE live World acceptance, not another tuning experiment:
+original input `US listed companies`; explicit UTC evaluation date 2026-10-28;
+retrieval window 2026-10-22..2026-10-28 inclusive; UI bounds
+10/10/400/200/10. Approved World caps source20/20, each model role11 including
+Skill; byte/time/token limits remain unchanged. Back up the private World
+config, use its v0.2 overrides, and verify Event caps remain source3/3 and
+models2/2. DB baseline 46 runs / 3 Direct / 22 batches. No new POST yet.
+Do not retry or select a prefix when the plan cannot fit. Successful EI must
+continue automatically into the existing Futu/Core path, not stop for a new
+local validation. A negative or incomplete result is not an investment claim.
+
+Timing evidence: World implementation/integration window 11:58:01–12:21:34 UTC;
+final focused validation 12:21:34–12:22:40. That implementation window also
+contains earlier tests/debugging not separately timed, so it is not pure coding
+time or evidence of meeting 70%. The later World-config implementation window
+12:27:48–12:32:35 overlaps parent work; do not add it twice. Final related
+regression above is measured test execution, not the entire review overhead.
+
+## Approved World event-unit BUILD — 2026-10-28
+
+User approved independent event preparation reusing the SAME Grounder/EI/Core,
+with unchanged total budgets and evidence gates. Fresh fetch confirms
+HEAD/main/origin/main `bef73b6`, clean before Main's contract edits. Main's
+bounded read-only integration preflight checked the existing multi-submission
+batch, per-call fresh clients, context-free unavailable branch serialization,
+archive row cap and exact Core limit shape. The v0.3 successor is frozen in
+[the existing query contract](host-world-source-query-v0.1.md#event-unit-composition-successor-v03--2026-10-28).
+BUILD is in progress, not runtime completion. It will isolate provisional
+native lead groups, preflight the entire allocation, retain explicit
+unprocessed-unit information and combine legal submissions for common Core.
+Native groups are not asserted to be independent verified events. No new
+live batch, fee authorization, private config change or EI relaxation follows.
+Read-only local config inspection confirms source 3 requests/3 credits and
+Discovery/Semantic 2 requests each; these cover at most ONE planned unit after
+the Skill reservations. Multi-unit deferral under those caps is an honest
+capacity result, not evidence failure. Store's v0.3 reader and four focused
+offline tests pass. World integration/review subsequently passed: 41
+World/Workbench focused tests, 239 related Host/Core regressions, src/tests
+compileall and doc/diff checks. A stale default-v0.9 assertion was reproduced
+at isolated `bef73b6` and corrected to actual v0.10; no Event production code
+changed. Independent review's finite-source byte/time reset finding was fixed,
+including the full-config equality reuse regression. No full repository suite
+is claimed.
+
+The user subsequently approved exactly ONE normal World batch: at most ten
+units, source <=20 requests/20 credits, each model role <=11 requests including
+Skill, all other limits unchanged. Main froze minimal World-only external
+config v0.2 after reading the loader/launcher. This prevents that authorization
+from raising Event's shared caps. Its implementation/review are in progress;
+no private config changed and no new run yet. Host port 8080 is not listening;
+OpenD 11111 is listening (not authentication proof). DB 46 / 3 Direct / 22 batches.
+
 ## Offline continuation: World single-event composition boundary — 2026-10-28
 
 Fresh fetch confirms HEAD/main/origin/main `839b82f`, clean. Five existing

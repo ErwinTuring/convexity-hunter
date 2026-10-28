@@ -1,5 +1,142 @@
 # Host World source-query separation v0.1
 
+## Event-unit composition successor v0.3 — 2026-10-28
+
+Status: CONTRACT FROZEN / IMPLEMENTED / VALIDATED / INDEPENDENT REVIEW PASS;
+deployment and the single approved live acceptance remain pending. Main's read-only
+integration preflight verified multi-submission `SourceSubmissionBatch`, fresh
+per-call clients, and the existing context-free unavailable-branch serializer.
+The archive row bound and exact Core limit result are preserved below. The
+composition approval alone authorized no live run or increased spending;
+the later single-batch authorization is explicit below. No positive EI/Core
+outcome is claimed.
+
+### Units and unchanged authority
+
+Preserve the existing exact-name/URL deduplication and canonical neutral order
+of native lead groups. Each group becomes one provisional research unit, NOT
+a verified event, accepted hypothesis, recommendation, or proof that two
+groups describe different real events. The unchanged single-event Grounder
+may find no unique event and abstain. Do not infer independence from a name.
+Pass the unchanged original scope plus ONLY that group's names/URLs using the
+existing provisional-hint input grammar. Do not send other groups as competing
+event input. Retain the exact original World object for the outer batch,
+journal and common Core. Each unit receives a distinct same-run Grounder ID;
+never rewrite returned submission facts, dates, listing identity or hypotheses.
+Append only existing producer provenance; successor World producer is
+`world-v0.4`. All produced submissions enter one existing `run_world_core`.
+All accepted hypotheses branch under its unchanged limits and evidence gates.
+Ordinary Event/Direct, Kernel, Builder and EI APIs remain unchanged.
+
+### Retrieval query and versioned snapshot
+
+Use the v0.2 literal scope/three-lane/seven-date query, followed for each native
+unit by this exact suffix: ` Provisional event lead: {names}.` Here `names`
+is canonical compact JSON of that group's existing ordered names. The scope
+is still the unchanged original World scope, and dates remain configured
+D-6..D. This suffix is a retrieval hint only, never verified event identity.
+`full_research_context_preserved=true` means the full original scope and
+complete names/URLs of that unit are preserved; other units are separate
+inputs, not truncated material or investment-based exclusions.
+Search and Extract within one unit receive the identical bounded query.
+Validate all unit model inputs and full query UTF-8/400-character bounds before
+any unit call; never truncate, rewrite names, or silently use a scope fallback
+for an invalid unit. Mark that unit unavailable; independent valid units may
+continue only after whole-batch capacity preflight succeeds.
+
+The v0.3 World query-policy snapshot retains exactly the five v0.2 fields,
+but uses `schema_version="world-source-query-v0.3"` and
+`basis="independent_native_event_units_seven_day_window"`. This version fixes
+the unit grammar, query suffix and reservation policy here. Preserve v0.1 and
+v0.2 readers without migration; reject unknown keys/values or non-World usage.
+If native discovery is empty or fails, retain the existing ONE bounded Web
+scope fallback without suffix, explicitly disclose that fallback, and do not
+claim it represents multiple independently verified events.
+
+### Whole-run capacity, not a hidden selection rule
+
+Reserve one request per model role for the existing Skill phase even if that
+phase fails; never reclaim spent/unused reservations. For N planned units,
+require N <= caller `max_submissions`, source request/credit budgets >= 2*N,
+and each model-role budget >= 1+N before any unit source/model request.
+Discovery per-unit allocation is `min(2, (total_discovery_budget-1)//N)`;
+Semantic allocation is one per unit. Reserve allocations in advance; fresh
+clients receive ONLY their allocation (source 2 requests/2 credits per unit).
+Finite source `byte_budget` is divided by N with integer floor. Finite source
+`time_budget_seconds` is divided conservatively across N using the existing
+float-seconds representation; for N>1 round the quotient toward zero by one
+representable step. N=1 retains the original caps; optional `None` stays
+`None`. A nonpositive per-unit allocation blocks the whole plan before calls.
+This preserves aggregate source byte/time limits as well as requests/credits;
+per-request timeout limits and per-response limits are never increased.
+Map the source client's existing exact `BYTE_BUDGET_EXHAUSTED` and
+`TIME_BUDGET_EXHAUSTED` errors to the existing
+`world_grounder_source_budget_failed` category; never infer these from an
+ordinary timeout or exception text.
+Never reset the entire configured budget for each unit, borrow from another
+unit, transfer unused repair capacity, add retries, or increase token/timeout
+limits. No Native score or retrieved content changes the plan.
+
+If the entire plan cannot fit, call no unit Grounder: disclose the units as
+unprocessed with deterministic IDs and fixed capacity reasons through existing
+unavailable-branch presentation. No prefix, ranking or hidden truncation.
+If the number of unprocessed units exceeds the existing archive unavailable-row
+bound (sum of the caller's four count bounds), retain one explicit aggregate
+unavailable plan instead, with exact decimal count reason
+`world_event_units_unprocessed_count:N`. This is all-unprocessed disclosure,
+not a retained prefix. Never widen archive bounds or claim N Core cases.
+Invalid, failed or no-submission units also remain visible as unavailable,
+not as EI rejections or classified Core research. One unit's ordinary failure
+does not drop another valid submission; retain existing explicitly propagated
+stamped runtime failures unchanged. Do not invent a new diagnostics platform.
+Archive and UI must round-trip these branches under existing bounded shapes.
+If the shared Core itself returns its frozen `LIMIT_EXCEEDED` result, retain
+that exact two-reason/zero-case/zero-unavailable shape: the whole downstream
+run is blocked, not partially researched. Do not append Host unit rows there
+or overwrite the Core limit reason. Per-unit detail is unavailable in that
+exceptional aggregate-limit result; do not claim otherwise. Outside that
+case, aggregate added Host unit rows if necessary to preserve the archive
+bound, retaining their exact count. Under no circumstances remove Core rows
+or change a classification to make room for Host rows.
+
+### Required validation
+
+Two different units must reach the real shared Grounder with disjoint hint
+inputs and same original outer identity; all accepted hypotheses enter the
+common Core. Prove reservations across success, failure and repair, no calls
+on insufficient plan capacity, invalid-unit isolation, honest no-submission,
+old snapshot recovery, SQLite/UI unavailable-branch round-trip, Web fallback
+and Event/Direct regressions. Synthetic fixtures are not real-provider proof.
+
+### Explicit World-only configuration budgets
+
+The user subsequently approved ONE normal World acceptance, at most ten
+planned units, source <=20 requests/20 credits and each model role <=11
+requests INCLUDING Skill. This does not authorize repeated batches, changes
+to token/timeout/byte caps, or increased Event budgets. A read-only inspection
+confirmed the launcher supplies Event config to the World loader; changing
+the shared external Event file would therefore be inappropriate.
+
+Freeze the minimal additive `host-world-config-v0.2` external JSON shape:
+the existing `schema_version`, `skill`, `bounds`, plus required
+`grounder_budgets` with EXACTLY `source_requests`, `source_credits`,
+`discovery_requests`, `semantic_requests`. Each is an exact positive integer,
+not bool. Derive an immutable World-only copy of the supplied Grounder config
+with ONLY those four request/credit fields replaced. Retain the original
+Event object and all credential references, models, endpoints, fee flags,
+token, input/output, byte, time and timeout settings. Resolve no credential
+and make no calls while loading. Existing factory validation still applies.
+Keep the v0.1 shape and identity behavior unchanged; the existing public
+v0.1 schema constant/signature stays unchanged. Reject missing/extra fields,
+unknown versions or invalid values through existing sanitized loader errors.
+No new CLI, credential schema, provider or launcher wrapper is needed.
+
+Tests must prove v0.1 compatibility, exact v0.2 closure, World-only override
+with supplied Event config unchanged, unchanged credential/token/resource
+settings and lazy construction. Only after validation/review may the private
+World file be backed up and changed for the authorized ONE batch. Do not
+modify the shared Event file or treat a saved cap as recurring authorization.
+
 ## Approved successor v0.2 — 2026-10-28
 
 Status: user-approved contract; implementation, focused validation, independent

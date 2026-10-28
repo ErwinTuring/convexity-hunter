@@ -3448,8 +3448,8 @@ class HostEventGrounderTests(unittest.TestCase):
             ),
             (
                 "semantic-verdict-v0.4",
-                "host-grounder-semantic-verifier-prompt-v0.9",
-                "host-grounder-discovery-prompt-v0.9",
+                "host-grounder-semantic-verifier-prompt-v0.10",
+                "host-grounder-discovery-prompt-v0.10",
             ),
         )
         self.assertEqual(

@@ -657,6 +657,57 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     }
   }
 
+  const aggregateUnitId = "world-units-aggregate";
+  const aggregateWorld = await scenario({
+    mode: "world", cases: [], runStatus: "BLOCKED", events: [],
+    batchSummary: {
+      ...input.worldSummary,
+      reasons: [
+        "world_native_scope_fallback",
+        "world_event_unit_capacity_insufficient",
+        "world_grounding_input_limit"
+      ],
+      unavailable_count: 1,
+      case_summaries: [],
+      unavailable_case_ids: [aggregateUnitId],
+      unavailable_cases: [{
+        case_id: aggregateUnitId,
+        case_key: caseKeyFor(aggregateUnitId),
+        reasons: [
+          "world_unit_capacity_insufficient",
+          "world_unit_source_query_invalid",
+          "world_unit_input_invalid",
+          "world_unit_no_submission",
+          "world_unit_submission_identity_conflict",
+          "world_unit_grounder_failed",
+          "world_event_units_unprocessed_count:7"
+        ]
+      }]
+    },
+    executors: { world: "CONFIGURED", event: "CONFIGURED", direct: "NOT_CONFIGURED" }
+  });
+  await aggregateWorld.clickRun();
+  const aggregateText = aggregateWorld.elements.get("batch-summary-view").textContent;
+  for (const marker of [
+    "world_native_scope_fallback",
+    "world_event_unit_capacity_insufficient",
+    "world_grounding_input_limit",
+    "world_unit_capacity_insufficient",
+    "world_unit_source_query_invalid",
+    "world_unit_input_invalid",
+    "world_unit_no_submission",
+    "world_unit_submission_identity_conflict",
+    "world_unit_grounder_failed"
+  ]) {
+    if (!aggregateText.includes("说明（" + marker + "）")) {
+      throw new Error("World unit marker explanation was omitted: " + marker);
+    }
+  }
+  const aggregateUnavailableText = aggregateWorld.elements.get("unavailable-case-list").textContent;
+  if (!aggregateUnavailableText.includes("聚合未处理 World 单元数：7，不表示 EI 接受、Core 案例或分类。")) {
+    throw new Error("aggregate World unit count or its classification boundary was omitted");
+  }
+
   const eventWithWorldReason = await scenario({
     mode: "event", cases: [], runStatus: "BLOCKED", events: [],
     batchSummary: {
