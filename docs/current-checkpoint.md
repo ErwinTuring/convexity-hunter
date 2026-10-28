@@ -1,5 +1,73 @@
 # Current Checkpoint
 
+## Completed single World acceptance; positive EI/Core still blocked — 2026-10-28
+
+Reviewed implementation `3be8b93` committed/pushed and deployed through the
+original launcher: PID 46048 / session 94264, UTC evaluation date 2026-10-28.
+Private World v0.1 backup: `/private/tmp/ch-world-config-v02.eMbV1c/`.
+World v0.2 private config is mode 600 with explicit source20/20, models11/11
+and max_submissions10; all other caps unchanged. The Event file's SHA-256
+is unchanged and its caps remain source3/3, models2/2.
+
+ONE normal UI POST created `ac93f2d3-4939-4820-ba1d-1fa12c02109e` at
+2026-10-28T12:38:06.454Z. It ended BLOCKED / `HOST_BATCH_BLOCKED` at
+12:40:21.753Z (135.299 seconds). Original input,
+evaluation date, retrieval window and UI bounds match the preregistration
+below. Persisted policy v0.3 and 20/20/11/11 caps were verified. The one-batch
+authorization is consumed: do not submit again, restart this active run,
+or infer recurring authority from the elevated private caps.
+
+Five provisional units have retained outcomes: indexes 1/2/5
+`world_unit_grounder_failed`, indexes 3/4 `world_unit_no_submission`. Failure
+of earlier units did not prevent later units from being attempted. These are
+not five verified independent events, EI rejections or Core classifications.
+Global reasons include Native partial/Reddit/Digg not_ok, Grounder failure,
+output-invalid/evidence-catalog-invalid, `world_grounder_catalog_paragraph_limit`
+and no submission. At least one failed catalog exceeded the configured scan
+limit; the old global union cannot assign that reason to each failed unit.
+The two normal no-submission returns have no retained fine-grained hypothesis
+or verifier reasons. Do not infer that no economic mechanism exists.
+
+EI audit has 0 submissions; numeric Core cases=0; unavailable Host units=5.
+No real EI ACCEPTED, Futu acquisition or Core research classification occurred.
+DB is now 47 runs / 3 retained Direct cases / 23 batch archives. Saving an
+empty batch is not a positive closure. Actual source/model calls, credits,
+tokens and Native finer counts are UNKNOWN; configured caps are not usage.
+No retry, replay, alternate event or acceptance/cap relaxation was performed.
+
+Read-only capacity inspection: scan paragraphs128, catalog entries128,
+catalog bytes65536, individual source body bytes20000; Discovery input80000,
+Semantic input262144 bytes. The catalog builder intentionally fails rather
+than truncates. This is a concrete technical capacity boundary, not an EI
+factual rejection. Raising only the scan cap cannot promise other limits or
+the substantive evidence gates will pass; no such change was made.
+
+Post-run fix preserves each ordinary failure's ALREADY computed fixed
+diagnostic categories in its own unavailable reasons, rather than only in the
+global union. No new acceptance/schema/raw-error field or retrospective archive
+enrichment. Focused 32 tests, then 120 relevant World/Store/archive/UI tests,
+compilation and independent review PASS; those counts overlap, not 152 unique
+tests. The reviewer withdrew a
+claimed new fallback label after Main proved it existed in `3be8b93`.
+This fix has no post-fix live acceptance and does not reconstruct this run.
+
+The used v0.2 private config was preserved as
+`/private/tmp/ch-world-config-v02.eMbV1c/world-config.used-v02.json` (600).
+The original World config was restored byte-for-byte from its backup (600),
+and Event file hash/caps stayed unchanged. PID46048 was stopped only after
+confirming 0 active runs. Restart the reviewed final code with the ORIGINAL
+lower caps; the spent single-batch grant must not remain a recurring allowance.
+Next external operation requires new bounded authorization. No automatic
+directory-limit escalation, new Grounder project or repeated World trial.
+
+Next decision: the scan/entry/byte/input capacity policy, not a weaker fact or
+EI standard. Prefer a narrowly bounded lossless capacity correction with the
+other input/evidence limits kept explicit, rather than another unchanged World
+trial. Raising scan capacity alone may expose an entry/byte bound or still
+produce no lawful hypothesis; no positive result is promised. Changing a
+frozen resource configuration and another real batch need explicit scope and
+fresh budget approval. Do not guess which historical source exceeded a cap.
+
 ## World event-unit implementation ready for deployment — 2026-10-28
 
 Composition and World-only external config v0.2 are implemented; final

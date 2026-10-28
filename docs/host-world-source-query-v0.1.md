@@ -3,7 +3,10 @@
 ## Event-unit composition successor v0.3 — 2026-10-28
 
 Status: CONTRACT FROZEN / IMPLEMENTED / VALIDATED / INDEPENDENT REVIEW PASS;
-deployment and the single approved live acceptance remain pending. Main's read-only
+deployed as `3be8b93` for one approved live acceptance, which ended BLOCKED
+(five provisional units, no EI submissions/Core cases). A later lossless
+diagnostic-projection fix passes review/tests but has no new live proof.
+See the current checkpoint for deployment and spent-authorization state. Main's read-only
 integration preflight verified multi-submission `SourceSubmissionBatch`, fresh
 per-call clients, and the existing context-free unavailable-branch serializer.
 The archive row bound and exact Core limit result are preserved below. The
@@ -89,6 +92,11 @@ Invalid, failed or no-submission units also remain visible as unavailable,
 not as EI rejections or classified Core research. One unit's ordinary failure
 does not drop another valid submission; retain existing explicitly propagated
 stamped runtime failures unchanged. Do not invent a new diagnostics platform.
+For ordinary exceptions, retain that call's already allowlisted fixed
+diagnostic categories in its own unavailable `reasons` array as well as the
+existing global union. Never copy exception text, payloads or another unit's
+categories. This is lossless projection through the existing public shape,
+not a new acceptance rule/schema. Do not retroactively enrich old archives.
 Archive and UI must round-trip these branches under existing bounded shapes.
 If the shared Core itself returns its frozen `LIMIT_EXCEEDED` result, retain
 that exact two-reason/zero-case/zero-unavailable shape: the whole downstream

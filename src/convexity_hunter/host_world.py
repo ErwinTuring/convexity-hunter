@@ -674,20 +674,42 @@ def _world_unavailable_limit(bounds: CoreOperationalBounds) -> int:
     )
 
 
+def _normalize_world_unit_failure_reasons(value: object) -> Tuple[str, ...]:
+    if type(value) is str:
+        candidates = (value,)
+    elif type(value) is tuple:
+        candidates = value
+    else:
+        candidates = ()
+    reasons = tuple(
+        dict.fromkeys(
+            code
+            for code in candidates
+            if type(code) is str
+            and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", code, re.ASCII)
+        )
+    )
+    return reasons or ("world_unit_not_processed",)
+
+
 def _unprocessed_unit_rows(
-    units: tuple, reason: str, archive_limit: int
+    units: tuple, reasons: object, archive_limit: int
 ) -> Tuple[CoreUnavailableCase, ...]:
     if not units or archive_limit <= 0:
         return ()
+    normalized_reasons = _normalize_world_unit_failure_reasons(reasons)
     if len(units) > archive_limit:
         return (
             CoreUnavailableCase(
                 "world-units-aggregate",
-                (reason, "world_event_units_unprocessed_count:{}".format(len(units))),
+                normalized_reasons
+                + ("world_event_units_unprocessed_count:{}".format(len(units)),),
                 None,
             ),
         )
-    return tuple(CoreUnavailableCase(unit_id, (reason,), None) for unit_id in units)
+    return tuple(
+        CoreUnavailableCase(unit_id, normalized_reasons, None) for unit_id in units
+    )
 
 
 def _merge_world_unit_failures(
@@ -708,20 +730,31 @@ def _merge_world_unit_failures(
     room = max(0, archive_limit - len(case_set.unavailable))
     unit_rows = []
     overflow = 0
+    normalized_failures = tuple(
+        (unit_id, _normalize_world_unit_failure_reasons(reason_codes))
+        for unit_id, reason_codes in failures
+    )
     if all_unprocessed:
-        unit_ids = tuple(unit_id for unit_id, _reason in failures)
-        unit_reason = failures[0][1] if failures else "world_unit_not_processed"
-        unit_rows = list(_unprocessed_unit_rows(unit_ids, unit_reason, room))
+        unit_ids = tuple(unit_id for unit_id, _reason_codes in normalized_failures)
+        unit_reasons = (
+            normalized_failures[0][1]
+            if normalized_failures
+            else ("world_unit_not_processed",)
+        )
+        unit_rows = list(_unprocessed_unit_rows(unit_ids, unit_reasons, room))
         if room == 0 and unit_ids:
             overflow = len(unit_ids)
-    elif len(failures) <= room:
-        unit_rows = [CoreUnavailableCase(unit_id, (reason,), None) for unit_id, reason in failures]
+    elif len(normalized_failures) <= room:
+        unit_rows = [
+            CoreUnavailableCase(unit_id, reason_codes, None)
+            for unit_id, reason_codes in normalized_failures
+        ]
     elif room > 0:
         unit_rows = [
-            CoreUnavailableCase(unit_id, (reason,), None)
-            for unit_id, reason in failures[: room - 1]
+            CoreUnavailableCase(unit_id, reason_codes, None)
+            for unit_id, reason_codes in normalized_failures[: room - 1]
         ]
-        overflow = len(failures) - len(unit_rows)
+        overflow = len(normalized_failures) - len(unit_rows)
         unit_rows.append(
             CoreUnavailableCase(
                 "world-units-aggregate",
@@ -731,8 +764,8 @@ def _merge_world_unit_failures(
                 None,
             )
         )
-    elif failures:
-        overflow = len(failures)
+    elif normalized_failures:
+        overflow = len(normalized_failures)
 
     merged_reasons = tuple(dict.fromkeys(case_set.reasons + reasons))
     if overflow:
@@ -1199,17 +1232,22 @@ def create_world_runner(
                             == route
                         ):
                             raise
-                    unit_failures.append(
-                        (unit_id, "world_unit_grounder_failed")
-                    )
+                    unit_reason_codes = ["world_unit_grounder_failed"]
                     reasons.append("world_grounder_failed")
                     diagnostic = _world_failure_diagnostic(error)
                     if diagnostic is not None:
+                        unit_reason_codes.append(diagnostic)
                         reasons.append(diagnostic)
-                    reasons.extend(_world_grounder_specific_diagnostics(error))
+                    specific_diagnostics = _world_grounder_specific_diagnostics(error)
+                    unit_reason_codes.extend(specific_diagnostics)
+                    reasons.extend(specific_diagnostics)
                     transport_diagnostic = _world_model_transport_diagnostic(error)
                     if transport_diagnostic is not None:
+                        unit_reason_codes.append(transport_diagnostic)
                         reasons.append(transport_diagnostic)
+                    unit_failures.append(
+                        (unit_id, tuple(dict.fromkeys(unit_reason_codes)))
+                    )
                     continue
 
                 build_result = getattr(grounded, "build_result", None)

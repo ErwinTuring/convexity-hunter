@@ -61,6 +61,7 @@ from convexity_hunter.host_server import (  # noqa: E402
     HostRequestHandler,
     ValidatedRunRequest,
     _public_run,
+    _public_batch_summary,
     _run_start_metadata,
     _validate_batch_result,
 )
@@ -1710,6 +1711,97 @@ class HostWorldTests(unittest.TestCase):
             self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
             self.assertNotIn(private_url_sentinel, repr(result.case_set.reasons))
             self.assertEqual(result.case_set.submissions.submissions, ())
+
+    def test_unit_failures_keep_only_their_own_diagnostics_through_archive_and_api(self):
+        self.config = _config(model_budget=3, source_budget=4)
+        skill = _native_result(
+            [
+                _topic("Beta lead", "https://lead.example/b", rank=2, score=2, angle="y"),
+                _topic("Alpha lead", "https://lead.example/a", rank=1, score=1, angle="x"),
+            ]
+        )
+        catalog_failure = HostGrounderRuntimeError("EVIDENCE_CATALOG_INVALID")
+        object.__setattr__(catalog_failure, "_evidence_catalog_failure_check", "PARAGRAPH_LIMIT")
+        producer_failure = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage="producer_envelope_normalization",
+            failure_check="producer_v0_3_root_shape",
+        )
+        failures = (catalog_failure, producer_failure)
+        grounder_calls = []
+        query_calls = []
+
+        def failing_grounder_factory(_config, **_kwargs):
+            def grounder(text, *, run_id, bounds):
+                index = len(grounder_calls)
+                grounder_calls.append((text, run_id, bounds))
+                raise failures[index]
+
+            def query_factory(query):
+                query_calls.append(query)
+                return grounder
+
+            grounder._world_source_query_factory = query_factory
+            return grounder
+
+        with mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            side_effect=failing_grounder_factory,
+        ), mock.patch(
+            "convexity_hunter.host_world.run_last30days_discovery",
+            return_value=skill,
+        ), mock.patch.object(
+            ModelCredential, "resolve", return_value="synthetic-token"
+        ):
+            runner = create_world_runner(
+                self.config, repo_root=ROOT, market_bridge=self.lazy_bridge
+            )
+            result = runner(self.raw_input, bounds=self.post_bounds)
+
+        expected_reasons = (
+            (
+                "world_unit_grounder_failed",
+                "world_grounder_output_invalid",
+                "world_grounder_evidence_catalog_invalid",
+                "world_grounder_catalog_paragraph_limit",
+            ),
+            (
+                "world_unit_grounder_failed",
+                "world_grounder_output_invalid",
+                "world_grounder_producer_envelope_invalid",
+                "world_grounder_producer_v0_3_root_shape_failed",
+            ),
+        )
+        self.assertEqual(len(query_calls), 2)
+        self.assertEqual(len(grounder_calls), 2)
+        self.assertEqual(
+            tuple(item.reasons for item in result.case_set.unavailable),
+            expected_reasons,
+        )
+        self.assertNotIn(
+            "world_grounder_producer_envelope_invalid",
+            result.case_set.unavailable[0].reasons,
+        )
+        self.assertNotIn(
+            "world_grounder_evidence_catalog_invalid",
+            result.case_set.unavailable[1].reasons,
+        )
+        self.assertTrue(
+            set(code for reasons in expected_reasons for code in reasons[1:]).issubset(
+                set(result.case_set.reasons)
+            )
+        )
+
+        archived = _persist_world_result(self.raw_input, self.post_bounds, result)
+        public_summary = _public_batch_summary(archived)
+        self.assertEqual(
+            tuple(tuple(item["reasons"]) for item in archived["unavailable_cases"]),
+            expected_reasons,
+        )
+        self.assertEqual(
+            tuple(tuple(item["reasons"]) for item in public_summary["unavailable_cases"]),
+            expected_reasons,
+        )
 
     def test_capacity_preflight_and_core_hypothesis_limit_are_all_or_none(self):
         empty_capacity = _config(bounds=CoreOperationalBounds(0, 8, 400, 200, 10))

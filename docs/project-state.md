@@ -1,5 +1,8 @@
 # Project State
 
+## Single World acceptance completed; EI/Core still unproven — 2026-10-28
+`3be8b93` deployed for ONE UI run `ac93f2d3-4939-4820-ba1d-1fa12c02109e` (12:38:06.454–12:40:21.753Z), terminal BLOCKED. Five provisional units: 1/2/5 Grounder failed, 3/4 no submission; 0 EI submissions/0 Core cases. Global catalog paragraph-limit failure is known, but its exact per-unit mapping is UNKNOWN. No retry or gate relaxation. DB47/Direct3/batches23. Post-run lossless per-unit fixed-diagnostic projection passes focused tests/review; no new live proof. Used high-cap config preserved; original World config restored byte-for-byte and Event unchanged, so one-run allowance is not recurring. Final lower-cap deployment must be verified. See [checkpoint](current-checkpoint.md).
+
 ## Approved World event-unit successor — 2026-10-28
 User approved [v0.3](host-world-source-query-v0.1.md#event-unit-composition-successor-v03--2026-10-28); composition and independent World-only config v0.2 are implemented. Final 282 related regressions, compileall and independent review PASS; finite byte/time allocation and reuse guard are covered. ONE World batch <=10 units, source20/20 and each modelrole11 including Skill is approved, other caps unchanged. Deployment/private World config change and the single normal POST remain pending; no positive real EI/Core claim. See the [checkpoint](current-checkpoint.md) for preregistered input/bounds and honest timing limits.
 
