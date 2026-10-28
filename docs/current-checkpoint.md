@@ -1,5 +1,27 @@
 # Current Checkpoint
 
+## Approved entry-capacity correction in BUILD — 2026-10-29
+
+Fresh origin/main/HEAD/main `d3d0a82`, initially clean. User approved handling
+the catalog-entry boundary. Main verified two coupled limits: catalog entries
+and run-input shared arrays both128. Freeze additive World config v0.4 with
+explicit catalog_entries1..256 and World-only shared array capacity
+max(original,catalog_entries), original array cap above256 rejected for v0.4.
+This also changes resource capacity for producer/verifier/source arrays;
+per-item authority and all EI checks remain unchanged. The change is NOT
+represented as catalog-only. Catalog65536 bytes, scan1024 ceiling, model input
+80000/262144 bytes and other byte/string/token/time budgets remain unchanged.
+No truncation, selection, additional requests, or promise that remaining byte
+limits will pass. See [frozen scope](host-world-source-query-v0.1.md#approved-bounded-entry-capacity-correction--2026-10-29).
+BUILD complete; 74 focused config/catalog tests and compilation/diff checks
+PASS. Temporary synthetic SQLite roundtrip/reopen retained entries256,
+arrays256 and scan1024 through the existing schema; private DB untouched.
+Independent Luna review PASS; added documentation links/fences PASS.
+No full suite (localized loader change; generator/runtime unchanged).
+No expanded private caps deployed. No private config mutation, new POST, credentials
+or raw payload acquisition authorized/performed. Prior live grants remain
+spent; synthetic capacity proof is not a new real EI/Core result.
+
 ## Scan correction deployed; single fresh World result — 2026-10-28
 
 Implementation `91037fe` passed 68 focused tests, 2 Store snapshot/recovery

@@ -8,6 +8,7 @@ from dataclasses import fields, replace
 from pathlib import Path
 from unittest.mock import patch
 
+from convexity_hunter.host_event import _safe_configuration_snapshot
 from convexity_hunter.host_world_config import (
     APPROVED_SKILL_PATH,
     APPROVED_SKILL_PYTHON,
@@ -72,6 +73,13 @@ def _document_v0_3():
     document = _document_v0_2()
     document["schema_version"] = "host-world-config-v0.3"
     document["catalog_scan_paragraphs"] = 1024
+    return document
+
+
+def _document_v0_4(catalog_entries=128):
+    document = _document_v0_3()
+    document["schema_version"] = "host-world-config-v0.4"
+    document["catalog_entries"] = catalog_entries
     return document
 
 
@@ -289,7 +297,7 @@ class HostWorldConfigTests(unittest.TestCase):
         document["grounder_budgets"] = []
         invalid.append(("non-object budgets", document, "INVALID_CONFIGURATION"))
         document = _document()
-        document["schema_version"] = "host-world-config-v0.4"
+        document["schema_version"] = "host-world-config-v0.5"
         invalid.append(("unknown version", document, "UNSUPPORTED_SCHEMA_VERSION"))
 
         for label, document, code in invalid:
@@ -340,6 +348,134 @@ class HostWorldConfigTests(unittest.TestCase):
         document = _document_v0_3()
         document["catalog_scan_paragraphs"] = 1
         self.assertEqual(self.load(json.dumps(document)).grounder.max_catalog_paragraphs, 1)
+
+    def test_v0_4_applies_only_world_entry_and_array_overrides(self):
+        original = replace(
+            self.grounder,
+            run_input_bounds=replace(
+                self.grounder.run_input_bounds, max_array_items=200
+            ),
+        )
+        self.grounder = original
+        with patch(
+            "convexity_hunter.host_sources.TavilyCredentialRef.resolve",
+            side_effect=AssertionError("must not resolve credentials while loading"),
+        ), patch(
+            "convexity_hunter.host_model.ModelCredential.resolve",
+            side_effect=AssertionError("must not resolve credentials while loading"),
+        ):
+            config = self.load(json.dumps(_document_v0_4(128)))
+
+        self.assertEqual(HOST_WORLD_CONFIG_SCHEMA_VERSION, "host-world-config-v0.1")
+        self.assertIsNot(config.grounder, original)
+        self.assertEqual(
+            (
+                config.grounder.source.request_budget,
+                config.grounder.source.credit_budget,
+                config.grounder.discovery_model.request_budget,
+                config.grounder.semantic_model.request_budget,
+                config.grounder.max_catalog_paragraphs,
+                config.grounder.max_catalog_entries,
+                config.grounder.run_input_bounds.max_array_items,
+            ),
+            (7, 8, 9, 10, 1024, 128, 200),
+        )
+        self.assertIsNot(config.grounder.run_input_bounds, original.run_input_bounds)
+        self.assertEqual(
+            (
+                config.grounder.run_input_bounds.max_run_input_bytes,
+                config.grounder.run_input_bounds.max_string_bytes,
+            ),
+            (
+                original.run_input_bounds.max_run_input_bytes,
+                original.run_input_bounds.max_string_bytes,
+            ),
+        )
+        changed_fields = {
+            "source", "discovery_model", "semantic_model", "run_input_bounds",
+            "max_catalog_entries", "max_catalog_paragraphs",
+        }
+        for descriptor in fields(original):
+            if descriptor.name not in changed_fields:
+                self.assertIs(
+                    getattr(config.grounder, descriptor.name),
+                    getattr(original, descriptor.name),
+                    descriptor.name,
+                )
+        self.assertIs(config.grounder.source.credential_ref, original.source.credential_ref)
+        self.assertIs(config.grounder.discovery_credential, original.discovery_credential)
+        self.assertIs(config.grounder.semantic_credential, original.semantic_credential)
+        self.assertEqual(original.max_catalog_entries, 64)
+        self.assertEqual(original.run_input_bounds.max_array_items, 200)
+
+        snapshot = json.loads(_safe_configuration_snapshot(
+            config.grounder,
+            source_search_policy_version="host-event-source-snapshot-v0.1",
+        ))
+        limits = snapshot["sources"][0]["grounder_limits"]
+        self.assertEqual(
+            set(limits),
+            {
+                "run_input_bounds", "max_json_bytes", "max_source_body_bytes",
+                "max_catalog_entries", "max_catalog_bytes", "max_catalog_paragraphs",
+            },
+        )
+        self.assertEqual(limits["max_catalog_entries"], 128)
+        self.assertEqual(limits["run_input_bounds"]["max_array_items"], 200)
+        self.assertEqual(limits["max_catalog_bytes"], original.max_catalog_bytes)
+
+        self.grounder = replace(
+            original,
+            run_input_bounds=replace(
+                original.run_input_bounds, max_array_items=10
+            ),
+        )
+        upper_bound = self.load(json.dumps(_document_v0_4(256)))
+        self.assertEqual(upper_bound.grounder.max_catalog_entries, 256)
+        self.assertEqual(upper_bound.grounder.run_input_bounds.max_array_items, 256)
+
+    def test_v0_4_requires_exact_shape_and_bounded_non_boolean_catalog_entries(self):
+        invalid = []
+        for value in (True, False, 0, -1, 1.0, 256.0, "1", None, 257):
+            document = _document_v0_4()
+            document["catalog_entries"] = value
+            invalid.append(("invalid catalog entries {!r}".format(value), document, "INVALID_CONFIGURATION"))
+
+        document = _document_v0_3()
+        document["schema_version"] = "host-world-config-v0.4"
+        invalid.append(("missing catalog entries", document, "MISSING_FIELD"))
+        document = _document_v0_4()
+        document["extra"] = "reject"
+        invalid.append(("extra root field", document, "UNKNOWN_FIELD"))
+        document = _document_v0_4()
+        document.pop("catalog_scan_paragraphs")
+        invalid.append(("missing v0.3 root field", document, "MISSING_FIELD"))
+
+        for label, document, code in invalid:
+            with self.subTest(label=label):
+                with self.assertRaises(HostWorldConfigurationError) as raised:
+                    self.load(json.dumps(document))
+                self.assertEqual(raised.exception.code, code)
+
+        for value in (1, 256):
+            with self.subTest(valid_catalog_entries=value):
+                config = self.load(json.dumps(_document_v0_4(value)))
+                self.assertEqual(config.grounder.max_catalog_entries, value)
+                self.assertEqual(
+                    config.grounder.run_input_bounds.max_array_items,
+                    max(self.grounder.run_input_bounds.max_array_items, value),
+                )
+
+    def test_v0_4_rejects_original_array_capacity_above_256(self):
+        self.grounder = replace(
+            self.grounder,
+            run_input_bounds=replace(
+                self.grounder.run_input_bounds, max_array_items=257
+            ),
+        )
+        with self.assertRaises(HostWorldConfigurationError) as raised:
+            self.load(json.dumps(_document_v0_4(1)))
+        self.assertEqual(raised.exception.code, "INVALID_CONFIGURATION")
 
     def test_strict_json_and_external_byte_cap_fail_closed(self):
         raw = json.dumps(_document())
@@ -408,7 +544,9 @@ class HostWorldConfigTests(unittest.TestCase):
         def unexpected_call(*_args, **_kwargs):
             self.fail("configuration/factory construction must remain lazy")
 
-        for document in (_document(), _document_v0_2(), _document_v0_3()):
+        for document in (
+            _document(), _document_v0_2(), _document_v0_3(), _document_v0_4()
+        ):
             with self.subTest(schema_version=document["schema_version"]):
                 config = self.load(json.dumps(document))
                 runner = create_world_runner(

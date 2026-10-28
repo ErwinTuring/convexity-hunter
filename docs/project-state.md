@@ -1,5 +1,8 @@
 # Project State
 
+## Approved bounded entry-capacity correction — 2026-10-29
+Fresh Git baseline `d3d0a82`. Main's catalog/runtime/loader preflight confirms catalog entries and shared run-input arrays both128. World config v0.4 implements explicit entries1..256 and coupled World-only array allowance (also affects producer/verifier/source array lengths, not factual acceptance). Keep catalog64KiB/model input/other limits and no-truncation rules. 74 focused tests, compile/diff checks, temporary synthetic Store roundtrip/reopen, added documentation checks and independent Luna review PASS. No private config change, expanded-cap deployment or external batch. Earlier live grants remain spent; positive Event/World EI→Core still unproven. See [contract](host-world-source-query-v0.1.md#approved-bounded-entry-capacity-correction--2026-10-29).
+
 ## Single post-scan World acceptance completed — 2026-10-28
 Reviewed/tested `91037fe` deployed; ONE fresh World run `76ec8a31` completed BLOCKED in161.137s. Six units: one submission reached shared EI but was INCOMPLETE (required event/date/identity/temporal/interpretation/contradiction fields missing); two no-submission returns; three explicit catalog-entry-limit failures. No paragraph-limit diagnostic retained; entries128/evidence/model bounds unchanged. EI accepted0/Futu0/Core0, DB48/Direct3/batches24. This is World-to-EI invocation, not positive closure. No retry/cap growth; authorization spent. Private World restored byte-for-byte, Event unchanged; original lower-cap launcher READY at PID51291/session66736. See [checkpoint](current-checkpoint.md).
 

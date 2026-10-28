@@ -75,6 +75,15 @@ def _sha(text):
     return hashlib.sha256(text.encode("utf-8", errors="strict")).hexdigest()
 
 
+def _source_with_complete_entries(count, paragraph_chars=128):
+    paragraphs = []
+    for index in range(count):
+        prefix = "Evidence-{:03d} ".format(index)
+        paragraphs.append(prefix + "x" * (paragraph_chars - len(prefix)))
+    body = "\n\n".join(paragraphs) + "\n"
+    return HostSourceBody(body, _sha(body), "https://s.example", _NOW)
+
+
 def _canonical(value):
     return json.dumps(
         value,
@@ -85,13 +94,15 @@ def _canonical(value):
     )
 
 
-def _fixture(body=_BODY):
+def _fixture(body=_BODY, *, max_array_items=20, max_string_bytes=10_000):
     user_input = UserEventInput(description="Assess the reported ACME filing.")
     run_input = HostGrounderRunInput(
         _RUN_ID,
         user_input,
         (HostGrounderSubquestion("q-1", "What filing was reported?"),),
-        HostGrounderRunInputBounds(20_000, 10_000, 20),
+        HostGrounderRunInputBounds(
+            20_000, max_string_bytes, max_array_items
+        ),
     )
     source = HostSourceBody(
         body, _sha(body), "https://source.example/report", _NOW, "Fixture"
@@ -495,6 +506,22 @@ class EvidenceCatalogGenerationTests(unittest.TestCase):
             hashlib.sha256(expanded_scan_catalog.canonical_utf8).hexdigest(),
             catalog.catalog_sha256,
         )
+        expanded_capacity_catalog = build_host_evidence_catalog(
+            "golden-run",
+            "a" * 64,
+            {"s": source},
+            max_catalog_entries=256,
+            max_catalog_bytes=10_000,
+            max_catalog_paragraphs=1024,
+            max_string_bytes=500,
+            max_array_items=256,
+        )
+        self.assertEqual(expanded_capacity_catalog.canonical_utf8, catalog.canonical_utf8)
+        self.assertEqual(expanded_capacity_catalog.catalog_sha256, catalog.catalog_sha256)
+        self.assertEqual(
+            [entry.evidence_id for entry in expanded_capacity_catalog.entries],
+            [entry.evidence_id for entry in catalog.entries],
+        )
         wire = json.loads(catalog.canonical_utf8)
         self.assertEqual(
             set(wire),
@@ -506,6 +533,101 @@ class EvidenceCatalogGenerationTests(unittest.TestCase):
         self.assertEqual(wire["schema_version"], EVIDENCE_CATALOG_SCHEMA_VERSION)
         self.assertEqual(wire["generator_version"], EVIDENCE_CATALOG_GENERATOR_VERSION)
         self.assertEqual(_overlap_aware_occurrence_count("aaaa", "aaa"), 2)
+
+    def test_129_complete_entries_fit_64k_with_256_entry_and_array_capacity(self):
+        source = _source_with_complete_entries(129)
+        catalog = build_host_evidence_catalog(
+            "capacity-129-run",
+            "1" * 64,
+            {"s": source},
+            max_catalog_entries=256,
+            max_catalog_bytes=65_536,
+            max_catalog_paragraphs=1024,
+            max_string_bytes=512,
+            max_array_items=256,
+        )
+
+        self.assertEqual(len(catalog.entries), 129)
+        self.assertLessEqual(len(catalog.canonical_utf8), 65_536)
+
+    def test_256_257_entry_and_array_capacities_with_wide_byte_allowance(self):
+        source_256 = _source_with_complete_entries(256, paragraph_chars=700)
+        source_257 = _source_with_complete_entries(257, paragraph_chars=700)
+        for label, entries_cap, array_cap in (
+            ("catalog entries", 256, 300),
+            ("array items", 300, 256),
+            ("combined v0.4", 256, 256),
+        ):
+            with self.subTest(capacity=label):
+                common = {
+                    "max_catalog_bytes": 2_000_000,
+                    "max_catalog_paragraphs": 1024,
+                    "max_string_bytes": 1024,
+                }
+                boundary = build_host_evidence_catalog(
+                    "capacity-256-run",
+                    "2" * 64,
+                    {"s": source_256},
+                    max_catalog_entries=entries_cap,
+                    max_array_items=array_cap,
+                    **common,
+                )
+                self.assertEqual(len(boundary.entries), 256)
+                self.assertLess(len(boundary.canonical_utf8), common["max_catalog_bytes"])
+
+                result = None
+                with self.assertRaisesRegex(ValueError, "entry bound"):
+                    result = build_host_evidence_catalog(
+                        "capacity-257-run",
+                        "3" * 64,
+                        {"s": source_257},
+                        max_catalog_entries=entries_cap,
+                        max_array_items=array_cap,
+                        **common,
+                    )
+                self.assertIsNone(result)
+
+    def test_default_64k_catalog_bytes_still_fail_closed_without_partial_audit(self):
+        source = _source_with_complete_entries(100, paragraph_chars=1000)
+        run_input, context = _fixture(
+            source.body, max_array_items=256, max_string_bytes=2048
+        )
+        oversized = build_host_evidence_catalog(
+            run_input.run_id,
+            run_input.canonical_input_hash,
+            context.source_bodies,
+            max_catalog_entries=256,
+            max_catalog_bytes=200_000,
+            max_catalog_paragraphs=1024,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+        )
+        self.assertGreater(len(oversized.canonical_utf8), 65_536)
+
+        calls = []
+        holder = HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        )
+        result = None
+        with self.assertRaises(HostGrounderRuntimeError):
+            result = run_host_grounder_same_run_evidence_catalog_v0_1(
+                run_input,
+                context,
+                discovery_client=_FakeClient("discovery", "{}", calls),
+                semantic_client=_FakeClient("semantic", "{}", calls),
+                audit_holder=holder,
+                max_json_bytes=200_000,
+                max_source_body_bytes=200_000,
+                max_catalog_entries=256,
+                max_catalog_bytes=65_536,
+                max_catalog_paragraphs=1024,
+            )
+        self.assertIsNone(result)
+        self.assertEqual(calls, [])
+        self.assertIsNone(holder.catalog_utf8)
+        self.assertIsNone(holder.catalog_sha256)
+        self.assertIsNone(holder.audit)
 
     def test_nonunique_and_overlong_paragraphs_are_counted_without_partial_output(self):
         body = "copy\n\ncopy\n\n{}\n\neligible\n".format("x" * 80)

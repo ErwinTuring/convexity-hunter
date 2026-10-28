@@ -1,5 +1,43 @@
 # Host World source-query separation v0.1
 
+## Approved bounded entry-capacity correction — 2026-10-29
+
+Status: CONTRACT FROZEN / IMPLEMENTED; 74 focused tests, compilation and
+diff-check PASS; independent Luna review PASS. Main completed the bounded
+loader/catalog/runtime preflight. User approved handling the catalog-entry capacity boundary.
+This approval is not a fresh external batch authorization; prior live grants
+remain spent. No private config change or paid request in this work unit.
+
+The generator enforces BOTH max_catalog_entries and the shared
+run_input_bounds.max_array_items, currently128. Raising only the former is
+ineffective. Add external `host-world-config-v0.4`: exact v0.3 root shape plus
+required `catalog_entries`, exact non-Boolean int in [1,256]. World-only copy
+sets max_catalog_entries to that value and max_array_items to
+max(original max_array_items, catalog_entries); reject an original array
+bound above256 for v0.4 rather than silently lowering it. The array capacity
+also bounds source/producer/verifier arrays, not only catalog entries. This
+is an explicit resource allowance, NOT additional factual authority or any
+relaxation of per-item verification, binding, source admission, EI or Core.
+v0.1/v0.2/v0.3 semantics, exported v0.1 constant and loader signature remain.
+
+Use256 as a bounded twofold capacity allowance, not a measured claim about
+lost historical payload counts or a guarantee of success. Retain catalog
+bytes65536, scan ceiling1024, source-body20000, input80000/262144, all other
+byte/string/token/time/request/credit limits and paragraph/exclusion grammar.
+Do not change the generator, truncate/coalesce/filter evidence, rank sources,
+select a prefix or retry. Byte and remaining capacity overflows fail closed.
+Existing persisted grounder_limits records both changed limits; no new Store
+schema or diagnostic framework. Event config/credentials remain untouched.
+
+Tests must prove strict shape/range/type and legacy compatibility; exact
+immutable World-only overrides; lazy construction; 129 complete entries can
+pass256 when bytes fit; 256/257 boundaries isolated with explicit synthetic
+byte allowance; default64KiB byte failure still occurs without partial output;
+unchanged source hashes, canonical bytes and evidence IDs for already-valid
+catalogs; and persisted actual limits. Synthetic success is not live proof.
+Focused validation and independent review precede commit/push. No automatic
+deployment of expanded private caps and no new external experiment authorized.
+
 ## Approved bounded scan-capacity correction — 2026-10-28
 
 Status: CONTRACT FROZEN / IMPLEMENTED / independent review PASS; 68 focused
