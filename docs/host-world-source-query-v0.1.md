@@ -1,5 +1,56 @@
 # Host World source-query separation v0.1
 
+## Approved successor v0.2 — 2026-10-28
+
+Status: user-approved target, frozen for the bounded BUILD; not a claim of
+implemented or deployed runtime. The v0.1 record below remains historical.
+
+Replace only World's exact-original-query rule with this literal template:
+
+```text
+Public company events for {scope} from {start} through {end} inclusive: explicit catalysts; narrative/belief shifts; second-order transmission.
+```
+
+`scope` is the unchanged original World input. `end` is the configured exact
+`evaluation_date`, rendered canonical ISO; `start = end - 6 calendar days`.
+The inclusive range contains seven calendar dates, including the evaluation
+date. Freeze it from the executor configuration, never a wall-clock read
+during a run. Example: 2026-10-28 gives 2026-10-22 through 2026-10-28.
+These are retrieval bounds, not authoritative event dates, impact windows,
+reassessment dates, maturity authority, provider as-of replay or proof that
+all returned material belongs to the window. Existing evidence gates remain.
+
+Preserve the original input for Skill, model context, request hash and journal;
+preserve complete lead-enriched model context. No Native lead, model output,
+ranking or retrieved result modifies the query. The three frozen Discovery
+lanes are retrieval vocabulary only, not three guaranteed coverage claims.
+
+Preflight the original scope and the complete formatted query before any
+Skill/source/model call or budget reservation. The formatted query must be
+valid UTF-8 and at most 400 characters. Unrepresentable date ranges or overflow
+use the existing `world_source_query_invalid` result. Never truncate, split,
+drop words or use an alternate query. Original invalid-input precedence stays.
+Use exactly the same query for the existing one Basic Search and one Basic
+Extract; all source/model/Skill budgets and EI/Core rules remain unchanged.
+
+The detached World snapshot's `world_source_query_policy` has exactly five
+fields: `schema_version="world-source-query-v0.2"`,
+`basis="scope_three_lanes_seven_day_window"`, `max_characters=400` (exact int),
+`full_research_context_preserved=true` (exact bool), and `evaluation_date`
+(canonical ISO date string). v0.2 itself identifies this exact template and
+window grammar. Reject extra keys, malformed dates, wrong types/values,
+unknown versions, and use outside World mode. Continue reading v0.1 snapshots
+unchanged; never rewrite old runs. Producer provenance becomes `world-v0.3`.
+No database migration, new public callback/export, planner, provider or
+credential mechanism is introduced. Ordinary Event and Direct are unchanged.
+
+Validate literal query bytes/date boundaries, original/full-context identity,
+400/401 formatted-query boundaries, UTF-8/date underflow, no calls on invalid
+queries, per-run isolation, detached snapshots, old/new journal recovery and
+mode rejection. Retain ordinary Event/Direct and accepted-branch regressions.
+Independent review and proportional validation precede deployment and the
+single user-authorized normal World acceptance. No positive result is promised.
+
 Status: CONTRACT_FROZEN / IMPLEMENTED / VALIDATED / DEPLOYED.
 Independent contract review passed on 2026-10-14.
 Independent implementation review, 170 related tests, the 1,993-test complete

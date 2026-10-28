@@ -1,5 +1,8 @@
 # Project State
 
+## Approved bounded World query successor — 2026-10-28
+User approved fixed scope/three-lane/seven-day retrieval query plus one same-budget World acceptance after tests. Main completed the bounded read-only integration preflight and froze the exact template, inclusive D-6..D window and five-field v0.2 snapshot in the [existing query contract](host-world-source-query-v0.1.md#approved-successor-v02--2026-10-28). Production implementation/review/deployment remain pending; historical v0.1, EI and budgets unchanged. This does not prove the prior run's root cause or a positive three-entry closure.
+
 ## Normal World acceptance — Beijing 2026-10-28
 Run `4fcb4def-08b7-4a3e-8108-62f2496ae5ae`: BLOCKED / HOST_BATCH_BLOCKED. Archived reasons: last30days partial; native Reddit/Digg not_ok; shared Grounder no submission. Finer native states, actual call counts and Grounder rejection details UNKNOWN. EI audit has 0 submissions, 0 cases; no real EI/Futu/Core research proof. DB 45 runs / 3 Direct / 21 batches. One approved POST, no retry/code/config change. See [checkpoint](current-checkpoint.md).
 Pending decision: frozen World policy passes the original domain directly to Search/Extract, while native leads enrich only model context. Main recommends a fixed bounded event-discovery query from scope/lanes/window with unchanged budgets and evidence gates; not approved or implemented, and not claimed as this batch's proven root cause.
