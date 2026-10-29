@@ -1527,6 +1527,29 @@ class HostWorldTests(unittest.TestCase):
 
         derived_grounder_error = DerivedGrounderError("DISCOVERY_RESPONSE_INVALID")
         object.__setattr__(derived_grounder_error, "args", (private_url_sentinel,))
+        subclassed_semantic_verdict_error = DerivedGrounderError(
+            "SEMANTIC_VERDICT_REJECTED"
+        )
+        object.__setattr__(
+            subclassed_semantic_verdict_error, "args", (private_url_sentinel,)
+        )
+        spoofed_semantic_verdict_code = HostGrounderRuntimeError(
+            "SEMANTIC_VERDICT_REJECTED"
+        )
+        object.__setattr__(
+            spoofed_semantic_verdict_code,
+            "code",
+            DiagnosticString("SEMANTIC_VERDICT_REJECTED"),
+        )
+        object.__setattr__(
+            spoofed_semantic_verdict_code, "args", (private_url_sentinel,)
+        )
+        poisoned_semantic_verdict_error = HostGrounderRuntimeError(
+            "SEMANTIC_VERDICT_REJECTED"
+        )
+        object.__setattr__(
+            poisoned_semantic_verdict_error, "args", (private_url_sentinel,)
+        )
 
         hidden_grounder_failure = None
         try:
@@ -1548,6 +1571,24 @@ class HostWorldTests(unittest.TestCase):
                 HostGrounderRuntimeError("SEMANTIC_CALL_FAILED"),
                 "world_grounder_model_call_failed",
             ),
+            (
+                HostGrounderRuntimeError("SOURCE_COVERAGE_BINDING_INVALID"),
+                "world_grounder_source_coverage_binding_invalid",
+            ),
+            (
+                HostGrounderRuntimeError("SEMANTIC_RESPONSE_INVALID"),
+                "world_grounder_semantic_response_invalid",
+            ),
+            (
+                poisoned_semantic_verdict_error,
+                "world_grounder_semantic_verdict_rejected",
+            ),
+            (
+                HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED"),
+                "world_grounder_host_context_preparation_rejected",
+            ),
+            (subclassed_semantic_verdict_error, None),
+            (spoofed_semantic_verdict_code, None),
             (
                 HostGrounderRuntimeError("DISCOVERY_RESPONSE_INVALID"),
                 (
@@ -1732,11 +1773,20 @@ class HostWorldTests(unittest.TestCase):
             "world_grounder_catalog_empty",
             "world_grounder_catalog_hash_invalid",
             "world_grounder_catalog_unknown",
+            "world_grounder_source_coverage_binding_invalid",
+            "world_grounder_semantic_response_invalid",
+            "world_grounder_semantic_verdict_rejected",
+            "world_grounder_host_context_preparation_rejected",
             *(reason for _check, reason in producer_checks),
         )
         for failure_case in failures + producer_check_failures + tampered_failures:
             failure, diagnostic = failure_case[:2]
             forbidden_diagnostics = failure_case[2] if len(failure_case) > 2 else ()
+            failure_state = (
+                (dict(vars(failure)), failure.args)
+                if isinstance(failure, HostGrounderRuntimeError)
+                else None
+            )
             self.grounder_calls.clear()
             self.grounder_query_calls.clear()
 
@@ -1793,6 +1843,7 @@ class HostWorldTests(unittest.TestCase):
                 result.case_set.reasons,
             )
             self.assertIs(result.case_set.raw_input, self.raw_input)
+            self.assertEqual(len(self.grounder_calls), 1)
             self.assertEqual(
                 self.grounder_query_calls,
                 [
@@ -1831,9 +1882,35 @@ class HostWorldTests(unittest.TestCase):
                 )
             if isinstance(failure, Exception):
                 self.assertNotIn(str(failure), repr(result.case_set.reasons))
+            if failure_state is not None:
+                self.assertEqual(vars(failure), failure_state[0])
+                self.assertEqual(failure.args, failure_state[1])
             self.assertNotIn("PRIVATE_TOKEN_DO_NOT_LEAK", repr(result.case_set.reasons))
             self.assertNotIn(private_url_sentinel, repr(result.case_set.reasons))
             self.assertEqual(result.case_set.submissions.submissions, ())
+            if diagnostic in {
+                "world_grounder_source_coverage_binding_invalid",
+                "world_grounder_semantic_response_invalid",
+                "world_grounder_semantic_verdict_rejected",
+                "world_grounder_host_context_preparation_rejected",
+            }:
+                expected_unit_reasons = result.case_set.unavailable[0].reasons
+                self.assertEqual(
+                    expected_unit_reasons,
+                    ("world_unit_grounder_failed", diagnostic),
+                )
+                archived = _persist_world_result(
+                    self.raw_input, self.post_bounds, result
+                )
+                public_summary = _public_batch_summary(archived)
+                self.assertEqual(
+                    tuple(archived["unavailable_cases"][0]["reasons"]),
+                    expected_unit_reasons,
+                )
+                self.assertEqual(
+                    tuple(public_summary["unavailable_cases"][0]["reasons"]),
+                    expected_unit_reasons,
+                )
 
     def test_unit_failures_keep_only_their_own_diagnostics_through_archive_and_api(self):
         self.config = _config(model_budget=3, source_budget=4)

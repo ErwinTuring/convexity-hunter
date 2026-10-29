@@ -1,5 +1,15 @@
 # Host World source-query separation v0.1
 
+Additive failure-disclosure clarification (2026-10-29): the existing World
+reason channel may expose these exact existing runtime categories:
+`SOURCE_COVERAGE_BINDING_INVALID`, `SEMANTIC_RESPONSE_INVALID`,
+`SEMANTIC_VERDICT_REJECTED`, `HOST_CONTEXT_PREPARATION_REJECTED`, as fixed
+`world_grounder_*` reason codes alongside the unchanged generic failure.
+They describe pipeline checks, not source insufficiency, EI rejection or
+provider root cause. Unknown/untrusted codes stay generic. No raw exception
+text/content, new wire field, acceptance rule, budget or historical inference.
+Implementation/review status is recorded in the current checkpoint.
+
 Implementation ledger: the user subsequently authorized a bounded BUILD on
 2026-10-29. The successor code is implemented; independent implementation
 review and targeted rereview PASS, with validation limitations retained;

@@ -2682,6 +2682,174 @@ class HostEventGrounderTests(unittest.TestCase):
                 any(item["final_locator"] == failed_url for item in registered)
             )
 
+    def test_world_partial_v11_default_preparer_reaches_ei_with_failed_source_excluded(self):
+        run_id, symbol = "world-v11-synthetic-accepted", "ACME"
+        raw_input = (
+            "Research the announced widening of Example Holdings' full-year revenue "
+            "forecast range. Assess support for a change in outcome distribution and "
+            "identify a source-backed reassessment milestone."
+        )
+        event_text = (
+            "On September 21, 2026, Example Holdings, Inc. (the “Company”) "
+            "announced that it widened its full-year revenue forecast range."
+        )
+        milestone_text = (
+            "The Company will publish its next full-year revenue forecast on 2027-01-31."
+        )
+        cover_html = _sec_primary_raw_cover_html(symbol).replace(
+            b"</p><table>",
+            b"</p><p>" + event_text.encode("utf-8") + b"</p><p>"
+            + milestone_text.encode("utf-8") + b"</p><table>",
+        )
+        _fixture_client, admissions, _fixture_calls = _sec_primary_composite_records(
+            symbol, cover_html_override=cover_html
+        )
+        failed_url = "https://source.example/world-partial-failed-neighbor"
+        candidate_order = (("source-sec", _SEC_LOCATOR), ("source-note", failed_url))
+        # A failed extraction is audit-only and must not participate in the
+        # evidence catalog used to construct these otherwise-valid model wires.
+        successful_source_order = (
+            (_url_source_id(_SEC_LOCATOR), _SEC_LOCATOR),
+        ) + tuple(
+            (record.source_id, record.initial_locator) for record in admissions
+        )
+        bodies_by_url = {
+            record.initial_locator: record.parsed_body for record in admissions
+        }
+        bodies_by_url[_SEC_LOCATOR] = "Example Holdings, Inc. ACME\n"
+        source_body_overrides = {
+            admissions[0].source_id: admissions[0].parsed_body
+        }
+        config = _config(source_order=candidate_order)
+        discovery, semantic = _accepted_default_route_wires(
+            run_id,
+            successful_source_order,
+            bodies_by_url,
+            config,
+            admissions[0].source_id,
+            event_text,
+            milestone_text,
+            source_body_overrides,
+            raw_input,
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=(("source-note", failed_url),),
+            failed_urls=(failed_url,),
+            body_overrides=bodies_by_url,
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        reference_locator = "https://www.sec.gov/files/company_tickers_exchange.json"
+        yahoo_locator = "https://finance.yahoo.com/quote/{}/".format(symbol)
+        reference_body = json.dumps(
+            {
+                "fields": ["cik", "name", "ticker", "exchange"],
+                "data": [[320193, "Reference Unicode — Name", symbol, "Nasdaq"]],
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        yahoo_body = (
+            "<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+            "<h1>Example Holdings, Inc. ({})</h1></body></html>".format(symbol)
+        ).encode("utf-8")
+        admission_replies = {
+            _SEC_LOCATOR: _Reply(
+                200, {"Content-Type": "text/html; charset=UTF-8"}, cover_html
+            ),
+            reference_locator: _Reply(
+                200, {"Content-Type": "application/json"}, reference_body
+            ),
+            yahoo_locator: _Reply(
+                200, {"Content-Type": "text/html; charset=UTF-8"}, yahoo_body
+            ),
+        }
+        admission_calls = []
+
+        def admission_transport(locator, _address, _timeout, _max_bytes):
+            admission_calls.append(locator)
+            return admission_replies.get(
+                locator, _Reply(404, {"Content-Type": "text/plain"}, b"absent")
+            )
+
+        admission_client = _SourceAdmissionClient(
+            timeout_seconds=2.0,
+            max_response_bytes=1_500_000,
+            byte_budget=2_500_000,
+            _transport=admission_transport,
+            _resolver=lambda _host, _port: ("93.184.216.34",),
+            _clock=lambda: _NOW,
+        )
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        with patch(
+            "convexity_hunter.host_event._create_source_admission_client",
+            return_value=admission_client,
+        ):
+            result = callback._world_source_query_factory(
+                raw_input,
+                seed_urls=(_SEC_LOCATOR,),
+                source_coverage_identity=(
+                    "world-host-run-v11-synthetic",
+                    "world-unit-v11-synthetic",
+                ),
+            )(
+                raw_input,
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        build = result.build_result
+        audit = build.context.source_coverage
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        failed_source_id = _url_source_id(failed_url)
+        self.assertEqual(audit.status, "PARTIAL")
+        self.assertEqual(
+            [(entry.locator, entry.status) for entry in audit.entries],
+            [(_SEC_LOCATOR, "BODY_AVAILABLE"), (failed_url, "FAILED")],
+        )
+        self.assertNotIn(failed_source_id, build.context.source_bodies)
+        self.assertEqual(
+            sidecar["producer_prompt_version"],
+            "host-grounder-discovery-prompt-v0.11",
+        )
+        self.assertEqual(
+            sidecar["validator_version"],
+            "host-grounder-semantic-verifier-prompt-v0.11",
+        )
+        self.assertEqual(sidecar["producer_wire_version"], "grounder-output-v0.4")
+        self.assertEqual(sidecar["verifier_wire_version"], "semantic-verdict-v0.5")
+        self.assertEqual(len(model_transport.calls), 2)
+        for model_call in model_transport.calls:
+            request = json.loads(model_call["messages"][1]["content"])
+            self.assertEqual(request["source_coverage_sha256"], audit.sha256)
+            registered = json.loads(request["registered_source_registry_json"])
+            self.assertFalse(
+                any(
+                    item["source_id"] == failed_source_id
+                    or item["final_locator"] == failed_url
+                    for item in registered
+                )
+            )
+
+        # No custom host_context_preparer was supplied: the real default
+        # preparer must bind the source-backed event date and listing identity.
+        self.assertIsNotNone(build.context.event_date_range)
+        self.assertIn(
+            ("hypothesis-generated-{}".format(run_id), symbol),
+            build.context.underlying_bindings,
+        )
+        self.assertIsNotNone(build.submission)
+        assessment = assess_event_intelligence_submission(build.submission)
+        self.assertIs(assessment.status, EventIntelligenceAcceptanceStatus.ACCEPTED)
+        self.assertEqual(assessment.issues, ())
+        self.assertEqual(len(admission_calls), 3)
+
     def test_world_partial_model_outputs_must_echo_exact_coverage_hash(self):
         successful_url = _SEARCH_ORDER[0][1]
         failed_url = _SEARCH_ORDER[1][1]

@@ -1,5 +1,38 @@
 # Current Checkpoint
 
+## Offline closure check and four-code projection complete — 2026-10-29
+
+Fresh HEAD/main/origin/main `319b266`, clean. User authorized continued work
+within the latest closure goal, not another spent real batch. Native6 focused
+checks and Grounder3 checks passed; a separate all-synthetic actual default
+World partial factory/v0.11/preparer/Builder probe reached EI ACCEPTED without
+a custom preparer. No reproducible acceptance defect found. The probe's
+initial failed-source placeholder fixture was corrected, not production.
+These are offline boundaries, NOT real acceptance or historical attribution.
+
+Main confirmed a narrower disclosure gap: existing World projection maps only
+three Grounder runtime codes, so known semantic/context/coverage failures can
+be reduced to generic failure. Implemented an additive mapping for exactly
+four existing codes in the current reason channel, plus the default-route
+regression; no new framework/schema/authority/budget or EI acceptance change.
+Five focused test methods, three-file compilation, diff checks and independent
+targeted review PASS. Unknown codes/subclasses/spoofed non-str values remain
+unmapped; actual World catch→normalization→archive/public-summary is covered.
+Historical7636aa59 finer cause remains
+UNKNOWN. No provider/model/Skill calls, private configuration, deployment or
+real DB mutation in this work unit. Prior one-shot grants remain SPENT.
+
+Original closure goal remains valid, but blindly continuing COGT date/listing
+fixes is not justified by this latest pre-EI failure. Do not invent an
+acceptance fix or repeat normal World calls merely to obtain a positive case.
+Next ordinary step: deploy the committed four-code fix through the original
+lower-cap launcher with unchanged private configuration; read-only health and
+history checks only, no POST or provider/model call. Deployment pending.
+Observed inspection starts12:29:26Z; worker reports inspection12:41–43Z,
+editing/focused verification12:43–46Z, independent review12:46–48Z.
+These interleaved windows do not establish a reliable70/30 work-share; the
+production patch is only four mapping entries, not an invented acceptance fix.
+
 ## One v0.5 World acceptance completed; EI/Core not reached — 2026-10-29
 
 Reviewed code `43407c4` deployed for ONE normal World POST. Run

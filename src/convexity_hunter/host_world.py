@@ -188,6 +188,10 @@ _WORLD_GROUNDER_SPECIFIC_CODE_DIAGNOSTICS = {
     "DISCOVERY_RESPONSE_INVALID": "world_grounder_discovery_response_invalid",
     "PRODUCER_ENVELOPE_INVALID": "world_grounder_producer_envelope_invalid",
     "EVIDENCE_CATALOG_INVALID": "world_grounder_evidence_catalog_invalid",
+    "SOURCE_COVERAGE_BINDING_INVALID": "world_grounder_source_coverage_binding_invalid",
+    "SEMANTIC_RESPONSE_INVALID": "world_grounder_semantic_response_invalid",
+    "SEMANTIC_VERDICT_REJECTED": "world_grounder_semantic_verdict_rejected",
+    "HOST_CONTEXT_PREPARATION_REJECTED": "world_grounder_host_context_preparation_rejected",
 }
 
 _WORLD_GROUNDER_PRODUCER_CHECK_DIAGNOSTICS = {
