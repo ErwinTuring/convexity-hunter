@@ -1,5 +1,8 @@
 # Project State
 
+## Partial-source coverage contract frozen — 2026-10-29
+Status SUBSEQUENT_BUILD_READY. User approved design/review ONLY, no BUILD/provider/model calls. [Bounded target](host-world-source-query-v0.1.md#validated-partial-extraction--contract-v01-2026-10-29) freezes exact outbound-Host-request/outcome partition, immutable coverage/hash, successful-body-only fact bindings, explicit missing coverage, unchanged EI/Core, opt-in Host-only envelope and durable disclosure. Independent review and accepted P2 re-review PASS; documentation checks PASS. Production implementation ABSENT; all successor versions/types remain targets, runtime strict and historical failures UNKNOWN. Stop before separately authorized BUILD.
+
 ## Native-unit source acquisition reached; contract decision pending — 2026-10-29
 ONE authorized run `39da868f` on`4b9c1ac` completed BLOCKED in138.197s:6 Native units,4 extraction failures,2 no-submission results, EI0/Futu0/Core0; DB51/Direct3/batches27. Per-URL extraction causes UNKNOWN; do not call all4 partial successes. Two existing partial-Extract tests PASS: complete-or-fail is current frozen policy, no proven bug. Proposed partial-coverage contract review is awaiting explicit user decision; no acceptance/coverage change implemented. No retry or extra unapproved calls; no new production code. Original private config restored; lower-cap original launcher READY at PID62617/session63280 with NEW UTC2026-10-29 session date after midnight; past batch date unchanged. See [checkpoint](current-checkpoint.md).
 

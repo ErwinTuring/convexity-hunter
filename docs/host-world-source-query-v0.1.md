@@ -1,5 +1,188 @@
 # Host World source-query separation v0.1
 
+## Validated partial extraction — contract v0.1, 2026-10-29
+
+Status: CONTRACT FROZEN / SUBSEQUENT_BUILD_READY. Independent contract review
+and accepted P2 request-tuple-binding re-review PASS. User authorized contract
+design/review ONLY. Every new type/version/field below is a FROZEN TARGET,
+NOT current runtime. Production implementation is ABSENT. No BUILD, config
+mutation, deployment or provider/model request is authorized by this section.
+Current strict behavior stays unchanged.
+
+### Scope and admission invariant
+
+World only; same Native URL allocation, scoped Search, Basic Extract, source
+admission, shared EI/Core and all existing resource limits. Normal Event and
+Direct stay unchanged. This amends source-coverage policy, not factual truth
+or EI acceptance. Prior39da868f's four extraction failures have no per-URL
+receipt retained; they are NOT reclassified as partial successes or evidence
+that this amendment would have changed that result.
+
+Use the existing typed Extract result and its complete request/result
+partition. Revalidate even constructor-bypassed objects: exact types; public
+URLs; unique ordered requested URLs; success and explicit failure sets
+disjoint and exhaustive, no extra/missing/duplicate URL; exact URL-derived
+source IDs for BOTH sets; requested/returned/failed counts, source ID order,
+coverage status and receipt counts/IDs/operation agree. Derive status from
+the checked sets, never trust its label alone. Success body must be nonempty
+strict UTF-8 and hash to its exact Host body digest; metadata retains current
+exact-URL rules. Preserve request-relative order within both outcome sets.
+Host freezes the exact outbound Extract URL tuple BEFORE the call (complete
+seed-plus-Search union, exact integer count1..L). Require result.urls to equal
+THAT Host tuple in exact order; counts, partitions and audit rows are checked
+against the retained Host tuple, not a request list supplied by the response.
+A self-consistent COMPLETE subset that omits an actually requested URL fails.
+
+Only a genuine provider-reported URL failure may be separated from validated
+success bodies. Empty/invalid success bodies, wrong IDs, bad URL order/set,
+contradictory counts, malformed responses and resource overflow invalidate
+the WHOLE unit. Never relabel them as failed URLs to salvage a subset.
+No body clipping, selective success filtering, retries, alternate URLs or
+extra calls. Run admission/catalog/quote/binding checks on ALL success bodies;
+any existing mandatory failure still fails closed. At least one valid success
+is required before models; all-explicitly-failed (EMPTY) never enters models.
+
+### Host-owned audit: exact target shape
+
+One optional immutable `HostSourceCoverageAudit` on `HostBuildContext`; when
+present it is complete, not partially populated. Canonical JSON payload:
+
+```json
+{
+  "schema_version": "host-source-coverage-v0.1",
+  "host_run_id": "exact-outer-http-run-id",
+  "unit_id": "exact-host-planned-world-unit-id",
+  "run_id": "exact-grounder-unit-run-id",
+  "canonical_input_hash": "exact-unit-input-sha256",
+  "status": "PARTIAL",
+  "entries": [
+    {"source_id":"url:<sha256>","locator":"https://example.org/a","status":"BODY_AVAILABLE","body_sha256":"<exact-body-sha256>"},
+    {"source_id":"url:<sha256>","locator":"https://example.org/b","status":"FAILED","reason_code":"PROVIDER_REPORTED_FAILURE"}
+  ]
+}
+```
+
+Illustrative strings above are placeholders, not real digests or fixtures.
+Root keys exact; each row has exactly its displayed variant's keys. Rows
+follow complete request order. Status is COMPLETE (all success), PARTIAL
+(both sets nonempty), or EMPTY (all explicit failure); recompute counts from
+rows and compare to the typed result. SHA-256 is over canonical UTF-8 JSON
+(sorted keys, compact separators, no NaN), excluding the digest itself.
+`run_id`/input hash identify the GROUNDING UNIT, not the outer HTTP run.
+The private covered executor receives host_run_id from the existing server
+run creation and binds the exact planned unit_id before extraction. Both IDs
+are hash-covered; archive/root ID and unit row ID must match them exactly.
+Reuse current string/array/JSON bounds; at most L<=5 requested rows.
+No raw API responses, failed-body placeholders, provider error text, cookies,
+credentials, account IDs or fabricated publication/title metadata in audit.
+
+If no trustworthy typed result exists, audit is absent/UNKNOWN, never EMPTY
+or COMPLETE. Such a source failure cannot yield a covered positive result.
+If typed EMPTY is valid, retain its audit with the unavailable outcome.
+
+### Models, verification and EI
+
+Freeze the audit before any model request; include the same canonical payload
+and digest in Discovery AND semantic-verifier inputs. They must distinguish
+retrieval outcomes from evidence. Only successful bodies enter source_bodies,
+source admission, registry and evidence catalog. Failed rows may be read as
+coverage metadata ONLY: no quotes, fact support, date, issuer binding or
+field binding may resolve through them. Existing question `coverage` is not
+repurposed into source coverage.
+
+The new producer and verifier wires each require exact
+`source_coverage_sha256`; missing/mismatched or cross-unit/run/input/body audit
+binding fails closed before projection. The Host rechecks it against context;
+an echo/hash is not proof of truth. Carry it through localization, all result
+clones, Builder context and rejected/no-submission paths. Only after exact
+binding may the new outer field be projected into the existing internal
+Builder shape; do not synthesize EI fields. Legacy wires cannot authorize
+the partial route.
+
+PARTIAL must NOT imply absence of contrary evidence or a complete review.
+Verifier must reject claims that failed URLs were read or that all requested
+sources were checked. Counter-evidence review must state the reviewed scope
+and known missing coverage, not fill a universal negative. If a required
+fact/date/listing/window/reassessment/contradiction conclusion needs a failed
+source, it remains missing unless independently supported by surviving,
+normally verified evidence. Known unresolved contradictions stay unresolved.
+Existing EI v0.2 deterministic acceptance remains unchanged: honest limited
+coverage plus sufficient independent required evidence MAY reach ACCEPTED;
+missing required evidence remains INCOMPLETE. Neither is guaranteed.
+
+### Host transport and durable disclosure (no Kernel change)
+
+Current CoreRunResult has no retrieval-audit channel. Do NOT put Tavily data
+into Core/EI domain records, weaken exact return types or encode audit JSON in
+reason strings. Add a private Host-only covered executor/result envelope:
+`core_result: CoreRunResult`, `source_coverage_by_unit: tuple`. It invokes the
+SAME existing World/Grounder/Core implementation, not a second orchestrator.
+Legacy public executor behavior stays strict and returns CoreRunResult.
+The opt-in covered Host path must retain the envelope, not silently unwrap
+and discard coverage; wrong/missing envelope fails before publication.
+
+Each unit row has exact keys `unit_id`, `source_coverage` (complete audit or
+null/UNKNOWN), `submission_ids`, `case_ids`. Use actual execution identities
+and context relations, never parse guessed IDs. Every returned submission
+and resulting case maps to exactly one unit with a valid non-EMPTY audit;
+missing/contradictory linkage invalidates the covered output. Source errors
+without trustworthy receipts have null audit and no submissions/cases.
+Keep trustworthy audits for valid EMPTY, no-submission, EI-rejected and later
+Core-failed results too; no audit omission merely because no case formed.
+
+Collect audits immutably in the existing execution; do not add a callback
+platform/database/table. Publish only after the sidecar and normal result
+are atomically retained in the existing batch archive. Serialization/binding
+failure is an explicit publication failure, never a successful bare Core
+result. Successful and typed failure paths need a bounded Host-owned audit
+transfer; invalid/transport paths disclose UNKNOWN, not invented URL outcomes.
+
+JSON summary, compact case and lazy detail/report views expose source coverage
+for the affected case, successful/requested counts and failed source IDs/URLs
+with fixed reason codes. Chinese PARTIAL wording: “来源提取覆盖不完整；仅核验
+已取得正文，失败来源未被视为事实或反证不存在。” Disclosure accompanies any
+accepted/researchable partial case. Render from the archived sidecar, never
+rerun research. It is NOT a new Core disposition, score or recommendation.
+
+### Versions and compatibility: targets only
+
+| Target | Frozen successor |
+| --- | --- |
+| External World config | host-world-config-v0.5: exact v0.4 fields plus required source_coverage_policy="VALIDATED_PARTIAL_V0_1" |
+| World source/query/producer | host-event-source-snapshot-v0.4 / world-source-query-v0.5 / world-v0.6 |
+| Query basis | independent_native_event_units_partial_source_coverage (same five query fields/template/dates/max400) |
+| Discovery/verifier prompts | host-grounder-discovery-prompt-v0.11 / host-grounder-semantic-verifier-prompt-v0.11; retain all v0.10 safeguards |
+| Producer/verifier wires | grounder-output-v0.4 / semantic-verdict-v0.5: current closed shapes plus required source_coverage_sha256 |
+| World archive | host-batch-snapshot-v0.2: v0.1 fields plus source_coverage_by_unit |
+
+Covered source/query versions are World-only and must be paired. v0.1–v0.4
+external configs remain strict; they do not silently opt in. The new config
+selects the private covered executor. Reject covered policy on an audit-less
+legacy executor before paid work. Read all historical snapshots/archives as
+before; absent historical coverage is UNKNOWN, not inferred complete. No
+SQLite table migration or EI/Core contract/version/classification change.
+Batch outcome v0.1 and EI audit v0.1 stay unchanged; new World archive carries
+the sidecar. Legacy Event/Direct wires and archives remain valid.
+
+### Adversarial acceptance matrix and next unit
+
+BUILD tests must cover: complete success; valid mixed partition; missing
+essential/contrary evidence; all failed; unreported/missing/extra/overlapping
+URLs; wrong IDs/order/counts/receipt; empty/non-UTF8/oversized success body;
+also a self-consistent COMPLETE result over a subset of Host's request;
+failed-ID citations; cross-run/hash/body mutation; dropped partial audit or
+wrong case linkage; mixed independent units; no-submission/EMPTY retention;
+legacy records unknown; and every existing resource/no-retry guard.
+All-invalid and all-failed cases must make zero model calls. A positive
+synthetic case proves lawful flow only, not a real event/investment result.
+
+Independent contract review PASS: SUBSEQUENT_BUILD_READY; stop before BUILD.
+Next separately authorized work unit: implement this opt-in Host coverage
+envelope, bounded audit, source gate and existing presentation/archive path;
+focused adversarial/compatibility tests and independent implementation review.
+No production code, test-fixture change, private config, real replay or new
+external experiment belongs to this contract-only authorization.
+
 ## Native URL consumption correction — 2026-10-29
 
 Status: Main bounded read-only preflight and freeze complete; IMPLEMENTED,

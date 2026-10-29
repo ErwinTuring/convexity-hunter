@@ -1,5 +1,35 @@
 # Current Checkpoint
 
+## Partial-source coverage contract frozen; BUILD not authorized — 2026-10-29
+
+Fresh HEAD/main/origin/main `94f110b`, initially clean. User explicitly
+approved bounded CONTRACT DESIGN/REVIEW ONLY: trustworthy partial extraction
+may be considered, explicit machine-readable failures, no relaxed identity/
+fact/EI checks, no external calls. No production/test/config changes or BUILD
+authorized. Historical four extraction failures remain unclassified.
+
+Main drafted [target contract](host-world-source-query-v0.1.md#validated-partial-extraction--contract-v01-2026-10-29).
+It separates complete request accounting from factual authority, freezes an
+immutable Host audit/hash, model/verifier binding, failed-source exclusions,
+unchanged EI and a minimal Host-only covered result/archive path. Existing
+CoreRunResult has no audit carrier; an explicit opt-in Host envelope, not a
+Kernel field or JSON-in-reason workaround, is the proposed solution. Old
+World configs remain strict; new config/wire/snapshot versions are target
+state only. Independent contract review and accepted P2 re-review PASS:
+the exact outbound Host tuple is frozen before Extract and all response
+sets/counts/audit rows must match it, not the result's self-declared subset.
+New documentation links/anchors/fences and diff-check PASS; changes are
+documentation-only. Status SUBSEQUENT_BUILD_READY; production implementation
+ABSENT, runtime strict behavior unchanged. No live capability claim.
+Next separately authorized BUILD: opt-in private Host coverage envelope,
+audit/context/wire binding, partial gate, versioned archive and existing
+presentation disclosure, plus focused adversarial/legacy tests/review.
+No source/model experiment is included. Observed design-phase clock starts
+05:10:01Z; production coding0%, contract design/review/validation100% for
+this explicitly contract-only phase, not a claimed70/30 development split.
+Observed readiness checkpoint05:28:10Z (1089s since the recorded start;
+parallel child time is not added again).
+
 ## Single new batch reached Native units; coverage decision pending — 2026-10-29
 
 ONE normal Host API batch `39da868f-aee6-48b0-8fc2-aaac229e2345`, code
