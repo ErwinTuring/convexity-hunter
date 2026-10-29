@@ -1,5 +1,73 @@
 # Current Checkpoint
 
+## Single new batch reached Native units; coverage decision pending — 2026-10-29
+
+ONE normal Host API batch `39da868f-aee6-48b0-8fc2-aaac229e2345`, code
+`4b9c1ac`, completed BLOCKED/HOST_BATCH_BLOCKED,
+2026-10-28T23:52:43.943Z–23:55:02.140Z (138.197s). Scope/window/bounds and
+persisted queryv0.4/sourcev0.3/20/20/11/11 match the preregistration below.
+This grant is consumed; no repeat or new fees authorized by remaining caps.
+
+Native returned partial coverage and SIX provisional units, not the previous
+Native-model-failure fallback. Units1/2/3/5 retained EXTRACTION_FAILURE;
+units4/6 returned no submission. EI submissions0/accepted0, numeric Core0,
+no Futu/Core execution. DB51/Direct3/batches27. Reddit/Digg not_ok is retained;
+finer Native-source causes and actual calls/credits/tokens UNKNOWN. No model
+failure label this time is NOT proof the previous failure was repaired.
+This run reached the new Native-unit source acquisition, but does not prove
+every seed was successfully read or any real EI/Core closure.
+
+The extraction label covers incomplete coverage, failed URLs, URL/body count
+or order mismatches, bad source identity and empty bodies. Per-URL receipts
+were not retained; do NOT assert all four were partial successes, attribute
+them to X/SEC/auth, or reconstruct lost payloads. Other two no-submission
+causes also remain UNKNOWN. No source prefix, relaxed guards or retry.
+
+Read-only continuation: two existing partial-Extract tests PASS, confirming
+the current complete-or-fail behavior matches the frozen contract, not a
+proven implementation defect. Main proposes a SEPARATE bounded coverage
+contract decision: consider only structurally valid, identity-correct partial
+results, with all failed sources explicitly machine-readable; successful
+bodies may be assessed but no full-coverage claim, silent missing evidence,
+or guaranteed EI acceptance. Malformed/mismatched/empty results remain
+fail-closed. This is PROPOSED / USER DECISION PENDING, not authorized or built.
+It is not a proven cure for this batch. No new framework/provider or call.
+
+Original/used private configs preserved mode600 under
+`/private/tmp/ch-world-model-category.t3dX7N/`; World original restored
+byte-for-byte, offline launcher check PASS. Lower-cap original launcher READY,
+PID62617/session63280. Restoration crossed UTC midnight: NEW session uses
+UTC2026-10-29; completed batch retains its original UTC2026-10-28/window.
+Latest World and historical completed Direct GETs return200; DB51/3/27
+unchanged. No POST during restoration. No production code change in this
+acceptance-only work unit.
+
+Observed wall time to verified restoration:635s, from23:51:04Z to00:01:39Z.
+Preparation99.943s; batch138.197s; outcome review/contract-boundary check/
+restoration396.860s. Parallel child-test time is not added twice. This phase
+is production coding0%, validation/process100% by wall time, explicitly a
+user-authorized acceptance phase; it is not a claimed70/30 development split.
+
+## Fresh single World acceptance authorized — 2026-10-29
+
+Fresh HEAD/main/origin/main `4b9c1ac`, clean before this record. User explicitly
+authorized ONE new normal World batch, at most10 units, source20 requests/20
+credits total, each model role11 INCLUDING Skill. No retry or automatic
+increase. Preregister scope `US listed companies`, actual UTC evaluation date
+2026-10-28 / seven calendar dates10-22..28 (Beijing execution10-29); UI/API
+bounds10/10/400/200/10, entries256/arrays256/scan1024/catalog65536, all other
+byte/token/time/evidence/EI limits unchanged. Normal Host API/CSRF, not a
+fixture. Any lawful EI acceptance continues existing Futu/Core automatically.
+DB baseline50/Direct3/batches26, no active runs. Original config backed up
+mode600 at `/private/tmp/ch-world-model-category.t3dX7N/`; Event hash unchanged.
+ONE normal POST created `39da868f-aee6-48b0-8fc2-aaac229e2345` at
+2026-10-28T23:52:43.943Z; persisted queryv0.4/sourcev0.3 and budgets20/20/
+11/11 verified. Terminal result pending; do not submit again. Preserve
+used/original configs and restore lower caps afterward.
+This grant does not replay or reinterpret the prior spent batches. Wall-clock
+measurement for this acceptance-only phase started2026-10-28T23:51:04Z;
+there is no planned production coding in this phase.
+
 ## Native-URL-policy single batch completed; Native path not live-proven — 2026-10-29
 
 ONE normal Host API run `a026659a-5661-4afa-a1f5-efc0d116529b`, implementation

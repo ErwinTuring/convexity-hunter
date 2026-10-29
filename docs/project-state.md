@@ -1,5 +1,8 @@
 # Project State
 
+## Native-unit source acquisition reached; contract decision pending — 2026-10-29
+ONE authorized run `39da868f` on`4b9c1ac` completed BLOCKED in138.197s:6 Native units,4 extraction failures,2 no-submission results, EI0/Futu0/Core0; DB51/Direct3/batches27. Per-URL extraction causes UNKNOWN; do not call all4 partial successes. Two existing partial-Extract tests PASS: complete-or-fail is current frozen policy, no proven bug. Proposed partial-coverage contract review is awaiting explicit user decision; no acceptance/coverage change implemented. No retry or extra unapproved calls; no new production code. Original private config restored; lower-cap original launcher READY at PID62617/session63280 with NEW UTC2026-10-29 session date after midnight; past batch date unchanged. See [checkpoint](current-checkpoint.md).
+
 ## Single new-policy run used fallback; positive closure still absent — 2026-10-29
 `d305e8e` deployed for ONE authorized World run `a026659a`, BLOCKED in122.358s. Native model path failed; normal empty-seed Web fallback produced1 submission, EI INCOMPLETE (event/date/listing/temporal fields missing). Core/Futu0; DB50/Direct3/batches26. Nonempty Native URL path NOT live-exercised; no claim of success/failure for it. No retry/new fees; grant spent and original private caps restored. Additive projection of ALREADY known Skill model error enums/whitelisted phases passes34 World tests/compile/diff and independent targeted review; cannot reconstruct lost history. Final lower-cap original launcher READY at PID61595/session62572; cached World/Direct reads200, DBcounts unchanged. See [checkpoint](current-checkpoint.md).
 
