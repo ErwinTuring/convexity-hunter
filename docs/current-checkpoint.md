@@ -1,5 +1,73 @@
 # Current Checkpoint
 
+## One v0.5 World acceptance completed; EI/Core not reached — 2026-10-29
+
+Reviewed code `43407c4` deployed for ONE normal World POST. Run
+`7636aa59-b6db-4bce-bfb3-5fd36f3070eb`, HTTP201, ended
+BLOCKED/HOST_BATCH_BLOCKED,2026-10-29T12:11:20.742Z–12:12:35.909Z
+(75.167s). This grant is SPENT; no retry or second batch.
+
+Native retained fixed reasons world_last30days_failed,
+world_last30days_model_failed, world_last30days_model_output_invalid and
+world_native_scope_fallback. It did not provide a successful Native-unit
+path; this is not zero events or proof the Skill lacks discovery ability.
+Normal scoped fallback produced ONE unit. Archivev0.2 preserves COMPLETE
+Extract coverage5/5, zero failed sources. No PARTIAL/EMPTY Extract outcome
+occurred, so this run does NOT validate the mixed-partial live branch.
+Shared Grounder retained world_grounder_failed / world_unit_grounder_failed:
+EI submissions0/accepted0/incomplete0, numeric Core cases0, one unavailable
+unit. No Futu/Core execution. Finer Grounder failure, native model cause,
+provider usage, tokens and spend are UNKNOWN; no acceptance bug or provider
+cause is established by these coarse labels.
+
+Public summary and lazy detail retain the same coverage after restart,
+without rerunning research. Main independently reread the normal API:
+BLOCKED, cases0/unavailable1, COMPLETE5/5, HostREADY/all3 executors configured.
+This proves complete-coverage failure-audit retention/reopen, not a real
+EI ACCEPTED or positive three-entry closure. Direct remains historical;
+normal Event was not rerun. Historical extraction failures stay UNKNOWN.
+
+Run-start versions/budgets below were verified. Restoration verified at
+12:17:28Z: original World config byte-for-byte SHA matches backup; Event
+config SHA unchanged. Original lower-cap launcher PID75779, explicit UTC
+evaluation date2026-10-29, READY/no active runs. Restored source3/3, model
+roles2/2, bounds1/10/400/200/10, entries/arrays/scan128, catalog65536. DB52
+runs/220 events/Direct3/batches28. Private guard/original backup/used config
+retained at `/private/tmp/ch-world-partial-20261029.t7bIle/`, directory0700,
+files0600, guard `one-post.guard`. No credentials/raw payload in Git.
+
+No production/test changes in this acceptance-only phase; no full suite.
+Documentation checks and Git state are finalized separately. The observed
+acceptance clock starts12:00:22Z; this phase is deployment/validation only
+(production coding0%), not a claimed70/30 BUILD split. No new paid run is
+authorized by this completed result.
+Main result/documentation check closed12:23:20Z (22min58s observed elapsed);
+configuration restoration had already been verified12:17:28Z.
+
+### Preregistration retained for this completed run
+
+User authorized deployment plus ONE fresh bounded normal World batch after
+the reviewed BUILD. Fresh HEAD/main/origin/main `43407c4`, initially clean.
+Scope `US listed companies`; actual UTC evaluation date2026-10-29 and seven
+calendar dates10-23..29. Preregister bounds10/10/400/200/10; total Tavily20
+requests/20credits, each model role11 INCLUDING Skill; entries256/arrays256/
+scan1024/catalog65536, all remaining byte/token/time limits unchanged.
+Expected opt-in policy: external World configv0.5, VALIDATED_PARTIAL_V0_1,
+world-v0.6/queryv0.5/sourcev0.4 and archivev0.2. No production/test changes,
+new source, upgraded Skill, new diagnostics or second batch authorized.
+
+Deploy through the original launcher, preserve private original config and
+restore it byte-for-byte after the run; Event config unchanged. No active
+run may be interrupted. Normal Host API/CSRF/Origin only; spend the one-shot
+guard before POST and retain exact returned run ID. Ambiguous submission
+failure does not authorize a retry. A lawful EI acceptance automatically
+continues existing Futu/Core; incompleteness must not trigger substitution
+or lowered standards. Historical grants remain spent, no replay.
+
+Execution delegated to one operational worker; completion/restoration and
+Main's independent normal-API reread are recorded above. No further calls
+are implied by unused request/credit caps. Initial observed checkpoint12:00:22Z.
+
 ## Validated partial World coverage BUILD complete — 2026-10-29
 
 User authorized the [frozen bounded BUILD](host-world-source-query-v0.1.md#validated-partial-extraction--contract-v01-2026-10-29).

@@ -1,5 +1,8 @@
 # Project State
 
+## One v0.5 World acceptance completed — 2026-10-29
+Code `43407c4`, ONE run `7636aa59`, BLOCKED in75.167s. Native model-output-invalid→normal scoped fallback; ONE unit, archived COMPLETE Extract5/5, zero failed sources. No actual PARTIAL/EMPTY branch. Grounder failed, finer causeUNKNOWN; EI submissions0/accepted0/incomplete0/Futu0/Core0, unavailable1. Source/query/World/archivev0.4/v0.5/v0.6/v0.2 and20/20/11/11 caps verified. Summary/lazy detail/reopen coverage retained, Main normal-API reread confirms. Grant SPENT, no repeat. Original World config restored byte-for-byte, Event SHA unchanged; lower-cap original launcher PID75779/UTC10-29 READY/no active runs. DB52/220events/Direct3/batches28. No production/test change or positive live EI/Core claim; see [checkpoint](current-checkpoint.md).
+
 ## Validated partial World coverage BUILD complete — 2026-10-29
 Fresh baseline Git `e72c236`, user-authorized bounded BUILD. Host audit/gate/wires, opt-in covered World execution/config v0.5, archive v0.2 and summary/lazy-detail disclosure implemented; EI/Core, existing admission and legacy strict behavior unchanged. Two independent publication findings corrected (authenticated admission preservation and EMPTY detail linkage); implementation review and targeted rereview PASS. Focused207/55/159 and fix8/context30 checks pass, with overlap. Full2136 initial run had33 loopback permission errors (permissioned server66PASS) and one baseline-stale assertion corrected test-only; do not call that initial command or a nonexistent post-fix full rerun green. Final compile/diff/API compatibility PASS. No live calls, private config/real DB changes or deployment. No new real EI/Core closure claim; see [checkpoint](current-checkpoint.md).
 
