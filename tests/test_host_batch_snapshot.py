@@ -36,11 +36,15 @@ from convexity_hunter.event_entry import UserEventInput
 from convexity_hunter.event_intelligence import (
     DistributionChangeMode,
     EventIntelligenceAcceptanceStatus,
+    EventSourceReference,
     assess_event_intelligence_submission,
 )
+from convexity_hunter.host_event import _safe_configuration_snapshot
 from convexity_hunter.host_batch_snapshot import case_key
 from convexity_hunter.host_profile import STANDARD_RESEARCH_PROFILE, StandardResearchProfile
+from convexity_hunter.host_source_coverage import HostSourceCoverageAudit
 from convexity_hunter.host_store import HostStore, StoreCorruptionError
+from tests.test_host_event import _config as _grounder_config
 
 
 _BASE_BOUNDS = {
@@ -153,6 +157,124 @@ def _metadata(mode):
     }
 
 
+def _covered_world_metadata():
+    metadata = _metadata("world")
+    snapshot = json.loads(
+        _safe_configuration_snapshot(
+            _grounder_config(),
+            source_search_policy_version="host-event-source-snapshot-v0.4",
+        ).decode("utf-8")
+    )
+    snapshot["world_source_query_policy"] = {
+        "schema_version": "world-source-query-v0.5",
+        "basis": "independent_native_event_units_partial_source_coverage",
+        "max_characters": 400,
+        "full_research_context_preserved": True,
+        "evaluation_date": "2030-01-01",
+    }
+    metadata["configuration_snapshot"] = snapshot
+    return metadata
+
+
+def _url_bound_submission(submission):
+    id_map = {}
+    sources = []
+    for index, source in enumerate(submission.sources):
+        locator = "https://example.test/coverage-source-{}".format(index)
+        source_id = "url:" + hashlib.sha256(locator.encode("utf-8")).hexdigest()
+        id_map[source.source_id] = source_id
+        sources.append(replace(source, source_id=source_id, locator=locator))
+    statements = tuple(
+        replace(
+            statement,
+            source_ids=tuple(id_map.get(source_id, source_id) for source_id in statement.source_ids),
+        )
+        for statement in submission.statements
+    )
+    result = replace(submission, sources=tuple(sources), statements=statements)
+    result.__post_init__()
+    return result
+
+
+def _coverage_audit(
+    host_run_id, unit_id, *, run_id=None, sources=(), failed_count=1
+):
+    entries = [
+        {
+            "source_id": source.source_id,
+            "locator": source.locator,
+            "status": "BODY_AVAILABLE",
+            "body_sha256": hashlib.sha256(
+                ("synthetic body {}".format(index)).encode("utf-8")
+            ).hexdigest(),
+        }
+        for index, source in enumerate(sources)
+    ]
+    for index in range(failed_count):
+        locator = "https://example.test/failed-source-{}".format(index)
+        entries.append(
+            {
+                "source_id": "url:" + hashlib.sha256(locator.encode("utf-8")).hexdigest(),
+                "locator": locator,
+                "status": "FAILED",
+                "reason_code": "PROVIDER_REPORTED_FAILURE",
+            }
+        )
+    success_count = len(sources)
+    status = (
+        "EMPTY" if success_count == 0
+        else "COMPLETE" if failed_count == 0
+        else "PARTIAL"
+    )
+    return {
+        "schema_version": "host-source-coverage-v0.1",
+        "host_run_id": host_run_id,
+        "unit_id": unit_id,
+        "run_id": run_id or "grounder-" + unit_id,
+        "canonical_input_hash": hashlib.sha256(
+            ("input-" + unit_id).encode("utf-8")
+        ).hexdigest(),
+        "status": status,
+        "entries": entries,
+    }
+
+
+def _coverage_unit_row(
+    host_run_id,
+    result,
+    submission,
+    *,
+    unit_id="unit-1",
+    failed_count=1,
+    covered_sources=None,
+):
+    case_ids = []
+    for record in result.case_set.cases:
+        assessment = record.context.assessment
+        if assessment is not None and assessment.submission is submission:
+            case_ids.append(record.case_id)
+    submission_ids = []
+    batch = result.case_set.submissions
+    if batch is not None:
+        submission_ids = [
+            item.submission_id for item in batch.submissions if item is submission
+        ]
+    return {
+        "unit_id": unit_id,
+        "source_coverage": _coverage_audit(
+            host_run_id,
+            unit_id,
+            run_id=(submission_ids[0] if submission_ids else None),
+            sources=(
+                submission.sources if covered_sources is None else covered_sources
+            ),
+            failed_count=failed_count,
+        ),
+        "submission_ids": submission_ids,
+        "case_ids": case_ids,
+    }
+
+
 class HostBatchSnapshotTests(unittest.TestCase):
     def setUp(self):
         canonical_temp_root = pathlib.Path(tempfile.gettempdir()).resolve()
@@ -245,6 +367,324 @@ class HostBatchSnapshotTests(unittest.TestCase):
         self.addCleanup(reopened.close)
         self.assertEqual(reopened.get_batch_case(run_id, case_key(record.case_id)), detail)
         self.assertEqual(reopened.get_run(run_id)["status"], "COMPLETED")
+
+    def test_partial_source_coverage_v02_archive_and_read_projections(self):
+        raw_input = "synthetic covered World request"
+        submission = _url_bound_submission(
+            make_submission(
+                "covered-submission",
+                ("covered-hypothesis",),
+                DistributionChangeMode.EXTREME_TAIL_UP,
+            )
+        )
+        result = _standard_profile_result(
+            _world_result(raw_input, submission=submission)
+        )
+        record = result.case_set.cases[0]
+        run_id = self._create_run(
+            "world",
+            raw_input,
+            _policy().bounds,
+            metadata=_covered_world_metadata(),
+        )
+        sidecar = (_coverage_unit_row(run_id, result, submission),)
+        self.assertIsNone(
+            self.store.save_batch_result(
+                run_id, result, source_coverage_by_unit=sidecar
+            )
+        )
+
+        archive, _decoded = self.store._read_batch_archive(run_id)
+        self.assertEqual(
+            archive["schema_version"], "host-batch-snapshot-v0.2"
+        )
+        self.assertEqual(
+            set(archive),
+            {
+                "schema_version", "run_id", "mode", "input_sha256",
+                "profile_snapshot", "outcome", "case_set_reasons", "summary",
+                "event_input_audit", "ei_audit", "cases", "unavailable",
+                "source_coverage_by_unit",
+            },
+        )
+        self.assertEqual(
+            archive["source_coverage_by_unit"][0]["case_ids"],
+            [record.case_id],
+        )
+        self.assertEqual(
+            archive["source_coverage_by_unit"][0]["submission_ids"],
+            [submission.submission_id],
+        )
+        self.assertEqual(
+            archive["source_coverage_by_unit"][0]["source_coverage"]["status"],
+            "PARTIAL",
+        )
+        self.assertNotIn("source_coverage_by_unit", archive["summary"])
+
+        summary = self.store.get_batch_summary(run_id)
+        self.assertEqual(summary["case_count"], 1)
+        self.assertEqual(summary["case_summaries"][0]["case_id"], record.case_id)
+        coverage = summary["case_summaries"][0]["source_coverage"]
+        self.assertEqual(coverage["status"], "PARTIAL")
+        self.assertEqual((coverage["successful_count"], coverage["requested_count"]), (1, 2))
+        self.assertEqual(
+            coverage["failed_sources"][0]["reason_code"],
+            "PROVIDER_REPORTED_FAILURE",
+        )
+        self.assertEqual(summary["source_coverage_by_unit"][0]["unit_id"], "unit-1")
+        listed = self.store.list_batch_cases(run_id)
+        self.assertEqual(listed[0]["source_coverage"], coverage)
+        detail = self.store.get_batch_case(run_id, case_key(record.case_id))
+        self.assertEqual(detail["source_coverage"], coverage)
+        self.assertIn(
+            "来源提取覆盖不完整；仅核验已取得正文，失败来源未被视为事实或反证不存在。",
+            detail["report"],
+        )
+        self.assertIn(coverage["failed_sources"][0]["source_id"], detail["report"])
+        self.assertIn(coverage["failed_sources"][0]["locator"], detail["report"])
+        self.assertIn("PROVIDER_REPORTED_FAILURE", detail["report"])
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        self.assertEqual(reopened.get_batch_summary(run_id), summary)
+        self.assertEqual(
+            reopened.get_batch_case(run_id, case_key(record.case_id)), detail
+        )
+
+    def test_pipeline_admission_extra_and_failed_or_cross_unit_linkage(self):
+        from convexity_hunter import host_batch_snapshot as snapshot_module
+
+        raw_input = "synthetic Extract plus authenticated admission source"
+        extracted_submission = _url_bound_submission(
+            make_submission("covered-submission", ("covered-hypothesis",))
+        )
+        admitted_locator = "https://admission.example.test/pipeline-extra"
+        admitted_id = "url:" + hashlib.sha256(
+            admitted_locator.encode("utf-8")
+        ).hexdigest()
+        submission = replace(
+            extracted_submission,
+            sources=extracted_submission.sources
+            + (
+                EventSourceReference(
+                    admitted_id, admitted_locator, "Authenticated admission extra"
+                ),
+            ),
+        )
+        submission.__post_init__()
+        result = _standard_profile_result(
+            _world_result(raw_input, submission=submission)
+        )
+        run_id = self._create_run(
+            "world",
+            raw_input,
+            _policy().bounds,
+            metadata=_covered_world_metadata(),
+        )
+        row = _coverage_unit_row(
+            run_id,
+            result,
+            submission,
+            covered_sources=extracted_submission.sources,
+        )
+        self.store.save_batch_result(
+            run_id, result, source_coverage_by_unit=(row,)
+        )
+        archive, _decoded = self.store._read_batch_archive(run_id)
+        submission_audit = archive["ei_audit"]["submissions"][0]
+        archived_source_ids = {
+            item["source_id"] for item in submission_audit["sources"]
+        }
+        self.assertIn(admitted_id, archived_source_ids)
+        coverage_entries = archive["source_coverage_by_unit"][0][
+            "source_coverage"
+        ]["entries"]
+        self.assertNotIn(admitted_id, {item["source_id"] for item in coverage_entries})
+
+        failed = next(item for item in coverage_entries if item["status"] == "FAILED")
+        for conflict in (
+            {
+                "source_id": "url:" + "f" * 64,
+                "locator": failed["locator"],
+            },
+            {
+                "source_id": failed["source_id"],
+                "locator": "https://admission.example.test/other-extra",
+            },
+        ):
+            altered_submission = dict(submission_audit)
+            altered_submission["sources"] = list(submission_audit["sources"]) + [
+                conflict
+            ]
+            with self.subTest(conflict=conflict):
+                with self.assertRaises(ValueError):
+                    snapshot_module._validate_source_coverage_links(
+                        archive["source_coverage_by_unit"],
+                        host_run_id=run_id,
+                        submissions=[altered_submission],
+                        cases=archive["cases"],
+                        unavailable=archive["unavailable"],
+                    )
+
+        other_unit = {
+            "unit_id": "unit-other",
+            "source_coverage": _coverage_audit(
+                run_id, "unit-other", failed_count=1
+            ),
+            "submission_ids": [],
+            "case_ids": [],
+        }
+        all_rows = archive["source_coverage_by_unit"] + [other_unit]
+        with self.assertRaises(ValueError):
+            snapshot_module._validate_source_coverage_links(
+                all_rows,
+                host_run_id=run_id,
+                submissions=archive["ei_audit"]["submissions"],
+                cases=archive["cases"],
+                unavailable=[
+                    {
+                        "case_id": "unit-other",
+                        "lineage": {
+                            "submission_id": submission.submission_id,
+                            "hypothesis_id": None,
+                        },
+                    }
+                ],
+            )
+        with self.assertRaises(ValueError):
+            snapshot_module._validate_source_coverage_links(
+                all_rows,
+                host_run_id=run_id,
+                submissions=archive["ei_audit"]["submissions"],
+                cases=archive["cases"],
+                unavailable=[
+                    {
+                        "case_id": "unit-1",
+                        "lineage": {
+                            "submission_id": None,
+                            "hypothesis_id": None,
+                        },
+                    }
+                ],
+            )
+
+    def test_partial_source_coverage_rejects_dropped_or_mislinked_sidecar(self):
+        raw_input = "synthetic covered World request"
+        submission = _url_bound_submission(
+            make_submission("covered-submission", ("covered-hypothesis",))
+        )
+        result = _standard_profile_result(
+            _world_result(raw_input, submission=submission)
+        )
+        for mismatch in ("dropped", "wrong-run", "wrong-case"):
+            with self.subTest(mismatch=mismatch):
+                run_id = self._create_run(
+                    "world",
+                    raw_input,
+                    _policy().bounds,
+                    metadata=_covered_world_metadata(),
+                )
+                row = _coverage_unit_row(run_id, result, submission)
+                sidecar = (row,)
+                if mismatch == "dropped":
+                    sidecar = None
+                elif mismatch == "wrong-run":
+                    row["source_coverage"]["host_run_id"] = "not-the-host-run"
+                else:
+                    row["case_ids"] = ["unavailable-case-must-not-be-a-core-id"]
+                with self.assertRaises((TypeError, ValueError)):
+                    self.store.save_batch_result(
+                        run_id, result, source_coverage_by_unit=sidecar
+                    )
+                self.assertIsNone(self.store.get_batch_summary(run_id))
+
+    def test_empty_source_coverage_is_retained_without_submissions_or_core_cases(self):
+        raw_input = "synthetic all-failed World unit"
+        empty_batch = SourceSubmissionBatch(raw_input, ())
+        result = run_world_core(
+            raw_input,
+            source_producer=lambda _raw: empty_batch,
+            market_bridge=FakeMarketBridge(()),
+            policy=_policy(),
+        )
+        result = _standard_profile_result(result)
+        self.assertEqual(result.case_set.cases, ())
+        self.assertEqual(result.case_set.unavailable, ())
+        unavailable = (
+            CoreUnavailableCase("unit-empty", ("EMPTY_SOURCE_UNIT",)),
+            CoreUnavailableCase("global-unavailable", ("GLOBAL_BRANCH_UNAVAILABLE",)),
+        )
+        case_set = CoreCaseSet(
+            "WORLD",
+            raw_input,
+            empty_batch,
+            (),
+            unavailable,
+            result.case_set.reasons,
+        )
+        result = CoreRunResult(case_set, compact_summary(case_set))
+        run_id = self._create_run(
+            "world",
+            raw_input,
+            _policy().bounds,
+            metadata=_covered_world_metadata(),
+        )
+        empty_audit = _coverage_audit(
+            run_id, "unit-empty", sources=(), failed_count=2
+        )
+        row = {
+            "unit_id": "unit-empty",
+            "source_coverage": empty_audit,
+            "submission_ids": [],
+            "case_ids": [],
+        }
+        self.store.save_batch_result(
+            run_id, result, source_coverage_by_unit=(row,)
+        )
+        archive, _decoded = self.store._read_batch_archive(run_id)
+        self.assertEqual(
+            archive["source_coverage_by_unit"][0]["source_coverage"]["status"],
+            "EMPTY",
+        )
+        summary = self.store.get_batch_summary(run_id)
+        self.assertEqual(summary["source_coverage_by_unit"][0]["status"], "EMPTY")
+        self.assertEqual(summary["source_coverage_by_unit"][0]["successful_count"], 0)
+        self.assertEqual(summary["source_coverage_by_unit"][0]["requested_count"], 2)
+        self.assertEqual(summary["case_count"], 0)
+        self.assertEqual(summary["unavailable_count"], 2)
+        self.assertEqual(summary["unavailable_cases"][0]["case_id"], "unit-empty")
+        self.assertEqual(
+            summary["unavailable_cases"][0]["source_coverage"]["status"], "EMPTY"
+        )
+        self.assertEqual(
+            summary["unavailable_cases"][1]["source_coverage"]["status"], "UNKNOWN"
+        )
+        self.assertEqual(
+            summary["unavailable_cases"][1]["source_coverage"]["unit_id"], None
+        )
+        self.assertEqual(archive["source_coverage_by_unit"][0]["case_ids"], [])
+        unit_detail = self.store.get_batch_case(
+            run_id, case_key("unit-empty")
+        )
+        global_detail = self.store.get_batch_case(
+            run_id, case_key("global-unavailable")
+        )
+        self.assertIsNone(unit_detail["report"])
+        self.assertEqual(unit_detail["source_coverage"]["status"], "EMPTY")
+        self.assertEqual(global_detail["source_coverage"]["status"], "UNKNOWN")
+
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        self.assertEqual(reopened.get_batch_summary(run_id), summary)
+        self.assertEqual(
+            reopened.get_batch_case(run_id, case_key("unit-empty")), unit_detail
+        )
+        self.assertEqual(
+            reopened.get_batch_case(run_id, case_key("global-unavailable")),
+            global_detail,
+        )
 
     def test_event_audit_is_unverified_and_retains_normalized_ei_lineage(self):
         description = "event description exactly bound to run input"

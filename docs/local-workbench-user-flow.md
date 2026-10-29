@@ -133,6 +133,14 @@ exact verification 和 `run_direct_core`。SDK 输出受控；不读取 Futu 私
 
 ## 结果与历史
 
+World 的显式部分提取后继路径见
+[来源覆盖契约](host-world-source-query-v0.1.md#validated-partial-extraction--contract-v01-2026-10-29)。
+启用该路径不代表失败网页已被读取：结果必须从同次归档披露各单元的
+成功/请求数量、失败来源及固定原因。部分覆盖只支持核验已取得正文，
+不能支持“没有相反证据”的推断；历史无覆盖审计的记录保持未知。
+旧配置不会自动切换。本轮 BUILD 不包含修改用户配置、部署或真实调用，
+最终实现及验证状态以 [checkpoint](current-checkpoint.md) 为准。
+
 World 的正常批量结果保留原始原因码，并对三个已知原因提供中文说明：
 `world_grounder_no_submission` 不表示原始线索为零、全部假设被拒或 EI
 `INCOMPLETE`；`world_last30days_empty` 不证明市场无事件或来源全覆盖；

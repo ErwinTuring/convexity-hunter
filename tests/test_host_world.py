@@ -1,6 +1,7 @@
 """Synthetic-only coverage for the thin World composition."""
 
 import datetime
+import hashlib
 import inspect
 import json
 import math
@@ -28,6 +29,10 @@ from convexity_hunter.event_intelligence import (  # noqa: E402
     EventUnderlyingHypothesis,
 )
 from convexity_hunter.host_event import HostEventGrounderConfig  # noqa: E402
+from convexity_hunter.host_grounder_builder import (  # noqa: E402
+    HostBuildContext,
+    HostSourceBody,
+)
 import convexity_hunter.host_event as host_event_module  # noqa: E402
 import convexity_hunter.host_world as host_world_module  # noqa: E402
 from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError  # noqa: E402
@@ -69,9 +74,21 @@ from convexity_hunter.host_store import HostStore  # noqa: E402
 from convexity_hunter.host_world import (  # noqa: E402
     HostWorldConfig,
     HostWorldError,
+    _CoveredWorldResult,
+    _CoveredWorldUnitCoverage,
+    _SOURCE_COVERAGE_POLICY_REQUIRE_COMPLETE,
+    _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1,
+    _create_covered_world_executor,
     _model_json_object,
+    _validated_source_coverage_audit,
+    _validate_covered_world_result,
     _world_model_transport_diagnostic,
     create_world_runner,
+)
+from convexity_hunter.host_source_coverage import HostSourceCoverageAudit  # noqa: E402
+from convexity_hunter.host_source_admission import (  # noqa: E402
+    _Reply,
+    _SourceAdmissionClient,
 )
 
 
@@ -254,6 +271,40 @@ def _submission(submission_id, source_url):
         statements=(),
         hypotheses=(EventUnderlyingHypothesis("hyp-" + submission_id, None, None, None, None, None),),
     )
+
+
+def _url_source_id(locator):
+    return "url:" + hashlib.sha256(locator.encode("utf-8")).hexdigest()
+
+
+def _coverage_audit(host_run_id, unit_id, run_id, *, success=(), failed=()):
+    entries = []
+    for locator, body in success:
+        entries.append({
+            "source_id": _url_source_id(locator),
+            "locator": locator,
+            "status": "BODY_AVAILABLE",
+            "body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        })
+    for locator in failed:
+        entries.append({
+            "source_id": _url_source_id(locator),
+            "locator": locator,
+            "status": "FAILED",
+            "reason_code": "PROVIDER_REPORTED_FAILURE",
+        })
+    status = (
+        "EMPTY" if not success else "PARTIAL" if failed else "COMPLETE"
+    )
+    return HostSourceCoverageAudit.from_dict({
+        "schema_version": "host-source-coverage-v0.1",
+        "host_run_id": host_run_id,
+        "unit_id": unit_id,
+        "run_id": run_id,
+        "canonical_input_hash": "c" * 64,
+        "status": status,
+        "entries": entries,
+    })
 
 
 class _Response:
@@ -2597,6 +2648,614 @@ class HostWorldTests(unittest.TestCase):
                 "evaluation_date"
             ],
             "2026-10-28",
+        )
+
+    def test_public_runner_rejects_partial_policy_before_constructing_paid_path(self):
+        partial_config = replace(
+            self.config,
+            source_coverage_policy=(
+                _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1
+            ),
+        )
+        self.assertEqual(
+            self.config.source_coverage_policy,
+            _SOURCE_COVERAGE_POLICY_REQUIRE_COMPLETE,
+        )
+        with mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            side_effect=AssertionError("legacy executor must reject before setup"),
+        ), mock.patch(
+            "convexity_hunter.host_world.run_last30days_discovery",
+            side_effect=AssertionError("Skill must not run"),
+        ):
+            with self.assertRaises(HostWorldError) as raised:
+                create_world_runner(
+                    partial_config,
+                    repo_root=ROOT,
+                    market_bridge=self.lazy_bridge,
+                )
+        self.assertEqual(
+            raised.exception.code,
+            "WORLD_SOURCE_COVERAGE_EXECUTOR_REQUIRED",
+        )
+
+    def test_coverage_audit_preserves_authenticated_admission_extras_and_blocks_failed_laundering(
+        self,
+    ):
+        observed_at = datetime.datetime(
+            2026, 10, 7, tzinfo=datetime.timezone.utc
+        )
+        success_url = (
+            "https://www.sec.gov/Archives/edgar/data/320193/"
+            "000032019326000123/example.htm"
+        )
+        failed_url = "https://source.example/failed-extract"
+        cover_html = (
+            "<html><body><p>Example Holdings, Inc.</p>"
+            "<p>(Exact name of registrant as specified in its charter)</p>"
+            "<table><tr><th>Title of each class</th><th></th>"
+            "<th>Trading Symbol(s)</th><th></th>"
+            "<th>Name of each exchange on which registered</th></tr>"
+            "<tr><td>Common Stock</td><td></td><td>ACME</td><td></td>"
+            "<td>The Nasdaq&#13;Capital Market</td></tr></table>"
+            "</body></html>"
+        ).encode("utf-8")
+
+        def admission_transport(locator, _address, _timeout, _max_bytes):
+            if locator == success_url:
+                return _Reply(
+                    200,
+                    {"Content-Type": "text/html; charset=UTF-8"},
+                    cover_html,
+                )
+            return _Reply(404, {"Content-Type": "text/plain"}, b"")
+
+        admission_client = _SourceAdmissionClient(
+            timeout_seconds=2.0,
+            max_response_bytes=200_000,
+            byte_budget=1_000_000,
+            _transport=admission_transport,
+            _resolver=lambda _host, _port: ("93.184.216.34",),
+            _clock=lambda: observed_at,
+        )
+        admission_batch = admission_client.admit_candidates((success_url,))
+        self.assertEqual(len(admission_batch.admissions), 1)
+        admission = admission_batch.admissions[0]
+
+        host_run_id = "outer-run-admission-fixture"
+        unit_id = "world-unit-admission-fixture"
+        run_id = "grounder-admission-fixture"
+        extract_body = "Extracted bytes for the admitted filing URL."
+        audit = _coverage_audit(
+            host_run_id,
+            unit_id,
+            run_id,
+            success=((success_url, extract_body),),
+            failed=(failed_url,),
+        )
+        extract_source_id = _url_source_id(success_url)
+        source_bodies = {
+            extract_source_id: HostSourceBody(
+                extract_body,
+                hashlib.sha256(extract_body.encode("utf-8")).hexdigest(),
+                success_url,
+                observed_at,
+            ),
+            admission.source_id: HostSourceBody(
+                admission.parsed_body,
+                admission.parsed_body_sha256,
+                admission.final_locator,
+                admission.retrieved_at,
+            ),
+        }
+        submission = replace(
+            _submission(run_id, success_url),
+            sources=(EventSourceReference(admission.source_id, success_url),),
+        )
+
+        validated = _validated_source_coverage_audit(
+            audit,
+            host_run_id=host_run_id,
+            unit_id=unit_id,
+            run_id=run_id,
+            canonical_input_hash="c" * 64,
+            source_bodies=source_bodies,
+            submissions=(submission,),
+        )
+        self.assertIsNotNone(validated)
+        self.assertEqual(validated[0], audit)
+
+        wrong_locator_bodies = dict(source_bodies)
+        wrong_locator_bodies[extract_source_id] = HostSourceBody(
+            extract_body,
+            hashlib.sha256(extract_body.encode("utf-8")).hexdigest(),
+            success_url + "/alternate",
+            observed_at,
+        )
+        self.assertIsNone(
+            _validated_source_coverage_audit(
+                audit,
+                host_run_id=host_run_id,
+                unit_id=unit_id,
+                run_id=run_id,
+                canonical_input_hash="c" * 64,
+                source_bodies=wrong_locator_bodies,
+            )
+        )
+
+        constructor_bypassed_body = object.__new__(HostSourceBody)
+        for name, value in vars(source_bodies[extract_source_id]).items():
+            object.__setattr__(constructor_bypassed_body, name, value)
+        object.__setattr__(constructor_bypassed_body, "body", extract_body + "tampered")
+        tampered_bodies = dict(source_bodies)
+        tampered_bodies[extract_source_id] = constructor_bypassed_body
+        self.assertIsNone(
+            _validated_source_coverage_audit(
+                audit,
+                host_run_id=host_run_id,
+                unit_id=unit_id,
+                run_id=run_id,
+                canonical_input_hash="c" * 64,
+                source_bodies=tampered_bodies,
+            )
+        )
+
+        failed_source_id = _url_source_id(failed_url)
+        alternate_admission_id = "host-admission-" + hashlib.sha256(
+            failed_url.encode("ascii")
+        ).hexdigest()[:24]
+        failed_body = HostSourceBody(
+            "A different body under the failed locator.",
+            hashlib.sha256(
+                b"A different body under the failed locator."
+            ).hexdigest(),
+            failed_url,
+            observed_at,
+        )
+        for source_id, body in (
+            (failed_source_id, source_bodies[extract_source_id]),
+            (alternate_admission_id, failed_body),
+        ):
+            with self.subTest(source_id=source_id):
+                self.assertIsNone(
+                    _validated_source_coverage_audit(
+                        audit,
+                        host_run_id=host_run_id,
+                        unit_id=unit_id,
+                        run_id=run_id,
+                        canonical_input_hash="c" * 64,
+                        source_bodies={**source_bodies, source_id: body},
+                    )
+                )
+
+        for reference in (
+            EventSourceReference(failed_source_id, success_url),
+            EventSourceReference(alternate_admission_id, failed_url),
+        ):
+            bad_submission = replace(submission, sources=(reference,))
+            with self.subTest(reference=reference):
+                self.assertIsNone(
+                    _validated_source_coverage_audit(
+                        audit,
+                        host_run_id=host_run_id,
+                        unit_id=unit_id,
+                        run_id=run_id,
+                        canonical_input_hash="c" * 64,
+                        submissions=(bad_submission,),
+                    )
+                )
+
+    def test_covered_result_rejects_failed_source_id_or_locator_after_core(self):
+        from tests.test_core_application import FakeMarketBridge, make_policy
+
+        raw_input = "synthetic covered result with failed source refs"
+        host_run_id = "outer-run-failed-reference"
+        unit_id = "world-unit-failed-reference"
+        run_id = "grounder-failed-reference"
+        success_url = "https://covered.example/success"
+        failed_url = "https://covered.example/failed"
+        success_id = _url_source_id(success_url)
+        failed_id = _url_source_id(failed_url)
+        policy = make_policy([])
+
+        def make_result(reference):
+            submission = replace(
+                _submission(run_id, success_url),
+                sources=(reference,),
+            )
+            batch = SourceSubmissionBatch(raw_input, (submission,))
+            core_result = real_run_world_core(
+                raw_input,
+                source_producer=lambda _raw: batch,
+                market_bridge=FakeMarketBridge(()),
+                policy=policy,
+            )
+            audit = _coverage_audit(
+                host_run_id,
+                unit_id,
+                run_id,
+                success=((success_url, "Synthetic fetched body."),),
+                failed=(failed_url,),
+            )
+            row = _CoveredWorldUnitCoverage(
+                unit_id,
+                audit,
+                (run_id,),
+                (),
+            )
+            linked_rows = host_world_module._covered_world_case_links(
+                core_result,
+                (row,),
+                ((submission, unit_id),),
+                raw_input=raw_input,
+            )
+            return _CoveredWorldResult(core_result, linked_rows)
+
+        accepted_result = _validate_covered_world_result(
+            make_result(EventSourceReference(success_id, success_url)),
+            host_run_id=host_run_id,
+            raw_input=raw_input,
+            bounds=policy.bounds,
+        )
+        self.assertEqual(accepted_result[0]["submission_ids"], [run_id])
+
+        for reference in (
+            EventSourceReference(failed_id, success_url),
+            EventSourceReference("host-admission-alternate", failed_url),
+        ):
+            with self.subTest(reference=reference):
+                with self.assertRaises(HostWorldError):
+                    _validate_covered_world_result(
+                        make_result(reference),
+                        host_run_id=host_run_id,
+                        raw_input=raw_input,
+                        bounds=policy.bounds,
+                    )
+
+    def test_covered_executor_transports_partial_audit_through_same_core_path(self):
+        host_run_id = "outer-run-synthetic-01"
+        success_url = "https://covered.example/success"
+        failed_url = "https://covered.example/failed"
+        body = "Synthetic grounded source body."
+        source_id = _url_source_id(success_url)
+        observed_at = datetime.datetime(
+            2026, 10, 7, tzinfo=datetime.timezone.utc
+        )
+        identities = []
+        calls = []
+
+        def grounder_factory(_config, **_kwargs):
+            def world_source_query_factory(
+                query, *, seed_urls=(), source_coverage_identity=None
+            ):
+                self.assertEqual(seed_urls, ())
+                identities.append(source_coverage_identity)
+
+                def query_bound_grounder(text, *, run_id, bounds):
+                    calls.append((text, run_id, bounds))
+                    audit = _coverage_audit(
+                        host_run_id,
+                        source_coverage_identity[1],
+                        run_id,
+                        success=((success_url, body),),
+                        failed=(failed_url,),
+                    )
+                    event_input = UserEventInput(text)
+                    source = EventSourceReference(source_id, success_url)
+                    submission = EventIntelligenceSubmission(
+                        submission_id=run_id,
+                        event_id="event-" + run_id,
+                        producer_id="synthetic-covered-grounder",
+                        producer_version="synthetic-v1",
+                        observed_at=observed_at,
+                        event_description="Synthetic grounded event.",
+                        event_date_range=None,
+                        sources=(source,),
+                        statements=(),
+                        hypotheses=(EventUnderlyingHypothesis(
+                            "hyp-" + run_id, None, None, None, None, None
+                        ),),
+                    )
+                    source_body = HostSourceBody(
+                        body,
+                        hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                        success_url,
+                        observed_at,
+                    )
+                    context = HostBuildContext(
+                        raw_input=event_input,
+                        submission_id=run_id,
+                        event_id="event-" + run_id,
+                        producer_id="synthetic-covered-grounder",
+                        producer_version="synthetic-v1",
+                        observed_at=observed_at,
+                        source_bodies={source_id: source_body},
+                        run_id=run_id,
+                        canonical_input_hash="c" * 64,
+                        source_coverage=audit,
+                    )
+                    batch = SourceSubmissionBatch(event_input, (submission,))
+                    build = SimpleNamespace(
+                        context=context,
+                        raw_input=event_input,
+                        source_batch=batch,
+                    )
+                    return SimpleNamespace(build_result=build)
+
+                return query_bound_grounder
+
+            grounder = self._fake_grounder(_config)
+            grounder._world_source_query_factory = world_source_query_factory
+            return grounder
+
+        partial_config = replace(
+            self.config,
+            source_coverage_policy=(
+                _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1
+            ),
+        )
+        empty_skill = HostSkillResult("empty", None, (), (), (), 0)
+        with mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            side_effect=grounder_factory,
+        ), mock.patch(
+            "convexity_hunter.host_world.run_last30days_discovery",
+            return_value=empty_skill,
+        ), mock.patch.object(
+            ModelCredential, "resolve", return_value="synthetic-token"
+        ):
+            executor = _create_covered_world_executor(
+                partial_config,
+                repo_root=ROOT,
+                market_bridge=self.lazy_bridge,
+            )
+            snapshot = executor.configuration_snapshot()
+            result = executor(
+                self.raw_input,
+                bounds=self.post_bounds,
+                host_run_id=host_run_id,
+            )
+
+        self.assertIs(type(result), _CoveredWorldResult)
+        self.assertEqual(tuple(inspect.signature(executor).parameters), (
+            "raw_input", "bounds", "host_run_id"
+        ))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(identities, [(host_run_id, result.source_coverage_by_unit[0].unit_id)])
+        self.assertEqual(
+            snapshot["sources"][0]["schema_version"],
+            "host-event-source-snapshot-v0.4",
+        )
+        self.assertEqual(
+            snapshot["world_source_query_policy"],
+            {
+                "schema_version": "world-source-query-v0.5",
+                "basis": "independent_native_event_units_partial_source_coverage",
+                "max_characters": 400,
+                "full_research_context_preserved": True,
+                "evaluation_date": "2026-10-07",
+            },
+        )
+        self.assertEqual(
+            result.source_coverage_by_unit[0].source_coverage.status,
+            "PARTIAL",
+        )
+        self.assertEqual(result.source_coverage_by_unit[0].case_ids, ())
+        self.assertIn(
+            "world-v0.6",
+            result.core_result.case_set.submissions.submissions[0].producer_version,
+        )
+        self.assertEqual(
+            result.core_result.case_set.unavailable[0].context.assessment.submission,
+            result.core_result.case_set.submissions.submissions[0],
+        )
+
+        rows = _validate_covered_world_result(
+            result,
+            host_run_id=host_run_id,
+            raw_input=self.raw_input,
+            bounds=self.post_bounds,
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(
+            set(rows[0]),
+            {"unit_id", "source_coverage", "submission_ids", "case_ids"},
+        )
+        self.assertEqual(rows[0]["source_coverage"]["status"], "PARTIAL")
+        self.assertEqual(rows[0]["submission_ids"], [calls[0][1]])
+        rows[0]["source_coverage"]["entries"].clear()
+        fresh_rows = _validate_covered_world_result(
+            result,
+            host_run_id=host_run_id,
+            raw_input=self.raw_input,
+            bounds=self.post_bounds,
+        )
+        self.assertEqual(len(fresh_rows[0]["source_coverage"]["entries"]), 2)
+
+        original_row = result.source_coverage_by_unit[0]
+        dropped_audit = replace(original_row, source_coverage=None)
+        dropped_result = replace(
+            result, source_coverage_by_unit=(dropped_audit,)
+        )
+        with self.assertRaises(HostWorldError):
+            _validate_covered_world_result(
+                dropped_result,
+                host_run_id=host_run_id,
+                raw_input=self.raw_input,
+                bounds=self.post_bounds,
+            )
+        swapped_audit = _coverage_audit(
+            host_run_id,
+            original_row.unit_id + "-swapped",
+            calls[0][1],
+            success=((success_url, body),),
+            failed=(failed_url,),
+        )
+        swapped_result = replace(
+            result,
+            source_coverage_by_unit=(
+                replace(original_row, source_coverage=swapped_audit),
+            ),
+        )
+        with self.assertRaises(HostWorldError):
+            _validate_covered_world_result(
+                swapped_result,
+                host_run_id=host_run_id,
+                raw_input=self.raw_input,
+                bounds=self.post_bounds,
+            )
+
+    def test_covered_executor_retains_valid_empty_failure_audit_without_cases(self):
+        host_run_id = "outer-run-empty-synthetic"
+        identities = []
+
+        def grounder_factory(_config, **_kwargs):
+            def world_source_query_factory(
+                _query, *, seed_urls=(), source_coverage_identity=None
+            ):
+                self.assertEqual(seed_urls, ())
+                identities.append(source_coverage_identity)
+
+                def query_bound_grounder(_text, *, run_id, bounds):
+                    audit = _coverage_audit(
+                        host_run_id,
+                        source_coverage_identity[1],
+                        run_id,
+                        failed=("https://covered.example/all-failed",),
+                    )
+                    error = HostGrounderRuntimeError("EXTRACTION_FAILURE")
+                    error._source_coverage_audit = audit
+                    raise error
+
+                return query_bound_grounder
+
+            grounder = self._fake_grounder(_config)
+            grounder._world_source_query_factory = world_source_query_factory
+            return grounder
+
+        partial_config = replace(
+            self.config,
+            source_coverage_policy=(
+                _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1
+            ),
+        )
+        empty_skill = HostSkillResult("empty", None, (), (), (), 0)
+        with mock.patch(
+            "convexity_hunter.host_world.create_event_grounder",
+            side_effect=grounder_factory,
+        ), mock.patch(
+            "convexity_hunter.host_world.run_last30days_discovery",
+            return_value=empty_skill,
+        ), mock.patch.object(
+            ModelCredential, "resolve", return_value="synthetic-token"
+        ):
+            executor = _create_covered_world_executor(
+                partial_config,
+                repo_root=ROOT,
+                market_bridge=self.lazy_bridge,
+            )
+            result = executor(
+                self.raw_input,
+                bounds=self.post_bounds,
+                host_run_id=host_run_id,
+            )
+
+        row = result.source_coverage_by_unit[0]
+        self.assertEqual(row.source_coverage.status, "EMPTY")
+        self.assertEqual(row.submission_ids, ())
+        self.assertEqual(row.case_ids, ())
+        self.assertEqual(result.core_result.case_set.submissions.submissions, ())
+        self.assertEqual(
+            _validate_covered_world_result(
+                result,
+                host_run_id=host_run_id,
+                raw_input=self.raw_input,
+                bounds=self.post_bounds,
+            )[0]["source_coverage"]["status"],
+            "EMPTY",
+        )
+
+    def test_covered_result_case_ids_follow_actual_core_context_links(self):
+        from tests.test_core_application import (
+            FakeMarketBridge,
+            make_policy,
+            make_row,
+            make_submission,
+        )
+
+        raw_input = "synthetic accepted World input"
+        submission = make_submission("covered-core-sub", ("covered-core-hyp",))
+        source_id_map = {
+            source.source_id: _url_source_id(source.locator)
+            for source in submission.sources
+        }
+        sources = tuple(
+            replace(source, source_id=source_id_map[source.source_id])
+            for source in submission.sources
+        )
+        statements = tuple(
+            replace(
+                statement,
+                source_ids=tuple(
+                    source_id_map[source_id]
+                    for source_id in statement.source_ids
+                ),
+            )
+            for statement in submission.statements
+        )
+        submission = replace(
+            submission, sources=sources, statements=statements
+        )
+        batch = SourceSubmissionBatch(raw_input, (submission,))
+        bounds = make_policy([]).bounds
+        core_result = real_run_world_core(
+            raw_input,
+            source_producer=lambda _raw: batch,
+            market_bridge=FakeMarketBridge((
+                make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+                make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+            )),
+            policy=make_policy([]),
+        )
+        self.assertTrue(core_result.case_set.cases)
+
+        host_run_id = "outer-run-case-link-synthetic"
+        unit_id = "world-unit-case-link-synthetic"
+        audit = _coverage_audit(
+            host_run_id,
+            unit_id,
+            submission.submission_id,
+            success=tuple(
+                (source.locator, "Synthetic body for " + source.locator)
+                for source in submission.sources
+            ),
+        )
+        row = _CoveredWorldUnitCoverage(
+            unit_id,
+            audit,
+            (submission.submission_id,),
+            (),
+        )
+        linked_rows = host_world_module._covered_world_case_links(
+            core_result,
+            (row,),
+            ((submission, unit_id),),
+            raw_input=raw_input,
+        )
+        self.assertEqual(
+            linked_rows[0].case_ids,
+            tuple(case.case_id for case in core_result.case_set.cases),
+        )
+        covered_result = _CoveredWorldResult(core_result, linked_rows)
+        detached = _validate_covered_world_result(
+            covered_result,
+            host_run_id=host_run_id,
+            raw_input=raw_input,
+            bounds=bounds,
+        )
+        self.assertEqual(
+            detached[0]["case_ids"],
+            [case.case_id for case in core_result.case_set.cases],
         )
 
     def test_role_total_budget_preflights_before_grounder_or_skill(self):

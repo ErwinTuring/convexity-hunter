@@ -1,6 +1,54 @@
 # Current Checkpoint
 
-## Partial-source coverage contract frozen; BUILD not authorized — 2026-10-29
+## Validated partial World coverage BUILD complete — 2026-10-29
+
+User authorized the [frozen bounded BUILD](host-world-source-query-v0.1.md#validated-partial-extraction--contract-v01-2026-10-29).
+Fresh HEAD/main/origin/main `e72c236`, initially clean. Implemented immutable
+Host source audit, exact outbound-request/result partition and body binding,
+World-only producer/verifier audit binding, explicit config v0.5/covered
+executor, archive v0.2 and existing summary/compact/lazy-detail disclosure.
+Legacy configs remain complete-or-fail; normal Event/Direct and EI/Core
+contracts, source authority and resource limits are unchanged. Numeric
+CoreCaseRecord IDs link by actual submission/context; EMPTY/no-submission
+units retain audit without inventing numeric cases.
+
+Independent review identified two publication defects, now fixed with targeted
+rereview PASS: archive rejection of existing independently authenticated
+admission sources, and UNKNOWN detail disclosure for retained EMPTY units.
+The audit covers Extract outcomes, not all independently authenticated
+material; existing admission/catalog/binding checks remain mandatory. Failed
+IDs AND exact failed locators cannot gain authority through alternate IDs.
+No source permission or EI standard was broadened.
+
+Validation: source/runtime focused207, World/config55 and initial Host/archive/
+Store/workbench159 tests passed (overlap exists; do not sum as unique tests).
+ONE full discovery executed2136:33 loopback-bind permission errors, covered by
+a permissioned HostServer66/66 pass; one pre-existing stale prompt-version
+assertion. Base `e72c236` already accepts v0.10; only that test's unsupported
+sample changed to v0.12, preserving rejects-before-calls; module30/30 passed.
+The two archive fixes pass8 targeted tests including temporary synthetic
+Store/HTTP reopen and lazy reads. This is not a claim that the initial full
+command was green. Final fresh-cache compileall src/tests and diff-check
+PASS; all4 changed existing modules with explicit public export lists match
+base `e72c236`, new audit module exports1 DTO. Independent implementation
+review and targeted rereview PASS, no remaining known findings. This is not
+a claim of a post-fix single full-suite PASS; no full suite was repeated.
+
+No provider/model calls, private configuration or real DB edits, deployment,
+new budgets or live replay in this work unit. Synthetic positive flow is NOT
+real EI ACCEPTED, Futu/Core execution or three-entry positive closure.
+Next external acceptance requires separate deployment/run authorization;
+historical spent grants remain spent and historical failure causes UNKNOWN.
+
+Observed phase starts10:56:40Z; dispatch11:01:30Z (290s grounding/coordination).
+Source implementation window11:03:01–11:31:20Z includes test/fix interleaving;
+Host implementation11:10:19–11:30:55Z also interleaves tests. Full discovery
+11:32:59–approximately11:37:58Z. These overlapping windows do not establish
+an exact coding/auxiliary percentage; no invented70/30 or double-counted
+parallel time is reported. Implementation/review/validation closure is
+11:48:50Z (52min10s elapsed, not a measured coding percentage).
+
+## Historical freeze: partial-source coverage; BUILD not yet authorized — 2026-10-29
 
 Fresh HEAD/main/origin/main `94f110b`, initially clean. User explicitly
 approved bounded CONTRACT DESIGN/REVIEW ONLY: trustworthy partial extraction

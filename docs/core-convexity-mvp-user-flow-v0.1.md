@@ -37,6 +37,16 @@ not a frontend, database or bundled autonomous search service.
 
 ## One Core, three entries
 
+World's explicitly enabled `VALIDATED_PARTIAL_V0_1` successor is defined in
+the [source-coverage contract](host-world-source-query-v0.1.md#validated-partial-extraction--contract-v01-2026-10-29).
+It distinguishes requested-source coverage from factual verification: only
+successfully retrieved, normally admitted bodies can support claims. Failed
+URLs remain coverage metadata, not evidence that contrary information is
+absent. The archive, summary and lazy detail must retain this distinction;
+neither partial coverage nor an audit hash is an EI acceptance or Core result.
+Legacy World configurations remain complete-or-fail. Implementation and
+validation status are recorded in the current checkpoint, not implied here.
+
 Event/World may legitimately stop without a hypothesis. Search completion,
 source-backed observations, a credible provisional transmission hypothesis,
 and EI acceptance are distinct boundaries. A source need not establish an

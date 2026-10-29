@@ -108,6 +108,8 @@ class HostWorkbenchTests(unittest.TestCase):
         self.assertIn("Ask 基准仅为 INDICATIVE_ONLY", page)
         self.assertIn("未知成本显示为未提供，不按 0 处理", page)
         self.assertIn("批量状态只描述已保留研究分支；不证明原始请求已全面核实。", page)
+        self.assertIn("来源提取覆盖不完整；仅核验已取得正文，失败来源未被视为事实或反证不存在。", page)
+        self.assertIn("function sourceCoverageText(value)", page)
 
     def test_three_modes_use_one_unmodified_raw_string_and_closed_post_body(self):
         page = render_workbench("csrf-value")
@@ -155,7 +157,7 @@ class HostWorkbenchTests(unittest.TestCase):
         self.assertIn('"/cases/" + encodedCaseId', page)
         self.assertIn("button.addEventListener(\"click\", () => loadCase(caseId))", page)
         self.assertIn('typeof data.report === "string"', page)
-        self.assertIn('setText(byId("case-detail"), disclosure + "\\n\\n" + data.report)', page)
+        self.assertIn('setText(byId("case-detail"), disclosure + "\\n\\n" + data.report + coverageBlock)', page)
         self.assertIn('id="direct-fee-illustration"', page)
         self.assertIn('typeof data.conditional_entry_fee_illustration === "string"', page)
         self.assertIn('setText(byId("direct-fee-illustration"), data.conditional_entry_fee_illustration)', page)
@@ -781,23 +783,47 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
       host_status: "PARTIAL",
       disposition_counts: { DATA_INSUFFICIENT_CORE: 1, RESEARCHABLE_CONVEXITY: 1, REJECT: 1 },
       case_ids: batchCases.map((item) => item.case_id), reasons: ["partial_summary_reason"],
-      case_summaries: batchCases,
+      case_summaries: batchCases.map((item) => item.case_id === longBatchId ? {
+        ...item,
+        source_coverage: {
+          unit_id: "unit-1", status: "PARTIAL", successful_count: 1, requested_count: 2,
+          failed_sources: [{ source_id: "url:failed-source-id", locator: "https://example.test/failed", reason_code: "PROVIDER_REPORTED_FAILURE" }]
+        }
+      } : item),
+      source_coverage_by_unit: [{
+        unit_id: "unit-1", status: "PARTIAL", successful_count: 1, requested_count: 2,
+        failed_sources: [{ source_id: "url:failed-source-id", locator: "https://example.test/failed", reason_code: "PROVIDER_REPORTED_FAILURE" }]
+      }],
       unavailable_case_ids: [unavailableBatchId],
       unavailable_cases: [{ case_id: unavailableBatchId, case_key: unavailableBatchKey, reasons: ["branch_unavailable"] }]
     },
     executors: { world: "CONFIGURED", event: "CONFIGURED", direct: "NOT_CONFIGURED" },
     responses: [
-      { case_id: longBatchId, case_key: batchCaseKey, classification: "SYNTHETIC", reasons: [], report: "on demand" },
+      {
+        case_id: longBatchId, case_key: batchCaseKey, classification: "SYNTHETIC", reasons: [], report: "Core text 来源提取覆盖：misleading marker",
+        source_coverage: {
+          unit_id: "unit-1", status: "PARTIAL", successful_count: 1, requested_count: 2,
+          failed_sources: [{ source_id: "url:failed-source-id", locator: "https://example.test/failed", reason_code: "PROVIDER_REPORTED_FAILURE" }]
+        }
+      },
       { case_id: unavailableBatchId, case_key: unavailableBatchKey, classification: "UNAVAILABLE", reasons: ["branch_unavailable"], report: null }
     ]
   });
   await batch.clickRun();
   if (batch.calls.some((call) => call.path.includes("/cases/"))) throw new Error("batch compact rows triggered case detail GETs");
+  if (batch.calls.some((call) => !call.path.startsWith("/api/"))) throw new Error("archived coverage read attempted a provider refresh");
   const summaryView = batch.elements.get("batch-summary-view").textContent;
   if (!summaryView.includes("已计算案例数：3") || !summaryView.includes("不可用分支数：1")) throw new Error("batch case counts were not displayed with frozen labels");
   if (summaryView.includes("说明（world_") || summaryView.includes("world_grounder_no_submission")) throw new Error("positive World batch received a negative-result explanation");
   if (summaryView.includes("可用用例数") || summaryView.includes("不可用用例数")) throw new Error("batch counts imply availability instead of computed/unavailable branches");
   if (!summaryView.includes("Host 状态：部分完成（PARTIAL）")) throw new Error("batch host_status was not displayed");
+  if (!summaryView.includes("来源提取覆盖：PARTIAL；已取得正文 1/2")
+      || !summaryView.includes("url:failed-source-id")
+      || !summaryView.includes("https://example.test/failed")
+      || !summaryView.includes("PROVIDER_REPORTED_FAILURE")
+      || !summaryView.includes("来源提取覆盖不完整；仅核验已取得正文，失败来源未被视为事实或反证不存在。")) {
+    throw new Error("archived partial source coverage was not disclosed with exact counts and fixed reason");
+  }
   if (!summaryView.includes("partial_summary_reason") || !summaryView.includes(unavailableBatchId) || !summaryView.includes("不可用分支 case_id：" + unavailableBatchId)) throw new Error("summary reasons or string-only unavailable case IDs were omitted");
   if (!summaryView.includes("DATA_INSUFFICIENT_CORE：1") || !summaryView.includes("RESEARCHABLE_CONVEXITY：1")) throw new Error("batch disposition counts were not displayed");
   const unavailableRows = batch.elements.get("unavailable-case-list").children;
@@ -806,6 +832,7 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   const compactRows = batch.elements.get("batch-case-list").children;
   if (compactRows.length !== 3) throw new Error("not every compact case row was displayed");
   const compactText = batch.elements.get("batch-case-list").textContent;
+  if (!compactText.includes("来源提取覆盖：PARTIAL") || !compactText.includes("url:failed-source-id")) throw new Error("compact case omitted its linked archived coverage");
   if (!(compactText.indexOf("world:zeta") < compactText.indexOf(longBatchId) && compactText.indexOf(longBatchId) < compactText.indexOf("world:mu"))) throw new Error("compact rows were reordered");
   if (!compactRows[0].textContent.includes("2026-12-18") || !compactRows[0].textContent.includes("95.00") || !compactRows[0].textContent.includes("cost_ledger_missing")) throw new Error("compact leg/date/Decimal-string fields were not displayed");
   if (!compactRows[0].textContent.includes("INDICATIVE_ONLY") || !compactRows[0].textContent.includes("单次成本上界：未提供")) throw new Error("Ask authority or unknown-cost presentation was changed");
@@ -813,6 +840,8 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   if (!compactText.includes(longBatchId) || batch.elements.get("case-list").children[1].children[0].textContent !== longBatchId) throw new Error("batch case ID was filtered or altered for display");
   await batch.elements.get("case-list").children[1].children[0].click();
   if (!batch.calls.some((call) => call.path === "/api/runs/" + runId + "/cases/" + batchCaseKey && call.method === "GET")) throw new Error("explicit batch case click did not use case_key");
+  if (!batch.elements.get("case-detail").textContent.includes("来源提取覆盖不完整；仅核验已取得正文，失败来源未被视为事实或反证不存在。")) throw new Error("lazy detail omitted the archived partial disclosure");
+  if (!batch.elements.get("case-detail").textContent.includes("url:failed-source-id")) throw new Error("Core report marker suppressed archived failed-source details");
   if (batch.calls.some((call) => call.path.includes(encodeURIComponent(longBatchId)))) throw new Error("raw batch case ID was used in the detail path");
   await unavailableRows[0].children[0].click();
   if (!batch.calls.some((call) => call.path === "/api/runs/" + runId + "/cases/" + unavailableBatchKey && call.method === "GET")) throw new Error("explicit unavailable-case click did not use sidecar case_key");

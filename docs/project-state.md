@@ -1,6 +1,9 @@
 # Project State
 
-## Partial-source coverage contract frozen — 2026-10-29
+## Validated partial World coverage BUILD complete — 2026-10-29
+Fresh baseline Git `e72c236`, user-authorized bounded BUILD. Host audit/gate/wires, opt-in covered World execution/config v0.5, archive v0.2 and summary/lazy-detail disclosure implemented; EI/Core, existing admission and legacy strict behavior unchanged. Two independent publication findings corrected (authenticated admission preservation and EMPTY detail linkage); implementation review and targeted rereview PASS. Focused207/55/159 and fix8/context30 checks pass, with overlap. Full2136 initial run had33 loopback permission errors (permissioned server66PASS) and one baseline-stale assertion corrected test-only; do not call that initial command or a nonexistent post-fix full rerun green. Final compile/diff/API compatibility PASS. No live calls, private config/real DB changes or deployment. No new real EI/Core closure claim; see [checkpoint](current-checkpoint.md).
+
+## Historical partial-source coverage freeze — 2026-10-29
 Status SUBSEQUENT_BUILD_READY. User approved design/review ONLY, no BUILD/provider/model calls. [Bounded target](host-world-source-query-v0.1.md#validated-partial-extraction--contract-v01-2026-10-29) freezes exact outbound-Host-request/outcome partition, immutable coverage/hash, successful-body-only fact bindings, explicit missing coverage, unchanged EI/Core, opt-in Host-only envelope and durable disclosure. Independent review and accepted P2 re-review PASS; documentation checks PASS. Production implementation ABSENT; all successor versions/types remain targets, runtime strict and historical failures UNKNOWN. Stop before separately authorized BUILD.
 
 ## Native-unit source acquisition reached; contract decision pending — 2026-10-29

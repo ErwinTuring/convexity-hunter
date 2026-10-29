@@ -458,6 +458,57 @@ _DOCUMENT = r'''<!doctype html>
     }
   }
 
+  const partialSourceCoverageDisclosure = "来源提取覆盖不完整；仅核验已取得正文，失败来源未被视为事实或反证不存在。";
+  function sourceCoverageText(value) {
+    if (!isRecord(value)) return null;
+    const status = value.status;
+    if (!["UNKNOWN", "COMPLETE", "PARTIAL", "EMPTY"].includes(status)) return "来源覆盖：字段格式不可识别。";
+    const unit = typeof value.unit_id === "string" ? "单元 " + value.unit_id + "；" : "";
+    if (status === "UNKNOWN") return unit + "来源提取覆盖：UNKNOWN；没有可验证的来源覆盖审计。";
+    const successful = value.successful_count;
+    const requested = value.requested_count;
+    if (!Number.isInteger(successful) || successful < 0
+        || !Number.isInteger(requested) || requested < 1 || requested > 5
+        || successful > requested || !Array.isArray(value.failed_sources)) {
+      return unit + "来源覆盖：字段格式不可识别。";
+    }
+    let text = unit + "来源提取覆盖：" + status + "；已取得正文 " + successful + "/" + requested + "。";
+    if (value.failed_sources.length > 0) {
+      const failures = value.failed_sources.map((item) => {
+        if (!isRecord(item)
+            || typeof item.source_id !== "string"
+            || typeof item.locator !== "string"
+            || item.reason_code !== "PROVIDER_REPORTED_FAILURE") return "来源失败记录格式不可识别。";
+        return item.source_id + " " + item.locator + "（" + item.reason_code + "）";
+      });
+      text += " 失败来源：" + failures.join("；");
+    }
+    if (status === "PARTIAL") text += "\n" + partialSourceCoverageDisclosure;
+    return text;
+  }
+
+  function sourceCoverageReportText(value) {
+    if (!isRecord(value)) return null;
+    if (value.status === "UNKNOWN") return "来源提取覆盖：UNKNOWN；没有可验证的来源覆盖审计。";
+    if (!["EMPTY", "COMPLETE", "PARTIAL"].includes(value.status)
+        || !Number.isInteger(value.successful_count)
+        || !Number.isInteger(value.requested_count)
+        || !Array.isArray(value.failed_sources)) return null;
+    const lines = ["来源提取覆盖：" + value.status + "；已取得正文 "
+      + value.successful_count + "/" + value.requested_count + "。"];
+    if (value.failed_sources.length > 0) {
+      lines.push("失败来源：" + value.failed_sources.map((item) => {
+        if (!isRecord(item)
+            || typeof item.source_id !== "string"
+            || typeof item.locator !== "string"
+            || item.reason_code !== "PROVIDER_REPORTED_FAILURE") return "";
+        return item.source_id + " " + item.locator + "（" + item.reason_code + "）";
+      }).join("；"));
+    }
+    if (value.status === "PARTIAL") lines.push(partialSourceCoverageDisclosure);
+    return lines.join("\n");
+  }
+
   function renderCompactCases(caseSummaries) {
     const list = byId("batch-case-list");
     list.textContent = "";
@@ -491,6 +542,12 @@ _DOCUMENT = r'''<!doctype html>
       row.appendChild(title);
       appendCompactField(row, "case_key", item.case_key);
       for (const [key, label] of fields) appendCompactField(row, label, item[key]);
+      const coverageText = sourceCoverageText(item.source_coverage);
+      if (coverageText !== null) {
+        const coverage = document.createElement("div");
+        setText(coverage, coverageText);
+        row.appendChild(coverage);
+      }
       const reasons = document.createElement("div");
       setText(reasons, "原因：" + compactStringList(item.reasons));
       row.appendChild(reasons);
@@ -548,6 +605,12 @@ _DOCUMENT = r'''<!doctype html>
             + "，不表示 EI 接受、Core 案例或分类。")
       );
       row.appendChild(reasons);
+      const coverageText = sourceCoverageText(item.source_coverage);
+      if (coverageText !== null) {
+        const coverage = document.createElement("div");
+        setText(coverage, coverageText);
+        row.appendChild(coverage);
+      }
       list.appendChild(row);
     }
   }
@@ -599,6 +662,17 @@ _DOCUMENT = r'''<!doctype html>
       "汇总原因：" + compactStringList(summary.reasons),
       "不可用分支 case_id：" + compactStringList(summary.unavailable_case_ids)
     ];
+    if (Array.isArray(summary.source_coverage_by_unit)) {
+      lines.push("按实际执行单元汇总的来源覆盖：");
+      if (summary.source_coverage_by_unit.length === 0) {
+        lines.push("  无可显示的来源覆盖单元。");
+      } else {
+        for (const item of summary.source_coverage_by_unit) {
+          const coverageText = sourceCoverageText(item);
+          lines.push("  " + (coverageText === null ? "来源覆盖记录格式不可识别。" : coverageText));
+        }
+      }
+    }
     const worldReasonExplanations = {
       world_grounder_no_submission: "本次 World 流程未形成可交给 EI 评估的非空合法 submission；这不表示 Last30Days 原生 leads 为零、所有 hypotheses 均被拒绝，也不表示 EI 结果为 INCOMPLETE。World 批量存档未保留 Grounder 计数或具体诊断，因此 hypothesis 数和具体原因不可用。",
       world_last30days_empty: "本次 Last30Days 结果未提供 leads；这不证明现实中没有相关事件，也不证明所有来源都已覆盖。",
@@ -1018,10 +1092,16 @@ _DOCUMENT = r'''<!doctype html>
       const reasons = data.reasons === undefined
         ? "接口未提供" : JSON.stringify(data.reasons);
       const disclosure = "case_id: " + data.case_id + "\nclassification: " + classification + "\nreasons: " + reasons;
+      const coverageText = sourceCoverageText(data.source_coverage);
+      const archivedCoverageReport = sourceCoverageReportText(data.source_coverage);
+      const coverageBlock = coverageText !== null
+        && !(typeof data.report === "string" && archivedCoverageReport !== null
+          && data.report.endsWith(archivedCoverageReport))
+        ? "\n\n" + coverageText : "";
       if (data.report === null) {
-        setText(byId("case-detail"), disclosure + "\n\n报告字段为 null；当前没有可显示报告。");
+        setText(byId("case-detail"), disclosure + coverageBlock + "\n\n报告字段为 null；当前没有可显示报告。");
       } else if (typeof data.report === "string") {
-        setText(byId("case-detail"), disclosure + "\n\n" + data.report);
+        setText(byId("case-detail"), disclosure + "\n\n" + data.report + coverageBlock);
       } else {
         setText(byId("case-detail"), disclosure + "\n\n报告字段缺失或类型不受支持；未显示报告。");
       }

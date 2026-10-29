@@ -16,6 +16,7 @@ from convexity_hunter.host_grounder_run_input import (
     HostGrounderRunInputBounds,
     HostGrounderSubquestion,
 )
+from convexity_hunter.host_source_coverage import HostSourceCoverageAudit
 from convexity_hunter.host_grounder_runtime import (
     DISCOVERY_SYSTEM_PROMPT,
     DISCOVERY_SYSTEM_PROMPT_V0_2,
@@ -357,6 +358,104 @@ def _audit_holder(run_input):
 
 
 class HostGrounderRuntimeTests(unittest.TestCase):
+    def test_source_coverage_rebinds_run_input_and_success_body_before_projection(self):
+        run_input, context, _envelope_value, _discovery_json, _semantic_json = _fixture()
+        locator = "https://source.example/covered"
+        failed_locator = "https://source.example/failed"
+        source_id = "url:" + hashlib.sha256(locator.encode("utf-8")).hexdigest()
+        failed_id = "url:" + hashlib.sha256(failed_locator.encode("utf-8")).hexdigest()
+        body = "A separately registered successful source body."
+        body_hash = _sha(body)
+        audit = HostSourceCoverageAudit.from_dict(
+            {
+                "schema_version": "host-source-coverage-v0.1",
+                "host_run_id": "host-run-1",
+                "unit_id": "unit-1",
+                "run_id": run_input.run_id,
+                "canonical_input_hash": run_input.canonical_input_hash,
+                "status": "PARTIAL",
+                "entries": [
+                    {
+                        "source_id": source_id,
+                        "locator": locator,
+                        "status": "BODY_AVAILABLE",
+                        "body_sha256": body_hash,
+                    },
+                    {
+                        "source_id": failed_id,
+                        "locator": failed_locator,
+                        "status": "FAILED",
+                        "reason_code": "PROVIDER_REPORTED_FAILURE",
+                    },
+                ],
+            }
+        )
+        sources = dict(context.source_bodies)
+        sources[source_id] = HostSourceBody(
+            body, body_hash, locator, _NOW, "Fixture covered source"
+        )
+        covered_context = replace(
+            context, source_bodies=sources, source_coverage=audit
+        )
+        checked = host_grounder_runtime_module._validate_source_coverage_context(
+            run_input, covered_context
+        )
+        self.assertEqual(checked.canonical_utf8, audit.canonical_utf8)
+
+        failed_locator_alias = HostSourceBody(
+            body, body_hash, failed_locator, _NOW, "Alternate admitted ID"
+        )
+        alias_sources = dict(covered_context.source_bodies)
+        alias_sources["host-admission-alias"] = failed_locator_alias
+        with self.assertRaises(ValueError):
+            replace(covered_context, source_bodies=alias_sources)
+
+        mutations = []
+        wrong_run_payload = audit.to_dict()
+        wrong_run_payload["run_id"] = "another-run"
+        mutations.append(
+            ("run", HostSourceCoverageAudit.from_dict(wrong_run_payload), None)
+        )
+        wrong_hash_payload = audit.to_dict()
+        wrong_hash_payload["canonical_input_hash"] = "b" * 64
+        mutations.append(
+            ("input hash", HostSourceCoverageAudit.from_dict(wrong_hash_payload), None)
+        )
+        mutations.append(
+            (
+                "body",
+                audit,
+                HostSourceBody("mutated body", _sha("mutated body"), locator, _NOW),
+            )
+        )
+        mutations.append(
+            (
+                "failed-locator alternate ID",
+                audit,
+                failed_locator_alias,
+            )
+        )
+        for label, candidate_audit, candidate_body in mutations:
+            with self.subTest(mutation=label):
+                mutated = replace(covered_context)
+                object.__setattr__(mutated, "source_coverage", candidate_audit)
+                if candidate_body is not None:
+                    mutated_sources = dict(mutated.source_bodies)
+                    target_id = (
+                        "host-admission-alias"
+                        if label == "failed-locator alternate ID"
+                        else source_id
+                    )
+                    mutated_sources[target_id] = candidate_body
+                    object.__setattr__(mutated, "source_bodies", mutated_sources)
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    host_grounder_runtime_module._validate_source_coverage_context(
+                        run_input, mutated
+                    )
+                self.assertEqual(
+                    raised.exception.code, "SOURCE_COVERAGE_BINDING_INVALID"
+                )
+
     def test_discovery_prompt_requires_compact_relevant_evidence_and_full_coverage(self):
         self.assertIn("only the supplied subquestions", DISCOVERY_SYSTEM_PROMPT)
         self.assertIn("each distinct, directly relevant claim once", DISCOVERY_SYSTEM_PROMPT)

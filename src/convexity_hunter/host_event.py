@@ -16,6 +16,7 @@ import datetime
 import hashlib
 import ipaddress
 import json
+import math
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -27,6 +28,7 @@ from .core_application import CoreOperationalBounds
 from .event_entry import UserEventInput
 from .event_intelligence import MethodologizedDateRange
 from .host_grounder_builder import HostBuildContext, HostSourceBody
+from .host_source_coverage import HostSourceCoverageAudit
 from .host_grounder_evidence_catalog import (
     HostEvidenceCatalogAuditHolder,
     _line_paragraph_spans,
@@ -54,7 +56,12 @@ from .host_model import (
 )
 from .host_sources import (
     TavilyCredentialRef,
+    TavilyCoverage,
+    TavilyExtractResult,
+    TavilyFailedExtract,
+    TavilyReceipt,
     TavilySourceClient,
+    TavilySourceBody,
     TavilySourceConfig,
     TavilyTransportError,
     _url_source_id,
@@ -79,6 +86,7 @@ _PRODUCER_VERSION = "v0.1"
 _SOURCE_SEARCH_POLICY_LEGACY = "host-event-source-snapshot-v0.1"
 _SOURCE_SEARCH_POLICY_OFFICIAL = "host-event-source-snapshot-v0.2"
 _SOURCE_SEARCH_POLICY_WORLD_NATIVE = "host-event-source-snapshot-v0.3"
+_SOURCE_SEARCH_POLICY_WORLD_PARTIAL = "host-event-source-snapshot-v0.4"
 _GENERAL_SEARCH_RESULT_LIMIT = 3
 _OFFICIAL_SEARCH_RESULT_LIMIT = 2
 _OFFICIAL_SEARCH_DOMAINS = ("sec.gov", "nasdaq.com")
@@ -2791,6 +2799,260 @@ def _validate_world_seed_urls(
     return seed_urls
 
 
+def _world_partial_extract_audit(
+    extracted: object,
+    requested_urls: object,
+    *,
+    expected_query: str,
+    host_run_id: str,
+    unit_id: str,
+    run_id: str,
+    canonical_input_hash: str,
+    max_extract_urls: int,
+    max_string_bytes: int,
+    max_array_items: int,
+    max_json_bytes: int,
+    max_source_body_bytes: int,
+    max_request_bytes: int,
+    max_response_bytes: int,
+) -> HostSourceCoverageAudit:
+    """Revalidate the exact Host request and its typed complete outcome partition."""
+    try:
+        if type(extracted) is not TavilyExtractResult or type(requested_urls) is not tuple:
+            raise ValueError("extract result has an invalid exact type")
+        limit = min(max_extract_urls, max_array_items, 5)
+        if (
+            type(limit) is not int
+            or not 1 <= len(requested_urls) <= limit
+            or any(type(url) is not str for url in requested_urls)
+            or len(set(requested_urls)) != len(requested_urls)
+        ):
+            raise ValueError("Host request tuple is invalid")
+        for url in requested_urls:
+            url.encode("utf-8", errors="strict")
+            _validate_public_url(url)
+
+        if (
+            type(extracted.urls) is not tuple
+            or extracted.urls != requested_urls
+            or type(extracted.bodies) is not tuple
+            or type(extracted.failed_extracts) is not tuple
+            or type(extracted.query) is not str
+            or extracted.query != expected_query
+        ):
+            raise ValueError("extract result does not bind the Host request")
+        if len(extracted.bodies) + len(extracted.failed_extracts) != len(requested_urls):
+            raise ValueError("extract result partition is incomplete")
+
+        request_ids = tuple(_url_source_id(url) for url in requested_urls)
+        successful_by_url = {}
+        success_order = []
+        successful_body_bytes = 0
+        for body in extracted.bodies:
+            if type(body) is not TavilySourceBody:
+                raise ValueError("successful outcome has an invalid exact type")
+            if (
+                type(body.source_id) is not str
+                or type(body.url) is not str
+                or type(body.body) is not str
+                or (body.publication_date is not None and type(body.publication_date) is not str)
+                or (body.provider_result_id is not None and type(body.provider_result_id) is not str)
+                or type(body.verified) is not bool
+                or body.verified
+            ):
+                raise ValueError("successful outcome fields have invalid exact types")
+            _validate_public_url(body.url)
+            if (
+                body.url not in requested_urls
+                or body.source_id != _url_source_id(body.url)
+                or body.url in successful_by_url
+                or not body.body.strip()
+            ):
+                raise ValueError("successful outcome is not bound to a requested URL")
+            body_bytes = body.body.encode("utf-8", errors="strict")
+            successful_body_bytes += len(body_bytes)
+            if successful_body_bytes > max_source_body_bytes:
+                raise ValueError("successful bodies exceed the existing source-body limit")
+            successful_by_url[body.url] = hashlib.sha256(body_bytes).hexdigest()
+            success_order.append(body.url)
+
+        failed_by_url = {}
+        failure_order = []
+        for failure in extracted.failed_extracts:
+            if type(failure) is not TavilyFailedExtract:
+                raise ValueError("failed outcome has an invalid exact type")
+            if (
+                type(failure.source_id) is not str
+                or type(failure.url) is not str
+                or type(failure.reason_code) is not str
+                or failure.reason_code != "PROVIDER_REPORTED_FAILURE"
+            ):
+                raise ValueError("failed outcome must use the fixed provider reason")
+            _validate_public_url(failure.url)
+            if (
+                failure.url not in requested_urls
+                or failure.source_id != _url_source_id(failure.url)
+                or failure.url in failed_by_url
+                or failure.url in successful_by_url
+            ):
+                raise ValueError("failed outcome is not disjointly bound to the request")
+            failed_by_url[failure.url] = failure.reason_code
+            failure_order.append(failure.url)
+
+        expected_success_order = tuple(url for url in requested_urls if url in successful_by_url)
+        expected_failure_order = tuple(url for url in requested_urls if url in failed_by_url)
+        if (
+            tuple(success_order) != expected_success_order
+            or tuple(failure_order) != expected_failure_order
+            or set(successful_by_url) | set(failed_by_url) != set(requested_urls)
+            or set(successful_by_url) & set(failed_by_url)
+        ):
+            raise ValueError("extract outcomes do not form the exact ordered partition")
+
+        coverage = extracted.coverage
+        if type(coverage) is not TavilyCoverage:
+            raise ValueError("coverage receipt has an invalid exact type")
+        expected_status = (
+            "EMPTY" if not successful_by_url
+            else "COMPLETE" if not failed_by_url
+            else "PARTIAL"
+        )
+        for count_name, expected_count in (
+            ("requested_count", len(requested_urls)),
+            ("returned_count", len(successful_by_url)),
+            ("failed_count", len(failed_by_url)),
+        ):
+            value = getattr(coverage, count_name)
+            if type(value) is not int or value != expected_count:
+                raise ValueError("coverage counts do not match the exact partition")
+        expected_failed_ids = tuple(_url_source_id(url) for url in expected_failure_order)
+        if (
+            type(coverage.source_ids) is not tuple
+            or coverage.source_ids != request_ids
+            or type(coverage.failed_source_ids) is not tuple
+            or coverage.failed_source_ids != expected_failed_ids
+            or type(coverage.status) is not str
+            or coverage.status != expected_status
+        ):
+            raise ValueError("coverage identities or status do not match the partition")
+
+        receipt = extracted.receipt
+        if type(receipt) is not TavilyReceipt:
+            raise ValueError("extract receipt has an invalid exact type")
+        if (
+            type(receipt.operation) is not str
+            or receipt.operation != "extract"
+            or type(receipt.endpoint) is not str
+            or receipt.endpoint != "https://api.tavily.com/extract"
+            or type(receipt.request_id) is not str
+            or not receipt.request_id
+            or type(receipt.reserved_requests) is not int
+            or receipt.reserved_requests != 1
+            or type(receipt.reserved_credits) is not int
+            or receipt.reserved_credits != 1
+            or (receipt.reported_credits is not None and type(receipt.reported_credits) is not int)
+            or type(receipt.request_bytes) is not int
+            or not 0 < receipt.request_bytes <= max_request_bytes
+            or type(receipt.response_bytes) is not int
+            or not 0 < receipt.response_bytes <= max_response_bytes
+            or type(receipt.elapsed_seconds) is not float
+            or not math.isfinite(receipt.elapsed_seconds)
+            or receipt.elapsed_seconds < 0
+            or type(receipt.source_ids) is not tuple
+            or receipt.source_ids != request_ids
+            or type(receipt.returned_count) is not int
+            or receipt.returned_count != len(successful_by_url)
+            or type(receipt.failed_count) is not int
+            or receipt.failed_count != len(failed_by_url)
+        ):
+            raise ValueError("extract receipt does not agree with the exact partition")
+
+        audit_rows = []
+        for url in requested_urls:
+            source_id = _url_source_id(url)
+            if url in successful_by_url:
+                audit_rows.append(
+                    {
+                        "source_id": source_id,
+                        "locator": url,
+                        "status": "BODY_AVAILABLE",
+                        "body_sha256": successful_by_url[url],
+                    }
+                )
+            else:
+                audit_rows.append(
+                    {
+                        "source_id": source_id,
+                        "locator": url,
+                        "status": "FAILED",
+                        "reason_code": failed_by_url[url],
+                    }
+                )
+        audit = HostSourceCoverageAudit.from_dict(
+            {
+                "schema_version": "host-source-coverage-v0.1",
+                "host_run_id": host_run_id,
+                "unit_id": unit_id,
+                "run_id": run_id,
+                "canonical_input_hash": canonical_input_hash,
+                "status": expected_status,
+                "entries": audit_rows,
+            }
+        )
+        if len(audit.canonical_utf8) > max_json_bytes:
+            raise ValueError("source coverage audit exceeds max_json_bytes")
+        bounded_values = (
+            audit.host_run_id,
+            audit.unit_id,
+            audit.run_id,
+            audit.canonical_input_hash,
+            *(item.locator for item in audit.entries),
+            *(item.source_id for item in audit.entries),
+            *(item.digest_or_reason for item in audit.entries),
+        )
+        if any(
+            len(value.encode("utf-8", errors="strict")) > max_string_bytes
+            for value in bounded_values
+        ):
+            raise ValueError("source coverage value exceeds max_string_bytes")
+        if len(audit.entries) > max_array_items:
+            raise ValueError("source coverage audit exceeds max_array_items")
+        return audit
+    except Exception:
+        # No partially validated provider receipt is eligible for transfer.
+        raise HostGrounderRuntimeError("EXTRACTION_FAILURE") from None
+
+
+def _validate_source_coverage_identity(value: object, config: HostEventGrounderConfig) -> tuple:
+    if type(value) is not tuple or len(value) != 2:
+        raise HostGrounderRuntimeError("SOURCE_COVERAGE_IDENTITY_INVALID")
+    for item in value:
+        if type(item) is not str or not item or item != item.strip():
+            raise HostGrounderRuntimeError("SOURCE_COVERAGE_IDENTITY_INVALID")
+        try:
+            if len(item.encode("utf-8", errors="strict")) > config.run_input_bounds.max_string_bytes:
+                raise HostGrounderRuntimeError("SOURCE_COVERAGE_IDENTITY_INVALID")
+        except UnicodeEncodeError:
+            raise HostGrounderRuntimeError("SOURCE_COVERAGE_IDENTITY_INVALID") from None
+    return value
+
+
+def _attach_source_coverage_to_typed_error(
+    error: Exception, audit: HostSourceCoverageAudit
+) -> None:
+    if (
+        type(audit) is HostSourceCoverageAudit
+        and type(error) in (HostGrounderRuntimeError, TavilyTransportError, ModelTransportError)
+    ):
+        try:
+            checked = HostSourceCoverageAudit.from_dict(audit.to_dict())
+            error._source_coverage_audit = checked
+        except Exception:
+            # Transfer is best-effort only after a typed, exact audit has been
+            # reconstructed; the original exception and its code are retained.
+            return
+
+
 def _merge_event_search_references(general_result, official_result):
     """Keep fixed provider order/quotas, dedupe exact URLs, and stabilize IDs."""
     merged = []
@@ -2822,6 +3084,7 @@ def _safe_configuration_snapshot(
         _SOURCE_SEARCH_POLICY_LEGACY,
         _SOURCE_SEARCH_POLICY_OFFICIAL,
         _SOURCE_SEARCH_POLICY_WORLD_NATIVE,
+        _SOURCE_SEARCH_POLICY_WORLD_PARTIAL,
     ):
         raise ValueError("source search policy version is invalid")
 
@@ -2966,6 +3229,8 @@ def create_event_grounder(
         source_query: str,
         source_search_policy_version: str,
         seed_urls: tuple = (),
+        source_coverage_identity: Optional[tuple] = None,
+        source_coverage_capture: Optional[list] = None,
     ) -> HostGrounderEvidenceCatalogRuntimeResult:
         if not callable(context_preparer):
             raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
@@ -2983,8 +3248,28 @@ def create_event_grounder(
             raise TypeError("bounds must be a valid CoreOperationalBounds") from None
         active_config = _revalidate_config(config)
         world_source_policy = (
-            source_search_policy_version == _SOURCE_SEARCH_POLICY_WORLD_NATIVE
+            source_search_policy_version
+            in (_SOURCE_SEARCH_POLICY_WORLD_NATIVE, _SOURCE_SEARCH_POLICY_WORLD_PARTIAL)
         )
+        partial_source_coverage = (
+            source_search_policy_version == _SOURCE_SEARCH_POLICY_WORLD_PARTIAL
+            and source_coverage_identity is not None
+        )
+        if (
+            source_search_policy_version == _SOURCE_SEARCH_POLICY_WORLD_PARTIAL
+            and not partial_source_coverage
+        ):
+            raise HostGrounderRuntimeError("SOURCE_COVERAGE_IDENTITY_INVALID")
+        if partial_source_coverage and (
+            type(source_coverage_identity) is not tuple
+            or len(source_coverage_identity) != 2
+            or type(source_coverage_capture) is not list
+        ):
+            raise HostGrounderRuntimeError("SOURCE_COVERAGE_IDENTITY_INVALID")
+        if partial_source_coverage:
+            source_coverage_identity = _validate_source_coverage_identity(
+                source_coverage_identity, active_config
+            )
         if world_source_policy:
             seed_urls = _validate_world_seed_urls(seed_urls, active_config)
         elif seed_urls:
@@ -3112,22 +3397,46 @@ def create_event_grounder(
             # universe was searched or that the request has complete coverage.
             raise HostGrounderRuntimeError("NO_SEARCH_RESULTS")
 
+        # Freeze the exact Host-owned outbound tuple before the source call;
+        # response-provided URLs never define the request being audited.
+        host_requested_urls = tuple(requested_urls)
         extracted = source_client.extract(
-            requested_urls,
+            host_requested_urls,
             query=source_query,
             source_refs=extract_source_refs,
         )
-        if (
+        source_coverage_audit = None
+        if partial_source_coverage:
+            host_run_id, unit_id = source_coverage_identity
+            source_coverage_audit = _world_partial_extract_audit(
+                extracted,
+                host_requested_urls,
+                expected_query=source_query,
+                host_run_id=host_run_id,
+                unit_id=unit_id,
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+                max_extract_urls=active_config.source.max_extract_urls,
+                max_string_bytes=run_input.bounds.max_string_bytes,
+                max_array_items=run_input.bounds.max_array_items,
+                max_json_bytes=active_config.max_json_bytes,
+                max_source_body_bytes=active_config.max_source_body_bytes,
+                max_request_bytes=active_config.source.max_request_bytes,
+                max_response_bytes=active_config.source.max_response_bytes,
+            )
+            source_coverage_capture.append(source_coverage_audit)
+            if source_coverage_audit.status == "EMPTY":
+                # Retain a valid all-failed receipt without allowing zero-body
+                # model calls or confusing it with an invalid provider result.
+                raise HostGrounderRuntimeError("EXTRACTION_FAILURE")
+        elif (
             not extracted.coverage.is_complete
             or extracted.failed_extracts
-            or extracted.urls != requested_urls
-            or len(extracted.bodies) != len(requested_urls)
-            or tuple(body.url for body in extracted.bodies) != requested_urls
+            or extracted.urls != host_requested_urls
+            or len(extracted.bodies) != len(host_requested_urls)
+            or tuple(body.url for body in extracted.bodies) != host_requested_urls
         ):
-            # A partial Extract is a conservative pre-model failure, not a
-            # claim that no sources exist or that source coverage is complete.
-            # The frozen runtime result has no Tavily receipt slot, so this
-            # exact-result interface does not retain a partial receipt.
+            # Event and strict World v0.3 retain their complete-only gate.
             raise HostGrounderRuntimeError("EXTRACTION_FAILURE")
 
         reference_by_url = {reference.url: reference for reference in references}
@@ -3165,6 +3474,11 @@ def create_event_grounder(
         # locator leaves that Tavily record unadmitted and does not claim an
         # origin; it does not turn into an Event-wide source or semantic veto.
         candidate_locators = tuple(body.url for body in extracted.bodies)
+        failed_extract_locators = frozenset(
+            entry.locator
+            for entry in (() if source_coverage_audit is None else source_coverage_audit.entries)
+            if entry.status == "FAILED"
+        )
         admitted_sources = ()
         admission_raw_response_limit = active_config.source.max_response_bytes
         admission_raw_budget_limit = (
@@ -3212,6 +3526,11 @@ def create_event_grounder(
                         max_parsed_bytes=active_config.max_source_body_bytes,
                     )
                     if admission is None or admission.source_id in admitted_ids:
+                        continue
+                    if (
+                        admission.initial_locator in failed_extract_locators
+                        or admission.final_locator in failed_extract_locators
+                    ):
                         continue
                     if (
                         admission.initial_locator not in candidate_set
@@ -3311,6 +3630,8 @@ def create_event_grounder(
                                 and all(
                                     item.source_id not in source_bodies
                                     and item.initial_locator not in admitted_initials
+                                    and item.initial_locator not in failed_extract_locators
+                                    and item.final_locator not in failed_extract_locators
                                     for item in additions
                                 )
                                 and len(source_bodies) + len(pending_source_bodies)
@@ -3373,6 +3694,7 @@ def create_event_grounder(
             source_bodies=source_bodies,
             run_id=run_id,
             canonical_input_hash=run_input.canonical_input_hash,
+            source_coverage=source_coverage_audit,
             # No event-date, hypothesis, listing, or caller-policy evidence is
             # inferred from UserEventInput hints or arbitrary web text.
         )
@@ -3422,6 +3744,7 @@ def create_event_grounder(
         source_query: object,
         *,
         seed_urls: object = (),
+        source_coverage_identity: object = None,
     ) -> Callable[..., HostGrounderEvidenceCatalogRuntimeResult]:
         if (
             type(source_query) is not str
@@ -3434,8 +3757,19 @@ def create_event_grounder(
             source_query.encode("utf-8", "strict")
         except UnicodeEncodeError:
             raise HostGrounderRuntimeError("SOURCE_QUERY_INVALID") from None
-        validated_seed_urls = _validate_world_seed_urls(
-            seed_urls, _revalidate_config(config)
+        factory_config = _revalidate_config(config)
+        validated_seed_urls = _validate_world_seed_urls(seed_urls, factory_config)
+        validated_coverage_identity = (
+            None
+            if source_coverage_identity is None
+            else _validate_source_coverage_identity(
+                source_coverage_identity, factory_config
+            )
+        )
+        source_policy_version = (
+            _SOURCE_SEARCH_POLICY_WORLD_NATIVE
+            if validated_coverage_identity is None
+            else _SOURCE_SEARCH_POLICY_WORLD_PARTIAL
         )
 
         def query_bound_grounder(
@@ -3444,14 +3778,28 @@ def create_event_grounder(
             run_id: str,
             bounds: CoreOperationalBounds,
         ) -> HostGrounderEvidenceCatalogRuntimeResult:
-            return _run_grounder(
-                raw_input,
-                run_id=run_id,
-                bounds=bounds,
-                source_query=source_query,
-                source_search_policy_version=_SOURCE_SEARCH_POLICY_WORLD_NATIVE,
-                seed_urls=validated_seed_urls,
-            )
+            source_coverage_capture = []
+            try:
+                return _run_grounder(
+                    raw_input,
+                    run_id=run_id,
+                    bounds=bounds,
+                    source_query=source_query,
+                    source_search_policy_version=source_policy_version,
+                    seed_urls=validated_seed_urls,
+                    source_coverage_identity=validated_coverage_identity,
+                    source_coverage_capture=(
+                        source_coverage_capture
+                        if validated_coverage_identity is not None
+                        else None
+                    ),
+                )
+            except Exception as exc:
+                if source_coverage_capture:
+                    _attach_source_coverage_to_typed_error(
+                        exc, source_coverage_capture[0]
+                    )
+                raise
 
         return query_bound_grounder
 

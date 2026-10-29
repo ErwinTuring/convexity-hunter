@@ -472,6 +472,7 @@ def _validated_event_configuration_snapshot(
     *,
     mode: str,
     _world_native_seed_policy_v0_4_validated: bool = False,
+    _world_partial_source_policy_v0_5_validated: bool = False,
 ) -> Dict[str, Any]:
     """Accept the legacy empty shell or the exact non-secret Event snapshot."""
 
@@ -503,6 +504,7 @@ def _validated_event_configuration_snapshot(
             "world-source-query-v0.2",
             "world-source-query-v0.3",
             "world-source-query-v0.4",
+            "world-source-query-v0.5",
         ):
             policy_fields = {
                 "schema_version",
@@ -525,6 +527,7 @@ def _validated_event_configuration_snapshot(
                 "world-source-query-v0.2": "scope_three_lanes_seven_day_window",
                 "world-source-query-v0.3": "independent_native_event_units_seven_day_window",
                 "world-source-query-v0.4": "independent_native_event_units_seed_urls_plus_search",
+                "world-source-query-v0.5": "independent_native_event_units_partial_source_coverage",
             }[policy["schema_version"]]
             valid_policy = (
                 set(policy) == policy_fields
@@ -540,16 +543,24 @@ def _validated_event_configuration_snapshot(
             valid_policy = False
         if not valid_policy:
             raise ValueError("World source-query policy has an invalid closed shape or value")
-        if policy["schema_version"] == "world-source-query-v0.4":
+        if policy["schema_version"] in (
+            "world-source-query-v0.4",
+            "world-source-query-v0.5",
+        ):
             source_items = value.get("sources")
+            expected_source_version = (
+                "host-event-source-snapshot-v0.3"
+                if policy["schema_version"] == "world-source-query-v0.4"
+                else "host-event-source-snapshot-v0.4"
+            )
             if (
                 type(source_items) is not list
                 or len(source_items) != 1
                 or type(source_items[0]) is not dict
                 or source_items[0].get("schema_version")
-                != "host-event-source-snapshot-v0.3"
+                != expected_source_version
             ):
-                raise ValueError("World v0.4 query policy requires source snapshot v0.3")
+                raise ValueError("World query policy requires its paired source snapshot version")
         legacy = {
             name: value[name]
             for name in ("models", "sources", "skills")
@@ -560,15 +571,23 @@ def _validated_event_configuration_snapshot(
             _world_native_seed_policy_v0_4_validated=(
                 policy["schema_version"] == "world-source-query-v0.4"
             ),
+            _world_partial_source_policy_v0_5_validated=(
+                policy["schema_version"] == "world-source-query-v0.5"
+            ),
         )
         source_version = (
             validated["sources"][0]["schema_version"]
             if validated["sources"]
             else None
         )
-        if (source_version == "host-event-source-snapshot-v0.3") != (
-            policy["schema_version"] == "world-source-query-v0.4"
-        ):
+        expected_source_version = {
+            "world-source-query-v0.4": "host-event-source-snapshot-v0.3",
+            "world-source-query-v0.5": "host-event-source-snapshot-v0.4",
+        }.get(policy["schema_version"])
+        if source_version in (
+            "host-event-source-snapshot-v0.3",
+            "host-event-source-snapshot-v0.4",
+        ) and source_version != expected_source_version:
             raise ValueError("World source and query policy versions do not match")
         validated["world_source_query_policy"] = dict(policy)
         return _canonical_value(validated, "configuration_snapshot")
@@ -633,6 +652,7 @@ def _validated_event_configuration_snapshot(
             "host-event-source-snapshot-v0.1",
             "host-event-source-snapshot-v0.2",
             "host-event-source-snapshot-v0.3",
+            "host-event-source-snapshot-v0.4",
         )
         or source["provider"] != "tavily"
     ):
@@ -641,11 +661,18 @@ def _validated_event_configuration_snapshot(
         raise ValueError("Official supplemental search policy is Event-only")
     if source_schema_version == "host-event-source-snapshot-v0.3" and mode != "world":
         raise ValueError("Native seed URL source policy is World-only")
+    if source_schema_version == "host-event-source-snapshot-v0.4" and mode != "world":
+        raise ValueError("Partial source coverage policy is World-only")
     if (
         source_schema_version == "host-event-source-snapshot-v0.3"
         and not _world_native_seed_policy_v0_4_validated
     ):
         raise ValueError("Native seed URL source policy requires World query policy v0.4")
+    if (
+        source_schema_version == "host-event-source-snapshot-v0.4"
+        and not _world_partial_source_policy_v0_5_validated
+    ):
+        raise ValueError("Partial source coverage requires World query policy v0.5")
     grounder_limits = source["grounder_limits"]
     if (
         type(grounder_limits) is not dict
@@ -3303,7 +3330,13 @@ class HostStore:
             raise ValueError("invalid digest-bound Direct report cache")
         return core
 
-    def save_batch_result(self, run_id: str, result: Any) -> None:
+    def save_batch_result(
+        self,
+        run_id: str,
+        result: Any,
+        *,
+        source_coverage_by_unit: Any = None,
+    ) -> None:
         """Atomically archive one complete, bounded World/Event Core batch."""
 
         from .core_application import CoreRunResult
@@ -3319,6 +3352,8 @@ class HostStore:
                 raise KeyError(run_id)
             if run["mode"] not in ("world", "event") or run["status"] != "RUNNING":
                 raise ValueError("batch archive requires a RUNNING World or Event run")
+            if source_coverage_by_unit is not None and type(source_coverage_by_unit) is not tuple:
+                raise TypeError("source_coverage_by_unit must be a detached tuple or None")
             archive = build_batch_archive(
                 run_id=run_id,
                 mode=run["mode"],
@@ -3331,6 +3366,7 @@ class HostStore:
                 canonical_json=_canonical_json,
                 validate_locator=_validate_event_source_locator,
                 validate_source_uris=_validate_source_reference_uris,
+                source_coverage_by_unit=source_coverage_by_unit,
             )
             validated_summary, _decoded_cases = validate_batch_archive(
                 archive,

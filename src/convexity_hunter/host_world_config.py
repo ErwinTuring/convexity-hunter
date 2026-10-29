@@ -17,12 +17,16 @@ from .host_event_config import (
     _require_object,
 )
 from .host_skill import HostSkillConfig, Last30DaysSkillPin
-from .host_world import HostWorldConfig
+from .host_world import (
+    HostWorldConfig,
+    _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1,
+)
 from .option_chain_discovery import OptionMaturityAuthority
 
 HOST_WORLD_CONFIG_SCHEMA_VERSION = "host-world-config-v0.1"
 _HOST_WORLD_CONFIG_SCHEMA_VERSION_V0_3 = "host-world-config-v0.3"
 _HOST_WORLD_CONFIG_SCHEMA_VERSION_V0_4 = "host-world-config-v0.4"
+_HOST_WORLD_CONFIG_SCHEMA_VERSION_V0_5 = "host-world-config-v0.5"
 _MAX_CATALOG_SCAN_PARAGRAPHS_V0_3 = 1024
 _MAX_CATALOG_ENTRIES_V0_4 = 256
 APPROVED_SKILL_PATH = Path("/Users/erwinlee/.codex/skills/last30days")
@@ -72,11 +76,21 @@ def load_world_config(
             type(parsed) is dict
             and parsed.get("schema_version") == _HOST_WORLD_CONFIG_SCHEMA_VERSION_V0_4
         )
+        v0_5 = (
+            type(parsed) is dict
+            and parsed.get("schema_version") == _HOST_WORLD_CONFIG_SCHEMA_VERSION_V0_5
+        )
         v0_2 = (
             type(parsed) is dict
             and parsed.get("schema_version") == "host-world-config-v0.2"
         )
-        if v0_4:
+        if v0_5:
+            fields = frozenset((
+                "schema_version", "skill", "bounds", "grounder_budgets",
+                "catalog_scan_paragraphs", "catalog_entries",
+                "source_coverage_policy",
+            ))
+        elif v0_4:
             fields = frozenset((
                 "schema_version", "skill", "bounds", "grounder_budgets",
                 "catalog_scan_paragraphs", "catalog_entries",
@@ -92,12 +106,21 @@ def load_world_config(
             fields = frozenset(("schema_version", "skill", "bounds"))
         value = _require_object(parsed, fields)
         if (
-            not (v0_2 or v0_3 or v0_4)
+            not (v0_2 or v0_3 or v0_4 or v0_5)
             and value["schema_version"] != HOST_WORLD_CONFIG_SCHEMA_VERSION
         ):
             raise HostWorldConfigurationError("UNSUPPORTED_SCHEMA_VERSION")
         world_grounder = grounder_config
-        if v0_2 or v0_3 or v0_4:
+        source_coverage_policy = "REQUIRE_COMPLETE"
+        if v0_5:
+            source_coverage_policy = value["source_coverage_policy"]
+            if (
+                type(source_coverage_policy) is not str
+                or source_coverage_policy
+                != _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1
+            ):
+                raise HostWorldConfigurationError("INVALID_CONFIGURATION")
+        if v0_2 or v0_3 or v0_4 or v0_5:
             budgets = _require_object(
                 value["grounder_budgets"],
                 frozenset((
@@ -118,7 +141,7 @@ def load_world_config(
             ):
                 raise HostWorldConfigurationError("INVALID_CONFIGURATION")
             catalog_scan_paragraphs = grounder_config.max_catalog_paragraphs
-            if v0_3 or v0_4:
+            if v0_3 or v0_4 or v0_5:
                 catalog_scan_paragraphs = value["catalog_scan_paragraphs"]
                 if (
                     type(catalog_scan_paragraphs) is not int
@@ -127,7 +150,7 @@ def load_world_config(
                     raise HostWorldConfigurationError("INVALID_CONFIGURATION")
             catalog_entries = grounder_config.max_catalog_entries
             run_input_bounds = grounder_config.run_input_bounds
-            if v0_4:
+            if v0_4 or v0_5:
                 catalog_entries = value["catalog_entries"]
                 if (
                     type(catalog_entries) is not int
@@ -189,6 +212,7 @@ def load_world_config(
             evaluation_date=evaluation_date,
             maturity_authority=maturity_authority,
             bounds=CoreOperationalBounds(**_require_object(value["bounds"], _BOUNDS_FIELDS)),
+            source_coverage_policy=source_coverage_policy,
         )
     except HostEventConfigurationError as error:
         raise HostWorldConfigurationError(error.code) from None

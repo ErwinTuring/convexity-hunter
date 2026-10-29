@@ -54,6 +54,7 @@ from convexity_hunter.host_grounder_runtime import (
     HostGrounderEvidenceCatalogRuntimeResult,
     HostGrounderRuntimeError,
 )
+from convexity_hunter.host_source_coverage import HostSourceCoverageAudit
 from convexity_hunter.host_grounder_receipt import ValidatedEnvelopeSnapshot
 from convexity_hunter.host_model import (
     ModelCredential,
@@ -1456,11 +1457,12 @@ def _accepted_default_route_wires(
 
 
 class _SyntheticModelTransport:
-    def __init__(self, discovery_content, semantic_content):
+    def __init__(self, discovery_content, semantic_content, *, coverage_hash_overrides=None):
         self.contents = {
             "fixture-discovery": discovery_content,
             "fixture-semantic": semantic_content,
         }
+        self.coverage_hash_overrides = dict(coverage_hash_overrides or {})
         self.calls = []
 
     def __call__(self, request, _timeout):
@@ -1473,18 +1475,43 @@ class _SyntheticModelTransport:
                 raise AssertionError("synthetic model output sequence was exhausted")
             content = content.pop(0)
         if (
+            model == "fixture-discovery"
+            and "host-grounder-discovery-prompt-v0.11"
+            in payload["messages"][0]["content"]
+        ):
+            response = json.loads(content)
+            request_data = json.loads(payload["messages"][1]["content"])
+            if response.get("schema_version") == "grounder-output-v0.3":
+                response["schema_version"] = "grounder-output-v0.4"
+                response["source_coverage_sha256"] = self.coverage_hash_overrides.get(
+                    "discovery", request_data["source_coverage_sha256"]
+                )
+                content = json.dumps(
+                    response, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                )
+        if (
             model == "fixture-semantic"
             and any(
                 "host-grounder-semantic-verifier-prompt-{}".format(version)
                 in payload["messages"][0]["content"]
-                for version in ("v0.9", "v0.10")
+                for version in ("v0.9", "v0.10", "v0.11")
             )
         ):
             response = json.loads(content)
             request_data = json.loads(payload["messages"][1]["content"])
             binding_objects = request_data["host_binding_objects"]
             if response.get("schema_version") == "semantic-verdict-v0.3":
-                response["schema_version"] = "semantic-verdict-v0.4"
+                covered_world = (
+                    "host-grounder-semantic-verifier-prompt-v0.11"
+                    in payload["messages"][0]["content"]
+                )
+                response["schema_version"] = (
+                    "semantic-verdict-v0.5" if covered_world else "semantic-verdict-v0.4"
+                )
+                if covered_world:
+                    response["source_coverage_sha256"] = self.coverage_hash_overrides.get(
+                        "semantic", request_data["source_coverage_sha256"]
+                    )
                 bound_records = []
                 for index, record in enumerate(response["field_bindings"]):
                     binding_object = binding_objects[index]
@@ -2472,6 +2499,308 @@ class HostEventGrounderTests(unittest.TestCase):
                 bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
             )
         self.assertEqual(raised.exception.code, "EXTRACTION_FAILURE")
+        self.assertEqual(model_transport.calls, [])
+
+    def test_world_partial_extract_binds_audit_and_excludes_failed_body(self):
+        run_id = "world-covered-partial-extract"
+        host_run_id = "world-host-run-partial"
+        unit_id = "world-unit-partial"
+        successful_url = _SEARCH_ORDER[0][1]
+        failed_url = _SEARCH_ORDER[1][1]
+        source_order = ((_url_source_id(successful_url), successful_url),)
+        bodies = {
+            successful_url: "Synthetic successful source body.\n",
+        }
+        config = _config()
+        discovery, semantic, _normalized = _model_outputs(
+            run_id, _RAW_INPUT, source_order, bodies, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            failed_urls=(failed_url,), body_overrides=bodies
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        result = callback._world_source_query_factory(
+            "Assess the native lead.",
+            source_coverage_identity=(host_run_id, unit_id),
+        )(
+            _RAW_INPUT,
+            run_id=run_id,
+            bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+        )
+
+        audit = result.build_result.context.source_coverage
+        self.assertIs(type(audit), HostSourceCoverageAudit)
+        self.assertEqual((audit.host_run_id, audit.unit_id, audit.run_id),
+                         (host_run_id, unit_id, run_id))
+        self.assertEqual(audit.status, "PARTIAL")
+        self.assertEqual(
+            [(entry.locator, entry.status) for entry in audit.entries],
+            [(successful_url, "BODY_AVAILABLE"), (failed_url, "FAILED")],
+        )
+        successful_id = _url_source_id(successful_url)
+        failed_id = _url_source_id(failed_url)
+        self.assertEqual(set(result.build_result.context.source_bodies), {successful_id})
+        self.assertNotIn(failed_id, result.build_result.context.source_bodies)
+        self.assertEqual(len(model_transport.calls), 2)
+        for model_call in model_transport.calls:
+            request = json.loads(model_call["messages"][1]["content"])
+            self.assertEqual(
+                request["source_coverage_audit_json"],
+                audit.canonical_utf8.decode("utf-8"),
+            )
+            self.assertEqual(request["source_coverage_sha256"], audit.sha256)
+            registered = json.loads(request["registered_source_registry_json"])
+            self.assertEqual(
+                [item["source_id"] for item in registered], [successful_id]
+            )
+            self.assertNotIn(failed_id, request["registered_source_registry_json"])
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        self.assertEqual(sidecar["producer_wire_version"], "grounder-output-v0.4")
+        self.assertEqual(sidecar["verifier_wire_version"], "semantic-verdict-v0.5")
+
+    def test_world_partial_extract_preserves_valid_official_admissions(self):
+        run_id = "world-covered-official-admissions"
+        nasdaq_url = "https://www.nasdaq.com/market-activity/stocks/acme"
+        yahoo_url = "https://finance.yahoo.com/quote/ACME/"
+        failed_url = "https://source.example/failed-official-neighbor"
+        successful_urls = (nasdaq_url, yahoo_url)
+        nasdaq_html = (
+            "<!doctype html><html><body>"
+            "<h1>ACME HOLDINGS, INC. Ordinary Shares (ACME)</h1>"
+            "</body></html>"
+        ).encode("utf-8")
+        yahoo_html = (
+            "<!doctype html><html><body>"
+            "<div>NasdaqGS - Delayed Quote&#8226;USD</div>"
+            "<h1>ACME HOLDINGS, INC. (ACME)</h1></body></html>"
+        ).encode("utf-8")
+        replies = {
+            nasdaq_url: _Reply(200, {"Content-Type": "text/html"}, nasdaq_html),
+            yahoo_url: _Reply(200, {"Content-Type": "text/html"}, yahoo_html),
+        }
+
+        class _OfflineAdmissionTransport:
+            def __call__(self, locator, _address, _timeout, _max_bytes):
+                return replies[locator]
+
+        admission_batch = _SourceAdmissionClient(
+            timeout_seconds=2.0,
+            max_response_bytes=100_000,
+            byte_budget=300_000,
+            _transport=_OfflineAdmissionTransport(),
+            _resolver=lambda _host, _port: ("93.184.216.34",),
+            _clock=lambda: _NOW,
+        ).admit_candidates(successful_urls)
+        self.assertEqual(len(admission_batch.admissions), 2)
+
+        class _PreloadedAdmissionClient:
+            def __init__(self):
+                self.locators = None
+
+            def admit_candidates(self, locators):
+                self.locators = tuple(locators)
+                return admission_batch
+
+        search_order = tuple(
+            ("official-{}".format(index), url)
+            for index, url in enumerate(successful_urls)
+        ) + (("failed-neighbor", failed_url),)
+        source_order = tuple(
+            (_url_source_id(url), url) for url in successful_urls
+        ) + tuple(
+            (record.source_id, record.initial_locator)
+            for record in admission_batch.admissions
+        )
+        bodies = {
+            record.initial_locator: record.parsed_body
+            for record in admission_batch.admissions
+        }
+        config = _config(source_order=search_order)
+        discovery, semantic, _normalized = _model_outputs(
+            run_id, _RAW_INPUT, source_order, bodies, config
+        )
+        source_transport = _SyntheticSourceTransport(
+            search_order=search_order,
+            failed_urls=(failed_url,),
+            body_overrides=bodies,
+        )
+        model_transport = _SyntheticModelTransport(discovery, semantic)
+        admission_client = _PreloadedAdmissionClient()
+        callback = create_event_grounder(
+            config,
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        with patch(
+            "convexity_hunter.host_event._create_source_admission_client",
+            return_value=admission_client,
+        ):
+            result = callback._world_source_query_factory(
+                "Assess the native lead.",
+                source_coverage_identity=("world-host-run-admissions", "world-unit-admissions"),
+            )(
+                _RAW_INPUT,
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        audit = result.build_result.context.source_coverage
+        self.assertEqual(audit.status, "PARTIAL")
+        self.assertEqual(admission_client.locators, successful_urls)
+        registered_sources = result.build_result.context.source_bodies
+        admission_ids = {record.source_id for record in admission_batch.admissions}
+        available_ids = {
+            entry.source_id
+            for entry in audit.entries
+            if entry.status == "BODY_AVAILABLE"
+        }
+        self.assertTrue(admission_ids.issubset(registered_sources))
+        self.assertEqual(available_ids, {_url_source_id(url) for url in successful_urls})
+        self.assertEqual(set(registered_sources), available_ids | admission_ids)
+        self.assertFalse(
+            any(source.final_locator == failed_url for source in registered_sources.values())
+        )
+        for model_call in model_transport.calls:
+            request = json.loads(model_call["messages"][1]["content"])
+            registered = json.loads(request["registered_source_registry_json"])
+            registered_ids = {item["source_id"] for item in registered}
+            self.assertTrue(admission_ids.issubset(registered_ids))
+            self.assertTrue(available_ids.issubset(registered_ids))
+            self.assertEqual(registered_ids - available_ids, admission_ids)
+            self.assertFalse(
+                any(item["final_locator"] == failed_url for item in registered)
+            )
+
+    def test_world_partial_model_outputs_must_echo_exact_coverage_hash(self):
+        successful_url = _SEARCH_ORDER[0][1]
+        failed_url = _SEARCH_ORDER[1][1]
+        source_order = ((_url_source_id(successful_url), successful_url),)
+        bodies = {successful_url: "Synthetic successful source body.\n"}
+        config = _config()
+        for role, expected_calls, expected_code in (
+            ("discovery", 1, "PRODUCER_ENVELOPE_INVALID"),
+            ("semantic", 2, "SEMANTIC_VERDICT_REJECTED"),
+        ):
+            with self.subTest(role=role):
+                run_id = "world-covered-hash-mismatch-{}".format(role)
+                discovery, semantic, _normalized = _model_outputs(
+                    run_id, _RAW_INPUT, source_order, bodies, config
+                )
+                source_transport = _SyntheticSourceTransport(
+                    failed_urls=(failed_url,), body_overrides=bodies
+                )
+                model_transport = _SyntheticModelTransport(
+                    discovery,
+                    semantic,
+                    coverage_hash_overrides={role: "0" * 64},
+                )
+                callback = create_event_grounder(
+                    config,
+                    repo_root=_ROOT,
+                    source_transport=source_transport,
+                    discovery_transport=model_transport,
+                    semantic_transport=model_transport,
+                )
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    callback._world_source_query_factory(
+                        "Assess the native lead.",
+                        source_coverage_identity=(
+                            "world-host-run-hash-mismatch",
+                            "world-unit-{}".format(role),
+                        ),
+                    )(
+                        _RAW_INPUT,
+                        run_id=run_id,
+                        bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+                    )
+
+                self.assertEqual(raised.exception.code, expected_code)
+                self.assertIs(
+                    type(raised.exception._source_coverage_audit),
+                    HostSourceCoverageAudit,
+                )
+                self.assertEqual(len(model_transport.calls), expected_calls)
+
+    def test_world_empty_extract_transfers_audit_without_model_calls(self):
+        run_id = "world-covered-empty-extract"
+        source_transport = _SyntheticSourceTransport(
+            failed_urls=tuple(url for _source_id, url in _SEARCH_ORDER)
+        )
+        model_transport = _SyntheticModelTransport("{}", "{}")
+        callback = create_event_grounder(
+            _config(),
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            callback._world_source_query_factory(
+                "Assess the native lead.",
+                source_coverage_identity=("world-host-run-empty", "world-unit-empty"),
+            )(
+                _RAW_INPUT,
+                run_id=run_id,
+                bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+            )
+
+        self.assertEqual(raised.exception.code, "EXTRACTION_FAILURE")
+        audit = raised.exception._source_coverage_audit
+        self.assertIs(type(audit), HostSourceCoverageAudit)
+        self.assertEqual(audit.status, "EMPTY")
+        self.assertEqual(
+            [entry.source_id for entry in audit.entries],
+            [_url_source_id(url) for _source_id, url in _SEARCH_ORDER],
+        )
+        self.assertEqual(model_transport.calls, [])
+
+    def test_world_invalid_extract_coverage_has_no_transferable_audit(self):
+        run_id = "world-covered-invalid-extract-receipt"
+        source_transport = _SyntheticSourceTransport()
+        model_transport = _SyntheticModelTransport("{}", "{}")
+        callback = create_event_grounder(
+            _config(),
+            repo_root=_ROOT,
+            source_transport=source_transport,
+            discovery_transport=model_transport,
+            semantic_transport=model_transport,
+        )
+        original_extract = TavilySourceClient.extract
+
+        def extract_with_invalid_coverage(client, urls, **kwargs):
+            extracted = original_extract(client, urls, **kwargs)
+            return replace(
+                extracted,
+                coverage=replace(extracted.coverage, status="EMPTY"),
+            )
+
+        with patch.object(
+            TavilySourceClient, "extract", new=extract_with_invalid_coverage
+        ):
+            with self.assertRaises(HostGrounderRuntimeError) as raised:
+                callback._world_source_query_factory(
+                    "Assess the native lead.",
+                    source_coverage_identity=("world-host-run-invalid", "world-unit-invalid"),
+                )(
+                    _RAW_INPUT,
+                    run_id=run_id,
+                    bounds=CoreOperationalBounds(1, 1, 1, 1, 1.0),
+                )
+
+        self.assertEqual(raised.exception.code, "EXTRACTION_FAILURE")
+        self.assertFalse(hasattr(raised.exception, "_source_coverage_audit"))
         self.assertEqual(model_transport.calls, [])
 
     def test_private_world_query_factory_rejects_invalid_bound_queries_before_calls(self):

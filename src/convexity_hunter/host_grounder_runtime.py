@@ -49,17 +49,21 @@ from .host_grounder_evidence_catalog import (
     _PRODUCER_PROMPT_VERSION_V0_8,
     _PRODUCER_PROMPT_VERSION_V0_9,
     _PRODUCER_PROMPT_VERSION_V0_10,
+    _PRODUCER_PROMPT_VERSION_V0_11,
     _VERIFIER_PROMPT_VERSION as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
     _VERIFIER_PROMPT_VERSION_V0_6 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
     _VERIFIER_PROMPT_VERSION_V0_7 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
     _VERIFIER_PROMPT_VERSION_V0_8 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
     _VERIFIER_PROMPT_VERSION_V0_9 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
     _VERIFIER_PROMPT_VERSION_V0_10 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10,
+    _VERIFIER_PROMPT_VERSION_V0_11 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11,
     build_host_evidence_catalog,
     _build_host_binding_objects,
     parse_grounder_output_v0_3,
     _parse_grounder_output_v0_3_with_progress,
+    _parse_grounder_output_world_partial_v0_4_with_progress,
     parse_semantic_verdict_v0_3,
+    _parse_semantic_verdict_world_partial_v0_5,
     _SemanticVerdictProgress,
     _parse_semantic_verdict_v0_3,
     _parse_semantic_verdict_v0_4,
@@ -87,6 +91,7 @@ from .host_grounder_semantic import (
     _paths_for_claim,
     _paths_for_hypothesis,
 )
+from .host_source_coverage import HostSourceCoverageAudit
 from .market_data import UnderlyingKey
 from .host_model import (
     ChatCompletionsClient,
@@ -950,6 +955,59 @@ _SEMANTIC_SYSTEM_PROMPT_V0_10 = _SEMANTIC_SYSTEM_PROMPT_V0_9.replace(
     "when evidence in context actually establishes that role."
 )
 
+_DISCOVERY_SYSTEM_PROMPT_V0_11 = _replace_prompt_fragment(
+    _DISCOVERY_SYSTEM_PROMPT_V0_10,
+    "Prompt version: host-grounder-discovery-prompt-v0.10.",
+    "Prompt version: host-grounder-discovery-prompt-v0.11.",
+).replace("grounder-output-v0.3", "grounder-output-v0.4")
+_DISCOVERY_SYSTEM_PROMPT_V0_11 = _replace_prompt_fragment(
+    _DISCOVERY_SYSTEM_PROMPT_V0_11,
+    '  "request_id": "FORMAT_ONLY_RUN_ID_DO_NOT_COPY",\n',
+    '  "request_id": "FORMAT_ONLY_RUN_ID_DO_NOT_COPY",\n'
+    '  "source_coverage_sha256": "FORMAT_ONLY_SOURCE_COVERAGE_SHA256_DO_NOT_COPY",\n',
+) + (
+    "\n\nWorld-only partial-source audit (v0.11): the request includes the exact "
+    "Host-owned source_coverage_audit_json and source_coverage_sha256. Copy the "
+    "provided digest exactly into the required top-level source_coverage_sha256 "
+    "field of this grounder-output-v0.4 response. The audit records retrieval "
+    "outcomes, not evidence or truth. Only registered successful bodies may "
+    "support facts, dates, identity, or field bindings. A FAILED row was not "
+    "read and cannot support or contradict any claim, including through an "
+    "alternate source ID for its failed locator. PARTIAL is not a complete "
+    "review and does not mean contrary evidence is absent: do not claim that all "
+    "requested sources were checked, and describe the reviewed successful-body "
+    "scope and known missing coverage when discussing counterevidence. If a "
+    "required conclusion depends on a failed source, leave it unresolved unless "
+    "independently supported by surviving registered evidence. Preserve every "
+    "existing v0.10 schema, binding, chronology, uncertainty, and non-invention "
+    "rule."
+)
+
+_SEMANTIC_SYSTEM_PROMPT_V0_11 = _replace_prompt_fragment(
+    _SEMANTIC_SYSTEM_PROMPT_V0_10,
+    "Prompt version: host-grounder-semantic-verifier-prompt-v0.10.",
+    "Prompt version: host-grounder-semantic-verifier-prompt-v0.11.",
+).replace("semantic-verdict-v0.4", "semantic-verdict-v0.5")
+_SEMANTIC_SYSTEM_PROMPT_V0_11 = _replace_prompt_fragment(
+    _SEMANTIC_SYSTEM_PROMPT_V0_11,
+    "Top-level exact keys: schema_version, run_id, envelope_hash, source_body_hashes, claims, hypotheses, field_bindings, coverage.",
+    "Top-level exact keys: schema_version, run_id, envelope_hash, source_body_hashes, claims, hypotheses, field_bindings, coverage, source_coverage_sha256.",
+) + (
+    "\n\nWorld-only partial-source audit (v0.11): the request includes the exact "
+    "Host-owned source_coverage_audit_json and source_coverage_sha256. Copy the "
+    "provided digest exactly into the required top-level source_coverage_sha256 "
+    "field of this semantic-verdict-v0.5 response. The audit is retrieval "
+    "metadata, not evidence. Assess facts and bindings only against registered "
+    "successful bodies; a FAILED row was not read and cannot support or "
+    "contradict a claim, including through an alternate source ID for its "
+    "failed locator. PARTIAL does not establish a complete review or absence "
+    "of contrary evidence. Reject claims that failed URLs were read or that all "
+    "requested sources were checked; require scope-limited counterevidence "
+    "review and keep any conclusion requiring a failed source unresolved unless "
+    "independently supported by surviving registered evidence. Preserve all "
+    "existing v0.10 evidence, identity, chronology, and verdict requirements."
+)
+
 
 class HostGrounderRuntimeError(RuntimeError):
     """Sanitized fail-closed error; never retains model or source payloads."""
@@ -1688,6 +1746,8 @@ def _validate_run_and_sources(
     except Exception:
         raise HostGrounderRuntimeError("RUN_CONTEXT_BINDING_INVALID") from None
 
+    _validate_source_coverage_context(run_input, context)
+
     if not context.source_bodies or len(context.source_bodies) > run_input.bounds.max_array_items:
         raise HostGrounderRuntimeError("SOURCE_REGISTRY_INVALID")
     bodies = {}
@@ -1728,6 +1788,57 @@ def _validate_run_and_sources(
             }
         )
     return bodies, _canonical_json(records, "SOURCE_REGISTRY_INVALID")
+
+
+def _validate_source_coverage_context(
+    run_input: HostGrounderRunInput, context: HostBuildContext
+) -> Optional[HostSourceCoverageAudit]:
+    """Rebind the immutable audit to this exact run, input, and successful bodies."""
+    if context.source_coverage is None:
+        return None
+    try:
+        if type(context.source_coverage) is not HostSourceCoverageAudit:
+            raise ValueError("coverage audit type is invalid")
+        audit = HostSourceCoverageAudit.from_dict(context.source_coverage.to_dict())
+        if (
+            audit.run_id != run_input.run_id
+            or audit.canonical_input_hash != run_input.canonical_input_hash
+            or audit.status == "EMPTY"
+            or len(audit.entries) > run_input.bounds.max_array_items
+        ):
+            raise ValueError("coverage audit is bound to another run or input")
+        bounded_text = [
+            audit.host_run_id,
+            audit.unit_id,
+            audit.run_id,
+            audit.canonical_input_hash,
+        ]
+        for entry in audit.entries:
+            bounded_text.extend((entry.locator, entry.source_id, entry.digest_or_reason))
+            source = context.source_bodies.get(entry.source_id)
+            if entry.status == "BODY_AVAILABLE":
+                if (
+                    type(source) is not HostSourceBody
+                    or source.final_locator != entry.locator
+                    or source.body_sha256 != entry.digest_or_reason
+                    or hashlib.sha256(source.body.encode("utf-8", errors="strict")).hexdigest()
+                    != entry.digest_or_reason
+                ):
+                    raise ValueError("coverage body binding changed")
+            elif source is not None or any(
+                type(candidate) is HostSourceBody
+                and candidate.final_locator == entry.locator
+                for candidate in context.source_bodies.values()
+            ):
+                raise ValueError("failed coverage locator has a registered body")
+        if any(
+            len(value.encode("utf-8", errors="strict")) > run_input.bounds.max_string_bytes
+            for value in bounded_text
+        ):
+            raise ValueError("coverage value exceeds string bound")
+        return audit
+    except Exception:
+        raise HostGrounderRuntimeError("SOURCE_COVERAGE_BINDING_INVALID") from None
 
 
 def _snapshot_source_context(context: HostBuildContext) -> HostBuildContext:
@@ -1807,6 +1918,15 @@ def _capture_preparation_context(context: HostBuildContext) -> dict:
             policy.authorization_source,
         )
     )
+    coverage = context.source_coverage
+    coverage_values = (
+        None
+        if coverage is None
+        else (
+            HostSourceCoverageAudit.from_dict(coverage.to_dict()).canonical_utf8,
+            coverage.sha256,
+        )
+    )
     return {
         "raw_input": context.raw_input,
         "fixed": (
@@ -1828,6 +1948,8 @@ def _capture_preparation_context(context: HostBuildContext) -> dict:
         "bindings": tuple(bindings),
         "policy": policy,
         "policy_values": policy_values,
+        "source_coverage": coverage,
+        "source_coverage_values": coverage_values,
     }
 
 
@@ -1888,6 +2010,25 @@ def _matches_preparation_context(
     )
     if policy_values != captured["policy_values"]:
         return False
+
+    source_coverage = context.source_coverage
+    saved_coverage = captured["source_coverage_values"]
+    if (source_coverage is None) != (saved_coverage is None):
+        return False
+    if source_coverage is not None:
+        if type(source_coverage) is not HostSourceCoverageAudit:
+            return False
+        try:
+            checked_coverage = HostSourceCoverageAudit.from_dict(
+                source_coverage.to_dict()
+            )
+        except Exception:
+            return False
+        if (
+            checked_coverage.canonical_utf8 != saved_coverage[0]
+            or checked_coverage.sha256 != saved_coverage[1]
+        ):
+            return False
 
     if include_fill_fields:
         if context.event_description_binding != captured["description"]:
@@ -2342,6 +2483,14 @@ def _run_host_grounder_same_run_evidence_catalog(
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Run the explicit paragraph-catalog v0.3 wire path exactly once per role."""
     max_json_bytes = _positive_int(max_json_bytes, "JSON_LIMIT_INVALID")
+    source_coverage_route = (
+        producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+        and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
+    )
+    if type(context) is not HostBuildContext:
+        raise HostGrounderRuntimeError("RUN_CONTEXT_INVALID")
+    if (context.source_coverage is not None) != source_coverage_route:
+        raise HostGrounderRuntimeError("SOURCE_COVERAGE_BINDING_INVALID")
     if type(producer_prompt_version) is not str:
         raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
     if producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_4:
@@ -2358,6 +2507,8 @@ def _run_host_grounder_same_run_evidence_catalog(
         discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_9
     elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10:
         discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_10
+    elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11:
+        discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_11
     else:
         raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
     if type(semantic_prompt_version) is not str:
@@ -2374,6 +2525,8 @@ def _run_host_grounder_same_run_evidence_catalog(
             and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9
             or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
             and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
         )
         and callable(context_preparer)
         and producer_diagnostics_v0_3 is True
@@ -2389,6 +2542,8 @@ def _run_host_grounder_same_run_evidence_catalog(
             )
             or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
             and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
         )
         and producer_format_repair_enabled
     ):
@@ -2398,6 +2553,7 @@ def _run_host_grounder_same_run_evidence_catalog(
         _PRODUCER_PROMPT_VERSION_V0_8,
         _PRODUCER_PROMPT_VERSION_V0_9,
         _PRODUCER_PROMPT_VERSION_V0_10,
+        _PRODUCER_PROMPT_VERSION_V0_11,
     ):
         raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_ROUTE_INVALID")
     if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION:
@@ -2412,6 +2568,8 @@ def _run_host_grounder_same_run_evidence_catalog(
         semantic_system_prompt = _SEMANTIC_SYSTEM_PROMPT_V0_9
     elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10:
         semantic_system_prompt = _SEMANTIC_SYSTEM_PROMPT_V0_10
+    elif semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11:
+        semantic_system_prompt = _SEMANTIC_SYSTEM_PROMPT_V0_11
     else:
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     if (
@@ -2424,16 +2582,23 @@ def _run_host_grounder_same_run_evidence_catalog(
         and producer_prompt_version != _PRODUCER_PROMPT_VERSION_V0_10
     ):
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
+    if (
+        semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
+        and producer_prompt_version != _PRODUCER_PROMPT_VERSION_V0_11
+    ):
+        raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     receipt_failure_default_route = (
         callable(context_preparer)
         and (
             producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
             or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
         )
         and semantic_prompt_version in (
             _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
             _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
             _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10,
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11,
         )
         and producer_diagnostics_v0_3 is True
         and producer_format_repair_enabled is True
@@ -2449,6 +2614,22 @@ def _run_host_grounder_same_run_evidence_catalog(
     bodies, registry_json = _validate_run_and_sources(
         run_input, frozen_context, max_source_body_bytes=max_source_body_bytes
     )
+    source_coverage_audit = None
+    source_coverage_json = None
+    source_coverage_sha256 = None
+    if source_coverage_route:
+        source_coverage_audit = _validate_source_coverage_context(
+            run_input, frozen_context
+        )
+        if (
+            source_coverage_audit is None
+            or len(source_coverage_audit.canonical_utf8) > max_json_bytes
+        ):
+            raise HostGrounderRuntimeError("SOURCE_COVERAGE_BINDING_INVALID")
+        source_coverage_json = source_coverage_audit.canonical_utf8.decode(
+            "utf-8", errors="strict"
+        )
+        source_coverage_sha256 = source_coverage_audit.sha256
     try:
         catalog = build_host_evidence_catalog(
             run_input.run_id,
@@ -2471,15 +2652,18 @@ def _run_host_grounder_same_run_evidence_catalog(
         runtime_error._evidence_catalog_failure_check = check
         raise runtime_error from None
 
+    discovery_input = {
+        "run_id": run_input.run_id,
+        "host_observed_at_utc_date": frozen_context.observed_at.astimezone(timezone.utc).date().isoformat(),
+        "run_input_json": run_input.canonical_json,
+        "registered_source_registry_json": registry_json,
+        "evidence_catalog_json": catalog_json,
+    }
+    if source_coverage_route:
+        discovery_input["source_coverage_audit_json"] = source_coverage_json
+        discovery_input["source_coverage_sha256"] = source_coverage_sha256
     discovery_prompt = _canonical_json(
-        {
-            "run_id": run_input.run_id,
-            "host_observed_at_utc_date": frozen_context.observed_at.astimezone(timezone.utc).date().isoformat(),
-            "run_input_json": run_input.canonical_json,
-            "registered_source_registry_json": registry_json,
-            "evidence_catalog_json": catalog_json,
-        },
-        "DISCOVERY_PROMPT_INVALID",
+        discovery_input, "DISCOVERY_PROMPT_INVALID"
     )
     try:
         audit_holder._begin(
@@ -2514,6 +2698,9 @@ def _run_host_grounder_same_run_evidence_catalog(
     else:
         producer_parser = parse_grounder_output_v0_3
         producer_parser_options = {}
+    if source_coverage_route:
+        producer_parser = _parse_grounder_output_world_partial_v0_4_with_progress
+        producer_parser_options["source_coverage_sha256"] = source_coverage_sha256
 
     binding_omission_repair_enabled = (
         producer_format_repair_enabled
@@ -2527,6 +2714,10 @@ def _run_host_grounder_same_run_evidence_catalog(
         and producer_diagnostics_v0_3
         and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
         and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
+        or producer_format_repair_enabled
+        and producer_diagnostics_v0_3
+        and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+        and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
     )
 
     def with_producer_attempts(error: HostGrounderRuntimeError) -> HostGrounderRuntimeError:
@@ -2854,6 +3045,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     if semantic_prompt_version in (
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10,
+        _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11,
     ):
         try:
             host_binding_objects = _build_host_binding_objects(
@@ -2898,9 +3090,13 @@ def _run_host_grounder_same_run_evidence_catalog(
         "registered_source_registry_json": registry_json,
         "evidence_catalog_json": catalog_json,
     }
+    if source_coverage_route:
+        verifier_input["source_coverage_audit_json"] = source_coverage_json
+        verifier_input["source_coverage_sha256"] = source_coverage_sha256
     if semantic_prompt_version in (
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10,
+        _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11,
     ):
         verifier_input["host_binding_objects"] = host_binding_objects
     elif semantic_prompt_version in (
@@ -2931,7 +3127,9 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise with_producer_attempts(error) from None
 
     progress = _SemanticVerdictProgress() if context_preparer is not None else None
-    if semantic_prompt_version in (
+    if source_coverage_route:
+        verdict_parser = _parse_semantic_verdict_world_partial_v0_5
+    elif semantic_prompt_version in (
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10,
     ):
@@ -2945,7 +3143,10 @@ def _run_host_grounder_same_run_evidence_catalog(
         if semantic_prompt_version in (
             _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
             _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10,
+            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11,
         ):
+            if source_coverage_route:
+                parser_options["source_coverage_sha256"] = source_coverage_sha256
             normalized_verdict = verdict_parser(
                 semantic_call.content,
                 max_json_bytes,
@@ -3526,6 +3727,19 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
         raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
     if type(default_recipe_enabled) is not bool:
         raise HostGrounderRuntimeError("DEFAULT_RECIPE_FLAG_INVALID")
+    covered_world_route = (
+        type(context) is HostBuildContext and context.source_coverage is not None
+    )
+    producer_prompt_version = (
+        _PRODUCER_PROMPT_VERSION_V0_11
+        if covered_world_route
+        else _PRODUCER_PROMPT_VERSION_V0_10
+    )
+    semantic_prompt_version = (
+        _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
+        if covered_world_route
+        else _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
+    )
     try:
         return _run_host_grounder_same_run_evidence_catalog(
             run_input,
@@ -3538,8 +3752,8 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
             max_catalog_entries=max_catalog_entries,
             max_catalog_bytes=max_catalog_bytes,
             max_catalog_paragraphs=max_catalog_paragraphs,
-            producer_prompt_version=_PRODUCER_PROMPT_VERSION_V0_10,
-            semantic_prompt_version=_EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10,
+            producer_prompt_version=producer_prompt_version,
+            semantic_prompt_version=semantic_prompt_version,
             context_preparer=host_context_preparer,
             producer_diagnostics_v0_3=True,
             producer_format_repair_enabled=True,
@@ -3547,10 +3761,7 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
             semantic_rejection_projection_enabled=default_recipe_enabled,
         )
     except HostGrounderRuntimeError as error:
-        error._semantic_transport_route = (
-            _PRODUCER_PROMPT_VERSION_V0_10,
-            _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10,
-        )
+        error._semantic_transport_route = (producer_prompt_version, semantic_prompt_version)
         attempts = getattr(error, "producer_attempts", None)
         if (
             type(error) is HostGrounderRuntimeError

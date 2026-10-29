@@ -161,6 +161,19 @@ def _world_configuration_snapshot_v0_4():
     return snapshot
 
 
+def _world_configuration_snapshot_v0_5():
+    snapshot = _event_configuration_snapshot()
+    snapshot["sources"][0]["schema_version"] = "host-event-source-snapshot-v0.4"
+    snapshot["world_source_query_policy"] = {
+        "schema_version": "world-source-query-v0.5",
+        "basis": "independent_native_event_units_partial_source_coverage",
+        "max_characters": 400,
+        "full_research_context_preserved": True,
+        "evaluation_date": "2026-10-07",
+    }
+    return snapshot
+
+
 def _semantic_transport_audit():
     return {
         "schema_version": "host-semantic-transport-retry-v0.1",
@@ -2420,6 +2433,13 @@ class HostStoreTests(unittest.TestCase):
             "world", "native-seed source-query configuration", BOUNDS,
             STANDARD_RESEARCH_PROFILE.snapshot(), v0_4_metadata,
         )
+        v0_5_metadata = _run_start_metadata()
+        expected_v0_5 = _world_configuration_snapshot_v0_5()
+        v0_5_metadata["configuration_snapshot"] = expected_v0_5
+        v0_5_id = self.store.create_run(
+            "world", "partial-source-coverage query configuration", BOUNDS,
+            STANDARD_RESEARCH_PROFILE.snapshot(), v0_5_metadata,
+        )
         expected_v0_3 = _world_configuration_snapshot_v0_3()
         v0_3_metadata["configuration_snapshot"]["world_source_query_policy"][
             "basis"
@@ -2465,6 +2485,11 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(
             v0_4_run["metadata"]["configuration_snapshot"], expected_v0_4
         )
+        v0_5_run = recovered.get_run(v0_5_id)
+        self.assertEqual(v0_5_run["status"], "INTERRUPTED")
+        self.assertEqual(
+            v0_5_run["metadata"]["configuration_snapshot"], expected_v0_5
+        )
 
         for mode in ("event", "direct"):
             with self.subTest(mode=mode):
@@ -2473,6 +2498,7 @@ class HostStoreTests(unittest.TestCase):
                     _world_configuration_snapshot_v0_2(),
                     _world_configuration_snapshot_v0_3(),
                     _world_configuration_snapshot_v0_4(),
+                    _world_configuration_snapshot_v0_5(),
                 ):
                     disallowed = _run_start_metadata()
                     disallowed["configuration_snapshot"] = snapshot
@@ -2636,6 +2662,49 @@ class HostStoreTests(unittest.TestCase):
         invalid.append(snapshot)
         snapshot = _event_configuration_snapshot()
         snapshot["sources"][0]["schema_version"] = "host-event-source-snapshot-v0.3"
+        invalid.append(snapshot)
+
+        for snapshot in invalid:
+            with self.subTest(policy=snapshot.get("world_source_query_policy")):
+                metadata = _run_start_metadata()
+                metadata["configuration_snapshot"] = snapshot
+                with self.assertRaises((TypeError, ValueError)):
+                    self.store.create_run(
+                        "world", "request", BOUNDS,
+                        STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+                    )
+        self.assertEqual(self.store.list_runs(), [])
+
+    def test_world_source_query_v0_5_requires_partial_coverage_source_pair(self):
+        invalid = []
+        for field, value in (
+            ("schema_version", "world-source-query-v0.4"),
+            ("basis", "independent_native_event_units_seed_urls_plus_search"),
+            ("basis", 1),
+            ("max_characters", True),
+            ("max_characters", 401),
+            ("full_research_context_preserved", 1),
+            ("full_research_context_preserved", False),
+            ("evaluation_date", "2026-10-7"),
+            ("evaluation_date", True),
+        ):
+            snapshot = _world_configuration_snapshot_v0_5()
+            snapshot["world_source_query_policy"][field] = value
+            invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_5()
+        snapshot["world_source_query_policy"].pop("evaluation_date")
+        invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_5()
+        snapshot["world_source_query_policy"]["extra"] = "reject"
+        invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_5()
+        snapshot["sources"][0]["schema_version"] = "host-event-source-snapshot-v0.3"
+        invalid.append(snapshot)
+        snapshot = _world_configuration_snapshot_v0_4()
+        snapshot["sources"][0]["schema_version"] = "host-event-source-snapshot-v0.4"
+        invalid.append(snapshot)
+        snapshot = _event_configuration_snapshot()
+        snapshot["sources"][0]["schema_version"] = "host-event-source-snapshot-v0.4"
         invalid.append(snapshot)
 
         for snapshot in invalid:

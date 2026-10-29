@@ -18,6 +18,10 @@ from convexity_hunter.host_world_config import (
     HostWorldConfigurationError,
     load_world_config,
 )
+from convexity_hunter.host_world import (
+    _SOURCE_COVERAGE_POLICY_REQUIRE_COMPLETE,
+    _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1,
+)
 from convexity_hunter.option_chain_discovery import OptionMaturityAuthority
 from tests.test_host_event import _config
 
@@ -83,6 +87,15 @@ def _document_v0_4(catalog_entries=128):
     return document
 
 
+def _document_v0_5(catalog_entries=128):
+    document = _document_v0_4(catalog_entries)
+    document["schema_version"] = "host-world-config-v0.5"
+    document["source_coverage_policy"] = (
+        _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1
+    )
+    return document
+
+
 class HostWorldConfigTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -105,6 +118,10 @@ class HostWorldConfigTests(unittest.TestCase):
         self.assertEqual(config.skill.permitted_source_envs, ())
         self.assertEqual(config.skill.skill_pin.version, "3.21.1")
         self.assertEqual(config.bounds.max_cases, 200)
+        self.assertEqual(
+            config.source_coverage_policy,
+            _SOURCE_COVERAGE_POLICY_REQUIRE_COMPLETE,
+        )
         self.assertEqual(config.evaluation_date, datetime.date(2030, 1, 1))
         self.assertEqual(repr(config), "HostWorldConfig(<redacted>)")
 
@@ -297,7 +314,7 @@ class HostWorldConfigTests(unittest.TestCase):
         document["grounder_budgets"] = []
         invalid.append(("non-object budgets", document, "INVALID_CONFIGURATION"))
         document = _document()
-        document["schema_version"] = "host-world-config-v0.5"
+        document["schema_version"] = "host-world-config-v0.6"
         invalid.append(("unknown version", document, "UNSUPPORTED_SCHEMA_VERSION"))
 
         for label, document, code in invalid:
@@ -476,6 +493,81 @@ class HostWorldConfigTests(unittest.TestCase):
         with self.assertRaises(HostWorldConfigurationError) as raised:
             self.load(json.dumps(_document_v0_4(1)))
         self.assertEqual(raised.exception.code, "INVALID_CONFIGURATION")
+
+    def test_v0_5_selects_validated_partial_without_changing_v0_4_limits(self):
+        document = _document_v0_5(catalog_entries=200)
+        with patch(
+            "convexity_hunter.host_sources.TavilyCredentialRef.resolve",
+            side_effect=AssertionError("must not resolve credentials while loading"),
+        ), patch(
+            "convexity_hunter.host_model.ModelCredential.resolve",
+            side_effect=AssertionError("must not resolve credentials while loading"),
+        ):
+            config = self.load(json.dumps(document))
+
+        self.assertEqual(
+            config.source_coverage_policy,
+            _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1,
+        )
+        self.assertEqual(config.grounder.max_catalog_entries, 200)
+        self.assertEqual(config.grounder.run_input_bounds.max_array_items, 200)
+        self.assertEqual(config.grounder.source.request_budget, 7)
+        self.assertEqual(config.grounder.source.credit_budget, 8)
+        self.assertEqual(config.grounder.max_catalog_paragraphs, 1024)
+        self.assertEqual(config.grounder.max_catalog_entries, 200)
+        self.assertEqual(self.grounder.max_catalog_entries, 64)
+        self.assertEqual(self.grounder.run_input_bounds.max_array_items, 10)
+
+    def test_v0_5_requires_exact_policy_and_exact_v0_4_root_shape(self):
+        invalid = []
+        for value in (
+            None,
+            True,
+            "REQUIRE_COMPLETE",
+            "validated_partial_v0_1",
+            "VALIDATED_PARTIAL_V0_2",
+            [],
+        ):
+            document = _document_v0_5()
+            document["source_coverage_policy"] = value
+            invalid.append(("invalid policy {!r}".format(value), document, "INVALID_CONFIGURATION"))
+
+        document = _document_v0_5()
+        document.pop("source_coverage_policy")
+        invalid.append(("missing policy", document, "MISSING_FIELD"))
+        document = _document_v0_5()
+        document["extra"] = "reject"
+        invalid.append(("extra root field", document, "UNKNOWN_FIELD"))
+        document = _document_v0_5()
+        document.pop("catalog_entries")
+        invalid.append(("missing v0.4 field", document, "MISSING_FIELD"))
+
+        for label, document, expected_code in invalid:
+            with self.subTest(label=label):
+                with self.assertRaises(HostWorldConfigurationError) as raised:
+                    self.load(json.dumps(document))
+                self.assertEqual(raised.exception.code, expected_code)
+
+    def test_v0_1_through_v0_4_remain_strict_and_do_not_accept_opt_in_field(self):
+        for document in (
+            _document(),
+            _document_v0_2(),
+            _document_v0_3(),
+            _document_v0_4(),
+        ):
+            with self.subTest(version=document["schema_version"]):
+                config = self.load(json.dumps(document))
+                self.assertEqual(
+                    config.source_coverage_policy,
+                    _SOURCE_COVERAGE_POLICY_REQUIRE_COMPLETE,
+                )
+                opted_in = dict(document)
+                opted_in["source_coverage_policy"] = (
+                    _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1
+                )
+                with self.assertRaises(HostWorldConfigurationError) as raised:
+                    self.load(json.dumps(opted_in))
+                self.assertEqual(raised.exception.code, "UNKNOWN_FIELD")
 
     def test_strict_json_and_external_byte_cap_fail_closed(self):
         raw = json.dumps(_document())

@@ -39,13 +39,18 @@ from .host_profile import (
     _profile_for_snapshot,
     _request_has_conflicting_registered_profile,
 )
+from .host_source_coverage import HostSourceCoverageAudit
 from .market_data import UnderlyingSecurityType
 from .option_chain_discovery import HypothesisMaturityAlignment, OptionMaturityAuthority
 
 
 SCHEMA_VERSION = "host-batch-snapshot-v0.1"
+SOURCE_COVERAGE_SCHEMA_VERSION = "host-batch-snapshot-v0.2"
 OUTCOME_SCHEMA_VERSION = "host-batch-outcome-v0.1"
 AUDIT_SCHEMA_VERSION = "host-ei-batch-audit-v0.1"
+PARTIAL_SOURCE_COVERAGE_DISCLOSURE = (
+    "来源提取覆盖不完整；仅核验已取得正文，失败来源未被视为事实或反证不存在。"
+)
 _CASE_KEY_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _LIMIT_REASON_RE = re.compile(
     r"(submissions|hypotheses|browser_rows|cases):([1-9][0-9]*)>(0|[1-9][0-9]*)\Z",
@@ -134,6 +139,10 @@ _ARCHIVE_FIELDS = frozenset(
         "unavailable",
     )
 )
+_ARCHIVE_FIELDS_V0_2 = _ARCHIVE_FIELDS | frozenset(("source_coverage_by_unit",))
+_SOURCE_COVERAGE_UNIT_FIELDS = frozenset(
+    ("unit_id", "source_coverage", "submission_ids", "case_ids")
+)
 
 
 def _keys(value: Any, expected: frozenset, label: str) -> None:
@@ -166,6 +175,188 @@ def _strings(value: Any, label: str, *, nonempty: bool = False) -> List[str]:
         raise TypeError("{} must be a string sequence".format(label))
     result = [_text(item, label, nonempty=nonempty) for item in value]
     return result
+
+
+def _source_coverage_unit_rows(value: Any, *, host_run_id: str) -> List[Dict[str, Any]]:
+    """Revalidate and detach the closed per-unit coverage sidecar."""
+
+    if type(value) not in (tuple, list):
+        raise TypeError("source_coverage_by_unit must be a sequence")
+    rows: List[Dict[str, Any]] = []
+    seen_units = set()
+    seen_submissions = set()
+    seen_cases = set()
+    for item in value:
+        _keys(item, _SOURCE_COVERAGE_UNIT_FIELDS, "source coverage unit")
+        unit_id = _text(item["unit_id"], "source coverage unit_id")
+        if unit_id in seen_units:
+            raise ValueError("source coverage unit IDs must be unique")
+        seen_units.add(unit_id)
+        audit_value = item["source_coverage"]
+        audit = None
+        if audit_value is not None:
+            audit = HostSourceCoverageAudit.from_dict(audit_value)
+            if audit.host_run_id != host_run_id or audit.unit_id != unit_id:
+                raise ValueError("source coverage audit is bound to a different Host run or unit")
+            audit_value = audit.to_dict()
+        submission_ids = _strings(item["submission_ids"], "source coverage submission_ids")
+        case_ids = _strings(item["case_ids"], "source coverage case_ids")
+        if len(submission_ids) != len(set(submission_ids)):
+            raise ValueError("source coverage submission IDs must be unique within a unit")
+        if len(case_ids) != len(set(case_ids)):
+            raise ValueError("source coverage case IDs must be unique within a unit")
+        if seen_submissions.intersection(submission_ids):
+            raise ValueError("a submission cannot be linked to multiple coverage units")
+        if seen_cases.intersection(case_ids):
+            raise ValueError("a Core case cannot be linked to multiple coverage units")
+        seen_submissions.update(submission_ids)
+        seen_cases.update(case_ids)
+        if audit is None or audit.status == "EMPTY":
+            if submission_ids or case_ids:
+                raise ValueError("unknown or EMPTY coverage cannot authorize submissions or Core cases")
+        rows.append(
+            {
+                "unit_id": unit_id,
+                "source_coverage": audit_value,
+                "submission_ids": submission_ids,
+                "case_ids": case_ids,
+            }
+        )
+    return rows
+
+
+def _validate_source_coverage_links(
+    rows: List[Dict[str, Any]],
+    *,
+    host_run_id: str,
+    submissions: List[Dict[str, Any]],
+    cases: List[Dict[str, Any]],
+    unavailable: List[Dict[str, Any]],
+) -> None:
+    """Check sidecar IDs against actual EI and Core archive relationships."""
+
+    audited_submission_ids = [item["submission_id"] for item in submissions]
+    if len(audited_submission_ids) != len(set(audited_submission_ids)):
+        raise ValueError("EI archive has duplicate submission IDs")
+    actual_submissions = set(audited_submission_ids)
+    submission_by_id = {
+        item["submission_id"]: item for item in submissions
+    }
+    unit_by_submission: Dict[str, str] = {}
+    row_by_unit = {item["unit_id"]: item for item in rows}
+    for row in rows:
+        audit_value = row["source_coverage"]
+        audit = (
+            None
+            if audit_value is None
+            else HostSourceCoverageAudit.from_dict(audit_value)
+        )
+        if audit is not None and (
+            audit.host_run_id != host_run_id or audit.unit_id != row["unit_id"]
+        ):
+            raise ValueError("source coverage audit is bound to a different Host run or unit")
+        for submission_id in row["submission_ids"]:
+            if submission_id not in actual_submissions:
+                raise ValueError("coverage submission ID does not resolve to the EI audit")
+            if audit is None or audit.status == "EMPTY":
+                raise ValueError("submission linkage requires non-EMPTY source coverage")
+            if audit.run_id != submission_id:
+                raise ValueError("coverage Grounder run ID differs from the linked EI submission")
+            audit_entries = audit.to_dict()["entries"]
+            available_by_id = {
+                entry["source_id"]: entry
+                for entry in audit_entries
+                if entry["status"] == "BODY_AVAILABLE"
+            }
+            available_by_locator = {
+                entry["locator"]: entry
+                for entry in audit_entries
+                if entry["status"] == "BODY_AVAILABLE"
+            }
+            failed_ids = {
+                entry["source_id"]
+                for entry in audit_entries
+                if entry["status"] == "FAILED"
+            }
+            failed_locators = {
+                entry["locator"]
+                for entry in audit_entries
+                if entry["status"] == "FAILED"
+            }
+            for source in submission_by_id[submission_id]["sources"]:
+                if (
+                    source["source_id"] in failed_ids
+                    or source["locator"] in failed_locators
+                ):
+                    raise ValueError(
+                        "EI source conflicts with a failed extraction outcome"
+                    )
+                by_id = available_by_id.get(source["source_id"])
+                by_locator = available_by_locator.get(source["locator"])
+                if (by_id is None) != (by_locator is None) or (
+                    by_id is not None
+                    and (
+                        by_id["source_id"] != by_locator["source_id"]
+                        or by_id["locator"] != source["locator"]
+                    )
+                ):
+                    raise ValueError(
+                        "EI source identity conflicts with an Extract success binding"
+                    )
+                # A source absent from the extraction partition may have entered
+                # through the existing authenticated admission pipeline.  This
+                # archive does not grant or independently re-prove that authority.
+            unit_by_submission[submission_id] = row["unit_id"]
+    if set(unit_by_submission) != actual_submissions:
+        raise ValueError("every EI submission must map to exactly one covered World unit")
+
+    expected_cases_by_unit: Dict[str, List[str]] = {
+        unit_id: [] for unit_id in row_by_unit
+    }
+    for item in cases:
+        lineage = item["lineage"]
+        submission_id = lineage["submission_id"]
+        unit_id = unit_by_submission.get(submission_id)
+        if unit_id is None:
+            raise ValueError("Core case lineage has no covered World unit")
+        audit = HostSourceCoverageAudit.from_dict(row_by_unit[unit_id]["source_coverage"])
+        if audit.status == "EMPTY":
+            raise ValueError("Core case linkage requires non-EMPTY source coverage")
+        expected_cases_by_unit[unit_id].append(item["case_id"])
+
+    for item in unavailable:
+        submission_id = item["lineage"]["submission_id"]
+        if submission_id is None:
+            unit_row = row_by_unit.get(item["case_id"])
+            if unit_row is not None and (
+                unit_row["submission_ids"] or unit_row["case_ids"]
+            ):
+                raise ValueError(
+                    "no-submission unavailable unit identity conflicts with linked records"
+                )
+            continue
+        unit_id = unit_by_submission.get(submission_id)
+        if unit_id is None:
+            raise ValueError("unavailable EI lineage has no covered World unit")
+        identity_row = row_by_unit.get(item["case_id"])
+        if identity_row is not None and identity_row["unit_id"] != unit_id:
+            raise ValueError("unavailable case identity conflicts with its submission unit")
+        audit = HostSourceCoverageAudit.from_dict(row_by_unit[unit_id]["source_coverage"])
+        if audit.status == "EMPTY":
+            raise ValueError("unavailable EI linkage requires non-EMPTY source coverage")
+
+    actual_case_ids = {item["case_id"] for item in cases}
+    linked_case_ids = set()
+    for row in rows:
+        listed = row["case_ids"]
+        expected = expected_cases_by_unit[row["unit_id"]]
+        if set(listed) != set(expected) or len(listed) != len(expected):
+            raise ValueError("coverage case IDs differ from actual CoreCaseRecord linkage")
+        if any(case_id not in actual_case_ids for case_id in listed):
+            raise ValueError("coverage case IDs must identify actual CoreCaseRecord rows")
+        linked_case_ids.update(listed)
+    if linked_case_ids != actual_case_ids:
+        raise ValueError("every CoreCaseRecord must map to exactly one covered World unit")
 
 
 def _decimal(value: Any, label: str) -> Optional[str]:
@@ -598,6 +789,7 @@ def build_batch_archive(
     canonical_json: Callable[[Any, str], str],
     validate_locator: Callable[[Any], None],
     validate_source_uris: Callable[[Any], None],
+    source_coverage_by_unit: Any = None,
 ) -> Dict[str, Any]:
     """Build one complete archive or reject it; never emit a partial prefix."""
 
@@ -608,6 +800,20 @@ def build_batch_archive(
     case_set.__post_init__()
     if type(mode) is not str or mode not in ("world", "event"):
         raise ValueError("batch archive requires a World or Event run")
+    if source_coverage_by_unit is not None and mode != "world":
+        raise ValueError("source coverage sidecars are World-only")
+    configuration = metadata.get("configuration_snapshot")
+    query_policy = (
+        configuration.get("world_source_query_policy")
+        if type(configuration) is dict
+        else None
+    )
+    partial_policy = (
+        type(query_policy) is dict
+        and query_policy.get("schema_version") == "world-source-query-v0.5"
+    )
+    if partial_policy != (source_coverage_by_unit is not None):
+        raise ValueError("World partial-coverage policy and archive sidecar must be paired")
     if type(case_set.entry_origin) is not str or case_set.entry_origin.upper() != mode.upper():
         raise ValueError("Core entry_origin does not match the immutable run mode")
     if type(run_input) is not str or type(input_sha256) is not str:
@@ -794,7 +1000,11 @@ def build_batch_archive(
         for item in unavailable
     ]
     archive = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": (
+            SOURCE_COVERAGE_SCHEMA_VERSION
+            if source_coverage_by_unit is not None
+            else SCHEMA_VERSION
+        ),
         "run_id": run_id,
         "mode": mode,
         "input_sha256": input_sha256,
@@ -807,6 +1017,18 @@ def build_batch_archive(
         "cases": core_cases,
         "unavailable": unavailable,
     }
+    if source_coverage_by_unit is not None:
+        coverage_rows = _source_coverage_unit_rows(
+            source_coverage_by_unit, host_run_id=run_id
+        )
+        _validate_source_coverage_links(
+            coverage_rows,
+            host_run_id=run_id,
+            submissions=audit_submissions,
+            cases=core_cases,
+            unavailable=unavailable,
+        )
+        archive["source_coverage_by_unit"] = coverage_rows
     for submission in audit_submissions:
         for source in submission["sources"]:
             validate_locator(source["locator"])
@@ -1112,9 +1334,20 @@ def validate_batch_archive(
 ) -> Tuple[Dict[str, Any], Dict[str, CoreResearchResult]]:
     """Validate every closed field and recompute compact data from numeric snapshots."""
 
-    _keys(archive, _ARCHIVE_FIELDS, "Host batch archive")
+    if type(archive) is not dict:
+        raise TypeError("Host batch archive must be an object")
+    schema_version = archive.get("schema_version")
+    if schema_version == SCHEMA_VERSION:
+        archive_fields = _ARCHIVE_FIELDS
+    elif schema_version == SOURCE_COVERAGE_SCHEMA_VERSION:
+        if mode != "world":
+            raise ValueError("source coverage batch archives are World-only")
+        archive_fields = _ARCHIVE_FIELDS_V0_2
+    else:
+        raise ValueError("unsupported Host batch archive schema")
+    _keys(archive, archive_fields, "Host batch archive")
     if (
-        archive["schema_version"] != SCHEMA_VERSION
+        archive["schema_version"] != schema_version
         or archive["run_id"] != run_id
         or archive["mode"] != mode
         or mode not in ("world", "event")
@@ -1122,6 +1355,18 @@ def validate_batch_archive(
         or archive["profile_snapshot"] != profile_snapshot
     ):
         raise ValueError("batch archive does not match its immutable run snapshot")
+    configuration = metadata.get("configuration_snapshot")
+    query_policy = (
+        configuration.get("world_source_query_policy")
+        if type(configuration) is dict
+        else None
+    )
+    partial_policy = (
+        type(query_policy) is dict
+        and query_policy.get("schema_version") == "world-source-query-v0.5"
+    )
+    if partial_policy != (schema_version == SOURCE_COVERAGE_SCHEMA_VERSION):
+        raise ValueError("World partial-coverage policy and archive schema must be paired")
     if metadata["execution_snapshot"].get(mode + "_executor") != {
         "status": "CONFIGURED", "version": "host-batch-executor-v0.1"
     }:
@@ -1234,6 +1479,20 @@ def validate_batch_archive(
                 raise ValueError("unavailable lineage does not resolve to audited EI IDs")
         canonical_unavailable.append(item)
 
+    if schema_version == SOURCE_COVERAGE_SCHEMA_VERSION:
+        coverage_rows = _source_coverage_unit_rows(
+            archive["source_coverage_by_unit"], host_run_id=run_id
+        )
+        if coverage_rows != archive["source_coverage_by_unit"]:
+            raise ValueError("source coverage sidecar is not in its canonical closed shape")
+        _validate_source_coverage_links(
+            coverage_rows,
+            host_run_id=run_id,
+            submissions=archive["ei_audit"]["submissions"],
+            cases=archive["cases"],
+            unavailable=archive["unavailable"],
+        )
+
     compact_fields = _summary_from_archived(
         archive["summary"]["entry_origin"],
         archive["case_set_reasons"],
@@ -1297,9 +1556,119 @@ def validate_outcome(value: Any) -> Dict[str, Any]:
     return dict(value)
 
 
+def _coverage_public_projection(row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if row is None or row["source_coverage"] is None:
+        return {
+            "unit_id": None if row is None else row["unit_id"],
+            "status": "UNKNOWN",
+            "successful_count": None,
+            "requested_count": None,
+            "failed_sources": [],
+        }
+    audit = HostSourceCoverageAudit.from_dict(row["source_coverage"])
+    entries = audit.to_dict()["entries"]
+    successful_count = sum(item["status"] == "BODY_AVAILABLE" for item in entries)
+    failed_sources = [
+        {
+            "source_id": item["source_id"],
+            "locator": item["locator"],
+            "reason_code": item["reason_code"],
+        }
+        for item in entries
+        if item["status"] == "FAILED"
+    ]
+    return {
+        "unit_id": row["unit_id"],
+        "status": audit.status,
+        "successful_count": successful_count,
+        "requested_count": len(entries),
+        "failed_sources": failed_sources,
+    }
+
+
+def _coverage_unit_by_submission(archive: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    if archive.get("schema_version") != SOURCE_COVERAGE_SCHEMA_VERSION:
+        return {}
+    return {
+        submission_id: row
+        for row in archive["source_coverage_by_unit"]
+        for submission_id in row["submission_ids"]
+    }
+
+
+def _coverage_for_lineage(
+    archive: Dict[str, Any],
+    lineage: Dict[str, Any],
+    *,
+    case_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    by_submission = _coverage_unit_by_submission(archive)
+    row = by_submission.get(lineage.get("submission_id"))
+    by_unit = {
+        item["unit_id"]: item for item in archive["source_coverage_by_unit"]
+    }
+    identity_row = by_unit.get(case_id) if type(case_id) is str else None
+    if row is not None and identity_row is not None and row is not identity_row:
+        raise ValueError("case identity conflicts with its linked coverage unit")
+    if row is None:
+        row = identity_row
+    return _coverage_public_projection(row)
+
+
+def _coverage_report_text(coverage: Dict[str, Any]) -> str:
+    status = coverage["status"]
+    if status == "UNKNOWN":
+        return "来源提取覆盖：UNKNOWN；没有可验证的来源覆盖审计。"
+    successful = coverage["successful_count"]
+    requested = coverage["requested_count"]
+    lines = [
+        "来源提取覆盖：{}；已取得正文 {}/{}。".format(
+            status, successful, requested
+        )
+    ]
+    failed = coverage["failed_sources"]
+    if failed:
+        lines.append(
+            "失败来源：" + "；".join(
+                "{} {}（{}）".format(
+                    item["source_id"], item["locator"], item["reason_code"]
+                )
+                for item in failed
+            )
+        )
+    if status == "PARTIAL":
+        lines.append(PARTIAL_SOURCE_COVERAGE_DISCLOSURE)
+    return "\n".join(lines)
+
+
 def public_summary(archive: Dict[str, Any]) -> Dict[str, Any]:
     # The caller has decoded a fresh immutable JSON value from SQLite.
-    return {key: value for key, value in archive["summary"].items()}
+    result = {key: value for key, value in archive["summary"].items()}
+    if archive.get("schema_version") != SOURCE_COVERAGE_SCHEMA_VERSION:
+        return result
+
+    result["case_summaries"] = [dict(item) for item in result["case_summaries"]]
+    result["unavailable_cases"] = [dict(item) for item in result["unavailable_cases"]]
+    cases_by_id = {item["case_id"]: item for item in archive["cases"]}
+    unavailable_by_id = {
+        item["case_id"]: item for item in archive["unavailable"]
+    }
+    for item in result["case_summaries"]:
+        item["source_coverage"] = _coverage_for_lineage(
+            archive, cases_by_id[item["case_id"]]["lineage"]
+        )
+    for item in result["unavailable_cases"]:
+        archived = unavailable_by_id[item["case_id"]]
+        item["source_coverage"] = _coverage_for_lineage(
+            archive,
+            archived["lineage"],
+            case_id=archived["case_id"],
+        )
+    result["source_coverage_by_unit"] = [
+        _coverage_public_projection(row)
+        for row in archive["source_coverage_by_unit"]
+    ]
+    return result
 
 
 def public_cases(archive: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1321,6 +1690,26 @@ def public_cases(archive: Dict[str, Any]) -> List[Dict[str, Any]]:
         }
         for item in archive["unavailable"]
     )
+    if archive.get("schema_version") == SOURCE_COVERAGE_SCHEMA_VERSION:
+        cases_by_id = {item["case_id"]: item for item in archive["cases"]}
+        unavailable_by_id = {
+            item["case_id"]: item for item in archive["unavailable"]
+        }
+        for item in result:
+            source = (
+                cases_by_id[item["case_id"]]
+                if item["classification"] != "UNAVAILABLE"
+                else unavailable_by_id[item["case_id"]]
+            )
+            item["source_coverage"] = _coverage_for_lineage(
+                archive,
+                source["lineage"],
+                case_id=(
+                    source["case_id"]
+                    if item["classification"] == "UNAVAILABLE"
+                    else None
+                ),
+            )
     return result
 
 
@@ -1337,7 +1726,7 @@ def public_case(archive: Dict[str, Any], key: str, decoded_cases: Mapping[str, C
                 if item["disclosures"]["hypothesis_maturity_alignment"] != "unknown"
                 else "hypothesis_maturity_alignment=unknown"
             )
-            return {
+            value = {
                 "case_id": item["case_id"],
                 "case_key": item["case_key"],
                 "classification": item["classification"],
@@ -1346,13 +1735,23 @@ def public_case(archive: Dict[str, Any], key: str, decoded_cases: Mapping[str, C
                     item["case_id"], result, tuple(item["reasons"]), disclosure
                 ),
             }
+            if archive.get("schema_version") == SOURCE_COVERAGE_SCHEMA_VERSION:
+                coverage = _coverage_for_lineage(archive, item["lineage"])
+                value["source_coverage"] = coverage
+                value["report"] += "\n\n" + _coverage_report_text(coverage)
+            return value
     for item in archive["unavailable"]:
         if item["case_key"] == key:
-            return {
+            value = {
                 "case_id": item["case_id"],
                 "case_key": item["case_key"],
                 "classification": "UNAVAILABLE",
                 "reasons": list(item["reasons"]),
                 "report": None,
             }
+            if archive.get("schema_version") == SOURCE_COVERAGE_SCHEMA_VERSION:
+                value["source_coverage"] = _coverage_for_lineage(
+                    archive, item["lineage"], case_id=item["case_id"]
+                )
+            return value
     return None

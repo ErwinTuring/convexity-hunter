@@ -1850,6 +1850,22 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             v010_holder._semantic_prompt_version,
             "host-grounder-semantic-verifier-prompt-v0.10",
         )
+        v011_holder = HostEvidenceCatalogAuditHolder(
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+        )
+        v011_holder._begin(
+            run_input.run_id,
+            run_input.canonical_input_hash,
+            catalog.canonical_utf8,
+            catalog.catalog_sha256,
+            producer_prompt_version="host-grounder-discovery-prompt-v0.11",
+            semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.11",
+        )
+        self.assertEqual(
+            v011_holder._semantic_prompt_version,
+            "host-grounder-semantic-verifier-prompt-v0.11",
+        )
         wrong_pair_holder = HostEvidenceCatalogAuditHolder(
             run_id=run_input.run_id,
             canonical_input_hash=run_input.canonical_input_hash,
@@ -1866,7 +1882,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         self.assertFalse(wrong_pair_holder.finalized)
 
         for invalid in (
-            "host-grounder-discovery-prompt-v0.11", "", True, 1, [], {}, object()
+            "host-grounder-discovery-prompt-v0.12", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(
@@ -1884,7 +1900,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 self.assertFalse(holder.finalized)
 
         for invalid in (
-            "host-grounder-semantic-verifier-prompt-v0.11", "", True, 1, [], {}, object()
+            "host-grounder-semantic-verifier-prompt-v0.12", "", True, 1, [], {}, object()
         ):
             with self.subTest(invalid_semantic_type=type(invalid).__name__):
                 holder = HostEvidenceCatalogAuditHolder(

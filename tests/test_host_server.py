@@ -263,6 +263,73 @@ def make_event_batch_result(raw_input):
     )
 
 
+def make_covered_world_core_result(raw_input, *, bridge_activity=None):
+    """Build a synthetic Core batch whose actual source IDs are URL-derived."""
+    submission = make_batch_submission(
+        "covered-submission",
+        ("covered-hyp-b", "covered-hyp-a"),
+        mode=DistributionChangeMode.EXTREME_TAIL_UP,
+    )
+    source_ids = {
+        source.source_id: "url:" + hashlib.sha256(
+            source.locator.encode("utf-8")
+        ).hexdigest()
+        for source in submission.sources
+    }
+    submission = replace(
+        submission,
+        sources=tuple(
+            replace(source, source_id=source_ids[source.source_id])
+            for source in submission.sources
+        ),
+        statements=tuple(
+            replace(
+                statement,
+                source_ids=tuple(source_ids[item] for item in statement.source_ids),
+            )
+            for statement in submission.statements
+        ),
+    )
+    batch = SourceSubmissionBatch(raw_input, (submission,))
+    bounds = CoreOperationalBounds(
+        max_submissions=2,
+        max_hypotheses=3,
+        max_browser_rows=20,
+        max_cases=8,
+        quote_timeout_seconds=2.5,
+    )
+    policy = create_core_research_policy(
+        evaluation_date=datetime.date(2030, 1, 1),
+        maturity_authority=OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
+        bounds=bounds,
+    )
+    bridge = BatchFakeMarketBridge(
+        (make_batch_row(datetime.date(2030, 1, 31), "CALL", "100"),)
+    )
+    result = run_world_core(
+        raw_input,
+        source_producer=lambda _raw_input: batch,
+        market_bridge=bridge,
+        policy=policy,
+    )
+    if bridge_activity is not None:
+        bridge_activity.extend(bridge.calls)
+    return result
+
+
+def _partial_world_configuration_snapshot(snapshot):
+    result = json.loads(json.dumps(snapshot))
+    result["sources"][0]["schema_version"] = "host-event-source-snapshot-v0.4"
+    result["world_source_query_policy"] = {
+        "schema_version": "world-source-query-v0.5",
+        "basis": "independent_native_event_units_partial_source_coverage",
+        "max_characters": 400,
+        "full_research_context_preserved": True,
+        "evaluation_date": "2030-01-01",
+    }
+    return result
+
+
 class MemoryJournal:
     """Narrow test double for the future worker-owned persistence API."""
 
@@ -3218,6 +3285,403 @@ class HostServerBatchTests(unittest.TestCase):
             store.close()
             temporary_directory.cleanup()
 
+    def test_covered_world_partial_archive_renders_without_provider_refresh_after_reopen(self):
+        from convexity_hunter.host_source_coverage import HostSourceCoverageAudit
+        from convexity_hunter.host_store import HostStore
+        from convexity_hunter.host_world import (
+            _CoveredWorldExecutor,
+            _CoveredWorldResult,
+            _CoveredWorldUnitCoverage,
+        )
+
+        temporary_directory = tempfile.TemporaryDirectory(
+            dir=pathlib.Path(tempfile.gettempdir()).resolve()
+        )
+        db_path = pathlib.Path(temporary_directory.name) / "covered-world.sqlite3"
+        store = HostStore(db_path)
+        self.journal = store
+        raw_input = "synthetic partial-source World acceptance input"
+        executor_calls = []
+        bridge_activity = []
+        generated = []
+        configuration_snapshot = _partial_world_configuration_snapshot(
+            self._event_configuration_snapshot_accessor()()
+        )
+
+        def execute(actual_input, *, bounds, host_run_id):
+            executor_calls.append((actual_input, host_run_id))
+            self.assertEqual(actual_input, raw_input)
+            self.assertIsInstance(bounds, CoreOperationalBounds)
+            result = make_covered_world_core_result(
+                actual_input, bridge_activity=bridge_activity
+            )
+            submission = result.case_set.submissions.submissions[0]
+            entries = [
+                {
+                    "source_id": source.source_id,
+                    "locator": source.locator,
+                    "status": "BODY_AVAILABLE",
+                    "body_sha256": hashlib.sha256(
+                        ("synthetic body:" + source.locator).encode("utf-8")
+                    ).hexdigest(),
+                }
+                for source in submission.sources
+            ]
+            failed_locator = "https://failed.example.test/unavailable-source"
+            failed_source_id = "url:" + hashlib.sha256(
+                failed_locator.encode("utf-8")
+            ).hexdigest()
+            entries.append(
+                {
+                    "source_id": failed_source_id,
+                    "locator": failed_locator,
+                    "status": "FAILED",
+                    "reason_code": "PROVIDER_REPORTED_FAILURE",
+                }
+            )
+            audit = HostSourceCoverageAudit.from_dict(
+                {
+                    "schema_version": "host-source-coverage-v0.1",
+                    "host_run_id": host_run_id,
+                    "unit_id": "synthetic-unit-1",
+                    "run_id": submission.submission_id,
+                    "canonical_input_hash": hashlib.sha256(
+                        actual_input.encode("utf-8")
+                    ).hexdigest(),
+                    "status": "PARTIAL",
+                    "entries": entries,
+                }
+            )
+            generated.append((audit, failed_source_id, failed_locator))
+            return _CoveredWorldResult(
+                result,
+                (
+                    _CoveredWorldUnitCoverage(
+                        "synthetic-unit-1",
+                        audit,
+                        (submission.submission_id,),
+                        tuple(case.case_id for case in result.case_set.cases),
+                    ),
+                ),
+            )
+
+        executor = _CoveredWorldExecutor(
+            execute, lambda: json.loads(json.dumps(configuration_snapshot))
+        )
+        try:
+            self._start_server(world_executor=executor)
+            created = self._post(raw_input)
+            self.assertEqual(created[0], 201)
+            created_body = self._decoded(created)
+            self.assertEqual(created_body["status"], "COMPLETED")
+            run_id = created_body["run_id"]
+            self.assertEqual(len(executor_calls), 1)
+            self.assertEqual(executor_calls[0], (raw_input, run_id))
+
+            archived_summary = store.get_batch_summary(run_id)
+            self.assertEqual(
+                archived_summary["source_coverage_by_unit"][0]["status"],
+                "PARTIAL",
+            )
+            self.assertEqual(
+                archived_summary["source_coverage_by_unit"][0]["successful_count"],
+                2,
+            )
+            self.assertEqual(
+                archived_summary["source_coverage_by_unit"][0]["requested_count"],
+                3,
+            )
+            self.assertEqual(
+                archived_summary["source_coverage_by_unit"][0]["failed_sources"],
+                [
+                    {
+                        "source_id": generated[0][1],
+                        "locator": generated[0][2],
+                        "reason_code": "PROVIDER_REPORTED_FAILURE",
+                    }
+                ],
+            )
+
+            run_path = "/api/runs/{}".format(run_id)
+            public_run_response = self._request("GET", run_path)
+            self.assertEqual(public_run_response[0], 200)
+            public_run = self._decoded(public_run_response)
+            self.assertEqual(
+                public_run["batch_summary"]["source_coverage_by_unit"],
+                archived_summary["source_coverage_by_unit"],
+            )
+            self.assertEqual(
+                public_run["batch_summary"]["case_summaries"][0]["source_coverage"]["status"],
+                "PARTIAL",
+            )
+            self.assertEqual(
+                public_run["cases"][0]["source_coverage"]["status"], "PARTIAL"
+            )
+            case_key = public_run["cases"][0]["case_key"]
+            case_path = "{}/cases/{}".format(run_path, case_key)
+            case_response = self._request("GET", case_path)
+            self.assertEqual(case_response[0], 200)
+            detail = self._decoded(case_response)
+            self.assertEqual(detail["source_coverage"]["status"], "PARTIAL")
+            self.assertIn(
+                "来源提取覆盖不完整；仅核验已取得正文，失败来源未被视为事实或反证不存在。",
+                detail["report"],
+            )
+            self.assertIn(generated[0][1], detail["report"])
+            self.assertIn(generated[0][2], detail["report"])
+            provider_call_count = len(bridge_activity)
+            self.assertGreater(provider_call_count, 0)
+
+            self._stop_server()
+            store.close()
+            store = HostStore(db_path)
+            self.journal = store
+            self._start_server()
+            reopened_run = self._request("GET", run_path)
+            reopened_case = self._request("GET", case_path)
+            self.assertEqual(reopened_run[0], 200)
+            self.assertEqual(reopened_case[0], 200)
+            self.assertEqual(self._decoded(reopened_run), public_run)
+            self.assertEqual(self._decoded(reopened_case), detail)
+            self.assertEqual(len(executor_calls), 1)
+            self.assertEqual(len(bridge_activity), provider_call_count)
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
+    def test_covered_world_empty_unit_unavailable_identity_survives_http_reopen(self):
+        from convexity_hunter.host_source_coverage import HostSourceCoverageAudit
+        from convexity_hunter.host_store import HostStore
+        from convexity_hunter.host_world import (
+            _CoveredWorldExecutor,
+            _CoveredWorldResult,
+            _CoveredWorldUnitCoverage,
+        )
+
+        temporary_directory = tempfile.TemporaryDirectory(
+            dir=pathlib.Path(tempfile.gettempdir()).resolve()
+        )
+        db_path = pathlib.Path(temporary_directory.name) / "empty-covered-world.sqlite3"
+        store = HostStore(db_path)
+        self.journal = store
+        raw_input = "synthetic EMPTY World unit with unavailable branches"
+        unit_id = "empty-unit-1"
+        global_case_id = "global-unavailable-1"
+        executor_calls = []
+        configuration_snapshot = _partial_world_configuration_snapshot(
+            self._event_configuration_snapshot_accessor()()
+        )
+
+        def execute(actual_input, *, bounds, host_run_id):
+            executor_calls.append((actual_input, host_run_id))
+            empty_batch = SourceSubmissionBatch(actual_input, ())
+            case_set = CoreCaseSet(
+                "WORLD",
+                actual_input,
+                empty_batch,
+                (),
+                (
+                    CoreUnavailableCase(unit_id, ("SOURCE_EXTRACTION_EMPTY",)),
+                    CoreUnavailableCase(global_case_id, ("GLOBAL_BRANCH_UNAVAILABLE",)),
+                ),
+                ("EMPTY_SOURCE_UNIT",),
+            )
+            core_result = CoreRunResult(case_set, compact_summary(case_set))
+            entries = []
+            for suffix in ("one", "two"):
+                locator = "https://empty.example.test/{}".format(suffix)
+                entries.append(
+                    {
+                        "source_id": "url:" + hashlib.sha256(
+                            locator.encode("utf-8")
+                        ).hexdigest(),
+                        "locator": locator,
+                        "status": "FAILED",
+                        "reason_code": "PROVIDER_REPORTED_FAILURE",
+                    }
+                )
+            audit = HostSourceCoverageAudit.from_dict(
+                {
+                    "schema_version": "host-source-coverage-v0.1",
+                    "host_run_id": host_run_id,
+                    "unit_id": unit_id,
+                    "run_id": "grounder-empty-1",
+                    "canonical_input_hash": hashlib.sha256(
+                        actual_input.encode("utf-8")
+                    ).hexdigest(),
+                    "status": "EMPTY",
+                    "entries": entries,
+                }
+            )
+            return _CoveredWorldResult(
+                core_result,
+                (
+                    _CoveredWorldUnitCoverage(
+                        unit_id, audit, (), ()
+                    ),
+                ),
+            )
+
+        executor = _CoveredWorldExecutor(
+            execute, lambda: json.loads(json.dumps(configuration_snapshot))
+        )
+        try:
+            self._start_server(world_executor=executor)
+            created = self._post(raw_input)
+            self.assertEqual(created[0], 201)
+            run_id = self._decoded(created)["run_id"]
+            self.assertEqual(self._decoded(created)["status"], "BLOCKED")
+            self.assertEqual(executor_calls, [(raw_input, run_id)])
+
+            archive, _decoded = store._read_batch_archive(run_id)
+            self.assertEqual(archive["source_coverage_by_unit"][0]["case_ids"], [])
+            self.assertEqual(
+                archive["source_coverage_by_unit"][0]["submission_ids"], []
+            )
+            summary_path = "/api/runs/{}".format(run_id)
+            summary_response = self._request("GET", summary_path)
+            self.assertEqual(summary_response[0], 200)
+            public_run = self._decoded(summary_response)
+            unavailable_by_id = {
+                item["case_id"]: item
+                for item in public_run["batch_summary"]["unavailable_cases"]
+            }
+            self.assertEqual(
+                unavailable_by_id[unit_id]["source_coverage"]["status"], "EMPTY"
+            )
+            self.assertEqual(
+                unavailable_by_id[global_case_id]["source_coverage"]["status"],
+                "UNKNOWN",
+            )
+            listed_by_id = {
+                item["case_id"]: item for item in public_run["cases"]
+            }
+            self.assertEqual(
+                listed_by_id[unit_id]["source_coverage"]["status"], "EMPTY"
+            )
+            unit_key = listed_by_id[unit_id]["case_key"]
+            global_key = listed_by_id[global_case_id]["case_key"]
+            unit_detail_path = "{}/cases/{}".format(summary_path, unit_key)
+            global_detail_path = "{}/cases/{}".format(summary_path, global_key)
+            unit_detail_response = self._request("GET", unit_detail_path)
+            global_detail_response = self._request("GET", global_detail_path)
+            self.assertEqual(unit_detail_response[0], 200)
+            self.assertEqual(global_detail_response[0], 200)
+            unit_detail = self._decoded(unit_detail_response)
+            global_detail = self._decoded(global_detail_response)
+            self.assertIsNone(unit_detail["report"])
+            self.assertEqual(unit_detail["source_coverage"]["status"], "EMPTY")
+            self.assertEqual(global_detail["source_coverage"]["status"], "UNKNOWN")
+
+            self._stop_server()
+            store.close()
+            store = HostStore(db_path)
+            self.journal = store
+            self._start_server()
+            reopened_summary = self._request("GET", summary_path)
+            reopened_unit = self._request("GET", unit_detail_path)
+            reopened_global = self._request("GET", global_detail_path)
+            self.assertEqual(reopened_summary[0], 200)
+            self.assertEqual(reopened_unit[0], 200)
+            self.assertEqual(reopened_global[0], 200)
+            self.assertEqual(self._decoded(reopened_summary), public_run)
+            self.assertEqual(self._decoded(reopened_unit), unit_detail)
+            self.assertEqual(self._decoded(reopened_global), global_detail)
+            self.assertEqual(executor_calls, [(raw_input, run_id)])
+        finally:
+            self._stop_server()
+            store.close()
+            temporary_directory.cleanup()
+
+    def test_covered_world_wrong_run_audit_fails_without_core_only_archive(self):
+        from convexity_hunter.host_source_coverage import HostSourceCoverageAudit
+        from convexity_hunter.host_world import (
+            _CoveredWorldExecutor,
+            _CoveredWorldResult,
+            _CoveredWorldUnitCoverage,
+        )
+
+        raw_input = "synthetic covered audit binding failure"
+        result = make_covered_world_core_result(raw_input)
+        submission = result.case_set.submissions.submissions[0]
+        entries = [
+            {
+                "source_id": source.source_id,
+                "locator": source.locator,
+                "status": "BODY_AVAILABLE",
+                "body_sha256": hashlib.sha256(source.locator.encode("utf-8")).hexdigest(),
+            }
+            for source in submission.sources
+        ]
+        failed_locator = "https://failed.example.test/binding-failure"
+        entries.append(
+            {
+                "source_id": "url:" + hashlib.sha256(failed_locator.encode("utf-8")).hexdigest(),
+                "locator": failed_locator,
+                "status": "FAILED",
+                "reason_code": "PROVIDER_REPORTED_FAILURE",
+            }
+        )
+        audit = HostSourceCoverageAudit.from_dict(
+            {
+                "schema_version": "host-source-coverage-v0.1",
+                "host_run_id": "wrong-host-run",
+                "unit_id": "synthetic-unit-1",
+                "run_id": submission.submission_id,
+                "canonical_input_hash": hashlib.sha256(raw_input.encode("utf-8")).hexdigest(),
+                "status": "PARTIAL",
+                "entries": entries,
+            }
+        )
+        envelope = _CoveredWorldResult(
+            result,
+            (
+                _CoveredWorldUnitCoverage(
+                    "synthetic-unit-1",
+                    audit,
+                    (submission.submission_id,),
+                    tuple(case.case_id for case in result.case_set.cases),
+                ),
+            ),
+        )
+        configuration_snapshot = _partial_world_configuration_snapshot(
+            self._event_configuration_snapshot_accessor()()
+        )
+        executor = _CoveredWorldExecutor(
+            lambda *_args, **_kwargs: envelope,
+            lambda: json.loads(json.dumps(configuration_snapshot)),
+        )
+        self._start_server(world_executor=executor)
+        response = self._post(raw_input)
+        self.assertEqual(response[0], 201)
+        self.assertEqual(
+            self._decoded(response)["reason"], "HOST_BATCH_RESULT_INVALID"
+        )
+        self.assertNotIn("batch_archive", self.journal.events)
+        self.assertEqual(
+            self.journal.runs[self._decoded(response)["run_id"]]["status"], "FAILED"
+        )
+
+    def test_partial_world_policy_never_calls_public_legacy_executor(self):
+        calls = []
+
+        def legacy_executor(raw_input, *, bounds):
+            calls.append((raw_input, bounds))
+            return make_world_batch_result(raw_input)
+
+        legacy_executor.configuration_snapshot = lambda: _partial_world_configuration_snapshot(
+            self._event_configuration_snapshot_accessor()()
+        )
+        self._start_server(world_executor=legacy_executor)
+        response = self._post("partial policy must use the covered executor")
+        self.assertEqual(response[0], 500)
+        self.assertEqual(
+            self._decoded(response), {"error": "event configuration unavailable"}
+        )
+        self.assertEqual(calls, [])
+        self.assertEqual(self.journal.runs, {})
+
     def test_real_store_world_rejects_unrepresentable_skill_metadata_before_execution(self):
         temporary_directory, store = self._new_grounder_store("world-invalid-config.sqlite3")
         calls = []
@@ -3974,6 +4438,89 @@ class HostServerRetainedFeeIllustrationOfflineTests(unittest.TestCase):
 
 
 class HostServerCliTests(unittest.TestCase):
+    def test_partial_world_cli_selects_only_private_covered_executor(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from convexity_hunter.host_world import _CoveredWorldExecutor
+
+        arguments = [
+            "--db", "/tmp/unused.sqlite3",
+            "--event-config", "/outside/event.json",
+            "--world-config", "/outside/world.json",
+            "--evaluation-date", "2030-01-01",
+            "--maturity-authority", "neutral_structural_research",
+            "--futu-port", "12345",
+        ]
+        world_snapshot = {
+            "models": [],
+            "sources": [],
+            "skills": [],
+            "world_source_query_policy": {
+                "schema_version": "world-source-query-v0.5",
+                "basis": "independent_native_event_units_partial_source_coverage",
+                "max_characters": 400,
+                "full_research_context_preserved": True,
+                "evaluation_date": "2030-01-01",
+            },
+        }
+        config = SimpleNamespace(
+            source_coverage_policy="VALIDATED_PARTIAL_V0_1"
+        )
+        covered = _CoveredWorldExecutor(
+            lambda *_args, **_kwargs: None, lambda: world_snapshot
+        )
+        journal = Mock()
+        server = Mock(server_port=8080)
+        server.serve_forever.side_effect = KeyboardInterrupt
+        grounder = Mock()
+        bridge = object()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch(
+                "convexity_hunter.host_event_config.load_event_grounder_config",
+                return_value=object(),
+            ))
+            stack.enter_context(patch(
+                "convexity_hunter.host_event.create_event_grounder",
+                return_value=grounder,
+            ))
+            stack.enter_context(patch(
+                "convexity_hunter.host_event_core.create_event_core_executor",
+                return_value=lambda *_args, **_kwargs: None,
+            ))
+            stack.enter_context(patch(
+                "convexity_hunter.core_futu.FutuMarketBridge",
+                return_value=bridge,
+            ))
+            stack.enter_context(patch(
+                "convexity_hunter.host_world_config.load_world_config",
+                return_value=config,
+            ))
+            legacy_factory = stack.enter_context(patch(
+                "convexity_hunter.host_world.create_world_runner"
+            ))
+            covered_factory = stack.enter_context(patch(
+                "convexity_hunter.host_world._create_covered_world_executor",
+                return_value=covered,
+            ))
+            stack.enter_context(patch.object(
+                host_server_module, "_open_store", return_value=journal
+            ))
+            stack.enter_context(patch.object(
+                host_server_module, "_load_workbench_renderer", return_value=lambda _token: ""
+            ))
+            create = stack.enter_context(patch.object(
+                host_server_module, "create_server", return_value=server
+            ))
+            stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            self.assertEqual(host_server_module.main(arguments), 0)
+
+        covered_factory.assert_called_once_with(
+            config, repo_root=ROOT.resolve(), market_bridge=bridge
+        )
+        legacy_factory.assert_not_called()
+        self.assertIs(create.call_args.kwargs["world_executor"], covered)
+
     def test_world_cli_requires_shared_event_configuration(self):
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):

@@ -27,6 +27,7 @@ from .host_grounder_receipt import (
     validate_semantic_validation_receipt,
 )
 from .host_grounder_schema import parse_model_output_envelope
+from .host_source_coverage import HostSourceCoverageAudit
 from .market_data import UnderlyingKey
 
 
@@ -164,6 +165,7 @@ class HostBuildContext:
     event_date_range: Optional[MethodologizedDateRange] = None
     underlying_bindings: Optional[Mapping[Tuple[str, str], Tuple[UnderlyingKey, object]]] = None
     caller_policy_provenance: Optional[CallerPolicyProvenance] = None
+    source_coverage: Optional[HostSourceCoverageAudit] = None
 
     def __post_init__(self) -> None:
         for field in (
@@ -200,6 +202,35 @@ class HostBuildContext:
             )
             sources[source_id] = source
         object.__setattr__(self, "source_bodies", MappingProxyType(sources))
+
+        if self.source_coverage is not None:
+            if type(self.source_coverage) is not HostSourceCoverageAudit:
+                raise TypeError("source_coverage must be HostSourceCoverageAudit or None")
+            source_coverage = HostSourceCoverageAudit.from_dict(
+                self.source_coverage.to_dict()
+            )
+            if (
+                source_coverage.run_id != self.run_id
+                or source_coverage.canonical_input_hash != self.canonical_input_hash
+            ):
+                raise ValueError("source coverage audit is bound to another unit/input")
+            for entry in source_coverage.entries:
+                source = sources.get(entry.source_id)
+                if entry.status == "BODY_AVAILABLE":
+                    if (
+                        source is None
+                        or source.final_locator != entry.locator
+                        or source.body_sha256 != entry.digest_or_reason
+                    ):
+                        raise ValueError("source coverage body binding does not match context")
+                elif source is not None or any(
+                    candidate.final_locator == entry.locator
+                    for candidate in sources.values()
+                ):
+                    raise ValueError(
+                        "failed source coverage locator cannot have a registered body"
+                    )
+            object.__setattr__(self, "source_coverage", source_coverage)
 
         bindings = {} if self.underlying_bindings is None else self.underlying_bindings
         if not isinstance(bindings, Mapping):

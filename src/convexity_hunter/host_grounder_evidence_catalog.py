@@ -47,6 +47,7 @@ _PRODUCER_PROMPT_VERSION_V0_7 = "host-grounder-discovery-prompt-v0.7"
 _PRODUCER_PROMPT_VERSION_V0_8 = "host-grounder-discovery-prompt-v0.8"
 _PRODUCER_PROMPT_VERSION_V0_9 = "host-grounder-discovery-prompt-v0.9"
 _PRODUCER_PROMPT_VERSION_V0_10 = "host-grounder-discovery-prompt-v0.10"
+_PRODUCER_PROMPT_VERSION_V0_11 = "host-grounder-discovery-prompt-v0.11"
 _PRODUCER_PROMPT_VERSIONS = frozenset(
     (
         _PRODUCER_PROMPT_VERSION_V0_4,
@@ -56,6 +57,7 @@ _PRODUCER_PROMPT_VERSIONS = frozenset(
         _PRODUCER_PROMPT_VERSION_V0_8,
         _PRODUCER_PROMPT_VERSION_V0_9,
         _PRODUCER_PROMPT_VERSION_V0_10,
+        _PRODUCER_PROMPT_VERSION_V0_11,
     )
 )
 _PRODUCER_PROMPT_VERSION = _PRODUCER_PROMPT_VERSION_V0_4
@@ -67,6 +69,7 @@ _VERIFIER_PROMPT_VERSION_V0_7 = "host-grounder-semantic-verifier-prompt-v0.7"
 _VERIFIER_PROMPT_VERSION_V0_8 = "host-grounder-semantic-verifier-prompt-v0.8"
 _VERIFIER_PROMPT_VERSION_V0_9 = "host-grounder-semantic-verifier-prompt-v0.9"
 _VERIFIER_PROMPT_VERSION_V0_10 = "host-grounder-semantic-verifier-prompt-v0.10"
+_VERIFIER_PROMPT_VERSION_V0_11 = "host-grounder-semantic-verifier-prompt-v0.11"
 _BINDING_OMISSION_FIRST_FAILURE_CHECK = (
     "producer_v0_3_required_binding_omission_v0_9"
 )
@@ -97,6 +100,7 @@ _VERIFIER_PROMPT_VERSIONS = frozenset(
         _VERIFIER_PROMPT_VERSION_V0_8,
         _VERIFIER_PROMPT_VERSION_V0_9,
         _VERIFIER_PROMPT_VERSION_V0_10,
+        _VERIFIER_PROMPT_VERSION_V0_11,
     )
 )
 
@@ -109,6 +113,8 @@ def _valid_prompt_pair(producer_prompt_version: str, semantic_prompt_version: st
         return producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
     if semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_10:
         return producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
+    if semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_11:
+        return producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
     return True
 
 
@@ -130,11 +136,13 @@ def _producer_repair_prompt_version(
         and producer_prompt_version in (
             _PRODUCER_PROMPT_VERSION_V0_9,
             _PRODUCER_PROMPT_VERSION_V0_10,
+            _PRODUCER_PROMPT_VERSION_V0_11,
         )
         and semantic_prompt_version in (
             _VERIFIER_PROMPT_VERSION_V0_8,
             _VERIFIER_PROMPT_VERSION_V0_9,
             _VERIFIER_PROMPT_VERSION_V0_10,
+            _VERIFIER_PROMPT_VERSION_V0_11,
         )
         and _valid_prompt_pair(producer_prompt_version, semantic_prompt_version)
     ):
@@ -563,6 +571,86 @@ def parse_grounder_output_v0_3(
     )
 
 
+def _parse_grounder_output_world_partial_v0_4(
+    raw_json: str,
+    max_input_bytes: int,
+    *,
+    max_string_bytes: int,
+    max_array_items: int,
+    run_id: str,
+    canonical_input_hash: str,
+    source_bodies: Mapping[str, HostSourceBody],
+    catalog: HostEvidenceCatalog,
+    source_coverage_sha256: str,
+) -> tuple:
+    """Bind the World-only v0.4 outer hash, then reuse v0.3 projection gates."""
+    return _parse_grounder_output_world_partial_v0_4_with_progress(
+        raw_json,
+        max_input_bytes,
+        max_string_bytes=max_string_bytes,
+        max_array_items=max_array_items,
+        run_id=run_id,
+        canonical_input_hash=canonical_input_hash,
+        source_bodies=source_bodies,
+        catalog=catalog,
+        source_coverage_sha256=source_coverage_sha256,
+    )
+
+
+def _parse_grounder_output_world_partial_v0_4_with_progress(
+    raw_json: str,
+    max_input_bytes: int,
+    *,
+    max_string_bytes: int,
+    max_array_items: int,
+    run_id: str,
+    canonical_input_hash: str,
+    source_bodies: Mapping[str, HostSourceBody],
+    catalog: HostEvidenceCatalog,
+    source_coverage_sha256: str,
+    progress: Optional[Callable[[str], None]] = None,
+) -> tuple:
+    max_input_bytes = _limit(max_input_bytes, "max_input_bytes")
+    max_string_bytes = _limit(max_string_bytes, "max_string_bytes")
+    max_array_items = _limit(max_array_items, "max_array_items")
+    expected_hash = _sha256_text(
+        source_coverage_sha256, "source_coverage_sha256", max_string_bytes
+    )
+    if progress is not None:
+        progress("producer_v0_3_wire_decode")
+    wire = _decode(raw_json, max_input_bytes)
+    if progress is not None:
+        progress("producer_v0_3_root_shape")
+    if set(wire) != _OUTPUT_TOP | frozenset(("source_coverage_sha256",)):
+        raise ProducerClosedShapeError("producer wire closed shape is invalid")
+    if (
+        type(wire.get("schema_version")) is not str
+        or wire["schema_version"] != "grounder-output-v0.4"
+        or type(wire.get("source_coverage_sha256")) is not str
+        or _sha256_text(
+            wire["source_coverage_sha256"],
+            "source_coverage_sha256",
+            max_string_bytes,
+        )
+        != expected_hash
+    ):
+        raise ValueError("producer source coverage binding is invalid")
+    legacy_wire = dict(wire)
+    legacy_wire.pop("source_coverage_sha256")
+    legacy_wire["schema_version"] = "grounder-output-v0.3"
+    return _parse_grounder_output_v0_3_with_progress(
+        _canonical_bytes(legacy_wire).decode("utf-8", errors="strict"),
+        max_input_bytes,
+        max_string_bytes=max_string_bytes,
+        max_array_items=max_array_items,
+        run_id=run_id,
+        canonical_input_hash=canonical_input_hash,
+        source_bodies=source_bodies,
+        catalog=catalog,
+        progress=progress,
+    )
+
+
 def _parse_grounder_output_v0_3_with_progress(
     raw_json: str,
     max_input_bytes: int,
@@ -699,6 +787,68 @@ def parse_semantic_verdict_v0_3(
         run_id=run_id, canonical_input_hash=canonical_input_hash,
         source_bodies=source_bodies, catalog=catalog,
         producer_binding_evidence_ids=producer_binding_evidence_ids,
+    )
+
+
+def _parse_semantic_verdict_world_partial_v0_5(
+    raw_json: str,
+    max_input_bytes: int,
+    *,
+    max_string_bytes: int,
+    max_array_items: int,
+    run_id: str,
+    canonical_input_hash: str,
+    source_bodies: Mapping[str, HostSourceBody],
+    catalog: HostEvidenceCatalog,
+    envelope: Mapping[str, object],
+    normalized_envelope_utf8: bytes,
+    producer_binding_evidence_ids: tuple,
+    host_binding_objects: list,
+    source_coverage_sha256: str,
+    progress: _SemanticVerdictProgress | None = None,
+) -> bytes:
+    """Bind the World-only v0.5 audit hash before existing verifier projection."""
+    max_input_bytes = _limit(max_input_bytes, "max_input_bytes")
+    max_string_bytes = _limit(max_string_bytes, "max_string_bytes")
+    expected_hash = _sha256_text(
+        source_coverage_sha256, "source_coverage_sha256", max_string_bytes
+    )
+    if progress is not None:
+        progress.failure_check = "wire_decode"
+    wire = _decode(raw_json, max_input_bytes)
+    if progress is not None:
+        progress.failure_check = "topshape"
+    if set(wire) != _VERDICT_TOP | frozenset(("source_coverage_sha256",)):
+        raise ValueError("World verifier wire has an invalid closed shape")
+    if (
+        type(wire.get("schema_version")) is not str
+        or wire["schema_version"] != "semantic-verdict-v0.5"
+        or type(wire.get("source_coverage_sha256")) is not str
+        or _sha256_text(
+            wire["source_coverage_sha256"],
+            "source_coverage_sha256",
+            max_string_bytes,
+        )
+        != expected_hash
+    ):
+        raise ValueError("verifier source coverage binding is invalid")
+    legacy_wire = dict(wire)
+    legacy_wire.pop("source_coverage_sha256")
+    legacy_wire["schema_version"] = _VERIFIER_WIRE_VERSION_V0_4
+    return _parse_semantic_verdict_v0_4(
+        _canonical_bytes(legacy_wire).decode("utf-8", errors="strict"),
+        max_input_bytes,
+        max_string_bytes=max_string_bytes,
+        max_array_items=max_array_items,
+        run_id=run_id,
+        canonical_input_hash=canonical_input_hash,
+        source_bodies=source_bodies,
+        catalog=catalog,
+        envelope=envelope,
+        normalized_envelope_utf8=normalized_envelope_utf8,
+        producer_binding_evidence_ids=producer_binding_evidence_ids,
+        host_binding_objects=host_binding_objects,
+        progress=progress,
     )
 
 
@@ -1255,7 +1405,11 @@ class HostEvidenceCatalogAuditHolder:
                 ),
                 "run_id": self._run_id,
                 "canonical_input_hash": self._canonical_input_hash,
-                "producer_wire_version": _PRODUCER_WIRE_VERSION,
+                "producer_wire_version": (
+                    "grounder-output-v0.4"
+                    if self._producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+                    else _PRODUCER_WIRE_VERSION
+                ),
                 "producer_prompt_version": self._producer_prompt_version,
                 "producer_content_sha256": self._producer_content_sha256,
                 "normalized_envelope_sha256": hashlib.sha256(normalized_copy).hexdigest(),
@@ -1269,6 +1423,8 @@ class HostEvidenceCatalogAuditHolder:
                         _VERIFIER_PROMPT_VERSION_V0_9,
                         _VERIFIER_PROMPT_VERSION_V0_10,
                     )
+                    else "semantic-verdict-v0.5"
+                    if self._semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_11
                     else _VERIFIER_WIRE_VERSION
                 ),
                 "validator_version": self._semantic_prompt_version,

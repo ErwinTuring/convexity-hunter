@@ -666,7 +666,7 @@ class HostGrounderContextPreparationTests(unittest.TestCase):
                 max_catalog_entries=100,
                 max_catalog_bytes=100_000,
                 max_catalog_paragraphs=100,
-                producer_prompt_version="host-grounder-discovery-prompt-v0.10",
+                producer_prompt_version="host-grounder-discovery-prompt-v0.12",
             )
         self.assertEqual(raised.exception.code, "DISCOVERY_PROMPT_VERSION_INVALID")
         self.assertEqual(calls, [])

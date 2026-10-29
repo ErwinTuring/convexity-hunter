@@ -1,8 +1,16 @@
 # Host World source-query separation v0.1
 
+Implementation ledger: the user subsequently authorized a bounded BUILD on
+2026-10-29. The successor code is implemented; independent implementation
+review and targeted rereview PASS, with validation limitations retained;
+see the
+[current checkpoint](current-checkpoint.md). The freeze record below preserves
+the authorization/status at freeze time. It does not authorize live calls,
+private configuration changes, deployment or an external acceptance run.
+
 ## Validated partial extraction — contract v0.1, 2026-10-29
 
-Status: CONTRACT FROZEN / SUBSEQUENT_BUILD_READY. Independent contract review
+Historical freeze status: CONTRACT FROZEN / SUBSEQUENT_BUILD_READY. Independent contract review
 and accepted P2 request-tuple-binding re-review PASS. User authorized contract
 design/review ONLY. Every new type/version/field below is a FROZEN TARGET,
 NOT current runtime. Production implementation is ABSENT. No BUILD, config
@@ -17,6 +25,14 @@ Direct stay unchanged. This amends source-coverage policy, not factual truth
 or EI acceptance. Prior39da868f's four extraction failures have no per-URL
 receipt retained; they are NOT reclassified as partial successes or evidence
 that this amendment would have changed that result.
+
+Implementation clarification: the audit inventories Extract outcomes, not
+every body produced by the existing independently authenticated admission
+and issuer-reference chain. Those existing gates remain mandatory and are
+not replaced by audit membership. Original Extract-success body bindings
+must still match exactly; neither a failed source ID nor its exact locator
+may acquire evidence authority through an alternate admission ID. This does
+not add a source family, bypass admission, or authorize new retrievals.
 
 Use the existing typed Extract result and its complete request/result
 partition. Revalidate even constructor-bypassed objects: exact types; public
@@ -127,6 +143,10 @@ and context relations, never parse guessed IDs. Every returned submission
 and resulting case maps to exactly one unit with a valid non-EMPTY audit;
 missing/contradictory linkage invalidates the covered output. Source errors
 without trustworthy receipts have null audit and no submissions/cases.
+Here `case_ids` means numeric CoreCaseRecord IDs; unavailable source/EI
+branches retain coverage through their actual unit/submission context, not
+by inventing numeric cases or parsing case IDs. Valid EMPTY therefore has
+empty submission_ids/case_ids while its unavailable unit still keeps audit.
 Keep trustworthy audits for valid EMPTY, no-submission, EI-rejected and later
 Core-failed results too; no audit omission merely because no case formed.
 
@@ -144,7 +164,7 @@ with fixed reason codes. Chinese PARTIAL wording: “来源提取覆盖不完整
 accepted/researchable partial case. Render from the archived sidecar, never
 rerun research. It is NOT a new Core disposition, score or recommendation.
 
-### Versions and compatibility: targets only
+### Versions and compatibility: frozen successor contract
 
 | Target | Frozen successor |
 | --- | --- |
@@ -176,7 +196,7 @@ legacy records unknown; and every existing resource/no-retry guard.
 All-invalid and all-failed cases must make zero model calls. A positive
 synthetic case proves lawful flow only, not a real event/investment result.
 
-Independent contract review PASS: SUBSEQUENT_BUILD_READY; stop before BUILD.
+Historical independent contract review PASS: SUBSEQUENT_BUILD_READY; stop before BUILD.
 Next separately authorized work unit: implement this opt-in Host coverage
 envelope, bounded audit, source gate and existing presentation/archive path;
 focused adversarial/compatibility tests and independent implementation review.

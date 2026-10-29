@@ -947,14 +947,104 @@ def _public_batch_reasons(value: Any) -> list[str]:
     return list(value)
 
 
+def _public_source_coverage(value: Any) -> Dict[str, Any]:
+    fields = {
+        "unit_id", "status", "successful_count", "requested_count", "failed_sources"
+    }
+    if type(value) is not dict or set(value) != fields:
+        raise ValueError("stored source coverage projection is malformed")
+    unit_id = value["unit_id"]
+    status = value["status"]
+    successful = value["successful_count"]
+    requested = value["requested_count"]
+    failed = value["failed_sources"]
+    if (
+        (unit_id is not None and (type(unit_id) is not str or not unit_id or unit_id != unit_id.strip()))
+        or type(status) is not str
+        or status not in ("UNKNOWN", "EMPTY", "COMPLETE", "PARTIAL")
+        or type(failed) is not list
+    ):
+        raise ValueError("stored source coverage projection is malformed")
+    public_failed = []
+    for item in failed:
+        if type(item) is not dict or set(item) != {
+            "source_id", "locator", "reason_code"
+        }:
+            raise ValueError("stored failed-source projection is malformed")
+        source_id = item["source_id"]
+        locator = item["locator"]
+        reason_code = item["reason_code"]
+        if (
+            type(source_id) is not str
+            or re.fullmatch(r"url:[0-9a-f]{64}", source_id, re.ASCII) is None
+            or type(locator) is not str
+            or not locator
+            or type(reason_code) is not str
+            or reason_code != "PROVIDER_REPORTED_FAILURE"
+        ):
+            raise ValueError("stored failed-source projection is malformed")
+        try:
+            parsed = urlsplit(locator)
+            if (
+                parsed.scheme not in ("http", "https")
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.fragment
+                or hashlib.sha256(locator.encode("utf-8", "strict")).hexdigest()
+                != source_id[4:]
+            ):
+                raise ValueError
+            parsed.port
+        except (UnicodeError, ValueError):
+            raise ValueError("stored failed-source projection is malformed") from None
+        public_failed.append(
+            {
+                "source_id": source_id,
+                "locator": locator,
+                "reason_code": reason_code,
+            }
+        )
+    if status == "UNKNOWN":
+        if successful is not None or requested is not None or public_failed:
+            raise ValueError("UNKNOWN source coverage cannot claim extraction outcomes")
+    else:
+        if (
+            unit_id is None
+            or type(successful) is not int
+            or type(requested) is not int
+            or requested < 1
+            or requested > 5
+            or successful < 0
+            or successful > requested
+            or len(public_failed) != requested - successful
+        ):
+            raise ValueError("stored source coverage counts are malformed")
+        if (
+            (status == "EMPTY" and successful != 0)
+            or (status == "COMPLETE" and (successful != requested or public_failed))
+            or (status == "PARTIAL" and not (0 < successful < requested))
+        ):
+            raise ValueError("stored source coverage status differs from its counts")
+    return {
+        "unit_id": unit_id,
+        "status": status,
+        "successful_count": successful,
+        "requested_count": requested,
+        "failed_sources": public_failed,
+    }
+
+
 def _batch_case_key(case_id: str) -> str:
     return hashlib.sha256(case_id.encode("utf-8", errors="strict")).hexdigest()
 
 
 def _public_batch_case_summary(value: Any) -> Dict[str, Any]:
-    if type(value) is not dict or set(value) != {
-        "case_id", "case_key", "classification", "reasons"
-    }:
+    base_fields = {"case_id", "case_key", "classification", "reasons"}
+    if type(value) is not dict or set(value) not in (
+        base_fields,
+        base_fields | {"source_coverage"},
+    ):
         raise ValueError("stored batch case summary is malformed")
     case_id = value.get("case_id")
     case_key = value.get("case_key")
@@ -969,12 +1059,15 @@ def _public_batch_case_summary(value: Any) -> Dict[str, Any]:
         or classification not in _CORE_CLASSIFICATIONS | {"UNAVAILABLE"}
     ):
         raise ValueError("stored batch case summary is malformed")
-    return {
+    result = {
         "case_id": case_id,
         "case_key": case_key,
         "classification": classification,
         "reasons": _public_batch_reasons(value["reasons"]),
     }
+    if "source_coverage" in value:
+        result["source_coverage"] = _public_source_coverage(value["source_coverage"])
+    return result
 
 
 def _public_compact_leg(value: Any) -> Dict[str, Any]:
@@ -1008,7 +1101,10 @@ def _public_compact_case(value: Any) -> Dict[str, Any]:
         "single_cost_upper_bound", "repeated_cost_upper_bound",
         "single_loss_fraction", "repeated_loss_fraction",
     }
-    if type(value) is not dict or set(value) != fields:
+    if type(value) is not dict or set(value) not in (
+        fields,
+        fields | {"source_coverage"},
+    ):
         raise ValueError("stored compact case is malformed")
     if (
         type(value["case_id"]) is not str
@@ -1033,7 +1129,7 @@ def _public_compact_case(value: Any) -> Dict[str, Any]:
         or type(value["legs"]) is not list
     ):
         raise ValueError("stored compact case is malformed")
-    return {
+    result = {
         "case_id": value["case_id"],
         "case_key": value["case_key"],
         "disposition": value["disposition"],
@@ -1048,10 +1144,17 @@ def _public_compact_case(value: Any) -> Dict[str, Any]:
         "single_loss_fraction": value["single_loss_fraction"],
         "repeated_loss_fraction": value["repeated_loss_fraction"],
     }
+    if "source_coverage" in value:
+        result["source_coverage"] = _public_source_coverage(value["source_coverage"])
+    return result
 
 
 def _public_unavailable_batch_case(value: Any) -> Dict[str, Any]:
-    if type(value) is not dict or not {"case_id", "case_key", "reasons"}.issubset(value):
+    fields = {"case_id", "case_key", "reasons"}
+    if type(value) is not dict or set(value) not in (
+        fields,
+        fields | {"source_coverage"},
+    ):
         raise ValueError("stored unavailable batch case is malformed")
     case_id = value["case_id"]
     case_key = value["case_key"]
@@ -1063,11 +1166,14 @@ def _public_unavailable_batch_case(value: Any) -> Dict[str, Any]:
         or case_key != _batch_case_key(case_id)
     ):
         raise ValueError("stored unavailable batch case identity is malformed")
-    return {
+    result = {
         "case_id": case_id,
         "case_key": case_key,
         "reasons": _public_batch_reasons(value["reasons"]),
     }
+    if "source_coverage" in value:
+        result["source_coverage"] = _public_source_coverage(value["source_coverage"])
+    return result
 
 
 def _public_batch_summary(value: Any) -> Optional[Dict[str, Any]]:
@@ -1159,6 +1265,22 @@ def _public_batch_summary(value: Any) -> Optional[Dict[str, Any]]:
         "unavailable_cases": public_unavailable_cases,
         "host_status": host_status,
     }
+    if "source_coverage_by_unit" in value:
+        coverage_by_unit = value["source_coverage_by_unit"]
+        if type(coverage_by_unit) is not list:
+            raise ValueError("stored source coverage unit summary is malformed")
+        public["source_coverage_by_unit"] = [
+            _public_source_coverage(item) for item in coverage_by_unit
+        ]
+        if any("source_coverage" not in item for item in cases) or any(
+            "source_coverage" not in item for item in unavailable_cases
+        ):
+            raise ValueError("covered summary omits per-case source coverage")
+    elif any(
+        "source_coverage" in item
+        for item in list(cases) + list(unavailable_cases)
+    ):
+        raise ValueError("per-case source coverage requires the v0.2 unit summary")
     return public
 
 
@@ -1175,7 +1297,10 @@ def _public_batch_case_detail(value: Any, requested_case_id: str) -> Dict[str, A
     report = value["report"]
     if report is not None and type(report) is not str:
         raise ValueError("stored batch report is malformed")
-    return {**summary, "report": report}
+    result = {**summary, "report": report}
+    if "source_coverage" in value:
+        result["source_coverage"] = _public_source_coverage(value["source_coverage"])
+    return result
 
 
 def _decode_batch_case_key_segment(segment: str) -> Optional[str]:
@@ -1772,6 +1897,11 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             direct_configured = (
                 request.mode == "direct" and direct_executor is not None
             )
+            covered_world_executor = False
+            if request.mode == "world" and world_executor is not None:
+                from .host_world import _CoveredWorldExecutor
+
+                covered_world_executor = type(world_executor) is _CoveredWorldExecutor
             configuration_snapshot = _configuration_snapshot()
             snapshot_callback = None
             if staged_event_configured:
@@ -1788,6 +1918,16 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                 configuration_snapshot = snapshot_callback()
                 if type(configuration_snapshot) is not dict:
                     raise ValueError("executor configuration snapshot is invalid")
+            if request.mode == "world":
+                query_policy = configuration_snapshot.get("world_source_query_policy")
+                partial_source_policy = (
+                    type(query_policy) is dict
+                    and query_policy.get("schema_version") == "world-source-query-v0.5"
+                )
+                if partial_source_policy != covered_world_executor:
+                    raise ValueError(
+                        "partial World source policy requires its exact covered executor"
+                    )
         except Exception:
             self._send_json(500, {"error": "event configuration unavailable"})
             return
@@ -1833,7 +1973,15 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             if batch_executor is None:
                 self._finish_unconfigured_run(run_id, stage_id)
                 return
-            self._post_batch_run(request, run_id, stage_id, batch_executor)
+            self._post_batch_run(
+                request,
+                run_id,
+                stage_id,
+                batch_executor,
+                covered_world=(
+                    covered_world_executor if request.mode == "world" else False
+                ),
+            )
             return
 
         if not direct_configured:
@@ -2045,10 +2193,23 @@ class HostRequestHandler(BaseHTTPRequestHandler):
         executor: Callable[..., CoreRunResult],
         *,
         source_batch: Optional[SourceSubmissionBatch] = None,
+        covered_world: bool = False,
     ) -> None:
+        coverage_rows = None
         try:
             # One trusted callback only. It runs after run_start and stage_started.
-            if source_batch is None:
+            if covered_world:
+                from .host_world import _CoveredWorldExecutor
+
+                if type(executor) is not _CoveredWorldExecutor:
+                    raise ValueError("covered World execution requires its exact private executor")
+                with _discard_sdk_output():
+                    result = executor(
+                        request.input,
+                        bounds=request.bounds,
+                        host_run_id=run_id,
+                    )
+            elif source_batch is None:
                 result = executor(request.input, bounds=request.bounds)
             else:
                 result = executor(
@@ -2110,6 +2271,16 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             return
 
         try:
+            if covered_world:
+                from .host_world import _validate_covered_world_result
+
+                coverage_rows = _validate_covered_world_result(
+                    result,
+                    host_run_id=run_id,
+                    raw_input=request.input,
+                    bounds=request.bounds,
+                )
+                result = result.core_result
             result = _validate_batch_result(result, request)
             if source_batch is not None and result.case_set.submissions is not source_batch:
                 raise ValueError("Core result did not preserve the Grounder source batch")
@@ -2139,7 +2310,14 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             get_summary = getattr(self.server.journal, "get_batch_summary", None)
             if not callable(save) or not callable(get_summary):
                 raise ValueError("batch archive APIs are unavailable")
-            saved = save(run_id, result)
+            if covered_world:
+                saved = save(
+                    run_id,
+                    result,
+                    source_coverage_by_unit=coverage_rows,
+                )
+            else:
+                saved = save(run_id, result)
             if saved is not None:
                 raise ValueError("batch archive API returned an unexpected value")
             summary = get_summary(run_id)
@@ -2704,7 +2882,10 @@ def main(argv: Optional[list[str]] = None) -> int:
                     )
 
             if world_enabled:
-                from .host_world import create_world_runner
+                from .host_world import (
+                    _create_covered_world_executor,
+                    create_world_runner,
+                )
                 from .host_world_config import (
                     HostWorldConfigurationError,
                     load_world_config,
@@ -2718,11 +2899,26 @@ def main(argv: Optional[list[str]] = None) -> int:
                         evaluation_date=args.evaluation_date,
                         maturity_authority=OptionMaturityAuthority(args.maturity_authority),
                     )
-                    configured_world_executor = create_world_runner(
-                        world_config,
-                        repo_root=Path(__file__).resolve().parents[2],
-                        market_bridge=market_bridge,
+                    partial_source_coverage = (
+                        getattr(
+                            world_config,
+                            "source_coverage_policy",
+                            "REQUIRE_COMPLETE",
+                        )
+                        == "VALIDATED_PARTIAL_V0_1"
                     )
+                    if partial_source_coverage:
+                        world_executor = _create_covered_world_executor(
+                            world_config,
+                            repo_root=Path(__file__).resolve().parents[2],
+                            market_bridge=market_bridge,
+                        )
+                    else:
+                        configured_world_executor = create_world_runner(
+                            world_config,
+                            repo_root=Path(__file__).resolve().parents[2],
+                            market_bridge=market_bridge,
+                        )
                 except HostWorldConfigurationError as error:
                     print("World configuration invalid ({})".format(error.code), file=sys.stderr)
                     return 2
@@ -2730,15 +2926,16 @@ def main(argv: Optional[list[str]] = None) -> int:
                     print("World configuration invalid (INVALID_CONFIGURATION)", file=sys.stderr)
                     return 2
 
-                def world_executor(
-                    raw_input: str, *, bounds: CoreOperationalBounds
-                ) -> CoreRunResult:
-                    with _discard_sdk_output():
-                        return configured_world_executor(raw_input, bounds=bounds)
+                if not partial_source_coverage:
+                    def world_executor(
+                        raw_input: str, *, bounds: CoreOperationalBounds
+                    ) -> CoreRunResult:
+                        with _discard_sdk_output():
+                            return configured_world_executor(raw_input, bounds=bounds)
 
-                world_executor.configuration_snapshot = (
-                    configured_world_executor.configuration_snapshot
-                )
+                    world_executor.configuration_snapshot = (
+                        configured_world_executor.configuration_snapshot
+                    )
 
         direct_executor = (
             _make_futu_direct_executor(args.futu_port)
