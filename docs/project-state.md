@@ -1,5 +1,8 @@
 # Project State
 
+## Continuation / runtime recovery reconciliation — 2026-10-30
+Fresh baseline Git `a756f86`, clean. Prior recovery and today's UTC rollover reconciled: worker stopped old77589 with no active jobs, startup failed; Main's first recovery was not executed due to permission-review timeout, permitted narrow-prefix retry succeeded. Verified2026-10-30T08:57:06Z: codea756f86, original lower-cap launcher PID93806/session71072, actualUTC10-30, READY/all3/history52, World/Event hashes unchanged, DB52/Direct3/batches28. No new POST/calls/config edits or historical redating. Closure goal valid, no new acceptance defect. Prefer one normal Event with existing detailed failure journal; new3/3 source and2/role fee authorization requested, NOT yet approved. Historical grants remain SPENT. See [checkpoint](current-checkpoint.md).
+
 ## Offline closure check / four-code projection complete — 2026-10-29
 Fresh baseline Git `319b266`. Native6/Grounder3 checks and actual all-synthetic default World v0.11→Builder→EI ACCEPTED probe find no reproducible acceptance defect; NOT real closure or proof of historical cause. Four existing runtime-code mappings and default-route regression implemented; focused5/targeted compilation/diff/independent review PASS. No acceptance/schema/authority/budget change, unknowns remain generic. Last real grant spent, finer failure UNKNOWN. No new calls; lower-cap deployment pending, no new POST authorized. See [checkpoint](current-checkpoint.md).
 

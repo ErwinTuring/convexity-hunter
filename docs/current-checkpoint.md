@@ -1,5 +1,39 @@
 # Current Checkpoint
 
+## Continuation grounding and deployment recovery record — 2026-10-30
+
+Fresh HEAD/main/origin/main `a756f86`, clean. Main's read-only API confirms
+READY/all3 executors configured, history52 and latest run still7636aa59
+BLOCKED; no additional real batch occurred. The prior deployment record was
+interrupted by quota: worker stopped oldPID75779 safely but two starts failed;
+Main then started the ORIGINAL lower-cap launcher with explicit localhost
+permission and PYTHONPATH=src. Verified2026-10-29T12:52:43Z: codea756f86,
+PID77589/session69296, READY/all3/history52. Earlier startup failure's exact
+cause remains unproven; successful recovery must not be described as failure.
+
+Today's fresh listener check found PID77589. With zero active runs, worker
+stopped that verified Host08:50:02Z for normal UTC-date rollover; original
+launcher startup failed, exact cause unproven. Main recovery's first command
+was NOT executed because automatic permission review timed out. One permitted
+retry used the original launcher with explicit localhost permission and a
+narrow executable/script approval prefix; it succeeded. Launcher already
+sets ROOT/src internally, so extra PYTHONPATH assignment is unnecessary.
+Verified2026-10-30T08:57:06Z: codea756f86, PID93806/session71072,
+explicit UTC evaluation date2026-10-30, READY/all3 configured/history52;
+latest run remains7636aa59 BLOCKED. World/Event hashes still match originals,
+DB52/Direct3/batches28 unchanged. No active-run interruption, new POST,
+provider/model/Skill/quote call or private config edit. Historical runs retain
+their original dates. Session rollover is COMPLETE, not pending.
+
+Closure goal remains valid. The normal Event failure path already retains
+typed runtime categories and supported semantic/producer subchecks in the
+existing journal, unlike the earlier coarse World result. Prefer ONE normal
+Event rather than another whole World batch to remove the Native Skill
+variable, without prefilled submissions or changed EI standards. Fresh fee
+authorization requested separately: original COGT input/policy, source3
+requests/3credits, each model role2, unchanged token/time caps; no substitution
+or automatic repeat. Authorization PENDING, not implied by spent World caps.
+
 ## Offline closure check and four-code projection complete — 2026-10-29
 
 Fresh HEAD/main/origin/main `319b266`, clean. User authorized continued work
