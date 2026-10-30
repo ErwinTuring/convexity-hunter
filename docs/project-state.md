@@ -1,5 +1,22 @@
 # Project State
 
+## One-run private rationale acceptance — 2026-10-30
+
+User-approved external observer/5 synthetic checks/independent review PASS;
+no production, public DTO, SQL, prompt, budget or acceptance-rule changes.
+ONE normal COGT run `fe55af3f`,37.810s, HTTP201,
+BLOCKED/GROUNDING_NO_SUBMISSION. Semantic receipt validated; hypothesis0
+unresolved + required_field_binding and bindings23/24 unresolved. Builder
+completed, submission missing, EI/Futu/Core NOT_RUN. Private0600 capture bound
+to normal run/input/envelope succeeded, no raw response/body/credentials in Git.
+Candidate direction-up support was challenged; expected_window/reassessment
+both null. This is not proof of a code bug or that impact-end absence alone
+was the cause. No forced mode/temporal completion or gate relaxation.
+DB55/Direct3/batches28; no batch archive added. Main restored original
+unobserved launcherPID5644/session62483/UTC10-30, READY/all3, config hashes
+unchanged; all once guards retained and grant SPENT. No additional paid call
+authorized. See [checkpoint](current-checkpoint.md) for sanitized evidence.
+
 ## Post-compliance normal COGT Event — 2026-10-30
 
 Reviewed55fb330 deployed via original launcher/UTC10-30 (session86140;

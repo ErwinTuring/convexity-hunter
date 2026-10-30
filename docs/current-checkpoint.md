@@ -1,5 +1,81 @@
 # Current Checkpoint
 
+## Private rationale capture + ONE Event completed — 2026-10-30
+
+Actual run `fe55af3f-eddc-45a4-bdf6-d56863cc6140`, HTTP201,
+2026-10-30T14:58:24.098Z–14:59:01.908Z (37.810s), terminal
+BLOCKED/GROUNDING_NO_SUBMISSION. Grounder/Builder COMPLETED, Semantic
+RECEIPT_VALIDATED, submission MISSING, EI NOT_RUN; no Futu/Core/Chinese Core
+report or batch archive. Current DB55runs/Direct3/batches28 (delta+1/0/0).
+Counts5 registered bodies/8claims/25bindings/1hypothesis/2coverage. Closed
+rejections: hypothesis0 verifier_unresolved + required_field_binding;
+bindings23/24 verifier_unresolved. These are unresolved independent support
+judgments, not missing-path completeness failure; exact paths of those bindings are
+not inferred. Actual credits/tokens and total requests are not inferred from
+these counts or the two model-summary rows; one Semantic attempt is retained.
+
+The approved capture succeeded: `rationale-capture.json` in the private
+observer directory below,2634 bytes,0600. SHA-256
+`d290084d66d3521ec9945db05978ced3029b2d2236f67d36681ce0e0660ce3ce`;
+run/input/envelope hashes match the normal journal, envelope SHA-256
+`1963f3d9467102f2f2eee37360abeecb94e6697df279bd091e840776271c6b64`.
+Only the rejected hypothesis/rationale and indexed reference metadata were
+retained outside Git; no full responses, bodies or credentials were captured.
+The hypothesis proposed event_directional_up, with expected_window and
+reassessment both null. The verifier's concerns include unsupported market
+direction and unestablished timing/impact interval. Missing impact end alone
+is NOT a universal rejection condition under the frozen provisional-mechanism
+contract; because direction was also challenged, this record does not prove
+that time-window absence alone caused rejection or establish a software bug.
+Null temporal inputs are a separate readiness gap, not an actual EI rejection
+(EI did not run). Do not default the mode to bidirectional, fill a milestone,
+or weaken the verifier merely to advance the case.
+
+Main executed the ONE guarded normal POST after taking over the worker's
+pre-POST checkpoint; no earlier POST/guard existed. Observer session72291 /
+PID5489, actual UTC10-30; then zero active jobs verified and wrapper stopped.
+Original unobserved launcher restored: PID5644/session62483, UTC10-30,
+READY/all3, Event/World config hashes unchanged. `.run-once.lock`,
+`post-once.guard` and capture remain0600 under0700 parent, not removed/reused.
+Grant SPENT. No retry/substitution/World run or further paid call. No production
+logic/schema/prompt/budget change. This is one-run diagnostic/acceptance work,
+not a positive three-entry closure or new product implementation claim.
+Phase allocation: product implementation0%; the approved private observer,
+checks, real acceptance and recording100%. No70/30 product-coding claim.
+
+### Approved scope and reviewed private implementation
+
+Fresh HEAD/main/origin/main `357285c`, initially clean. User approved the
+[one-run private exception](host-grounder-semantic-validation-v0.2.md#one-run-private-rationale-exception--approved-2026-10-30)
+and ONE new normal COGT Event: Tavily<=3 requests/3 credits, DeepSeek<=2
+requests per role, existing token/byte/time limits unchanged; no retry,
+case substitution, World operation or additional batch. All prior grants
+remain spent. The new guard is spent before the first POST, even if ambiguous.
+
+Before deployment/calls, independently review the repository-external observer
+and synthetic privacy/identity/IO checks. Only a matching current normal Event
+receipt may retain rejected hypotheses, their exact corresponding verifier
+rationales and source reference indexes in an exclusive0600 private file;
+parent0700. No full response/body/credentials, no SQLite/public text retention,
+no prompt/DTO/Verifier/EI/Core/budget change. Original receipt return and
+exception behavior remain untouched. No historical rationale is reconstructed.
+If EI accepts, continue normal Futu/Core/SQLite/Chinese execution immediately.
+Actual artifact identity, deployment and single-run outcome are recorded here.
+
+Private observer implementation (not production API):
+`/private/tmp/ch-cogt-rationale.t46ryr2z/observe_once.py`, SHA-256
+`5fa79e0ee8ff6a0789e5bfc5f005ada9d0059bbaee6d77b56750851196b8e793`.
+Synthetic test artifact SHA-256
+`b32c672a1c3cb5c73b16aadbf3c5dea1686ce6823fb61bf0643bb868552283c1`.
+Both artifacts0600/parent0700; Main and independent reviewer verified identity.
+Five synthetic checks PASS; independent privacy/identity/IO review PASS. The
+original validated receipt is called first; capture errors cannot alter it.
+Main released the ONE authorized normal Event operation only after review.
+Restore the original unobserved launcher after terminal completion so an
+unreached capture hook cannot remain armed for a future operation. Do not
+delete/bypass the observer lock or paid-run guard. No production behavior,
+public/SQLite schema, source/semantic authority, prompt or budget change.
+
 ## ONE post-compliance COGT acceptance completed — 2026-10-30
 
 Deployed reviewed code `55fb330` via the original launcher, explicit UTC

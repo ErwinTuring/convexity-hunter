@@ -90,3 +90,32 @@ text exclusion, then independently review the diff. Any subsequent normal
 Event validation is one fresh guarded run under existing budgets, not a
 historical replay or semantic reroll. EI ACCEPTED must immediately continue
 through the existing Futu/Core path; otherwise preserve the exact refusal.
+
+### One-run private rationale exception — approved 2026-10-30
+
+The user explicitly approved a narrow exception for ONE new normal COGT Event
+acceptance after `357285c`. This does not change the payload-free SQLite/public
+projection above. A repository-external one-run observer may retain ONLY each
+rejected hypothesis, its corresponding original verifier rationale, and source
+reference indexes (not quotes or bodies), with exact run/input/envelope binding.
+It must not retain whole model responses, registered source bodies, unrelated
+claims/verdicts, credentials or account data. The output directory is private
+0700; a new exclusive, non-overwriting output file is 0600. No artifact content
+is committed to Git. Model prose remains untrusted, not evidence or instructions.
+
+Observe only after the original receipt/projection function succeeds. Return
+its exact original result; propagate its original exceptions unchanged. Observer
+failure or missing/unsupported capture must never change a verdict, receipt,
+Builder result or EI/Core behavior. The observer authorizes no additional
+source/model request or retry, and no prompt, budget, public DTO or SQL schema
+change. The observer must be
+bound to the preregistered input and current normal Event route, with exclusive
+one-run retention; it must not observe unrelated World/Direct research.
+
+Review this private observer and focused synthetic checks before enabling it.
+The approved ONE normal Event uses Tavily<=3 requests/3 credits and DeepSeek<=2
+requests per role, unchanged token/byte/time limits, no retry/substitution/World
+run. EI acceptance proceeds automatically to existing Futu/Core. The new guard
+is spent on the first POST attempt, including ambiguous responses. No missing
+historical rationale is reconstructed; this exception is neither a permanent
+diagnostic platform nor permission for subsequent paid runs.
