@@ -1,5 +1,97 @@
 # Current Checkpoint
 
+## ONE normal COGT Event completed: no projectable submission — 2026-10-30
+
+Run `cdb47f48-0a8b-4eb1-b6cb-9b5fc2aa1ad8`, HTTP201,
+2026-10-30T09:40:55.209Z–09:41:41.270Z (46.061s), ended
+BLOCKED/GROUNDING_NO_SUBMISSION. Grounder and Builder completed; this is
+not a transport exception, World failure or EI rejection. Grant SPENT,
+no repeat/substitution/extra batch.
+
+Normal journal retains4 registered source bodies,10 claims,1 hypothesis,
+6 field bindings and2 coverage items. user_event_input references9 claims;
+event_fact_anchor_v0_2 references1. Model/verifier supported both coverage
+items, but deterministic validator marked them unresolved. No anchor selected;
+date/listing preparation is UNKNOWN, not proven missing or format-invalid.
+
+Semantic receipt validated; retained rejections are10 claim
+required_field_binding checks and1 hypothesis_dependency_closure. Verifier
+outcome is supported for all11, but support alone does not satisfy mandatory
+field bindings/dependency closure. Do not equate this with false claims or
+absence of a credible economic mechanism. Canonical verified/unresolved/
+rejected totals beyond those explicit rejection records remain UNKNOWN.
+
+Producer has2 attempt records,1 accepted and a retained
+producer_v0_3_closed_shape failure on an attempt. Model-call summaries have
+one Discovery and one Semantic row; summary-row counts must not be reported
+as actual total API requests. Actual Tavily requests/credits/spend UNKNOWN.
+Builder has no separately retained metric totals. Submission missing, EI
+NOT_RUN, Futu/Core NOT_RUN; no new Core classification or Chinese Core report.
+No batch archive added: DB53 runs/Direct3/batches28 (+1/0/0).
+
+Worker verified09:44:43.703Z: original PID93806/UTC10-30 READY/all3,
+no active runs; Event/World hashes unchanged. Guard/run-ID/HTTP record remains
+at `/private/tmp/ch-cogt-event-20261030.0xrzvup3/one-post.guard` (0700dir,
+0600file). No config/code edits or additional calls in this acceptance phase.
+Main independently confirmed terminal ID/status/diagnostic through normal GET.
+
+Main filtered ONLY existing closed semantic-rejection log lines from the
+already-running service session (no new capture/observer). Retained counters:
+hypothesis_roots=1, required_field_binding=27; first8 relation rows are claim
+ENTITY_REF/status=missing/matching_binding_indices=[] (claim indices0/1,
+entity subindices0..3). relations_omitted=20. Do not infer the omitted20
+relations or say all27 were the same field. Field-instance counter27 and
+claim-rejection rows10 are different units, not conflicting totals. No raw
+response, statement, quote, identifier or credential was printed/persisted.
+
+One bounded read-only prompt/normalizer/validator check completed09:51:47–
+09:56Z: NO_REPRODUCIBLE_DEFECT. Current prompt explicitly requires a binding
+for every non-null consumed value; owner/path/role examples match the grammar.
+A supported claim can still fail a missing or independently unverified field
+binding. Existing omission-repair logic covers claims AND hypotheses but does
+not add a third Producer attempt after the bounded format-repair attempt.
+No tests or production changes in this follow-on check; no semantic relaxation,
+new prompt version, extra repair loop or increased model budget justified.
+
+The closure goal remains valid, but the old COGT date/listing-format repair
+route does not explain this pre-EI field-binding outcome. Do not invent an
+implementation defect or repeat cases to force ACCEPTED. Any further change
+to Producer generation/model/call design needs a separately bounded work unit;
+new live calls need a fresh grant. Historical source/model content remains
+unavailable and fine semantic truth judgments stay UNKNOWN.
+This authorized phase was real acceptance plus bounded read-only attribution:
+production coding0%, validation/process100%; it is not counted as BUILD or
+claimed to meet70/30 by relabeling inspection as implementation.
+
+### Preregistration retained for this completed Event
+
+User explicitly approved the pending expense request. Fresh Git
+HEAD/main/origin/main `e4db002`, initially clean; deployed codea756f86.
+ONE new normal Event only: original retained COGT user input/profile/bounds,
+actual UTC evaluation date2026-10-30; Tavily<=3requests/3credits, each
+DeepSeek role<=2requests, existing token/byte/time limits unchanged. No
+World/Skill run, substitution, extra batch, new observer or raw capture.
+Original lower-cap World/Event configuration stays unchanged; no deployment
+or server restart needed if current healthy session is still valid.
+
+Operational worker verifies live health/config caps/no active jobs, creates
+a unique private0700/0600 one-shot guard before the single normal UI/API
+POST, then records exact run ID. Ambiguous response spends this grant; no
+outer retry. Existing built-in finite repairs remain within approved role
+budgets. No prefilled submission or reuse of old provider/model responses.
+Lawful EI acceptance must continue the normal Futu/Core/SQLite/Chinese
+presentation path automatically; otherwise retain existing closed failure
+checks/missing fields only, unknown finer causes stay UNKNOWN.
+
+Main's normal read-only API confirms ONE new Event run
+`cdb47f48-0a8b-4eb1-b6cb-9b5fc2aa1ad8`, created2026-10-30T09:40:55.209Z,
+updated09:41:41.270Z, BLOCKED (46.061s); history53. Grant SPENT, no repeat.
+Detailed journal attribution is recorded above, not inferred from lifecycle status.
+Authority was for exactly this run, not previous spent
+World grants. Initial observed checkpoint09:30:52Z. No production/test edits
+or new framework in this acceptance-only phase; no full suite. Preserve
+config hashes, service availability and read-only history after termination.
+
 ## Continuation grounding and deployment recovery record — 2026-10-30
 
 Fresh HEAD/main/origin/main `a756f86`, clean. Main's read-only API confirms
@@ -32,7 +124,8 @@ Event rather than another whole World batch to remove the Native Skill
 variable, without prefilled submissions or changed EI standards. Fresh fee
 authorization requested separately: original COGT input/policy, source3
 requests/3credits, each model role2, unchanged token/time caps; no substitution
-or automatic repeat. Authorization PENDING, not implied by spent World caps.
+or automatic repeat. That pending request was subsequently explicitly approved
+for the ONE new run recorded above, not implied by spent World caps.
 
 ## Offline closure check and four-code projection complete — 2026-10-29
 
