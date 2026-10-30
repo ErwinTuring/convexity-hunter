@@ -1,5 +1,35 @@
 # Current Checkpoint
 
+## Continuation boundary: compliance work complete — 2026-10-30
+
+Fresh HEAD/main/origin/main `a9dde98`, initially clean. A narrow independent
+read-only check found no demonstrable remaining defect within Producer
+Compliance Closure. The missing-path repair/gate has reached independent
+Semantic in real operation; model-unresolved support does not reopen that
+implementation unit. The three-entry positive-closure goal remains valid,
+but the old binding-fix instruction is no longer the applicable remedy.
+Do not relax mode/evidence/temporal rules or repeat spent paid runs.
+
+Main separately inspected public primary pages through Codex Web, not Tavily
+or the standalone Grounder. The issuer's
+[May 28 announcement](https://investors.cogentbio.com/news-releases/news-release-details/cogent-biosciences-announces-fda-acceptance-new-drug-0)
+explicitly reports the GIST PDUFA target2026-11-30. Its
+[Q2 10-Q](https://www.sec.gov/Archives/edgar/data/1622229/000119312526342393/cogt-20260630.htm)
+describes commercial launch as conditional on regulatory approval. These are
+issuer-origin statements, not independent FDA confirmation or stock-direction
+proof. Thus the latest hypothesis's null reassessment is NOT proof that no
+source-backed future milestone exists. It also is not proof of Host field
+loss: historical claims/bindings needed to establish that were not retained.
+A milestone is only a potential reassessment basis, subject to the unchanged
+verified fact/date-role/dependency/methodology gates, never an impact end.
+
+This manual audit creates no submission or EI/Core result and is not product
+source-producer evidence. No paid call, test/code/config change, new capture,
+case substitution or service restart. The bounded correction/acceptances are
+complete; further generation/readiness work needs a separate bounded scope,
+and further paid acceptance still needs a new explicit grant. No new contract
+or permission to force COGT through is inferred from general continuation.
+
 ## Private rationale capture + ONE Event completed — 2026-10-30
 
 Actual run `fe55af3f-eddc-45a4-bdf6-d56863cc6140`, HTTP201,

@@ -1,5 +1,18 @@
 # Project State
 
+## Continuation decision — 2026-10-30
+
+Producer Compliance Closure is complete; bounded independent read-only check
+finds no demonstrated remaining in-scope bug. Latest semantic refusal does
+not justify more binding fixes or relaxed evidence gates. Manual Codex Web
+primary-source audit confirms an issuer-reported GIST2026-11-30 target and
+approval-dependent commercialization, not a stock-direction forecast. Null
+reassessment in the old candidate does not prove source absence or Host loss.
+No Tavily/model call, code/config change or new EI/Core result; paid grants
+remain spent. Overall positive-closure goal remains, but further generation
+work is separate from the completed compliance unit. See
+[checkpoint](current-checkpoint.md) for sources and exact authority limits.
+
 ## One-run private rationale acceptance — 2026-10-30
 
 User-approved external observer/5 synthetic checks/independent review PASS;
