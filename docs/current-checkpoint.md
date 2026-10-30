@@ -1,5 +1,63 @@
 # Current Checkpoint
 
+## ONE post-compliance COGT acceptance completed — 2026-10-30
+
+Deployed reviewed code `55fb330` via the original launcher, explicit UTC
+evaluation date2026-10-30, session86140; Main confirmed listenerPID1437 and
+exact launcher argv. READY/all3 configured; original Event/World config hashes
+unchanged. One normal Event POST, original retained COGT input from
+`cdb47f48`, standard-research-profile v0.4 and its retained bounds unchanged.
+No prefilled submission, response replay, observer, raw capture or outer retry.
+
+Run `77bf51b0-92b6-43f2-b288-cb9c88670097`, HTTP201,
+2026-10-30T12:38:05.301Z–12:39:01.312Z (56.011s), terminal
+BLOCKED/GROUNDING_NO_SUBMISSION. Main independently confirmed normal GET
+run/diagnostic and absent batch summary. No submission/EI acceptance or
+Futu/Core/Chinese Core report is claimed. Journal53->54 runs. Retained audit:
+5 registered source bodies,7 claims,31 field bindings,1 hypothesis,2 coverage
+items. These counts alone do not establish binding support or a completeness
+failure; GROUNDING_NO_SUBMISSION is not the pre-Semantic final-omission check.
+Existing closed audit resolves the stopping layer: TWO Producer attempts;
+first rejected with `producer_v0_3_required_binding_omission_v0_9`, second
+parse-accepted without a failure check. The final required-path gate allowed
+Semantic to run. One Semantic transport attempt is recorded response_received,
+semantic status RECEIPT_VALIDATED. Retained semantic_rejections has one
+hypothesis group, outcome unresolved, check `verifier_unresolved`; no finer
+semantic rationale is retained here. Do not label this a remaining-binding
+compliance stop, false economic mechanism or proved implementation defect.
+Builder COMPLETED, submission MISSING, EI NOT_RUN, source status UNKNOWN.
+This proves the bounded append-only correction reached independent Semantic
+in this real run, not a lawful accepted hypothesis or positive MVP closure.
+Current DB54runs/Direct3/batches28; this run has no batch archive. Pre-POST
+run53 and archive28 baselines were captured; Direct before-count was not
+captured in this operation (older historical checkpoint had3).
+Actual Tavily requests/credits and actual per-role model requests remain
+UNKNOWN unless independently retained; source/summary counts are not usage.
+
+Private guard directory `/private/tmp/ch-event-cogt-once-dahulhd7` mode0700,
+`onepostguard` mode0600, marked SPENT before the ONE POST. This grant is now
+SPENT; no additional Event/World operation is authorized. Deployment and this
+negative result do not prove positive three-entry closure. No production code
+or private config changed during acceptance; no full-suite rerun is required
+for the resulting documentation-only checkpoint.
+Acceptance-only phase: production edits0%; runtime validation/result recording
+100%. It is not counted toward the earlier BUILD coding share.
+
+### Preregistered authorization for this completed run
+
+User approved deployment of `55fb330` and exactly ONE new normal COGT Event
+acceptance after the reviewed compliance correction. Fresh grounding:
+HEAD/main/origin/main `55fb330`, worktree/index clean. Original retained user
+input/profile/bounds only; no prefilled submission or response replay.
+Tavily<=3 requests/3 credits; DeepSeek<=2 requests per role; existing token,
+byte and time limits unchanged. No World, case substitution, outer retry,
+new capture or extra batch. Ambiguous POST response spends the grant.
+Lawful EI acceptance must continue automatically through the existing
+Futu/Core/SQLite/Chinese presentation path. No investment outcome is required.
+
+Actual terminal evidence is above; approval alone is not evidence of EI/Core
+success. All older one-shot grants below remain spent.
+
 ## Producer Compliance Closure v0.1 — BUILD/REVIEW PASS, 2026-10-30
 
 Grounded baseline HEAD/main/origin/main `88b859c`, clean worktree/index. User
