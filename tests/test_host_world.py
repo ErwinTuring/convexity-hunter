@@ -654,9 +654,15 @@ class HostWorldTests(unittest.TestCase):
     def test_only_stamped_bound_object_omission_failures_escape_world_catch(self):
         from tests.test_host_server import _normal_v09_omission_failure
         from convexity_hunter.host_grounder_evidence_catalog import (
+            HostEvidenceCatalogProducerAttempt,
             _BINDING_OMISSION_FAILURE_ROUTE,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+        )
+        from convexity_hunter.host_grounder_runtime import (
+            _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK,
+            _BINDING_COMPLIANCE_CLOSURE_ROUTES,
         )
 
         empty_skill = HostSkillResult("empty", None, (), (), (), 0)
@@ -684,9 +690,16 @@ class HostWorldTests(unittest.TestCase):
                 )[0],
             ),
             (
-                "current-v0.11",
+                "normal-event-v0.10-pair",
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
                 lambda: omission_failure(True)[0],
+            ),
+            (
+                "synthetic-covered-world-v0.11-pair",
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+                lambda: omission_failure(
+                    True, _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD
+                )[0],
             ),
         )
         for label, expected_route, make_error in accepted_fixtures:
@@ -702,6 +715,42 @@ class HostWorldTests(unittest.TestCase):
                 with self.assertRaises(HostGrounderRuntimeError) as raised:
                     self._run_through_real_core(skill_result=empty_skill)
                 self.assertIs(raised.exception, omission_error)
+
+        format_base, _calls = _normal_v09_omission_failure(
+            "delta", bound_object=True
+        )
+        format_attempt, accepted_attempt = format_base.producer_attempts
+        parsed_compliance_error = HostGrounderRuntimeError(
+            "PRODUCER_ENVELOPE_INVALID",
+            failure_stage="producer_envelope_normalization",
+            failure_check=_BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK,
+            producer_attempts=(
+                HostEvidenceCatalogProducerAttempt(
+                    index=1,
+                    status="format_rejected",
+                    output_sha256=format_attempt.output_sha256,
+                    failure_check="producer_v0_3_closed_shape",
+                    failure_code=None,
+                    call=format_attempt.call,
+                ),
+                HostEvidenceCatalogProducerAttempt(
+                    index=2,
+                    status="accepted",
+                    output_sha256=accepted_attempt.output_sha256,
+                    failure_check=None,
+                    failure_code=None,
+                    call=accepted_attempt.call,
+                ),
+            ),
+        )
+        parsed_compliance_error._semantic_transport_route = next(
+            route for route in _BINDING_COMPLIANCE_CLOSURE_ROUTES
+            if route[0] == "host-grounder-discovery-prompt-v0.11"
+        )
+        self.grounder_query_error = parsed_compliance_error
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            self._run_through_real_core(skill_result=empty_skill)
+        self.assertIs(raised.exception, parsed_compliance_error)
 
         invalid_fixtures = (
             ("unstamped", None, None),
@@ -719,6 +768,14 @@ class HostWorldTests(unittest.TestCase):
                 (
                     "host-grounder-discovery-prompt-v0.8",
                     "host-grounder-semantic-verifier-prompt-v0.7",
+                ),
+            ),
+            (
+                "covered-world-v0.11-mixed-pair",
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+                (
+                    "host-grounder-discovery-prompt-v0.11",
+                    "host-grounder-semantic-verifier-prompt-v0.10",
                 ),
             ),
         )
@@ -826,6 +883,69 @@ class HostWorldTests(unittest.TestCase):
                 self.assertEqual(
                     [item["output_sha256"] for item in public_outcome["producer_attempts"]],
                     [item.output_sha256 for item in omission_error.producer_attempts],
+                )
+
+                format_base, _calls = _normal_v09_omission_failure(
+                    "delta", bound_object=True
+                )
+                format_attempt, accepted_attempt = format_base.producer_attempts
+                from convexity_hunter.host_grounder_evidence_catalog import (
+                    HostEvidenceCatalogProducerAttempt,
+                )
+                from convexity_hunter.host_grounder_runtime import (
+                    _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK,
+                    _BINDING_COMPLIANCE_CLOSURE_ROUTES,
+                )
+
+                parsed_compliance_error = HostGrounderRuntimeError(
+                    "PRODUCER_ENVELOPE_INVALID",
+                    failure_stage="producer_envelope_normalization",
+                    failure_check=_BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK,
+                    producer_attempts=(
+                        HostEvidenceCatalogProducerAttempt(
+                            index=1,
+                            status="format_rejected",
+                            output_sha256=format_attempt.output_sha256,
+                            failure_check="producer_v0_3_closed_shape",
+                            failure_code=None,
+                            call=format_attempt.call,
+                        ),
+                        HostEvidenceCatalogProducerAttempt(
+                            index=2,
+                            status="accepted",
+                            output_sha256=accepted_attempt.output_sha256,
+                            failure_check=None,
+                            failure_code=None,
+                            call=accepted_attempt.call,
+                        ),
+                    ),
+                )
+                parsed_compliance_error._semantic_transport_route = next(
+                    route for route in _BINDING_COMPLIANCE_CLOSURE_ROUTES
+                    if route[0] == "host-grounder-discovery-prompt-v0.11"
+                )
+                self.grounder_query_error = parsed_compliance_error
+                format_run_id = store.create_run(
+                    "world",
+                    self.raw_input,
+                    self.post_bounds,
+                    STANDARD_RESEARCH_PROFILE.snapshot(),
+                    _run_start_metadata(world_configured=True),
+                )
+                format_stage_id = store.start_stage(format_run_id, "executor")
+                format_handler = HandlerHarness(store)
+                format_handler._post_batch_run(
+                    request, format_run_id, format_stage_id, world_executor
+                )
+                format_stored = store.get_run(format_run_id)
+                format_outcome = format_stored["events"][1]["outcome"]
+                self.assertEqual(
+                    format_outcome["schema_version"],
+                    "host-grounder-producer-failure-audit-v0.1",
+                )
+                self.assertEqual(
+                    format_outcome["producer_attempts"],
+                    [item.to_json() for item in parsed_compliance_error.producer_attempts],
                 )
 
                 ordinary_run_id = store.create_run(
@@ -1685,6 +1805,7 @@ class HostWorldTests(unittest.TestCase):
             ("producer_v0_3_closed_shape", "world_grounder_producer_v0_3_closed_shape_failed"),
             ("producer_v0_3_required_binding_omission_v0_9", "world_grounder_producer_v0_3_required_binding_omission_v0_9_failed"),
             ("producer_v0_3_binding_omission_repair_delta", "world_grounder_producer_v0_3_binding_omission_repair_delta_failed"),
+            ("producer_v0_3_required_binding_omission_remaining", "world_grounder_producer_v0_3_required_binding_omission_remaining_failed"),
         )
         producer_check_failures = tuple(
             (

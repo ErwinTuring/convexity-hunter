@@ -8,6 +8,54 @@ Event acceptance is claimed.
 
 ## Current Host compatibility checkpoint — 2026-10-11
 
+### Producer Compliance Closure v0.1 — authorized correction, 2026-10-30
+
+This bounded correction coordinates the existing two Producer requests on the
+current normal Event/shared World Grounder. It does not change the public DTO,
+source authority, independent Semantic Verifier, Builder, EI or Core acceptance
+rules. It authorizes no live operation, increased budget or third request.
+
+After strict parsing, reuse `_paths_for_claim()`, `_paths_for_hypothesis()`
+and `required_binding_omissions()` to check every consumed required path before
+the Semantic Verifier. Presence is only mechanical completeness, not proof of
+support. Existing strict parsing still checks ownership, role and catalog IDs;
+the independent verifier still checks the actual evidence and semantic relation.
+
+- First output complete: proceed directly to independent verification.
+- First output parsed but missing bindings: use the existing append-only
+  correction only when the second request is available. Preserve all non-binding
+  fields and the original binding prefix; append only supported missing paths.
+- First output fails an eligible closed format check: use the existing format
+  correction, additionally emphasizing complete required field bindings. Do not
+  echo malformed output or treat it as a trusted DTO/append-only baseline.
+- Final output still malformed or missing required bindings: stop before the
+  verifier with the applicable closed failure category. Do not add a third
+  request, synthesize evidence, or mistake missing bindings for semantic refusal
+  or absence of an economic mechanism.
+
+The initial instructions require relevant source-backed claims, no unrelated
+entity references, and exact owner/path/index/role/catalog references for every
+consumed field. Unsupported nullable fields stay null. Necessary facts,
+counterevidence, uncertainty and hypotheses must not be discarded merely to
+produce a compliant shape; honest absence of a supported hypothesis remains
+valid.
+
+For the current normal routes this explicitly supersedes the older permission
+below to pass a still-incomplete replacement or exhausted allowance into partial
+semantic validation. Historical records and legacy route behavior are not
+rewritten. Old audit identities remain readable; final missing-path failure
+retention must use the existing bounded audit mechanism without raw content.
+The final closed check is
+`producer_v0_3_required_binding_omission_remaining`, distinct from format
+failure, independently unsupported binding, and hypothesis dependency closure.
+A retained attempt marked `accepted` means strict parsing accepted its DTO,
+not that the final compliance gate, verifier or EI accepted it. Existing audit
+versions retain their meaning; the current Event/World wrappers preserve this
+bounded failure through their existing error/audit paths. No new DTO or SQL
+schema is introduced.
+Offline validation cannot establish real Event/World closure. A fresh bounded
+Event grant is required after implementation/review; all prior grants are spent.
+
 ### Approved producer format repair — frozen BUILD boundary
 
 The user approved one additional format-only producer request. The normal

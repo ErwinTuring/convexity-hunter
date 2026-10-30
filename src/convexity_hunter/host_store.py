@@ -847,6 +847,7 @@ def _validate_grounder_producer_failure_audit(
         _BINDING_OMISSION_FAILURE_ROUTE,
         _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
         _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+        _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
         _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     )
 
@@ -895,12 +896,14 @@ def _validate_grounder_producer_failure_audit(
                 _BINDING_OMISSION_FAILURE_ROUTE,
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
             )
             if version == _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSION_V0_2
             else (
                 _BINDING_OMISSION_FAILURE_ROUTE,
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
             )
         )
         if (

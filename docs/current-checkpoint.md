@@ -1,5 +1,58 @@
 # Current Checkpoint
 
+## Producer Compliance Closure v0.1 — BUILD/REVIEW PASS, 2026-10-30
+
+Grounded baseline HEAD/main/origin/main `88b859c`, clean worktree/index. User
+authorized one implementation unit, focused offline validation, independent
+review and ordinary commit/push, NOT another paid Event/World operation.
+The [authorized coordination correction](local-event-delivery-v0.1.md#producer-compliance-closure-v01--authorized-correction-2026-10-30)
+retains the two-request Producer ceiling: initial complete output proceeds;
+parsed omissions use append-only repair; format repair emphasizes both DTO
+shape and binding completeness; final missing required paths stop before
+Semantic. Verifier support, exact evidence binding, dependency closure,
+Builder and EI/Core standards remain independent and unchanged.
+
+This is output-compliance remediation, not proof of the historical model's
+root cause or a successful real submission. The 10/30 COGT grant below is
+SPENT. No new API call, provider quote, private-config change, deployment or
+historical-record rewrite is authorized in this BUILD. A new one-shot normal
+Event acceptance needs fresh explicit authorization after code review.
+
+Implemented in `host_grounder_runtime.py`, with narrow existing failure/audit
+propagation in `host_server.py` and `host_world.py`. Normal Event v0.10 and
+World v0.11 get the compliance instruction and final required-path gate;
+legacy v0.9 remains unchanged. The format repair receives the same complete
+binding instructions in its system prompt; malformed output is never echoed
+or used as an append-only baseline. Final closed check:
+`producer_v0_3_required_binding_omission_remaining`. Parse-accepted attempt
+status is not compliance/semantic/EI acceptance. Existing failure-audit v0.1
+(format sequence) and v0.2 (omission sequence) are reused, not migrated.
+
+Offline validation: final evidence-catalog suite 69/69; Main's normal
+Event+World+Store suites 191/191; one server audit check, targeted compilation
+and diff-check PASS (subset reruns are not added to these counts). These cover both
+repair modes, final omissions (including no spare request), independently
+unsupported bindings, existing supported Builder-to-EI fixtures, World
+propagation/archive compatibility and historical routes. No full suite or real
+closure is claimed. Independent review and the accepted fix's targeted
+re-review PASS; the original audit-route finding is closed. Changed-document
+links/anchors/code fences and final diff-check PASS. No deployment or real
+acceptance is claimed; the running service is not automatically upgraded.
+
+Independent review found a concrete covered-World audit mismatch: the actual
+v0.11/v0.11 prompt pair was stamped as v0.10/v0.10 on omission failures, so
+the existing trusted-route gates could drop its Producer-attempt audit.
+The actual pair stamp and existing closed retention allowlists are corrected;
+historical constants/pairs and all evidence rules are preserved. A real covered
+fixture exercises the runtime-selected v0.11 pair, retained v0.2 audit, invalid
+mixed-pair rejection and rejection of the old v0.10 stamp on a v0.11 run.
+This is not claimed as the cause of any historical paid-run outcome.
+
+Worker's retrospective estimate: production edits about10m, grounding/tests/
+process about15m (40%/60% for that worker only, not stopwatch measurements).
+The phase does not substantiate the requested70/30 split; Main/review time is
+additional overhead and is not relabeled as implementation.
+
 ## ONE normal COGT Event completed: no projectable submission — 2026-10-30
 
 Run `cdb47f48-0a8b-4eb1-b6cb-9b5fc2aa1ad8`, HTTP201,

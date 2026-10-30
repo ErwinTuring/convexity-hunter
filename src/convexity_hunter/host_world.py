@@ -32,9 +32,14 @@ from .host_grounder_evidence_catalog import (
     _BINDING_OMISSION_FAILURE_ROUTE,
     _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
     _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
 )
-from .host_grounder_runtime import HostGrounderRuntimeError
+from .host_grounder_runtime import (
+    HostGrounderRuntimeError,
+    _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK,
+    _BINDING_COMPLIANCE_CLOSURE_ROUTES,
+)
 from .host_event import (
     HostEventGrounderConfig,
     _SOURCE_SEARCH_POLICY_WORLD_NATIVE,
@@ -211,6 +216,9 @@ _WORLD_GROUNDER_PRODUCER_CHECK_DIAGNOSTICS = {
     "producer_v0_3_closed_shape": "world_grounder_producer_v0_3_closed_shape_failed",
     "producer_v0_3_required_binding_omission_v0_9": "world_grounder_producer_v0_3_required_binding_omission_v0_9_failed",
     "producer_v0_3_binding_omission_repair_delta": "world_grounder_producer_v0_3_binding_omission_repair_delta_failed",
+    "producer_v0_3_required_binding_omission_remaining": (
+        "world_grounder_producer_v0_3_required_binding_omission_remaining_failed"
+    ),
 }
 
 _WORLD_GROUNDER_CATALOG_CHECK_DIAGNOSTICS = {
@@ -1847,7 +1855,7 @@ def _create_world_runner_impl(
                     if type(error) is HostGrounderRuntimeError:
                         attempts = error.producer_attempts
                         route = getattr(error, "_producer_failure_route", None)
-                        if (
+                        omission_failure = (
                             type(attempts) is tuple
                             and 1 <= len(attempts) <= 2
                             and all(
@@ -1866,10 +1874,28 @@ def _create_world_runner_impl(
                                 _BINDING_OMISSION_FAILURE_ROUTE,
                                 _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
                                 _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+                                _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
                             )
                             and getattr(error, "_semantic_transport_route", route)
                             == route
-                        ):
+                        )
+                        parsed_compliance_stop = (
+                            type(attempts) is tuple
+                            and len(attempts) == 2
+                            and all(
+                                type(item) is HostEvidenceCatalogProducerAttempt
+                                for item in attempts
+                            )
+                            and attempts[0].status == "format_rejected"
+                            and attempts[1].status == "accepted"
+                            and error.failure_stage
+                            == "producer_envelope_normalization"
+                            and error.failure_check
+                            == _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK
+                            and getattr(error, "_semantic_transport_route", None)
+                            in _BINDING_COMPLIANCE_CLOSURE_ROUTES
+                        )
+                        if omission_failure or parsed_compliance_stop:
                             raise
                     unit_reason_codes = ["world_unit_grounder_failed"]
                     reasons.append("world_grounder_failed")

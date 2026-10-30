@@ -2506,6 +2506,326 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         self.assertEqual(result.audit.normalized_envelope_utf8, corrected_bytes)
         self.assertIn("Prior strictly parsed producer DTO (JSON; untrusted data)", calls[1][2])
 
+    def test_v010_compliance_prompt_and_format_repair_keep_two_producer_call_cap(self):
+        run_input, context = _fixture()
+        catalog, producer, envelope, envelope_bytes, _verdict = _wire_bundle(
+            run_input, context
+        )
+        verdict = _wire_verdict_v0_4(
+            run_input, context, catalog, envelope, envelope_bytes, producer
+        )
+
+        _result, calls = _run_v0_10(run_input, context, producer, verdict)
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertIn("Producer binding compliance closure (v0.1)", calls[0][1])
+
+        calls = []
+        discovery = _FakeClient(
+            "discovery", ["[]", _canonical(producer)], calls, request_budget=2
+        )
+        repaired, calls = _run_v0_10(
+            run_input, context, producer, verdict, discovery=discovery
+        )
+        self.assertEqual(
+            [call[0] for call in calls], ["discovery", "discovery", "semantic"]
+        )
+        self.assertIn("Producer binding compliance closure (v0.1)", calls[1][1])
+        self.assertIn("One bounded format correction", calls[1][2])
+        self.assertEqual(
+            [item.status for item in repaired.audit.producer_attempts],
+            ["format_rejected", "accepted"],
+        )
+
+    def test_v010_binding_omission_uses_existing_append_only_repair(self):
+        run_input, context = _fixture()
+        catalog, producer, envelope, envelope_bytes, _verdict = _wire_bundle(
+            run_input, context
+        )
+        verdict = _wire_verdict_v0_4(
+            run_input, context, catalog, envelope, envelope_bytes, producer
+        )
+        missing_path = "/hypotheses/0/distribution_hypothesis"
+        first = copy.deepcopy(producer)
+        first["field_bindings"] = [
+            binding for binding in first["field_bindings"]
+            if binding["field_path"] != missing_path
+        ]
+        calls = []
+        discovery = _FakeClient(
+            "discovery", [_canonical(first), _canonical(producer)], calls,
+            request_budget=2,
+        )
+
+        result, calls = _run_v0_10(
+            run_input, context, producer, verdict, discovery=discovery
+        )
+
+        self.assertEqual(
+            [call[0] for call in calls], ["discovery", "discovery", "semantic"]
+        )
+        self.assertEqual(
+            [item.status for item in result.audit.producer_attempts],
+            ["rejected", "accepted"],
+        )
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        self.assertEqual(
+            sidecar["producer_repair_prompt_version"],
+            "host-grounder-discovery-binding-omission-repair-v0.2",
+        )
+
+    def test_v010_remaining_binding_omission_stops_before_verifier_and_retains_v02_audit(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _raw, verdict = _wire_bundle(
+            run_input, context
+        )
+        missing_path = "/hypotheses/0/distribution_hypothesis"
+        first = copy.deepcopy(producer)
+        first["field_bindings"] = [
+            binding for binding in first["field_bindings"]
+            if binding["field_path"] != missing_path
+        ]
+        calls = []
+        discovery = _FakeClient(
+            "discovery", [_canonical(first), _canonical(first)], calls,
+            request_budget=2,
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            _run_v0_10(
+                run_input, context, producer, verdict, discovery=discovery
+            )
+
+        error = raised.exception
+        self.assertEqual([call[0] for call in calls], ["discovery", "discovery"])
+        self.assertEqual(error.code, "PRODUCER_ENVELOPE_INVALID")
+        self.assertEqual(error.failure_stage, "producer_envelope_normalization")
+        self.assertEqual(
+            error.failure_check,
+            "producer_v0_3_required_binding_omission_remaining",
+        )
+        self.assertEqual(
+            [item.status for item in error.producer_attempts],
+            ["rejected", "accepted"],
+        )
+        from convexity_hunter.host_server import _grounder_producer_failure_audit
+
+        retained = _grounder_producer_failure_audit(error, "BLOCKED")
+        self.assertIsNotNone(retained)
+        self.assertEqual(
+            retained["schema_version"], "host-grounder-producer-failure-audit-v0.2"
+        )
+        self.assertEqual(len(retained["producer_attempts"]), 2)
+
+    def test_v011_covered_world_route_retains_exact_prompt_pair_and_rejects_mixed_pair(self):
+        from convexity_hunter.host_grounder_evidence_catalog import (
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+        )
+        from convexity_hunter.host_server import _grounder_producer_failure_audit
+        from convexity_hunter.host_source_coverage import HostSourceCoverageAudit
+        from convexity_hunter.host_store import _validate_grounder_producer_failure_audit
+
+        run_input, context = _fixture()
+        source = next(iter(context.source_bodies.values()))
+        locator = source.final_locator
+        source_id = "url:" + hashlib.sha256(locator.encode("utf-8")).hexdigest()
+        coverage = HostSourceCoverageAudit.from_dict({
+            "schema_version": "host-source-coverage-v0.1",
+            "host_run_id": "host-run-1",
+            "unit_id": "unit-1",
+            "run_id": run_input.run_id,
+            "canonical_input_hash": run_input.canonical_input_hash,
+            "status": "COMPLETE",
+            "entries": [{
+                "source_id": source_id,
+                "locator": locator,
+                "status": "BODY_AVAILABLE",
+                "body_sha256": source.body_sha256,
+            }],
+        })
+        covered_context = replace(
+            context,
+            source_bodies={source_id: source},
+            source_coverage=coverage,
+        )
+        catalog = _catalog_for(run_input, covered_context)
+        producer = _wire_envelope(run_input, catalog)
+        producer["schema_version"] = "grounder-output-v0.4"
+        producer["source_coverage_sha256"] = coverage.sha256
+        missing_path = "/hypotheses/0/distribution_hypothesis"
+        producer["field_bindings"] = [
+            binding for binding in producer["field_bindings"]
+            if binding["field_path"] != missing_path
+        ]
+        calls = []
+        discovery = _FakeClient(
+            "discovery", [_canonical(producer), _canonical(producer)], calls,
+            request_budget=2,
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            _run_v0_10(
+                run_input,
+                covered_context,
+                producer,
+                "semantic must not be called",
+                discovery=discovery,
+            )
+
+        error = raised.exception
+        self.assertEqual([call[0] for call in calls], ["discovery", "discovery"])
+        self.assertEqual(error._semantic_transport_route,
+                         _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD)
+        self.assertEqual(error._producer_failure_route,
+                         _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD)
+        self.assertEqual(
+            [item.status for item in error.producer_attempts],
+            ["rejected", "accepted"],
+        )
+
+        audit = _grounder_producer_failure_audit(error, "BLOCKED")
+        self.assertIsNotNone(audit)
+        self.assertEqual(
+            audit["schema_version"], "host-grounder-producer-failure-audit-v0.2"
+        )
+        self.assertEqual(
+            (audit["producer_prompt_version"], audit["verifier_prompt_version"]),
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+        )
+        self.assertEqual(_validate_grounder_producer_failure_audit(audit), audit)
+
+        mixed_route = (
+            "host-grounder-discovery-prompt-v0.11",
+            "host-grounder-semantic-verifier-prompt-v0.10",
+        )
+        error._producer_failure_route = mixed_route
+        self.assertIsNone(_grounder_producer_failure_audit(error, "BLOCKED"))
+        error._producer_failure_route = (
+            "host-grounder-discovery-prompt-v0.10",
+            "host-grounder-semantic-verifier-prompt-v0.10",
+        )
+        self.assertIsNone(_grounder_producer_failure_audit(error, "BLOCKED"))
+        mixed_audit = copy.deepcopy(audit)
+        mixed_audit["verifier_prompt_version"] = mixed_route[1]
+        with self.assertRaises(ValueError):
+            _validate_grounder_producer_failure_audit(mixed_audit)
+
+    def test_v010_no_spare_producer_budget_stops_on_first_binding_omission(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _raw, verdict = _wire_bundle(
+            run_input, context
+        )
+        missing_path = "/hypotheses/0/distribution_hypothesis"
+        first = copy.deepcopy(producer)
+        first["field_bindings"] = [
+            binding for binding in first["field_bindings"]
+            if binding["field_path"] != missing_path
+        ]
+        calls = []
+        discovery = _FakeClient(
+            "discovery", _canonical(first), calls, request_budget=1
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            _run_v0_10(
+                run_input, context, producer, verdict, discovery=discovery
+            )
+
+        self.assertEqual([call[0] for call in calls], ["discovery"])
+        self.assertEqual(
+            raised.exception.failure_check,
+            "producer_v0_3_required_binding_omission_remaining",
+        )
+        self.assertEqual(len(raised.exception.producer_attempts), 1)
+        self.assertEqual(
+            raised.exception.producer_attempts[0].failure_check,
+            "producer_v0_3_required_binding_omission_v0_9",
+        )
+        from convexity_hunter.host_server import _grounder_producer_failure_audit
+
+        retained = _grounder_producer_failure_audit(
+            raised.exception, "BLOCKED"
+        )
+        self.assertIsNotNone(retained)
+        self.assertEqual(
+            retained["schema_version"], "host-grounder-producer-failure-audit-v0.2"
+        )
+
+    def test_v010_format_repair_that_remains_incomplete_stops_and_uses_legacy_audits(self):
+        run_input, context = _fixture()
+        _catalog, producer, _envelope, _raw, verdict = _wire_bundle(
+            run_input, context
+        )
+        missing_path = "/hypotheses/0/distribution_hypothesis"
+        incomplete = copy.deepcopy(producer)
+        incomplete["field_bindings"] = [
+            binding for binding in incomplete["field_bindings"]
+            if binding["field_path"] != missing_path
+        ]
+        calls = []
+        discovery = _FakeClient(
+            "discovery", ["[]", _canonical(incomplete)], calls,
+            request_budget=2,
+        )
+
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            _run_v0_10(
+                run_input, context, producer, verdict, discovery=discovery
+            )
+
+        error = raised.exception
+        self.assertEqual([call[0] for call in calls], ["discovery", "discovery"])
+        self.assertEqual(error.failure_check,
+                         "producer_v0_3_required_binding_omission_remaining")
+        self.assertEqual(
+            [item.status for item in error.producer_attempts],
+            ["format_rejected", "accepted"],
+        )
+        from convexity_hunter.host_server import _grounder_producer_failure_audit
+
+        retained = _grounder_producer_failure_audit(error, "BLOCKED")
+        self.assertIsNotNone(retained)
+        self.assertEqual(
+            retained["schema_version"], "host-grounder-producer-failure-audit-v0.1"
+        )
+        from convexity_hunter.host_server import _semantic_failure_diagnostic_codes
+
+        self.assertEqual(
+            _semantic_failure_diagnostic_codes(error),
+            ("PRODUCER_FAILURE_CHECK_V0_3_REQUIRED_BINDING_OMISSION_REMAINING",),
+        )
+        from convexity_hunter.host_world import _world_grounder_specific_diagnostics
+
+        self.assertIn(
+            "world_grounder_producer_v0_3_required_binding_omission_remaining_failed",
+            _world_grounder_specific_diagnostics(error),
+        )
+
+    def test_v010_present_unsupported_binding_still_reaches_independent_verifier(self):
+        run_input, context = _fixture()
+        catalog, producer, envelope, envelope_bytes, _verdict = _wire_bundle(
+            run_input, context
+        )
+        path = "/hypotheses/0/distribution_hypothesis"
+        verdict = _wire_verdict_v0_4(
+            run_input,
+            context,
+            catalog,
+            envelope,
+            envelope_bytes,
+            producer,
+            unresolved_field_paths=(path,),
+        )
+
+        result, calls = _run_v0_10(run_input, context, producer, verdict)
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertIsNone(result.build_result.submission)
+        self.assertTrue(any(
+            item.code == "HYPOTHESIS_REJECTED_BY_VALIDATOR"
+            and "required field binding is not supported" in item.reason
+            for item in result.build_result.diagnostics
+        ))
+
     def test_legacy_v08_route_does_not_correct_binding_omissions(self):
         run_input, context = _fixture()
         _catalog, producer, _envelope, _raw, _verdict = _wire_bundle(

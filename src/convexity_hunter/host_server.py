@@ -173,6 +173,9 @@ _PRODUCER_FAILURE_CHECK_DIAGNOSTICS = {
     "producer_v0_3_recanonicalization": "PRODUCER_FAILURE_CHECK_V0_3_RECANONICALIZATION",
     "producer_v0_3_json_format": "PRODUCER_FAILURE_CHECK_V0_3_JSON_FORMAT",
     "producer_v0_3_closed_shape": "PRODUCER_FAILURE_CHECK_V0_3_CLOSED_SHAPE",
+    "producer_v0_3_required_binding_omission_remaining": (
+        "PRODUCER_FAILURE_CHECK_V0_3_REQUIRED_BINDING_OMISSION_REMAINING"
+    ),
 }
 
 
@@ -508,6 +511,7 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
         _BINDING_OMISSION_FAILURE_ROUTE,
         _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
         _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+        _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
         _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     )
     from .host_grounder_runtime import HostGrounderRuntimeError
@@ -546,6 +550,7 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
             _BINDING_OMISSION_FAILURE_ROUTE,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
         ):
             return None
         outcome.update({
@@ -565,6 +570,7 @@ def _grounder_producer_failure_audit(error: Exception, status: str) -> Optional[
                 _BINDING_OMISSION_FAILURE_ROUTE,
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
                 _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
             )
             or (
                 selected_route is not None
@@ -2223,7 +2229,11 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                 HostEvidenceCatalogProducerAttempt,
                 _BINDING_OMISSION_FAILURE_MARKERS,
             )
-            from .host_grounder_runtime import HostGrounderRuntimeError
+            from .host_grounder_runtime import (
+                HostGrounderRuntimeError,
+                _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK,
+                _BINDING_COMPLIANCE_CLOSURE_ROUTES,
+            )
 
             if type(error) is HostGrounderRuntimeError:
                 attempts = error.producer_attempts
@@ -2235,20 +2245,38 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                         for item in attempts
                     )
                 )
+                parsed_compliance_stop = (
+                    valid_attempts
+                    and len(attempts) == 2
+                    and attempts[0].status == "format_rejected"
+                    and attempts[1].status == "accepted"
+                    and error.failure_stage == "producer_envelope_normalization"
+                    and error.failure_check
+                    == _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK
+                    and getattr(error, "_semantic_transport_route", None)
+                    in _BINDING_COMPLIANCE_CLOSURE_ROUTES
+                )
                 if valid_attempts and (
                     any(
                         item.failure_check in _BINDING_OMISSION_FAILURE_MARKERS
                         for item in attempts
                     )
                     or error.semantic_transport is not None
+                    or parsed_compliance_stop
                 ):
                     failure_audit = _grounder_producer_failure_audit(error, "FAILED")
                     if (
                         type(failure_audit) is dict
-                        and failure_audit.get("schema_version")
-                        in (
-                            "host-grounder-producer-failure-audit-v0.2",
-                            "host-grounder-producer-failure-audit-v0.3",
+                        and (
+                            failure_audit.get("schema_version") in (
+                                "host-grounder-producer-failure-audit-v0.2",
+                                "host-grounder-producer-failure-audit-v0.3",
+                            )
+                            or (
+                                parsed_compliance_stop
+                                and failure_audit.get("schema_version")
+                                == "host-grounder-producer-failure-audit-v0.1"
+                            )
                         )
                     ):
                         outcome = failure_audit

@@ -38,6 +38,7 @@ from .host_grounder_evidence_catalog import (
     _BINDING_OMISSION_FAILURE_ROUTE,
     _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
     _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     _BINDING_OMISSION_DELTA_FAILURE_CHECK,
     _BINDING_OMISSION_REPAIR_PROMPT_VERSION,
@@ -109,6 +110,13 @@ _VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.2"
 _QUOTE_LOCALIZED_PRODUCER_PROMPT_VERSION = "host-grounder-discovery-prompt-v0.3"
 _QUOTE_LOCALIZED_VERIFIER_PROMPT_VERSION = "host-grounder-semantic-verifier-prompt-v0.4"
 _QUOTE_LOCALIZATION_AUDIT_SCHEMA_VERSION = "host-grounder-quote-localization-audit-v0.2"
+_BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK = (
+    "producer_v0_3_required_binding_omission_remaining"
+)
+_BINDING_COMPLIANCE_CLOSURE_ROUTES = frozenset((
+    (_PRODUCER_PROMPT_VERSION_V0_10, _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10),
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+))
 _PRODUCER_V0_3_INTERNAL_SCHEMA_FAILURE_CHECK = (
     "producer_v0_3_internal_v0_1_schema"
 )
@@ -128,6 +136,7 @@ _PRODUCER_V0_3_FAILURE_CHECKS = (
     "producer_v0_3_closed_shape",
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     _BINDING_OMISSION_DELTA_FAILURE_CHECK,
+    _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK,
 )
 _REPAIRABLE_PRODUCER_FORMAT_CHECKS = frozenset((
     "producer_v0_3_json_format",
@@ -782,6 +791,22 @@ _BINDING_OMISSION_REPAIR_NOTICE = (
     "new binding may copy an existing catalog evidence ID only for a listed "
     "missing path."
 ).format(_BINDING_OMISSION_REPAIR_PROMPT_VERSION)
+
+_PRODUCER_BINDING_COMPLIANCE_NOTICE = (
+    "\n\nProducer binding compliance closure (v0.1): emit only source-backed "
+    "claims relevant to the requested subquestions. Do not add unrelated "
+    "entities to a claim's entity_refs; include only entities needed to "
+    "identify or attribute that claim and directly supported by its source. "
+    "For every non-null value at a consumed path, follow the exact indexed "
+    "path and semantic-role map above, and include a supported binding using "
+    "a supplied catalog evidence ID that directly supports that exact value. "
+    "Leave unsupported nullable values null and omit only unsupported "
+    "entity_refs items. Do not discard necessary source-backed facts, material "
+    "contradictions, uncertainty, or falsification conditions merely to avoid "
+    "a binding; preserve them and leave only the unsupported nullable field "
+    "null, or omit only the unsupported entity_refs item. Do not invent or "
+    "rewrite facts or hypotheses to force compliance."
+)
 
 SEMANTIC_SYSTEM_PROMPT_V0_5 = _replace_prompt_fragment(
     SEMANTIC_SYSTEM_PROMPT_V0_4,
@@ -2719,6 +2744,18 @@ def _run_host_grounder_same_run_evidence_catalog(
         and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
         and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
     )
+    binding_compliance_closure_enabled = (
+        producer_format_repair_enabled
+        and producer_diagnostics_v0_3
+        and (
+            producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
+        )
+    )
+    if binding_compliance_closure_enabled:
+        discovery_system_prompt += _PRODUCER_BINDING_COMPLIANCE_NOTICE
 
     def with_producer_attempts(error: HostGrounderRuntimeError) -> HostGrounderRuntimeError:
         if producer_format_repair_enabled and not error.producer_attempts:
@@ -3031,6 +3068,38 @@ def _run_host_grounder_same_run_evidence_catalog(
             parsed = repaired
             discovery_call = repair_call
             parsed_attempt_index = 2
+
+    if binding_compliance_closure_enabled:
+        remaining_missing_paths = required_binding_omissions(parsed[0])
+        if remaining_missing_paths:
+            if parsed_attempt_index == 1 and not producer_attempts:
+                first_content_utf8 = parsed[5]
+                retain_attempt(HostEvidenceCatalogProducerAttempt(
+                    index=1,
+                    status="rejected",
+                    output_sha256=hashlib.sha256(first_content_utf8).hexdigest(),
+                    failure_check=_BINDING_OMISSION_FIRST_FAILURE_CHECK,
+                    failure_code=None,
+                    call=_producer_call_audit(discovery_call),
+                ))
+            else:
+                # This attempt passed strict parsing; the separate run-level
+                # failure below records that required binding closure did not.
+                accept_parsed_call(
+                    discovery_call, parsed_attempt_index, parsed
+                )
+            raise HostGrounderRuntimeError(
+                "PRODUCER_ENVELOPE_INVALID",
+                failure_stage=(
+                    "producer_envelope_normalization"
+                    if context_preparer is not None else None
+                ),
+                failure_check=(
+                    _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK
+                    if context_preparer is not None else None
+                ),
+                producer_attempts=tuple(producer_attempts),
+            ) from None
 
     accept_parsed_call(discovery_call, parsed_attempt_index, parsed)
     (
@@ -3771,5 +3840,9 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
             and attempts[0].status == "rejected"
             and attempts[0].failure_check == _BINDING_OMISSION_FIRST_FAILURE_CHECK
         ):
-            error._producer_failure_route = _BINDING_OMISSION_FAILURE_ROUTE_V0_11
+            error._producer_failure_route = (
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD
+                if covered_world_route
+                else _BINDING_OMISSION_FAILURE_ROUTE_V0_11
+            )
         raise

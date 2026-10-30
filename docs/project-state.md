@@ -1,5 +1,25 @@
 # Project State
 
+## Producer Compliance Closure v0.1 — 2026-10-30
+
+User-authorized bounded BUILD from clean `88b859c` coordinates format and
+append-only binding repair within the existing two Producer calls. Current
+normal Event/World final missing-binding output must stop before Semantic;
+independent evidence/Verifier/Builder/EI/Core standards and public DTOs stay
+unchanged. No new paid operation or deployment authorized; Direct unchanged.
+Implementation is present in shared runtime and existing Event/World failure
+retention paths; final evidence-catalog69 and Event/World/Store191 offline tests
+pass, with targeted compilation/diff-check PASS. Independent review found and
+prompted a fix to covered World v0.11 omission-audit route stamping; actual
+covered-context and invalid-route regressions pass. Independent review and
+targeted fix re-review PASS; docs links/fences/diff-check PASS. No deployment
+or new real EI/Core acceptance is claimed.
+Legacy v0.9/audit DTOs remain readable and unchanged. This is not real EI/Core
+closure; the prior paid-run grant remains SPENT.
+See [scope](local-event-delivery-v0.1.md#producer-compliance-closure-v01--authorized-correction-2026-10-30)
+and [checkpoint](current-checkpoint.md). Historical results below are retained,
+not reinterpreted as implementation defects or positive real closure.
+
 ## ONE normal COGT Event completed — 2026-10-30
 Codea756f86, ONE run `cdb47f48`,46.061s, BLOCKED/GROUNDING_NO_SUBMISSION. Grounder/Builder completed,4 registered bodies/10claims/1hypothesis/6bindings/2coverage; verifier supported but claim required_field_binding×10 and hypothesis_dependency_closure×1 prevent projection, no anchor. Existing closed log counter27 binding failures, first8 retained relations are missing claim ENTITY_REF bindings;20 relations omitted, not reconstructed. Date/listing UNKNOWN; EI/Futu/Core NOT_RUN. DB53/Direct3/batches28, no new Core report; PID93806/UTC10-30 READY, hashes unchanged. Grant SPENT. Bounded offline prompt/schema/validator check finds NO_REPRODUCIBLE_DEFECT, no code or acceptance change justified. Old COGT date/listing repair route is not this blocker; further Producer/model/call redesign needs a separately bounded work unit/new fee grant. See [checkpoint](current-checkpoint.md).
 
