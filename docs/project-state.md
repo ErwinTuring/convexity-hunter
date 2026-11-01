@@ -1,5 +1,19 @@
 # Project State
 
+## ONE readiness Event acceptance — 2026-11-01
+
+Code `d0aacad` deployed via original launcher/UTC11-01, PID20793/session53658,
+READY/all3 and unchanged config hashes. ONE normal run `5378e9ef`,51.549s,
+HTTP201, BLOCKED/GROUNDING_NO_SUBMISSION. Grounder/Builder completed, semantic
+receipt validated, no submission; EI/Futu/Core NOT_RUN, no batch/report.
+Closed audit3bodies/9claims/33bindings/1hypothesis/2coverage: claim8 unresolved;
+hypothesis0 unresolved+dependency closure+required-field support failure;
+binding3 unresolved. No exact path/rationale or generation-quality conclusion
+is inferred; no new private capture was approved. DB56/Direct3/batches28,
+guard SPENT, no retry/substitution/World call. Direct remains historical
+closure; real positive Event/World EI->Core remains unproven. No further
+production change or paid run authorized. See [checkpoint](current-checkpoint.md).
+
 ## Hypothesis Readiness Closure v0.1 — BUILD/REVIEW PASS, 2026-11-01
 
 New bounded user authorization supersedes the completed-compliance stop below:

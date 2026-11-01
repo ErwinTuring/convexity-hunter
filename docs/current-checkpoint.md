@@ -1,5 +1,68 @@
 # Current Checkpoint
 
+## ONE readiness Event completed — 2026-11-01
+
+Reviewed readiness code `d0aacad` deployed through the original unobserved
+launcher, actual UTC evaluation date2026-11-01, PID20793/session53658;
+READY/all3, Event/World config hashes unchanged. Exactly ONE normal POST:
+`5378e9ef-e36a-4ab5-94d0-4e685eb01e8b`, HTTP201,
+2026-11-01T13:54:06.146Z–13:54:57.695Z (51.549s), terminal
+BLOCKED/GROUNDING_NO_SUBMISSION. Grounder/Builder COMPLETED, Semantic
+RECEIPT_VALIDATED, submission MISSING, EI NOT_RUN. No Futu/Core, maturity
+policy evaluation, Chinese Core report or new batch archive is claimed.
+This stop occurred before any weekend-quote issue could be observed.
+
+Normal closed audit:3 registered source bodies/9claims/33bindings/1hypothesis/
+2coverage. Claim index8 verifier_unresolved; hypothesis index0 has
+verifier_unresolved, hypothesis_dependency_closure and required_field_binding;
+binding index3 verifier_unresolved. Do not infer their exact field paths,
+claim text, causal correspondence or original rationale from these rows.
+Fact anchor is selected; its presence does not prove every date/listing gate.
+The complete-path gate allowed Semantic to run: this is unresolved support,
+not a new missing-path repair defect. Actual semantic request attempts1;
+the two model-summary rows are not proof of total API requests or spend.
+Actual Tavily requests/credits and token totals remain UNKNOWN.
+
+The updated generation instruction was used, but economic quality, selected
+mode and temporal preparation cannot be substantively evaluated from these
+closed diagnostics alone. No new private observer/candidate/rationale capture
+was authorized or enabled; older artifacts do not explain this new run.
+Do not claim the supplement improved or worsened quality, or that the economic
+mechanism is wrong/a software defect exists. No additional model/source call,
+prompt tweak, case substitution or automatic rerun follows this result.
+
+Current DB56runs/Direct3/batches28 (delta+1/0/0). Guard
+`one-post.guard`0600 under the private0700 directory below is SPENT; directory
+contains only the safe POST driver and guard, no new raw/candidate capture.
+Main verified normal public GET terminal/diagnostic, no batch summary,
+READY/all3 and unchanged config hashes after the run. No production code
+changed during acceptance; docs-only links/fences/diff checks are sufficient,
+not a new full-suite claim. Acceptance phase product implementation0%,
+runtime verification/recording100%; not counted as further BUILD progress.
+
+### Preregistered approved scope for this completed run
+
+User approved the proposed ONE normal COGT regression after readiness BUILD.
+Fresh HEAD/main/origin/main `d0aacad`, clean. Reuse only original retained user
+input/profile/bounds, not old responses/submissions; raw-input SHA-256
+`ee2f602c61ea84956b0651a0eeb3b3d405ae99f2d920f51f4f0123a241ec49dd`,
+standard-research-profile v0.4, bounds4submissions/8hypotheses/512rows/512cases/
+15s quote timeout. Tavily<=3 requests/3 credits, DeepSeek<=2 per role, other
+limits unchanged. No World, case substitution, semantic reroll, outer retry
+or new private rationale capture. All prior grants remain spent.
+
+Preflight: original Event/World config hashes unchanged,55runs/Direct3/
+batches28,0active, permissioned loopback-bind check PASS. Safely replace the
+verified original old-date launcher with the same normal launcher running
+reviewed `d0aacad` and actual UTC evaluation date2026-11-01. New private0700
+guard directory `/private/tmp/ch-readiness-event-20261101.PhzUJfLe`; create
+exclusive0600 once guard before POST; ambiguity spends the grant. No old
+observer is re-enabled. Lawful EI acceptance continues normally; maturity
+incompatibility remains unavailable, not an authority fallback. This is a
+weekend source/hypothesis test, not proof of regular-session quote availability.
+Stop after terminal/ambiguous outcome; actual result is recorded above. This
+grant and all earlier grants are SPENT; no additional real operation approved.
+
 ## Hypothesis Readiness Closure v0.1 — BUILD/REVIEW PASS, 2026-11-01
 
 User approved P0 bounded Producer instruction refinement and P1 read-only
