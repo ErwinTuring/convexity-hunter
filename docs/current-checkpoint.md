@@ -1,5 +1,83 @@
 # Current Checkpoint
 
+## Hypothesis Readiness Closure v0.1 — BUILD/REVIEW PASS, 2026-11-01
+
+User approved P0 bounded Producer instruction refinement and P1 read-only
+downstream compatibility, focused tests/review/ordinary commit-push. Fresh
+HEAD/main/origin/main `7ab13a9`, clean. No paid/source/model/Futu operation,
+new capture, deployment, policy/parameter change or renewed one-shot grant.
+Completed Producer Compliance Closure is not reopened. See the bounded
+[generation supplement](host-grounder-provisional-mechanism-v0.1.md#hypothesis-readiness-closure-v01--2026-11-01).
+
+P0 implementation: only `host_grounder_runtime.py` production code changes.
+An internal readiness supplement v0.1 is appended to current Event v0.10 and
+covered World v0.11 Producer instructions, not the Verifier. Concrete gaps
+addressed are preparation sequencing and mode/milestone decision separation,
+not a proved historical parser/semantic defect. Legacy v0.9 instructions,
+public DTO/audit/wire versions, original binding/repair gates and budgets stay
+unchanged. Historical prompt-version records are not reinterpreted.
+Positive synthetic economic-exposure -> interpretation -> hypothesis with a
+source-backed review milestone reaches existing Builder/EI ACCEPTED; negative
+directional support remains unresolved; existing temporal counterexamples and
+current Event/World plus legacy/repair routing are covered. Evidence-catalog
+suite71/71 PASS (the seven focused checks are a subset, not additive).
+No real-model generation, real semantic acceptance, EI acceptance or Futu/Core
+run is claimed. The three-layer wording was clarified during Main integration;
+one targeted routing test, compilation and diff-check PASS afterward. Independent
+review PASS; its test-count question was resolved using actual unittest
+collection25+13+10+4, not a changed test result. Changed-document links/anchors/
+code fences PASS. No full suite, deployment or new live proof is claimed.
+Production and auxiliary phase time were not separately measured; no70/30
+work-share percentage is inferred from line counts or test counts.
+
+P1 read-only result: EI acceptance and option readiness remain separate.
+Using the actual EI assessor and discovery factory with synthetic inputs:
+
+| Accepted temporal evidence | HYPOTHESIS_ALIGNED | NEUTRAL_STRUCTURAL_RESEARCH |
+| --- | --- | --- |
+| Complete expected_window | READY; max(evaluation+30, end+30)..evaluation+150 | NOT READY; requires absent expected_window |
+| No window + complete source-backed reassessment | NOT READY; missing_authoritative_maturity_anchor | READY; evaluation+30..evaluation+150; NOT_ESTABLISHED |
+
+Four actual `run_event_core` fixture branches confirm matching policies enter
+the mocked discover/quote/verify/shared-Core path and mismatches return
+`maturity_request_failure` without calling the mock bridge. This is not live
+Futu/Core evidence. Existing option discovery/Discovery Entry/Core Application/
+Host Event Core suites52/52 PASS (unittest collected25+13+10+4 respectively);
+no new P1 production rule or fixture file.
+
+The original local launcher explicitly configures Event/World with
+NEUTRAL_STRUCTURAL_RESEARCH; read-only process check confirms PID5644 still
+uses that launcher and historical evaluation date2026-10-30. No restart or
+current-date readiness claim. Therefore a lawful bounded-window EI result
+is not executable under this configured neutral policy. This is an explicit
+policy mismatch, not a wiring bug to fix by bypassing the window. Alternatives
+for separate user approval: retain neutral-only research, or specify a closed
+per-hypothesis authority-selection policy respecting both existing grammars.
+Do not silently change the global authority. A future authorized live run
+must first use its actual execution-date session rather than the old date.
+
+### Proposed next ONE real acceptance — not authorized
+
+Goal: inspect whether the normal producer preserves a concrete conditional
+economic chain, separately justified mode and independently qualified review
+basis, or honestly reports the gaps; not require ACCEPTED or a specific Core
+classification. Proposed regression sample: original COGT Event input, because
+its prior direction/temporal failure is known and the existing official lead
+has a concrete observable regulatory target; do not prescribe its mode or
+invent an impact window, substitute a case, or use quote quality to select it.
+One normal Event only, Tavily<=3 requests/3 credits and each DeepSeek role<=2
+requests, unchanged existing input/output/time limits, no outer retry. Use a
+fresh execution-date session and one-post guard; all old guards remain spent.
+Distinguish source acquisition, Producer structure/completeness, independent
+semantic support, Builder, EI, maturity compatibility, Futu and Core stages.
+Lawful EI acceptance proceeds through the normal shared Core path; legitimate
+maturity incompatibility remains an explicit unavailable result, not a policy
+fallback. Stop after terminal outcome/ambiguous response or spent guard.
+Any further private hypothesis/rationale capture also needs fresh explicit
+approval; the prior one-run observer is not silently re-enabled. With normal
+closed diagnostics alone, substantive model quality may remain unassessable
+when no submission survives. No live operation is part of this work unit.
+
 ## Continuation boundary: compliance work complete — 2026-10-30
 
 Fresh HEAD/main/origin/main `a9dde98`, initially clean. A narrow independent

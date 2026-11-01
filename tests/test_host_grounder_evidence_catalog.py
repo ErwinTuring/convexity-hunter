@@ -2440,6 +2440,7 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         result, calls = _run_v09(run_input, context, producer, verdict)
 
         self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        self.assertNotIn("Producer hypothesis-readiness supplement", calls[0][1])
         self.assertIsNone(result.build_result.submission)
         self.assertEqual([item.status for item in result.audit.producer_attempts], ["accepted"])
         self.assertEqual(
@@ -2518,6 +2519,12 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         _result, calls = _run_v0_10(run_input, context, producer, verdict)
         self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
         self.assertIn("Producer binding compliance closure (v0.1)", calls[0][1])
+        self.assertIn(
+            "Producer hypothesis-readiness supplement (v0.1; current Event/World only)",
+            calls[0][1],
+        )
+        self.assertIn("Justify distribution_mode separately", calls[0][1])
+        self.assertIn("future observable milestone", calls[0][1])
 
         calls = []
         discovery = _FakeClient(
@@ -2530,11 +2537,234 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             [call[0] for call in calls], ["discovery", "discovery", "semantic"]
         )
         self.assertIn("Producer binding compliance closure (v0.1)", calls[1][1])
+        self.assertIn(
+            "Producer hypothesis-readiness supplement (v0.1; current Event/World only)",
+            calls[1][1],
+        )
         self.assertIn("One bounded format correction", calls[1][2])
         self.assertEqual(
             [item.status for item in repaired.audit.producer_attempts],
             ["format_rejected", "accepted"],
         )
+
+    def test_v010_source_backed_exposure_and_future_milestone_reach_ei_offline(self):
+        body = (
+            "ACME reported on 2026-09-25 that its sole qualified supplier for "
+            "Product X stopped shipments. Product X accounts for 80 percent of "
+            "ACME revenue. ACME expects delayed Product X deliveries through "
+            "2026-11-30 while qualifying an alternate supplier, and says it will "
+            "publish the qualification inspection result on 2026-12-15."
+        )
+        run_input, context = _fixture(body)
+        halt_date = datetime.date(2026, 9, 25)
+        context = replace(
+            context,
+            event_date_range=MethodologizedDateRange(
+                halt_date, halt_date,
+                "The source dates the supplier shipment halt to 2026-09-25.",
+            ),
+        )
+        catalog = _catalog_for(run_input, context)
+        evidence_id = catalog.entries[0].evidence_id
+        producer = _wire_envelope(run_input, catalog)
+        producer["claims"][0].update({
+            "text": body,
+            "event_date": "2026-09-25",
+            "uncertainty": ["The source does not quantify the duration's revenue effect."],
+            "falsification_conditions": [
+                "A later source shows the shipment interruption was fully offset."
+            ],
+        })
+        producer["claims"].append({
+            "claim_id": "claim-2",
+            "kind": "interpretation",
+            "evidence_id": evidence_id,
+            "text": (
+                "Because Product X represents most reported revenue and its sole "
+                "qualified supplier stopped shipments, continued interruption "
+                "could reduce deliveries and revenue until alternatives are "
+                "qualified; inventory or successful qualification could limit "
+                "the effect."
+            ),
+            "entity_refs": [],
+            "event_date": None,
+            "published_at": None,
+            "dependency_claim_ids": ["claim-1"],
+            "uncertainty": ["Inventory and alternate-supplier capacity are unknown."],
+            "falsification_conditions": [
+                "ACME reports that alternate supply fully preserved deliveries."
+            ],
+        })
+        producer["hypotheses"][0].update({
+            "underlying_symbol": "ACME",
+            "impact_path": (
+                "A sole-supplier shipment interruption could affect Product X "
+                "deliveries and revenue, conditional on available offsets."
+            ),
+            "distribution_mode": "event_directional_down",
+            "distribution_hypothesis": (
+                "If inventory or alternate supply does not offset the interruption, "
+                "ACME's operating-outcome distribution may shift lower; recovery "
+                "could limit the effect, and this is not a security-return forecast."
+            ),
+            "expected_window": None,
+            "reassessment": {
+                "reassessment_by": "2026-12-15",
+                "methodology": "source-backed-milestone:claim-1:2026-12-15",
+                "basis_kind": "source_backed_milestone",
+                "basis_claim_ids": ["claim-1"],
+            },
+            "supporting_claim_ids": ["claim-2"],
+            "contradicting_claim_ids": [],
+            "contradiction_review": (
+                "The source does not quantify inventory, alternate capacity, or realized losses."
+            ),
+            "uncertainties": [
+                "Inventory, supplier recovery, and realized revenue effects are unknown."
+            ],
+            "falsification_conditions": [
+                "ACME reports that substitute supply prevented a material delivery effect."
+            ],
+        })
+        producer["coverage"][0].update({
+            "status": "supported",
+            "claim_ids": ["claim-1", "claim-2"],
+            "gap": None,
+        })
+        binding_paths = (
+            ("/claims/0/event_date", "date"),
+            ("/hypotheses/0/underlying_symbol", "entity"),
+            ("/hypotheses/0/impact_path", "hypothesis"),
+            ("/hypotheses/0/distribution_mode", "hypothesis"),
+            ("/hypotheses/0/distribution_hypothesis", "hypothesis"),
+            ("/hypotheses/0/reassessment/reassessment_by", "date"),
+        )
+        producer["field_bindings"] = [
+            {
+                "field_path": field_path,
+                "evidence_id": evidence_id,
+                "semantic_role": semantic_role,
+                "status": "supported",
+            }
+            for field_path, semantic_role in binding_paths
+        ]
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        verdict = _wire_verdict_v0_4(
+            run_input, context, catalog, envelope, envelope_bytes, producer
+        )
+
+        result, calls = _run_v0_10(run_input, context, producer, verdict)
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        receipt = result.build_result.semantic_validation.receipt
+        self.assertEqual(receipt["verified_hypothesis_ids"], ("hyp-1",))
+        submission = result.build_result.submission
+        self.assertIsNotNone(submission)
+        hypothesis = submission.hypotheses[0]
+        self.assertEqual(hypothesis.distribution_mode.value, "event_directional_down")
+        self.assertIsNone(hypothesis.expected_window)
+        self.assertEqual(
+            hypothesis.reassessment.reassessment_by, datetime.date(2026, 12, 15)
+        )
+        assessment = assess_event_intelligence_submission(submission)
+        self.assertIs(assessment.status, EventIntelligenceAcceptanceStatus.ACCEPTED)
+
+    def test_v010_unsupported_direction_remains_unresolved(self):
+        body = (
+            "ACME announced FDA acceptance of an application for review on "
+            "2026-09-25. The source gives no launch timing, commercial terms, "
+            "sales contribution, or expected business impact."
+        )
+        run_input, context = _fixture(body)
+        catalog = _catalog_for(run_input, context)
+        evidence_id = catalog.entries[0].evidence_id
+        producer = _wire_envelope(run_input, catalog)
+        producer["claims"][0]["text"] = body
+        producer["claims"].append({
+            "claim_id": "claim-2",
+            "kind": "interpretation",
+            "evidence_id": evidence_id,
+            "text": (
+                "The review acceptance may affect attention, but the supplied "
+                "facts identify no concrete commercial exposure or outcome path."
+            ),
+            "entity_refs": [],
+            "event_date": None,
+            "published_at": None,
+            "dependency_claim_ids": ["claim-1"],
+            "uncertainty": ["No commercial mechanism is established."],
+            "falsification_conditions": [],
+        })
+        producer["hypotheses"][0].update({
+            "impact_path": "The review acceptance may improve ACME's outlook.",
+            "distribution_mode": "event_directional_up",
+            "distribution_hypothesis": (
+                "The review acceptance may shift ACME outcomes upward."
+            ),
+            "supporting_claim_ids": ["claim-2"],
+            "uncertainties": ["No commercial consequence is reported."],
+        })
+        producer["coverage"][0]["claim_ids"] = ["claim-1", "claim-2"]
+        producer["field_bindings"] = [
+            {
+                "field_path": field_path,
+                "evidence_id": evidence_id,
+                "semantic_role": semantic_role,
+                "status": "supported",
+            }
+            for field_path, semantic_role in (
+                ("/hypotheses/0/underlying_symbol", "entity"),
+                ("/hypotheses/0/impact_path", "hypothesis"),
+                ("/hypotheses/0/distribution_mode", "hypothesis"),
+                ("/hypotheses/0/distribution_hypothesis", "hypothesis"),
+            )
+        ]
+        envelope, envelope_bytes = parse_grounder_output_v0_3(
+            _canonical(producer),
+            100_000,
+            max_string_bytes=run_input.bounds.max_string_bytes,
+            max_array_items=run_input.bounds.max_array_items,
+            run_id=run_input.run_id,
+            canonical_input_hash=run_input.canonical_input_hash,
+            source_bodies=context.source_bodies,
+            catalog=catalog,
+        )
+        unresolved_mode = "/hypotheses/0/distribution_mode"
+        verdict = _wire_verdict_v0_4(
+            run_input,
+            context,
+            catalog,
+            envelope,
+            envelope_bytes,
+            producer,
+            unresolved_field_paths=(unresolved_mode,),
+        )
+        verdict["hypotheses"][0].update({
+            "outcome": "unresolved",
+            "rationale": "The facts do not establish a directional economic channel.",
+            "evidence_refs": [],
+        })
+
+        result, calls = _run_v0_10(run_input, context, producer, verdict)
+
+        self.assertEqual([call[0] for call in calls], ["discovery", "semantic"])
+        receipt = result.build_result.semantic_validation.receipt
+        self.assertEqual(receipt["verified_hypothesis_ids"], ())
+        mode_index = next(
+            index for index, binding in enumerate(envelope["field_bindings"])
+            if binding["field_path"] == unresolved_mode
+        )
+        self.assertNotIn(mode_index, receipt["verified_binding_indices"])
+        self.assertIsNone(result.build_result.submission)
 
     def test_v010_binding_omission_uses_existing_append_only_repair(self):
         run_input, context = _fixture()
@@ -2563,6 +2793,11 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         self.assertEqual(
             [call[0] for call in calls], ["discovery", "discovery", "semantic"]
         )
+        self.assertIn(
+            "Producer hypothesis-readiness supplement (v0.1; current Event/World only)",
+            calls[1][1],
+        )
+        self.assertIn("One bounded required-binding omission correction", calls[1][2])
         self.assertEqual(
             [item.status for item in result.audit.producer_attempts],
             ["rejected", "accepted"],
@@ -2671,6 +2906,10 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
                 discovery=discovery,
             )
 
+        self.assertIn(
+            "Producer hypothesis-readiness supplement (v0.1; current Event/World only)",
+            calls[0][1],
+        )
         error = raised.exception
         self.assertEqual([call[0] for call in calls], ["discovery", "discovery"])
         self.assertEqual(error._semantic_transport_route,

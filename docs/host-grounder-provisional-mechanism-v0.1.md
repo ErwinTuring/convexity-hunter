@@ -12,6 +12,37 @@ quality of a live model judgment. No full-suite run is claimed.
 
 ## Existing meaning, narrow correction
 
+### Hypothesis Readiness Closure v0.1 — 2026-11-01
+
+Status: IMPLEMENTED / focused offline validation and independent REVIEW PASS.
+No deployment or actual model-generation improvement is claimed.
+
+The user authorized a bounded Producer instruction correction, not a new
+semantic acceptance rule or live experiment. Current v0.10/v0.11 normal
+Event/shared World instructions need an explicit preparation sequence beyond
+the existing DTO/path examples: source facts -> issuer/economic exposure ->
+conditional interpretation -> separately justified distribution claim. A
+positive announcement, uncertainty, tail exposure and a supported directional
+mode are not interchangeable. Unsupported mode stays null with its gap;
+it is not replaced by bidirectional expansion or a recommendation.
+
+The labelled readiness instruction supplement v0.1 also asks the Producer to
+independently inspect source-supported future observable milestones. Preserve
+the correctly attributed observed fact/date role, exact source-supported ISO
+date, supporting dependency closure, date binding and existing reassessment
+methodology before proposing a reassessment. A milestone does not supply an
+impact end or maturity anchor, and cannot repair an unsupported mechanism or
+mode. Leave it null if any existing condition fails. Binding-only repair still
+cannot alter non-binding fields.
+
+Existing strict schema/catalog checks, independent Verifier, Builder, EI/Core,
+legacy routes, public DTOs, audit/wire versions, budgets and two-call Producer
+coordination stay unchanged. The supplement is a version-labelled generation
+instruction refinement; repository code state identifies its implementation.
+Historical prompt-version records are not rewritten or claimed to contain it.
+Offline fixed outputs test protocol compatibility, not actual model capability.
+No new Tavily/DeepSeek/Futu/World/Event operation or private capture is approved.
+
 The [EI acceptance contract](event-intelligence-acceptance-contract.md) permits
 interpretations with source-backed factual dependencies. The [Host semantic
 contract](host-grounder-semantic-validation-v0.1.md) explicitly says market

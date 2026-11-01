@@ -1,5 +1,24 @@
 # Project State
 
+## Hypothesis Readiness Closure v0.1 — BUILD/REVIEW PASS, 2026-11-01
+
+New bounded user authorization supersedes the completed-compliance stop below:
+P0 refines hypothesis preparation only, P1 checks existing temporal/maturity
+compatibility read-only. No new live calls, capture, policy or EI/Core changes.
+Production delta is one labelled internal Producer guidance supplement in
+`host_grounder_runtime.py`, current Event/World only, no Verifier/DTO/budget
+change. Source-chain/mode/reassessment separation is explicit;71 catalog tests
+pass with synthetic positive/negative/time coverage, not model-quality proof.
+Independent review, targeted integration check, compile and docs/diff checks
+PASS; no full suite or deployment claimed. Existing DTO/catalog/dependency,
+Verifier, Builder and EI temporal gates required no production modification.
+P1 synthetic actual-assessor/request/Core branches and52 existing tests pass.
+Normal launcher is neutral structural; accepted bounded-window hypotheses
+therefore remain maturity-incompatible rather than silently falling back.
+No production-policy fix is authorized; current live session retains its old
+2026-10-30 evaluation date and was not restarted. See
+[checkpoint](current-checkpoint.md) for the exact matrix and remaining gates.
+
 ## Continuation decision — 2026-10-30
 
 Producer Compliance Closure is complete; bounded independent read-only check

@@ -808,6 +808,43 @@ _PRODUCER_BINDING_COMPLIANCE_NOTICE = (
     "rewrite facts or hypotheses to force compliance."
 )
 
+_PRODUCER_HYPOTHESIS_READINESS_NOTICE_V0_1 = (
+    "\n\nProducer hypothesis-readiness supplement (v0.1; current Event/World only): "
+    "Keep three layers distinct: source-reported observed facts; conditional "
+    "economic interpretations grounded in the issuer's concrete operating, "
+    "financial, or regulatory exposure; and provisional hypotheses about "
+    "changes to the future outcome distribution. "
+    "State the causal bridge as an interpretation depending on exact observed-fact "
+    "claims. Preserve concrete premises, material assumptions, counterevidence, "
+    "uncertainty, limitations, and falsifiers. A headline, financing, unsettled "
+    "review, favorable wording, or generic possibility alone is not an economic "
+    "transmission mechanism; an empty hypotheses array remains valid.\n\n"
+    "Justify distribution_mode separately from the mechanism. "
+    "event_directional_up/down, extreme_tail_up/down, and "
+    "bidirectional_expansion are not interchangeable: favorable wording alone "
+    "does not support up, and uncertainty alone does not support bidirectional "
+    "expansion. Do not fall back to another mode when the proposed mode lacks "
+    "support. If the mechanism is grounded but no mode is defensible, leave "
+    "distribution_mode null and state the gap or uncertainty using existing "
+    "fields; do not imply support or investment attractiveness.\n\n"
+    "Before returning, inspect the supplied evidence for an explicitly dated "
+    "future observable milestone relevant to the hypothesis. If present, retain "
+    "it only as an accurately attributed observed_fact with its date role intact; "
+    "include the source-supported ISO date in the claim text when needed by the "
+    "existing rule, and include that fact in the supporting dependency closure. "
+    "Create reassessment only when every existing condition holds: one source-backed "
+    "observed-fact basis claim in that closure, exact date text and date binding, "
+    "the exact existing methodology, and temporal eligibility. A milestone is "
+    "not an impact-window boundary. Do not promote an ordinary announcement date "
+    "or any future date automatically, or invent a horizon; otherwise leave "
+    "reassessment and unsupported impact boundaries null.\n\n"
+    "This supplement does not alter the DTO or independent verification. On format "
+    "repair, regenerate the full DTO from the unchanged request/catalog under the "
+    "existing format notice. On append-only binding repair, do not revise any "
+    "non-binding field or existing binding prefix; append only supported missing "
+    "bindings under the existing repair notice."
+)
+
 SEMANTIC_SYSTEM_PROMPT_V0_5 = _replace_prompt_fragment(
     SEMANTIC_SYSTEM_PROMPT_V0_4,
     "host-grounder-semantic-verifier-prompt-v0.4.",
@@ -2756,6 +2793,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     )
     if binding_compliance_closure_enabled:
         discovery_system_prompt += _PRODUCER_BINDING_COMPLIANCE_NOTICE
+        discovery_system_prompt += _PRODUCER_HYPOTHESIS_READINESS_NOTICE_V0_1
 
     def with_producer_attempts(error: HostGrounderRuntimeError) -> HostGrounderRuntimeError:
         if producer_format_repair_enabled and not error.producer_attempts:
