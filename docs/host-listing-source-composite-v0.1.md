@@ -163,6 +163,46 @@ World/Core and 7 Direct regression tests. Independent review passed with
 EI/Core acceptance. Targeted compilation, added-link/fence validation and
 `git diff --check` passed; no full suite or external paid run is claimed.
 
+### SEC-primary Ordinary Shares composite v0.5 — 2026-11-03
+
+Status: FROZEN / BUILD AUTHORIZED; implementation not yet claimed.
+The user approved authenticated v4 Ordinary Shares entering the existing
+strict identity chain. Formal read-only preflight is READY. This additive
+route does not remove the v3/v4 legacy-listing exclusion or reuse unadmitted
+search/model text as identity proof.
+
+Require exactly the existing three issued roles: SEC selected issuer-reference
+v2, SEC cover v4, and Yahoo quote-header v2. The additional closed cover pair
+is `Ordinary shares, no par value` with `The Nasdaq Stock Market LLC`, paired
+only with `NasdaqGS - Nasdaq Real Time Price USD`. Reference exchange remains
+literal `Nasdaq`. The cover names the generic registered exchange; Yahoo
+reports its own GS label. Do not claim SEC sub-tier proof, infer a MIC, or
+cross-pair other classes/venues. Common Stock + generic Nasdaq stays rejected.
+
+Use one private class/venue policy for cover eligibility, required Yahoo label
+and version selection. Preserve exact selected-reference/archive CIK equality,
+exact ticker across all roles, existing ASCII case/space-only cover/Yahoo
+issuer agreement, original class/venue excerpts and anchors, source hashes,
+client-issued exact-tuple receipts and revalidation, and unique independently
+verified hypothesis/entity binding. Missing, detached, conflicting or changed
+evidence leaves identity unknown. Fill only missing keys; preserve supplied
+context and all accepted hypothesis branches.
+
+Only this new combination emits `host-listing-source-composite-v0.5`; old
+v0.1-v0.4 formats and archives retain their versions. Return the same
+`UnderlyingKey(symbol, None, EQUITY, "USD")` and provider-reported denomination
+basis. Preserve the literal generic SEC exchange and independent Yahoo label
+in source provenance. No standing, price, freshness, session or executability
+authority follows.
+
+Reuse current fixed reference/Yahoo requests and all request/byte/deadline/
+model limits, without a Nasdaq request, new provider, retry, parser, Prompt,
+DTO or EI/Core change. Tests must exercise normal-factory synthetic issued
+roles/receipts, exact provenance and CIK/issuer/ticker gates, missing or
+tampered evidence, unchanged old versions and rejected cross-pairs. Independent
+review precedes implementation commit. No paid call, deployment or real
+identity/EI/Core success is authorized or established by this freeze.
+
 ### SEC-primary association correction and source-only BUILD boundary
 
 The user approved replacing the dual SEC/Nasdaq CIK target with
