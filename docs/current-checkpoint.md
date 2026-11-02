@@ -1,5 +1,30 @@
 # Current Checkpoint
 
+## Strict v4 Ordinary Shares identity composition — 2026-11-03
+
+User approved the previously excluded Ordinary Shares/v4 identity path, not a
+paid acceptance. Fresh HEAD/main/origin/main `df23140`, clean. Formal read-only
+preflight READY; [v0.5 boundary](host-listing-source-composite-v0.1.md#sec-primary-ordinary-shares-composite-v05--2026-11-03)
+frozen before BUILD. Reuse three issued roles: SEC reference v2, cover v4 and
+Yahoo header v2; exact class/venue pair and NasdaqGS USD label, archive/reference
+CIK equality, issuer/ticker/hash/anchor/receipt gates stay mandatory. No MIC or
+SEC sub-tier inference. Legacy v4 exclusion and old format versions stay intact.
+BUILD/independent read-only REVIEW PASS. 90 Host Event tests plus139 related
+admission/World/Core/Direct/EI regressions pass; normal factory uses three
+synthetic issued roles/receipts and exactly three GETs (no Nasdaq request).
+Old versions/cross-pair rejection and existing identity/receipt gates pass.
+Source-admission code and two public exports remain unchanged; compile,
+added-link/fence and diff checks pass. No full suite or live identity/EI/Core
+result is claimed. No parser, Prompt, DTO, budget, deployment, private capture or new
+paid operation. Current Yahoo availability/identity proof remains unverified;
+past HTTP429 must not be represented as a successful source. All earlier real
+acceptance grants remain spent.
+
+Builder measured editing1m54s and testing/verification32s (about78%/22% for
+that BUILD subphase only, including test-runner discovery). This is not the
+whole-phase ratio: preflight, Main coordination and independent review were
+not fully separately timed, so no overall70/30 compliance claim is made.
+
 ## IREN SEC trailing-break correction — 2026-11-03
 
 User approved diagnosis and minimal format compatibility, no paid acceptance.

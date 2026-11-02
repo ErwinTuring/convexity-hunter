@@ -165,7 +165,7 @@ EI/Core acceptance. Targeted compilation, added-link/fence validation and
 
 ### SEC-primary Ordinary Shares composite v0.5 — 2026-11-03
 
-Status: FROZEN / BUILD AUTHORIZED; implementation not yet claimed.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS.
 The user approved authenticated v4 Ordinary Shares entering the existing
 strict identity chain. Formal read-only preflight is READY. This additive
 route does not remove the v3/v4 legacy-listing exclusion or reuse unadmitted
@@ -202,6 +202,14 @@ roles/receipts, exact provenance and CIK/issuer/ticker gates, missing or
 tampered evidence, unchanged old versions and rejected cross-pairs. Independent
 review precedes implementation commit. No paid call, deployment or real
 identity/EI/Core success is authorized or established by this freeze.
+
+Implementation uses one private cover-pair policy in the existing Host Event
+module; source-admission code and public API are unchanged. 90 Host Event
+tests and 139 related admission/World/Core/Direct/EI regressions pass; the
+independent read-only diff review passes. Normal-factory synthetic evidence
+proves the three issued roles, receipt path, versioned provenance and exactly
+three GETs without Nasdaq. Compile, added-link/fence and diff checks pass;
+no full-suite, deployment or real Yahoo/identity/EI/Core result is claimed.
 
 ### SEC-primary association correction and source-only BUILD boundary
 

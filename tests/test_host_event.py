@@ -940,6 +940,20 @@ def _sec_primary_raw_cover_html(symbol="ACME", share_class="Common Stock"):
     ).encode("utf-8")
 
 
+def _sec_primary_v4_raw_cover_html(
+    symbol="ACME",
+    share_class="Ordinary shares, no par value",
+    exchange="The Nasdaq Stock Market LLC",
+):
+    raw = _sec_primary_raw_cover_html(symbol, share_class).replace(
+        share_class.encode("ascii"),
+        share_class.replace(" ", "&#10;", 1).encode("ascii"),
+    )
+    return raw.replace(
+        b"The Nasdaq&#13;Capital Market", exchange.encode("ascii")
+    )
+
+
 def _sec_v04_admission(
     paragraphs,
     *,
@@ -1162,14 +1176,14 @@ def _prepare_v06_single_witness_case(case, *, admission_override=None):
 
 def _sec_primary_composite_records(
     symbol="ACME", *, yahoo_override=None, share_class="Common Stock",
-    cover_html_override=None,
+    cover_html_override=None, reference_cik=320193,
 ):
     cover_html = cover_html_override or _sec_primary_raw_cover_html(symbol, share_class)
     reference_locator = "https://www.sec.gov/files/company_tickers_exchange.json"
     reference_body = json.dumps(
         {
             "fields": ["cik", "name", "ticker", "exchange"],
-            "data": [[320193, "Reference Unicode — Name", symbol, "Nasdaq"]],
+            "data": [[reference_cik, "Reference Unicode — Name", symbol, "Nasdaq"]],
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -1215,13 +1229,14 @@ def _sec_primary_listing_case(
     yahoo_override=None,
     share_class="Common Stock",
     cover_html_override=None,
+    reference_cik=320193,
     **identity_options
 ):
     base = _listing_identity_case(run_id=run_id, symbol="ACME", **identity_options)
     snapshot, receipt, context, _ids, _order, _bodies, _by_url, hypothesis_id, run_input = base
     client, records, calls = _sec_primary_composite_records(
         "ACME", yahoo_override=yahoo_override, share_class=share_class,
-        cover_html_override=cover_html_override,
+        cover_html_override=cover_html_override, reference_cik=reference_cik,
     )
     if records is None:
         raise AssertionError("synthetic SEC-primary composite did not issue")
@@ -3669,6 +3684,150 @@ class HostEventGrounderTests(unittest.TestCase):
             self.assertIn("source_admission", source)
             self.assertTrue(source["excerpts"])
 
+    def test_sec_primary_ordinary_shares_v05_requires_exact_class_venue_pair(self):
+        share_class = "Ordinary shares, no par value"
+        registered_exchange = "The Nasdaq Stock Market LLC"
+        yahoo_label = "NasdaqGS - Nasdaq Real Time Price USD"
+        cover_html = _sec_primary_v4_raw_cover_html(
+            share_class=share_class, exchange=registered_exchange
+        )
+        yahoo_html = (
+            "<html><body><div>{}</div><h1>Example Holdings, Inc. (ACME)</h1>"
+            "</body></html>"
+        ).format(yahoo_label)
+        snapshot, receipt, context, client, records, calls, hypothesis_id, _ri = (
+            _sec_primary_listing_case(
+                run_id="sec-primary-v05-ordinary-valid",
+                share_class=share_class,
+                cover_html_override=cover_html,
+                yahoo_override=yahoo_html,
+            )
+        )
+        self.assertEqual(
+            [record.parser_id for record in records],
+            [
+                "sec-edgar-cover-layout-v4",
+                "sec-issuer-reference-v2",
+                "yahoo-quote-header-v2",
+            ],
+        )
+        self.assertEqual(len(calls), 3)
+        preparer = _make_listing_source_preparer(
+            tuple(record.source_id for record in records),
+            admission_records=records,
+            sec_composite=(client, ("ACME",), records, 1_500_000, 1_500_000),
+        )
+        pair = (hypothesis_id, "ACME")
+        prepared = preparer(snapshot, receipt, context)
+        self.assertIn(pair, prepared.underlying_bindings)
+        key, reference_text = prepared.underlying_bindings[pair]
+        self.assertEqual(
+            key, UnderlyingKey("ACME", None, UnderlyingSecurityType.EQUITY, "USD")
+        )
+        provenance = json.loads(reference_text)
+        self.assertEqual(
+            provenance["rule_version"], "host-listing-source-composite-v0.5"
+        )
+        self.assertIsNone(provenance["listing_mic"])
+        self.assertEqual(provenance["currency_basis"],
+                         "yahoo_provider_reported_quote_denomination")
+        self.assertEqual(
+            [source["role"] for source in provenance["sources"]],
+            ["sec_issuer_reference", "sec_cover_security_class", "yahoo_quote_denomination"],
+        )
+        reference, cover, yahoo = provenance["sources"]
+        self.assertEqual(reference["exchange"], "Nasdaq")
+        self.assertEqual(cover["share_class"], share_class)
+        self.assertEqual(cover["registered_exchange"], registered_exchange)
+        self.assertTrue(any(
+            "| {} | ACME | {} |".format(share_class, registered_exchange)
+            in excerpt["text"]
+            for excerpt in cover["excerpts"]
+        ))
+        self.assertTrue(any(
+            yahoo_label in excerpt["text"] for excerpt in yahoo["excerpts"]
+        ))
+        self.assertEqual(
+            [source["source_admission"]["parser_id"] for source in provenance["sources"]],
+            [
+                "sec-issuer-reference-v2",
+                "sec-edgar-cover-layout-v4",
+                "yahoo-quote-header-v2",
+            ],
+        )
+
+        invalid_pairs = (
+            ("ordinary-generic-cm", share_class, registered_exchange,
+             "NasdaqCM - Nasdaq Real Time Price USD"),
+            ("ordinary-capital-cm", share_class, "The Nasdaq Capital Market",
+             "NasdaqCM - Nasdaq Real Time Price USD"),
+            ("ordinary-capital-gs", share_class, "The Nasdaq Capital Market",
+             yahoo_label),
+            ("ordinary-global-cm", share_class,
+             "The Nasdaq Global Select Market", "NasdaqCM - Nasdaq Real Time Price USD"),
+            ("ordinary-global-gs", share_class,
+             "The Nasdaq Global Select Market", yahoo_label),
+            ("common-generic-cm", "Common Stock", registered_exchange,
+             "NasdaqCM - Nasdaq Real Time Price USD"),
+            ("common-generic-gs", "Common Stock", registered_exchange, yahoo_label),
+        )
+        for run_suffix, invalid_class, invalid_exchange, invalid_yahoo_label in invalid_pairs:
+            with self.subTest(pair=run_suffix):
+                invalid_cover = _sec_primary_v4_raw_cover_html(
+                    share_class=invalid_class, exchange=invalid_exchange
+                )
+                invalid_yahoo = (
+                    "<html><body><div>{}</div>"
+                    "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
+                ).format(invalid_yahoo_label)
+                snap, rec, ctx, source_client, source_records, _calls, _hyp, _ri = (
+                    _sec_primary_listing_case(
+                        run_id="sec-primary-v05-{}".format(run_suffix),
+                        share_class=invalid_class,
+                        cover_html_override=invalid_cover,
+                        yahoo_override=invalid_yahoo,
+                    )
+                )
+                invalid_preparer = _make_listing_source_preparer(
+                    tuple(record.source_id for record in source_records),
+                    admission_records=source_records,
+                    sec_composite=(
+                        source_client, ("ACME",), source_records,
+                        1_500_000, 1_500_000,
+                    ),
+                )
+                self.assertEqual(
+                    invalid_preparer(snap, rec, ctx).underlying_bindings, {}
+                )
+
+    def test_sec_primary_v05_rejects_reference_cik_mismatch(self):
+        share_class = "Ordinary shares, no par value"
+        cover_html = _sec_primary_v4_raw_cover_html(
+            share_class=share_class, exchange="The Nasdaq Stock Market LLC"
+        )
+        yahoo_html = (
+            "<html><body><div>NasdaqGS - Nasdaq Real Time Price USD</div>"
+            "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
+        )
+        snapshot, receipt, context, client, records, _calls, hypothesis_id, _ri = (
+            _sec_primary_listing_case(
+                run_id="sec-primary-v05-wrong-cik",
+                share_class=share_class,
+                cover_html_override=cover_html,
+                yahoo_override=yahoo_html,
+                reference_cik=320194,
+            )
+        )
+        preparer = _make_listing_source_preparer(
+            tuple(record.source_id for record in records),
+            admission_records=records,
+            sec_composite=(client, ("ACME",), records, 1_500_000, 1_500_000),
+        )
+        self.assertNotIn(
+            (hypothesis_id, "ACME"),
+            preparer(snapshot, receipt, context).underlying_bindings,
+        )
+
     def test_sec_primary_cover_uses_v4_marker_span_for_wrapped_marker(self):
         raw_cover = _sec_primary_raw_cover_html().replace(
             b"(Exact name of registrant as specified in its charter)",
@@ -3710,21 +3869,22 @@ class HostEventGrounderTests(unittest.TestCase):
             parsed_body=records[-1].parsed_body + "tamper",
             parsed_body_sha256=_digest(records[-1].parsed_body + "tamper"),
         )
-        for label, selected_records, selected_client in (
-            ("record-tamper", records[:-1] + (tampered,), client),
-            ("wrong-order", tuple(reversed(records)), client),
+        for label, selected_records, selected_client, selected_symbols in (
+            ("record-tamper", records[:-1] + (tampered,), client, ("ACME",)),
+            ("wrong-order", tuple(reversed(records)), client, ("ACME",)),
+            ("wrong-ticker-selection", records, client, ("OTHER",)),
             ("foreign-client", records, _SourceAdmissionClient(
                 timeout_seconds=1.0,
                 max_response_bytes=100_000,
                 byte_budget=100_000,
-            )),
+            ), ("ACME",)),
         ):
             with self.subTest(case=label):
                 preparer = _make_listing_source_preparer(
                     source_ids,
                     admission_records=records,
                     sec_composite=(
-                        selected_client, ("ACME",), selected_records,
+                        selected_client, selected_symbols, selected_records,
                         1_500_000, 1_500_000,
                     ),
                 )
@@ -4134,14 +4294,14 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(len(source_transport.calls), 2)
         self.assertEqual(len(model_transport.calls), 2)
 
-    def test_default_host_route_registers_sec_primary_three_source_composite(self):
-        run_id = "default-sec-primary-composite-run"
+    def test_default_host_route_registers_sec_primary_ordinary_shares_v05_composite(self):
+        run_id = "default-sec-primary-v05-composite-run"
         note_locator = "https://source.example/a"
         candidate_order = (
             ("source-sec", _SEC_LOCATOR),
             ("source-note", note_locator),
         )
-        cover_html = _sec_primary_raw_cover_html().replace(
+        cover_html = _sec_primary_v4_raw_cover_html().replace(
             b"</p><table>", b"</p><p>A synthetic event was reported.</p><table>"
         )
         reference_locator = "https://www.sec.gov/files/company_tickers_exchange.json"
@@ -4155,7 +4315,7 @@ class HostEventGrounderTests(unittest.TestCase):
             separators=(",", ":"),
         ).encode("utf-8")
         yahoo_body = (
-            b"<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
+            b"<html><body><div>NasdaqGS - Nasdaq Real Time Price USD</div>"
             b"<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
         )
         replies = {
@@ -4231,12 +4391,30 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertIn(pair, prepared.underlying_bindings)
         provenance = json.loads(prepared.underlying_bindings[pair][1])
         self.assertEqual(
-            provenance["rule_version"], "host-listing-source-composite-v0.2"
+            provenance["rule_version"], "host-listing-source-composite-v0.5"
         )
+        self.assertIsNone(provenance["listing_mic"])
         self.assertEqual(
             [item["role"] for item in provenance["sources"]],
             ["sec_issuer_reference", "sec_cover_security_class", "yahoo_quote_denomination"],
         )
+        self.assertEqual(
+            [item["source_admission"]["parser_id"] for item in provenance["sources"]],
+            [
+                "sec-issuer-reference-v2",
+                "sec-edgar-cover-layout-v4",
+                "yahoo-quote-header-v2",
+            ],
+        )
+        self.assertEqual(provenance["sources"][0]["exchange"], "Nasdaq")
+        self.assertEqual(
+            provenance["sources"][1]["registered_exchange"],
+            "The Nasdaq Stock Market LLC",
+        )
+        self.assertTrue(any(
+            "NasdaqGS - Nasdaq Real Time Price USD" in excerpt["text"]
+            for excerpt in provenance["sources"][2]["excerpts"]
+        ))
         self.assertEqual(
             admission_calls, [_SEC_LOCATOR, reference_locator, yahoo_locator]
         )

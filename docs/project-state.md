@@ -1,5 +1,17 @@
 # Project State
 
+## Strict v4 Ordinary Shares identity path — 2026-11-03
+
+User-approved additive v0.5 composition: preflight READY, contract frozen,
+BUILD/independent REVIEW PASS. Reuse exact-tuple-issued SEC reference/cover/Yahoo roles
+with full CIK, issuer, ticker, class, market/USD and receipt verification.
+No parser/legacy-exclusion/Prompt/EI/Core/budget change; no paid run or live
+identity/EI result. 90 Host Event +139 related regressions, unchanged two-export
+API, compilation and docs/diff checks pass; no full suite. Normal-factory
+synthetic composition uses three issued roles with no Nasdaq request. See [contract](host-listing-source-composite-v0.1.md#sec-primary-ordinary-shares-composite-v05--2026-11-03)
+and [checkpoint](current-checkpoint.md). Previous exclusion notes below remain
+historical, not authority to broaden other classes or venue combinations.
+
 ## IREN SEC trailing-break compatibility — 2026-11-03
 
 User-approved parser-only correction: actual public HTML isolates a trailing

@@ -1021,11 +1021,43 @@ _LISTING_SEC_PRIMARY_MARKET_PAIRS = (
         "NasdaqGS - Nasdaq Real Time Price USD",
     ),
 )
+_LISTING_SEC_PRIMARY_ORDINARY_CLASS = "Ordinary shares, no par value"
+_LISTING_SEC_PRIMARY_ORDINARY_EXCHANGE = "The Nasdaq Stock Market LLC"
 _LISTING_SEC_REFERENCE_LOCATOR = (
     "https://www.sec.gov/files/company_tickers_exchange.json"
 )
 _LISTING_YAHOO_V2_LABEL = "NasdaqCM - Nasdaq Real Time Price USD"
 _LISTING_CURRENCY_BASIS = "yahoo_provider_reported_quote_denomination"
+
+
+def _sec_primary_cover_policy(share_class: str, exchange: str):
+    """Return the exact Yahoo label and provenance version for one cover pair."""
+    if (
+        share_class == _LISTING_SEC_PRIMARY_ORDINARY_CLASS
+        and exchange == _LISTING_SEC_PRIMARY_ORDINARY_EXCHANGE
+    ):
+        return (
+            "NasdaqGS - Nasdaq Real Time Price USD",
+            "host-listing-source-composite-v0.5",
+        )
+    if _LISTING_SEC_PRIMARY_SHARE_CLASS.fullmatch(share_class):
+        yahoo_label = dict(_LISTING_SEC_PRIMARY_MARKET_PAIRS).get(exchange)
+        if yahoo_label is not None:
+            rule_version = (
+                "host-listing-source-composite-v0.2"
+                if exchange == _LISTING_SEC_PRIMARY_EXCHANGE
+                else "host-listing-source-composite-v0.3"
+            )
+            return yahoo_label, rule_version
+    if (
+        exchange == "The Nasdaq Global Select Market"
+        and _LISTING_SEC_PRIMARY_SHARE_CLASS_PAR_VALUE.fullmatch(share_class)
+    ):
+        return (
+            dict(_LISTING_SEC_PRIMARY_MARKET_PAIRS)[exchange],
+            "host-listing-source-composite-v0.4",
+        )
+    return None
 
 
 def _listing_lines(body: str):
@@ -1415,20 +1447,10 @@ def _parse_sec_primary_cover(
         return None
     row_index, row = rows[0]
     share_class, row_symbol, exchange = row
-    par_value_spelling = (
-        _LISTING_SEC_PRIMARY_SHARE_CLASS_PAR_VALUE.fullmatch(share_class) is not None
-    )
     if (
         issuer is None
         or row_symbol != symbol
-        or not (
-            _LISTING_SEC_PRIMARY_SHARE_CLASS.fullmatch(share_class)
-            or (
-                exchange == "The Nasdaq Global Select Market"
-                and par_value_spelling
-            )
-        )
-        or exchange not in tuple(pair[0] for pair in _LISTING_SEC_PRIMARY_MARKET_PAIRS)
+        or _sec_primary_cover_policy(share_class, exchange) is None
     ):
         return None
     excerpts = [
@@ -1620,13 +1642,15 @@ def _listing_sec_primary_evidence(
     cover = _parse_sec_primary_cover(
         cover_record.source_id, cover_source, symbol, cik, cover_record
     )
-    expected_yahoo_label = (
-        dict(_LISTING_SEC_PRIMARY_MARKET_PAIRS).get(cover["registered_exchange"])
-        if cover is not None else None
-    )
-    yahoo_source = source_by_record[yahoo_record.source_id]
-    if expected_yahoo_label is None:
+    if cover is None:
         return None
+    cover_policy = _sec_primary_cover_policy(
+        cover["share_class"], cover["registered_exchange"]
+    )
+    if cover_policy is None:
+        return None
+    expected_yahoo_label, _rule_version = cover_policy
+    yahoo_source = source_by_record[yahoo_record.source_id]
     yahoo = _parse_yahoo_listing_body_v2(
         yahoo_record.source_id, yahoo_source, symbol, expected_yahoo_label
     )
@@ -1865,14 +1889,13 @@ def _make_listing_source_preparer(
                     continue
                 reference_source, cover_evidence, yahoo_evidence = evidence
                 source_evidence_items = (reference_source, cover_evidence, yahoo_evidence)
-                if _LISTING_SEC_PRIMARY_SHARE_CLASS_PAR_VALUE.fullmatch(
-                    cover_evidence["share_class"]
-                ):
-                    rule_version = "host-listing-source-composite-v0.4"
-                elif cover_evidence["registered_exchange"] == _LISTING_SEC_PRIMARY_EXCHANGE:
-                    rule_version = "host-listing-source-composite-v0.2"
-                else:
-                    rule_version = "host-listing-source-composite-v0.3"
+                cover_policy = _sec_primary_cover_policy(
+                    cover_evidence["share_class"],
+                    cover_evidence["registered_exchange"],
+                )
+                if cover_policy is None:
+                    continue
+                _yahoo_label, rule_version = cover_policy
             else:
                 if symbol not in evidence_by_symbol:
                     evidence_by_symbol[symbol] = _listing_evidence_for_symbol(
