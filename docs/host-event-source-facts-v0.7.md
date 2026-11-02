@@ -1,6 +1,6 @@
 # Host Event Source Facts v0.7 — Declared Parent / Reference Date
 
-Status: FROZEN / BUILD AUTHORIZED; implementation not yet claimed.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS.
 
 ## Approved boundary
 
@@ -77,3 +77,19 @@ inner/arbitrary dates, wrong binding roles and duplicate/corrected acts.
 Independent review and focused regression precede commit/push. No paid run,
 deployment, private capture, case substitution or historical rewrite is
 authorized by this correction.
+
+## Implementation validation
+
+The shared private date validator retains the unchanged v0.4 wrapper/policy;
+only the normal v0.6 witness route attempts the new v0.7 fallback. Source
+admission code and the two public Host Event exports are unchanged. Fixtures
+exercise actual admitted v1/v3/v4 records, old/custom-route rejection, original
+span provenance, supplied-context preservation and the closed negative cases.
+Review identified a competing Parent definition outside the fixed prefix;
+the final guard and counterexamples reject that ambiguity.
+
+88 Host Event tests and 138 source-admission/World/Core/Direct/EI regressions
+pass. Independent review passes with 8 focused old/new tests and additional
+future-date, wrong-offset and non-exact-claim probes. Targeted compilation,
+added-link/fence and diff checks pass; no full-suite or live compatibility
+result is claimed. No deployment, paid operation or real EI/Core run occurred.

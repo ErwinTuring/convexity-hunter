@@ -1,5 +1,17 @@
 # Project State
 
+## Bounded declared-Parent occurrence date — 2026-11-02
+
+User-approved v0.7 date-authority successor: preflight READY, contract frozen,
+BUILD/independent REVIEW PASS. Normal single-witness preparation tries unchanged v0.4
+first, then the closed same-source Parent/reference-date rule. No parser,
+prompt, DTO, Verifier, EI/Core or budget expansion. No paid run/deployment or
+real EI/Core result. 88 Host Event +138 related regressions, independent
+targeted review, unchanged two-export API, compilation and docs/diff checks
+pass; no full-suite or live admission guarantee. See [contract](host-event-source-facts-v0.7.md) and
+[checkpoint](current-checkpoint.md). Earlier date-deferral notes below are
+historical; this grant covers only the explicit v0.7 correction.
+
 ## SEC cover-format compatibility — 2026-11-02
 
 Bounded user-approved format correction; targeted preflight READY and contract

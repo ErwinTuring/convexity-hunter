@@ -1,5 +1,28 @@
 # Current Checkpoint
 
+## Declared Parent / reference-date authority — 2026-11-02
+
+User approved the bounded IREN-style date semantics previously deferred below.
+Fresh HEAD/main/origin/main `29a5eea`, clean. Formal read-only preflight READY;
+[v0.7 date-only contract](host-event-source-facts-v0.7.md) frozen before BUILD.
+Normal v0.6 anchor selection remains unchanged; only after v0.4 fails may the
+same selected verified witness use the closed Parent/reference-date fallback.
+Existing authenticated SEC v1/v3/v4 records require valid unique cover anchors;
+no admission promotion, parser, prompt, DTO, EI/Core or maturity-policy change.
+BUILD/independent REVIEW PASS. Production changes are confined to
+`host_event.py`; no source-admission/parser or public API changes. 88 Host
+Event tests and138 source-admission/World/Core/Direct/EI regressions pass.
+Review's competing-Parent-definition gap is fixed and covered;8 focused
+old/new review tests and additional offline counterexamples pass. Two public
+exports are unchanged; targeted compile, new links/fences and diff checks
+pass. No full-suite or live IREN source compatibility is claimed.
+Builder recorded about11m23s through verification (including grounding and
+debugging), with a final suite runtime0.222s; editing/process were not fully
+separately instrumented, so no70/30 work percentage is claimed.
+No deployment, new private capture, source/model/Futu call or paid acceptance
+is authorized. All previous one-shot grants remain spent. A resolved event
+date does not establish listing, mode, reassessment or EI/Core acceptance.
+
 ## Bounded SEC cover-format compatibility — 2026-11-02
 
 User approved source-format correction, not another paid acceptance. Fresh

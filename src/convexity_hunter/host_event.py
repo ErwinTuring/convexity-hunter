@@ -783,7 +783,7 @@ def _retain_unknown_context_v0_6(
     original_context: HostBuildContext,
     admission_by_id: dict,
 ) -> tuple[HostBuildContext, Optional[str]]:
-    """Apply the v0.6 single-witness gate, then only v0.4 date derivation."""
+    """Apply the v0.6 single-witness gate and its bounded date fallbacks."""
     if type(original_context) is not HostBuildContext:
         raise TypeError("original_context must be HostBuildContext")
     selected_claim_id = None
@@ -801,6 +801,10 @@ def _retain_unknown_context_v0_6(
         prepared = _retain_unknown_context_v0_4(
             snapshot, receipt, original_context, prepared, admission_by_id
         )
+        if prepared.event_date_range is None:
+            prepared = _retain_unknown_context_v0_7(
+                snapshot, receipt, original_context, prepared, admission_by_id
+            )
     return prepared, selected_claim_id
 
 
@@ -2404,7 +2408,9 @@ def _sec_v04_ambiguity_date_tokens(text: str):
     )
 
 
-def _sec_primary_html_occurrence_pattern(registrant: str):
+def _sec_primary_html_occurrence_pattern(
+    registrant: str, *, ascii_case_insensitive_issuer: bool = False
+):
     whitespace = _SRO_ASCII_WS + "+"
     verbs = (
         "entered into",
@@ -2425,12 +2431,15 @@ def _sec_primary_html_occurrence_pattern(registrant: str):
         + _SEC_V04_ALLOWED_PERIODIC_OBJECT_PHRASE
         + r"){1,240}?)\."
     )
+    issuer_pattern = _ascii_whitespace_pattern(registrant)
+    if ascii_case_insensitive_issuer:
+        issuer_pattern = "(?ai:" + issuer_pattern + ")"
     return re.compile(
         r"(?<![A-Za-z0-9])On" + whitespace
         + r"(?P<month>(?ai:" + _ENGLISH_MONTHS + r"))" + whitespace
         + r"(?P<day>[0-9]{1,2})," + whitespace
         + r"(?P<year>[0-9]{4})," + whitespace
-        + _ascii_whitespace_pattern(registrant)
+        + issuer_pattern
         + alias_pattern + whitespace
         + r"(?P<verb>" + verb_pattern + r")" + whitespace
         + object_pattern
@@ -2438,7 +2447,37 @@ def _sec_primary_html_occurrence_pattern(registrant: str):
     )
 
 
-def _sec_primary_html_occurrence_date_v0_4(
+_SEC_V07_QUOTED_PARENT_ALIAS = re.compile(
+    r'\((?:the[ \t\r\n\f\v]+)?(?:“Parent”|"Parent")\),?'
+)
+_SEC_V07_PARENT_DECLARATION = re.compile(
+    r'(?m)^Following previous disclosure by (?P<issuer>[^\r\n]+?) '
+    r'(?P<parent_alias>\(the (?P<alias>“Parent”|"Parent")\),)'
+)
+_SEC_V07_PARENT_OCCURRENCE = re.compile(
+    r"(?<![A-Za-z0-9])On" + _SRO_ASCII_WS + r"+"
+    + r"(?P<month>(?ai:" + _ENGLISH_MONTHS + r"))"
+    + _SRO_ASCII_WS + r"+(?P<day>[0-9]{1,2})," + _SRO_ASCII_WS
+    + r"+(?P<year>[0-9]{4})," + _SRO_ASCII_WS + r"+"
+    + r"the Parent," + _SRO_ASCII_WS + r"+as" + _SRO_ASCII_WS
+    + r"+Guarantor," + _SRO_ASCII_WS + r"+"
+    + r"(?P<verb>entered into|completed|closed|executed|signed|announced|"
+    + r"issued a press release)" + _SRO_ASCII_WS + r"+"
+    + r"(?P<object>(?:[^.!?]|"
+    + _SEC_V04_ALLOWED_PERIODIC_OBJECT_PHRASE
+    + r"){1,240}?)\."
+    + r"(?=$|[ \t\r\n\f\v])"
+)
+_SEC_V07_REFERENCE_DATE = re.compile(
+    r"(?ai)(?<![A-Za-z0-9])agreement" + _SRO_ASCII_WS + r"+dated"
+    + _SRO_ASCII_WS + r"+as" + _SRO_ASCII_WS + r"+of"
+    + _SRO_ASCII_WS + r"+(?P<month>" + _ENGLISH_MONTHS + r")"
+    + _SRO_ASCII_WS + r"+(?P<day>[0-9]{1,2})," + _SRO_ASCII_WS
+    + r"+(?P<year>[0-9]{4})(?![A-Za-z0-9])"
+)
+
+
+def _sec_primary_html_occurrence_date(
     claim_index: int,
     claim: dict,
     source: HostSourceBody,
@@ -2446,8 +2485,21 @@ def _sec_primary_html_occurrence_date_v0_4(
     verified_binding_indices: frozenset,
     context: HostBuildContext,
     admission: object,
+    *,
+    policy: str = "v0.4",
 ):
-    """Resolve one exact occurrence sentence from its authenticated SEC HTML body."""
+    """Resolve a bounded SEC HTML occurrence date under an explicit policy."""
+    if policy not in ("v0.4", "v0.7"):
+        return None
+    accepted_parser_pairs = (
+        (("sec-edgar-cover-layout-v4", "4"),)
+        if policy == "v0.4"
+        else (
+            ("sec-edgar-cover-v1", "1"),
+            ("sec-edgar-cover-layout-v3", "3"),
+            ("sec-edgar-cover-layout-v4", "4"),
+        )
+    )
     if type(admission) is not SourceAdmission:
         return None
     try:
@@ -2462,8 +2514,8 @@ def _sec_primary_html_occurrence_date_v0_4(
     if (
         checked_admission is None
         or checked_admission.family != "sec"
-        or checked_admission.parser_id != "sec-edgar-cover-layout-v4"
-        or checked_admission.parser_version != "4"
+        or (checked_admission.parser_id, checked_admission.parser_version)
+        not in accepted_parser_pairs
         or checked_admission.content_type != "text/html"
         or checked_admission.source_id != claim.get("source_id")
         or checked_admission.source_id != admission.source_id
@@ -2501,6 +2553,26 @@ def _sec_primary_html_occurrence_date_v0_4(
     if _sec_cover_layout_v4_fold(registrant) is None:
         return None
 
+    marker_anchor = None
+    if policy == "v0.7":
+        marker_anchors = tuple(
+            anchor
+            for anchor in checked_admission.raw_anchors
+            if anchor.field == "sec_cover.registrant_marker"
+        )
+        if len(marker_anchors) != 1:
+            return None
+        marker_anchor = marker_anchors[0]
+        if (
+            type(marker_anchor.parsed_start) is not int
+            or type(marker_anchor.parsed_end) is not int
+            or not 0 <= marker_anchor.parsed_start < marker_anchor.parsed_end
+            <= len(source.body)
+            or source.body[marker_anchor.parsed_start:marker_anchor.parsed_end]
+            != _LISTING_SEC_MARKER
+        ):
+            return None
+
     claim_id = claim.get("claim_id")
     quote = claim.get("quote")
     claim_text = claim.get("text")
@@ -2522,9 +2594,24 @@ def _sec_primary_html_occurrence_date_v0_4(
     if quote_start != paragraph_start or source.body.find(quote, quote_start + 1) >= 0:
         return None
 
-    statement_pattern = _sec_primary_html_occurrence_pattern(registrant)
+    if policy == "v0.4":
+        statement_pattern = _sec_primary_html_occurrence_pattern(registrant)
+        direct_statement_pattern = None
+    else:
+        statement_pattern = _SEC_V07_PARENT_OCCURRENCE
+        direct_statement_pattern = _sec_primary_html_occurrence_pattern(
+            registrant, ascii_case_insensitive_issuer=True
+        )
     paragraph_matches = tuple(statement_pattern.finditer(quote))
-    if len(paragraph_matches) != 1:
+    direct_paragraph_matches = (
+        ()
+        if direct_statement_pattern is None
+        else tuple(direct_statement_pattern.finditer(quote))
+    )
+    if (
+        len(paragraph_matches) != 1
+        or len(paragraph_matches) + len(direct_paragraph_matches) != 1
+    ):
         return None
     statement = paragraph_matches[0]
     prefix = quote[:statement.start()]
@@ -2537,12 +2624,43 @@ def _sec_primary_html_occurrence_date_v0_4(
     statement_end = paragraph_start + statement.end()
     date_start = paragraph_start + statement.start("month")
     date_end = paragraph_start + statement.end("year")
+    occurrence_date_span = (statement.start("month"), statement.end("year"))
     paragraph_date_tokens = _sec_v04_ambiguity_date_tokens(quote)
-    if (
-        len(paragraph_date_tokens) != 1
-        or paragraph_date_tokens[0].span()
-        != (statement.start("month"), statement.end("year"))
-    ):
+    reference_match = None
+    if policy == "v0.4":
+        if (
+            len(paragraph_date_tokens) != 1
+            or paragraph_date_tokens[0].span() != occurrence_date_span
+        ):
+            return None
+    else:
+        if (
+            len(paragraph_date_tokens) not in (1, 2)
+            or sum(token.span() == occurrence_date_span for token in paragraph_date_tokens)
+            != 1
+        ):
+            return None
+        extra_date_tokens = tuple(
+            token for token in paragraph_date_tokens
+            if token.span() != occurrence_date_span
+        )
+        if extra_date_tokens:
+            reference_matches = tuple(
+                match
+                for match in _SEC_V07_REFERENCE_DATE.finditer(quote)
+                if (match.start("month"), match.end("year"))
+                == extra_date_tokens[0].span()
+            )
+            if len(reference_matches) != 1:
+                return None
+            reference_match = reference_matches[0]
+            if (
+                statement.start() <= reference_match.start("month")
+                < statement.end()
+            ):
+                return None
+
+    if _ascii_whitespace_fold(claim_text) != _ascii_whitespace_fold(statement.group(0)):
         return None
     if any(
         statement_start <= match.start() < statement_end
@@ -2593,9 +2711,12 @@ def _sec_primary_html_occurrence_date_v0_4(
         _ascii_whitespace_fold(statement.group("verb")),
         _ascii_whitespace_fold(object_text),
     )
+    candidate_occurrences = tuple(statement_pattern.finditer(body))
+    if direct_statement_pattern is not None:
+        candidate_occurrences += tuple(direct_statement_pattern.finditer(body))
     duplicate_matches = tuple(
         match
-        for match in statement_pattern.finditer(body)
+        for match in candidate_occurrences
         if (
             _ascii_whitespace_fold(registrant),
             _ascii_whitespace_fold(match.group("verb")),
@@ -2617,6 +2738,20 @@ def _sec_primary_html_occurrence_date_v0_4(
         )
     except (KeyError, ValueError):
         return None
+    reference_date = None
+    reference_date_start = None
+    reference_date_end = None
+    if reference_match is not None:
+        try:
+            reference_date = datetime.date(
+                int(reference_match.group("year")),
+                _ENGLISH_MONTH_NUMBERS[reference_match.group("month").title()],
+                int(reference_match.group("day")),
+            )
+        except (KeyError, ValueError):
+            return None
+        reference_date_start = paragraph_start + reference_match.start("month")
+        reference_date_end = paragraph_start + reference_match.end("year")
     model_date = claim.get("event_date")
     if (
         type(model_date) is not str
@@ -2661,7 +2796,7 @@ def _sec_primary_html_occurrence_date_v0_4(
         in ("announced", "issued a press release")
         else "completed_act"
     )
-    return event_date, {
+    fields = {
         "admission_provenance": checked_admission.provenance(),
         "registrant": registrant,
         "cik": locator_parts[0],
@@ -2683,16 +2818,116 @@ def _sec_primary_html_occurrence_date_v0_4(
         "date_token_end": date_end,
         "date_token": body[date_start:date_end],
     }
+    if policy == "v0.7":
+        quoted_parent_aliases = tuple(
+            _SEC_V07_QUOTED_PARENT_ALIAS.finditer(body)
+        )
+        parent_definitions = tuple(_SEC_V07_PARENT_DECLARATION.finditer(body))
+        if (
+            len(quoted_parent_aliases) != 1
+            or len(parent_definitions) != 1
+            or quoted_parent_aliases[0].span()
+            != parent_definitions[0].span("parent_alias")
+        ):
+            return None
+        parent_definition = parent_definitions[0]
+        if parent_definition.end() > statement_start:
+            return None
+        declared_issuer = parent_definition.group("issuer")
+        if (
+            _ascii_whitespace_fold(declared_issuer).translate(
+                _LISTING_ASCII_CASEFOLD
+            )
+            != _ascii_whitespace_fold(registrant).translate(
+                _LISTING_ASCII_CASEFOLD
+            )
+        ):
+            return None
+        fields.update(
+            {
+                "cover_registrant_start": registrant_anchor.parsed_start,
+                "cover_registrant_end": registrant_anchor.parsed_end,
+                "cover_registrant_text": registrant,
+                "cover_registrant_marker_start": marker_anchor.parsed_start,
+                "cover_registrant_marker_end": marker_anchor.parsed_end,
+                "cover_registrant_marker_text": _LISTING_SEC_MARKER,
+                "declared_issuer_comparison_basis": (
+                    "ASCII-case-insensitive-and-ASCII-whitespace-fold"
+                ),
+                "parent_definition_start": parent_definition.start(),
+                "parent_definition_end": parent_definition.end(),
+                "parent_definition_text": parent_definition.group(0),
+                "parent_definition_issuer": declared_issuer,
+                "occurrence_subject": "the Parent, as Guarantor",
+                "reference_date_start": reference_date_start,
+                "reference_date_end": reference_date_end,
+                "reference_date_text": (
+                    None
+                    if reference_date_start is None
+                    else body[reference_date_start:reference_date_end]
+                ),
+                "reference_date_role": (
+                    "document_reference" if reference_date is not None else None
+                ),
+            }
+        )
+    return event_date, fields
 
 
-def _retain_unknown_context_v0_4(
+def _sec_primary_html_occurrence_date_v0_4(
+    claim_index: int,
+    claim: dict,
+    source: HostSourceBody,
+    envelope: dict,
+    verified_binding_indices: frozenset,
+    context: HostBuildContext,
+    admission: object,
+):
+    """Preserve the frozen v0.4 SEC primary-HTML date policy."""
+    return _sec_primary_html_occurrence_date(
+        claim_index,
+        claim,
+        source,
+        envelope,
+        verified_binding_indices,
+        context,
+        admission,
+        policy="v0.4",
+    )
+
+
+def _sec_primary_html_occurrence_date_v0_7(
+    claim_index: int,
+    claim: dict,
+    source: HostSourceBody,
+    envelope: dict,
+    verified_binding_indices: frozenset,
+    context: HostBuildContext,
+    admission: object,
+):
+    """Resolve a declared-Parent occurrence under frozen v0.7 policy."""
+    return _sec_primary_html_occurrence_date(
+        claim_index,
+        claim,
+        source,
+        envelope,
+        verified_binding_indices,
+        context,
+        admission,
+        policy="v0.7",
+    )
+
+
+def _retain_unknown_context_sec_primary_date(
     snapshot: object,
     receipt: object,
     original_context: HostBuildContext,
     prepared_context: HostBuildContext,
     admission_by_id: dict,
+    occurrence_resolver: Callable,
+    rule_version: str,
 ) -> HostBuildContext:
-    """Apply the frozen authenticated SEC primary-HTML occurrence-date rule."""
+    """Bind one verified claim's date through the selected private policy."""
     if prepared_context.event_date_range is not None:
         return prepared_context
     selected_id = prepared_context.event_description_binding
@@ -2728,7 +2963,7 @@ def _retain_unknown_context_v0_4(
         or type(admission) is not SourceAdmission
     ):
         return prepared_context
-    occurrence = _sec_primary_html_occurrence_date_v0_4(
+    occurrence = occurrence_resolver(
         claim_index,
         claim,
         source,
@@ -2742,10 +2977,7 @@ def _retain_unknown_context_v0_4(
     event_date, fields = occurrence
     methodology = json.dumps(
         {
-            "rule_version": (
-                "host-event-source-facts-v0.4/"
-                "sec-primary-html-occurrence-date"
-            ),
+            "rule_version": rule_version,
             **fields,
         },
         ensure_ascii=False,
@@ -2756,6 +2988,44 @@ def _retain_unknown_context_v0_4(
     return replace(
         prepared_context,
         event_date_range=MethodologizedDateRange(event_date, event_date, methodology),
+    )
+
+
+def _retain_unknown_context_v0_4(
+    snapshot: object,
+    receipt: object,
+    original_context: HostBuildContext,
+    prepared_context: HostBuildContext,
+    admission_by_id: dict,
+) -> HostBuildContext:
+    """Preserve the frozen v0.4 authenticated SEC primary-HTML wrapper."""
+    return _retain_unknown_context_sec_primary_date(
+        snapshot,
+        receipt,
+        original_context,
+        prepared_context,
+        admission_by_id,
+        _sec_primary_html_occurrence_date_v0_4,
+        "host-event-source-facts-v0.4/sec-primary-html-occurrence-date",
+    )
+
+
+def _retain_unknown_context_v0_7(
+    snapshot: object,
+    receipt: object,
+    original_context: HostBuildContext,
+    prepared_context: HostBuildContext,
+    admission_by_id: dict,
+) -> HostBuildContext:
+    """Apply v0.7 only after the normal v0.6 witness's v0.4 attempt."""
+    return _retain_unknown_context_sec_primary_date(
+        snapshot,
+        receipt,
+        original_context,
+        prepared_context,
+        admission_by_id,
+        _sec_primary_html_occurrence_date_v0_7,
+        "host-event-source-facts-v0.7/sec-primary-html-declared-parent-occurrence-date",
     )
 
 

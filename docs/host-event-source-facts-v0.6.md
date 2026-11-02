@@ -2,6 +2,11 @@
 
 Status: FROZEN AND APPROVED; IMPLEMENTED; FINAL INDEPENDENT IMPLEMENTATION REVIEW PASS.
 
+Successor note (2026-11-02): the [v0.7 date-authority contract](host-event-source-facts-v0.7.md)
+adds a bounded normal-route fallback after the v0.4 date attempt. The v0.6
+question, single-witness gate, receipts/outcomes and historical semantics below
+are unchanged; the new date provenance is versioned separately.
+
 This is the successor to `host-event-source-facts-v0.5` for new default normal
 Event preparation only. It changes the anchor question's identity criterion.
 The v0.1 question and existing v0.1-v0.5 receipts/outcomes remain historical,

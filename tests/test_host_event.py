@@ -941,13 +941,42 @@ def _sec_primary_raw_cover_html(symbol="ACME", share_class="Common Stock"):
 
 
 def _sec_v04_admission(
-    paragraphs, *, registrant="Example Holdings, Inc.", admit=True
+    paragraphs,
+    *,
+    registrant="Example Holdings, Inc.",
+    admit=True,
+    parser_version="4",
 ):
-    cover = _sec_primary_raw_cover_html().replace(
-        b"Example Holdings, Inc.", registrant.encode("utf-8")
-    )
     addition = "".join("<p>{}</p>".format(value) for value in paragraphs).encode("utf-8")
-    raw_html = cover.replace(b"</body></html>", addition + b"</body></html>")
+    if parser_version == "1":
+        raw_html = (
+            "<html><body><p>{}</p><p>(Exact name of registrant as specified "
+            "in its charter)</p>{}<table>"
+            "<tr><th>Title of each class</th><th>Trading Symbol(s)</th>"
+            "<th>Name of each exchange on which registered</th></tr>"
+            "<tr><td>Ordinary shares, no par value</td><td>ACME</td>"
+            "<td>The Nasdaq Stock Market LLC</td></tr>"
+            "</table></body></html>"
+        ).format(registrant, addition.decode("utf-8")).encode("utf-8")
+    elif parser_version == "3":
+        raw_html = (
+            "<html><body><p>{}</p><p>(Exact name of registrant as specified "
+            "in its charter)</p>{}<table>"
+            "<tr><th>Title of each class</th><th>&nbsp;</th>"
+            "<th>Trading Symbol(s)</th><th>&nbsp;</th>"
+            "<th>Name of each exchange on which registered</th></tr>"
+            "<tr><td>Ordinary shares, no par value</td><td>&nbsp;</td>"
+            "<td>ACME</td><td>&nbsp;</td>"
+            "<td>The Nasdaq Stock Market LLC</td></tr>"
+            "</table></body></html>"
+        ).format(registrant, addition.decode("utf-8")).encode("utf-8")
+    elif parser_version == "4":
+        cover = _sec_primary_raw_cover_html().replace(
+            b"Example Holdings, Inc.", registrant.encode("utf-8")
+        )
+        raw_html = cover.replace(b"</body></html>", addition + b"</body></html>")
+    else:
+        raise ValueError("unsupported synthetic SEC parser version")
 
     def transport(locator, _address, _timeout, _max_bytes):
         if locator == _SEC_LOCATOR:
@@ -975,6 +1004,7 @@ def _sec_v04_admission(
 def _sec_v04_fact_case(
     *,
     paragraph=_V04_SEC_SENTENCE,
+    prior_paragraphs=(),
     extra_paragraphs=(),
     claim_text=None,
     model_date="2026-09-21",
@@ -986,10 +1016,12 @@ def _sec_v04_fact_case(
     verified_binding=True,
     include_admission=True,
     admission_override=None,
+    parser_version="4",
     return_inputs=False,
 ):
     _client, authentic_admission = _sec_v04_admission(
-        (paragraph,) + tuple(extra_paragraphs)
+        tuple(prior_paragraphs) + (paragraph,) + tuple(extra_paragraphs),
+        parser_version=parser_version,
     )
     body = authentic_admission.parsed_body
     source_id = authentic_admission.source_id
@@ -1075,6 +1107,57 @@ def _sec_v04_fact_case(
     if return_inputs:
         return prepared, context, authentic_admission, snapshot, receipt, records
     return prepared, context, authentic_admission
+
+
+def _v06_single_witness_inputs(snapshot, receipt):
+    envelope = json.loads(snapshot.canonical_bytes.decode("utf-8"))
+    envelope["coverage"] = [
+        {
+            "subquestion_id": "user_event_input",
+            "status": "unresolved",
+            "claim_ids": [],
+            "gap": "The broader research answer remains unresolved.",
+        },
+        {
+            "subquestion_id": _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+            "status": "supported",
+            "claim_ids": ["fact-1"],
+            "gap": None,
+        },
+    ]
+    canonical_bytes = json.dumps(
+        envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    envelope_hash = _digest(canonical_bytes.decode("utf-8"))
+    updated_receipt = dict(receipt)
+    updated_receipt["envelope_hash"] = envelope_hash
+    updated_receipt["coverage_outcomes"] = (
+        (0, "user_event_input", "unresolved", "The research answer is unresolved."),
+        (
+            1,
+            _EVENT_FACT_ANCHOR_SUBQUESTION_ID,
+            "supported",
+            "fact-1 is the single verified witness.",
+        ),
+    )
+    return (
+        ValidatedEnvelopeSnapshot(canonical_bytes, envelope_hash),
+        MappingProxyType(updated_receipt),
+    )
+
+
+def _prepare_v06_single_witness_case(case, *, admission_override=None):
+    _legacy_result, context, admission, snapshot, receipt, _records = case
+    snapshot, receipt = _v06_single_witness_inputs(snapshot, receipt)
+    admission = admission if admission_override is None else admission_override
+    anchor_capture = []
+    preparer = _make_listing_source_preparer(
+        (admission.source_id,),
+        admission_records=(admission,),
+        _event_fact_anchor_capture=anchor_capture,
+    )
+    prepared = preparer(snapshot, receipt, context)
+    return prepared, context, admission, anchor_capture
 
 
 def _sec_primary_composite_records(
@@ -5113,6 +5196,349 @@ class HostEventGrounderTests(unittest.TestCase):
             json.loads(accepted.event_date_range.methodology)["action_role"],
             "announcement",
         )
+
+    def test_v07_normal_single_witness_route_accepts_authenticated_cover_versions(self):
+        from convexity_hunter.host_event import _retain_unknown_context_v0_4
+
+        sentence = (
+            "On September 21, 2026, the Parent, as Guarantor, entered into "
+            "its agreement with Example Corp."
+        )
+        parent_definition = (
+            "Following previous disclosure by EXAMPLE HOLDINGS, INC. "
+            "(the “Parent”),"
+        )
+        expected_parsers = {
+            "1": ("sec-edgar-cover-v1", "1"),
+            "3": ("sec-edgar-cover-layout-v3", "3"),
+            "4": ("sec-edgar-cover-layout-v4", "4"),
+        }
+        for parser_version, expected_parser in expected_parsers.items():
+            with self.subTest(parser_version=parser_version):
+                case = _sec_v04_fact_case(
+                    paragraph=sentence,
+                    prior_paragraphs=(parent_definition,),
+                    claim_text=sentence,
+                    model_date="2026-09-21",
+                    parser_version=parser_version,
+                    return_inputs=True,
+                )
+                legacy_result, context, admission, snapshot, receipt, _records = case
+                self.assertEqual(
+                    (admission.parser_id, admission.parser_version), expected_parser
+                )
+                self.assertIsNone(legacy_result.event_date_range)
+                old_v04 = _retain_unknown_context_v0_4(
+                    snapshot,
+                    receipt,
+                    context,
+                    replace(context, event_description_binding="fact-1"),
+                    {admission.source_id: admission},
+                )
+                self.assertIsNone(old_v04.event_date_range)
+
+                prepared, normal_context, _admission, anchor_capture = (
+                    _prepare_v06_single_witness_case(case)
+                )
+                self.assertEqual(
+                    anchor_capture[0].selected_claim_id, "fact-1"
+                )
+                self.assertEqual(
+                    prepared.event_date_range.start_date,
+                    datetime.date(2026, 9, 21),
+                )
+                methodology = json.loads(prepared.event_date_range.methodology)
+                source = normal_context.source_bodies[admission.source_id]
+                self.assertEqual(
+                    methodology["rule_version"],
+                    "host-event-source-facts-v0.7/"
+                    "sec-primary-html-declared-parent-occurrence-date",
+                )
+                self.assertEqual(methodology["registrant"], "Example Holdings, Inc.")
+                self.assertEqual(methodology["occurrence_subject"], "the Parent, as Guarantor")
+                self.assertEqual(
+                    methodology["parent_definition_text"], parent_definition
+                )
+                self.assertEqual(
+                    source.body[
+                        methodology["parent_definition_start"]:
+                        methodology["parent_definition_end"]
+                    ],
+                    parent_definition,
+                )
+                self.assertEqual(
+                    source.body[
+                        methodology["statement_start"]:
+                        methodology["statement_end"]
+                    ],
+                    sentence,
+                )
+                self.assertEqual(
+                    source.body[
+                        methodology["binding_start"]:methodology["binding_end"]
+                    ],
+                    methodology["paragraph_quote"],
+                )
+                self.assertEqual(
+                    source.body[
+                        methodology["cover_registrant_start"]:
+                        methodology["cover_registrant_end"]
+                    ],
+                    "Example Holdings, Inc.",
+                )
+                self.assertEqual(
+                    source.body[
+                        methodology["cover_registrant_marker_start"]:
+                        methodology["cover_registrant_marker_end"]
+                    ],
+                    "(Exact name of registrant as specified in its charter)",
+                )
+                self.assertEqual(
+                    methodology["admission_provenance"]["parser_id"],
+                    expected_parser[0],
+                )
+
+    def test_v07_records_only_the_closed_paragraph_document_reference_date(self):
+        sentence = (
+            "On September 21, 2026, the Parent, as Guarantor, entered into "
+            "its agreement with Example Corp."
+        )
+        paragraph = sentence + " The agreement dated as of October 1, 2026."
+        case = _sec_v04_fact_case(
+            paragraph=paragraph,
+            prior_paragraphs=(
+                "Following previous disclosure by Example Holdings, Inc. "
+                '(the "Parent"),',
+            ),
+            claim_text=sentence,
+            model_date="2026-09-21",
+            return_inputs=True,
+        )
+        prepared, context, admission, _capture = _prepare_v06_single_witness_case(case)
+        methodology = json.loads(prepared.event_date_range.methodology)
+        source = context.source_bodies[admission.source_id]
+        self.assertEqual(prepared.event_date_range.start_date, datetime.date(2026, 9, 21))
+        self.assertEqual(methodology["reference_date_role"], "document_reference")
+        self.assertEqual(methodology["reference_date_text"], "October 1, 2026")
+        self.assertEqual(
+            source.body[
+                methodology["reference_date_start"]:
+                methodology["reference_date_end"]
+            ],
+            "October 1, 2026",
+        )
+
+    def test_v07_fails_closed_for_parent_and_date_ambiguities(self):
+        sentence = (
+            "On September 21, 2026, the Parent, as Guarantor, entered into "
+            "its agreement with Example Corp."
+        )
+        definition = (
+            "Following previous disclosure by Example Holdings, Inc. "
+            "(the “Parent”),"
+        )
+        cases = (
+            ("different issuer punctuation", {"prior_paragraphs": (
+                "Following previous disclosure by Example Holdings Inc. "
+                "(the “Parent”),",
+            )}),
+            ("unicode issuer confusable", {"prior_paragraphs": (
+                "Following previous disclosure by Example Holdіngs, Inc. "
+                "(the “Parent”),",
+            )}),
+            ("second quoted Parent without fixed prefix", {
+                "prior_paragraphs": (definition,),
+                "extra_paragraphs": ("Other Corporation (the “Parent”), filed a report.",),
+            }),
+            ("second parenthetical quoted Parent", {
+                "prior_paragraphs": (definition,),
+                "extra_paragraphs": ("Other Corporation (“Parent”) filed a report.",),
+            }),
+            ("repeated Parent declaration", {
+                "prior_paragraphs": (definition, definition),
+            }),
+            ("Parent declaration after act", {
+                "extra_paragraphs": (definition,),
+            }),
+            ("non-line-start Parent declaration", {
+                "prior_paragraphs": ("Background: " + definition,),
+            }),
+            ("future occurrence date", {
+                "paragraph": sentence.replace(
+                    "September 21, 2026", "October 5, 2026"
+                ),
+                "claim_text": sentence.replace(
+                    "September 21, 2026", "October 5, 2026"
+                ),
+                "prior_paragraphs": (definition,),
+                "model_date": "2026-10-05",
+            }),
+            ("modal action", {
+                "paragraph": sentence.replace("entered into", "will enter into"),
+                "claim_text": sentence.replace("entered into", "will enter into"),
+                "prior_paragraphs": (definition,),
+            }),
+            ("negated action", {
+                "paragraph": sentence.replace(
+                    "its agreement", "no agreement"
+                ),
+                "claim_text": sentence.replace(
+                    "its agreement", "no agreement"
+                ),
+                "prior_paragraphs": (definition,),
+            }),
+            ("compound action", {
+                "paragraph": sentence.replace(
+                    "its agreement with Example Corp.",
+                    "its agreement and completed a separate acquisition",
+                ),
+                "claim_text": sentence.replace(
+                    "its agreement with Example Corp.",
+                    "its agreement and completed a separate acquisition",
+                ),
+                "prior_paragraphs": (definition,),
+            }),
+            ("paraphrased claim", {
+                "prior_paragraphs": (definition,),
+                "claim_text": "The Parent completed an agreement with Example Corp.",
+            }),
+            ("arbitrary paragraph date", {
+                "paragraph": sentence + " Filing date: October 1, 2026.",
+                "prior_paragraphs": (definition,),
+                "claim_text": sentence,
+            }),
+            ("inner date", {
+                "paragraph": sentence.replace(
+                    "its agreement", "its agreement dated as of October 1, 2026"
+                ),
+                "prior_paragraphs": (definition,),
+            }),
+            ("invalid reference date", {
+                "paragraph": sentence + " The agreement dated as of February 30, 2026.",
+                "prior_paragraphs": (definition,),
+                "claim_text": sentence,
+            }),
+            ("abbreviated reference date", {
+                "paragraph": sentence + " The agreement dated as of Sep. 18, 2026.",
+                "prior_paragraphs": (definition,),
+                "claim_text": sentence,
+            }),
+            ("direct issuer duplicates Parent act", {
+                "prior_paragraphs": (definition,),
+                "extra_paragraphs": (
+                    "On September 21, 2026, Example Holdings, Inc. entered into "
+                    "its agreement with Example Corp.",
+                ),
+            }),
+            ("correction marker", {
+                "prior_paragraphs": (definition,),
+                "extra_paragraphs": ("Corrected event date: September 22, 2026.",),
+            }),
+            ("wrong binding role", {
+                "prior_paragraphs": (definition,), "binding_role": "publication",
+            }),
+            ("unverified binding", {
+                "prior_paragraphs": (definition,), "verified_binding": False,
+            }),
+        )
+        for label, options in cases:
+            with self.subTest(case=label):
+                case_options = {
+                    "paragraph": sentence,
+                    "claim_text": sentence,
+                    "model_date": "2026-09-21",
+                    "return_inputs": True,
+                }
+                case_options.update(options)
+                case = _sec_v04_fact_case(**case_options)
+                prepared, _context, _admission, _capture = (
+                    _prepare_v06_single_witness_case(case)
+                )
+                self.assertIsNone(prepared.event_date_range)
+
+    def test_v07_requires_both_original_cover_anchors(self):
+        case = _sec_v04_fact_case(
+            paragraph=(
+                "On September 21, 2026, the Parent, as Guarantor, entered into "
+                "its agreement with Example Corp."
+            ),
+            prior_paragraphs=(
+                "Following previous disclosure by Example Holdings, Inc. "
+                '(the "Parent"),',
+            ),
+            claim_text=(
+                "On September 21, 2026, the Parent, as Guarantor, entered into "
+                "its agreement with Example Corp."
+            ),
+            model_date="2026-09-21",
+            parser_version="1",
+            return_inputs=True,
+        )
+        _legacy, _context, admission, _snapshot, _receipt, _records = case
+        self.assertEqual(admission.parser_id, "sec-edgar-cover-v1")
+        for missing_field in (
+            "sec_cover.registrant",
+            "sec_cover.registrant_marker",
+        ):
+            with self.subTest(missing_field=missing_field):
+                missing_anchor = replace(
+                    admission,
+                    raw_anchors=tuple(
+                        anchor
+                        for anchor in admission.raw_anchors
+                        if anchor.field != missing_field
+                    ),
+                )
+                prepared, _context, _admission, _capture = (
+                    _prepare_v06_single_witness_case(
+                        case, admission_override=missing_anchor
+                    )
+                )
+                self.assertIsNone(prepared.event_date_range)
+
+        for duplicate_field in (
+            "sec_cover.registrant",
+            "sec_cover.registrant_marker",
+        ):
+            with self.subTest(duplicate_field=duplicate_field):
+                anchor = next(
+                    item for item in admission.raw_anchors
+                    if item.field == duplicate_field
+                )
+                duplicate_anchor = replace(
+                    admission, raw_anchors=admission.raw_anchors + (anchor,)
+                )
+                prepared, _context, _admission, _capture = (
+                    _prepare_v06_single_witness_case(
+                        case, admission_override=duplicate_anchor
+                    )
+                )
+                self.assertIsNone(prepared.event_date_range)
+
+        _client, wrong_source = _sec_v04_admission(
+            (
+                "Following previous disclosure by Example Holdings, Inc. "
+                "(the “Parent”),",
+                "On September 21, 2026, the Parent, as Guarantor, entered into "
+                "its agreement with Example Corp.",
+            ),
+            registrant="Different Holdings, Inc.",
+            parser_version="1",
+        )
+        prepared, _context, _admission, _capture = _prepare_v06_single_witness_case(
+            case, admission_override=wrong_source
+        )
+        self.assertIsNone(prepared.event_date_range)
+
+        unsupported_parser_pair = replace(
+            admission,
+            parser_id="sec-edgar-cover-text-v2",
+            parser_version="2",
+        )
+        prepared, _context, _admission, _capture = _prepare_v06_single_witness_case(
+            case, admission_override=unsupported_parser_pair
+        )
+        self.assertIsNone(prepared.event_date_range)
 
     def test_casevariant_duplicate_sec_headers_are_rejected(self):
         duplicate_fields = (
