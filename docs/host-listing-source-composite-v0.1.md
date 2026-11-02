@@ -127,6 +127,35 @@ focused/Host/full regression precede commit and any success claim. Real-format
 validation is one separately registered bounded source-only operation, not
 a replay of spent probes or a market/model experiment.
 
+### SEC-primary par-value spelling compatibility v0.4 — 2026-11-02
+
+Status: FROZEN / BUILD AUTHORIZED; implementation not yet claimed.
+The user approved bounded source-format compatibility correction. Read-only
+preflight is READY for this class-only scope; IREN date/alias rules are deferred.
+
+Accept one additional exact cover-class grammar:
+`Common Stock, $<ASCII decimal> Par Value`, where the decimal is
+`[0-9]+(?:\.[0-9]+)?`, only with the existing Global Select / NasdaqGS USD
+pair above. Case, punctuation and spacing remain exact after existing source
+folding. This covers the inspected COGT spelling; it does not authorize fuzzy
+class, issuer, exchange or currency matching, or prove a historical failure.
+
+The source-admission Global Select promotion gate must recognize the same
+additional spelling so simple covers reach the existing v4 parser. The parser,
+anchors, literal excerpts, hashes, issuance receipts, CIK/ticker/issuer checks,
+independent market/USD evidence and verified entity-binding requirements remain
+unchanged. Capital Market with the new spelling remains unsupported. No new
+source role, request, prompt, DTO, EI/Core threshold or date rule is introduced.
+
+Only bindings using this new spelling carry
+`host-listing-source-composite-v0.4`; old formats retain v0.1/v0.2/v0.3.
+Do not migrate historical archives. Focused tests must use authenticated
+synthetic admission/receipt paths, pin original class excerpts and provenance,
+and reject wrong class/case/venue/USD/issuer/CIK/ticker or detached evidence.
+Event and World share the same preparer; Direct is unchanged. Offline PASS
+cannot establish real EI acceptance or Futu/Core closure. No new paid run,
+deployment, or case substitution is authorized by this freeze.
+
 ### SEC-primary association correction and source-only BUILD boundary
 
 The user approved replacing the dual SEC/Nasdaq CIK target with
