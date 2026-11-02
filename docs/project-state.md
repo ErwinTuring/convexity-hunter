@@ -1,5 +1,19 @@
 # Project State
 
+## IREN SEC trailing-break compatibility — 2026-11-03
+
+User-approved parser-only correction: actual public HTML isolates a trailing
+`<br>` flagging error; formal preflight READY, BUILD/independent REVIEW PASS. The existing
+v4 complete-segment semantics, metadata and original-text anchors remain the
+boundary; internal name/marker breaks still reject. No paid operation or
+deployment. The same public HTML now normalizes as v4 with unique cover
+anchors; this is not a Host admission receipt or EI result. 56 admission and
+139 related regressions, targeted review, compile/docs/diff checks pass; no
+full suite. Independent v4 Ordinary-share listing exclusion remains outside
+this grant; source-text success is not listing/EI readiness. See
+[checkpoint](current-checkpoint.md) and
+[v4 correction](local-event-delivery-v0.1.md#sec-semantic-layout-source-text-v4--2026-10-10).
+
 ## Bounded declared-Parent occurrence date — 2026-11-02
 
 User-approved v0.7 date-authority successor: preflight READY, contract frozen,

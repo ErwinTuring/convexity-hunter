@@ -1660,6 +1660,54 @@ class HostSourceAdmissionTests(unittest.TestCase):
                         )
                     )
 
+    def test_sec_layout_v4_only_rejects_br_between_meaningful_segment_text(self):
+        marker = admission._SEC_MARKER
+        marker_source = "(Exact&#10;name of registrant as specified in its charter)<br>"
+        raw_body = _sec_layout_v4_html(
+            issuer="IREN LIMITED<br>", marker=marker_source
+        )
+        result = _client(
+            _ResponseTransport({SEC_LOCATOR: [_ok(raw_body)]})
+        ).admit_candidates((SEC_LOCATOR,))
+        self.assertEqual(len(result.admissions), 1)
+        admitted = result.admissions[0]
+        self.assertEqual(admitted.parser_id, "sec-edgar-cover-layout-v4")
+        self.assertEqual(admitted.parser_version, "4")
+        self.assertIn("A visible\t narrative\nstays\u00a0literal.", admitted.parsed_body)
+        self.assertIsNotNone(
+            _revalidate_source_admission(
+                admitted, max_raw_bytes=100_000, max_parsed_bytes=100_000
+            )
+        )
+        raw_text = raw_body.decode("utf-8")
+        anchors_by_field = {anchor.field: anchor for anchor in admitted.raw_anchors}
+        for field, raw_excerpt, parsed_excerpt in (
+            ("sec_cover.registrant", "IREN LIMITED", "IREN LIMITED"),
+            (
+                "sec_cover.registrant_marker",
+                marker_source[:-4],
+                "(Exact\nname of registrant as specified in its charter)",
+            ),
+        ):
+            anchor = anchors_by_field[field]
+            self.assertEqual(raw_text[anchor.raw_start:anchor.raw_end], raw_excerpt)
+            self.assertEqual(
+                anchor.raw_sha256,
+                hashlib.sha256(raw_excerpt.encode("utf-8")).hexdigest(),
+            )
+            self.assertEqual(
+                admitted.parsed_body[anchor.parsed_start:anchor.parsed_end],
+                parsed_excerpt,
+            )
+
+        for label, options in (
+            ("issuer", {"issuer": "IREN <br> LIMITED"}),
+            ("marker", {"marker": "(Exact name of registrant<br> as specified in its charter)"}),
+        ):
+            with self.subTest(field=label):
+                internal_break = _sec_layout_v4_html(**options).decode("utf-8")
+                self.assertIsNone(admission._sec_cover_layout_v4(internal_break))
+
     def test_global_select_par_value_spelling_promotes_only_exact_class_to_v4(self):
         exact_class = "Common Stock, $0.001 Par Value"
         cases = (

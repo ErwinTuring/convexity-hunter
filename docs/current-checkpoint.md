@@ -1,5 +1,43 @@
 # Current Checkpoint
 
+## IREN SEC trailing-break correction — 2026-11-03
+
+User approved diagnosis and minimal format compatibility, no paid acceptance.
+Fresh HEAD/main/origin/main `31e4bd9`, clean. Ordinary public SEC reads obtained
+37,112 bytes at the same exact locator, SHA-256
+`a7bb4942419ad15fcdcd139d3161a2c212366519d7d28051249a800012833228`:
+`https://www.sec.gov/Archives/edgar/data/1878848/000114036126023427/ef20075181_8k.htm`.
+No raw body or private contact header was retained in Git or diagnostics.
+V1/v3/v4 returned no parse. V4 had a unique valid marker, exact issuer,
+supported table/projection and valid issuer/marker mappings, but incorrectly
+classified a trailing `<br>` as internal. One meaningful issuer text chunk
+was followed by that break; no break occurred inside its meaningful span.
+
+Formal preflight READY: correct only the v4 segment flag under the existing
+[complete-segment rule](local-event-delivery-v0.1.md#sec-semantic-layout-source-text-v4--2026-10-10).
+BUILD/independent REVIEW PASS; internal name/marker breaks still fail. No parser
+version, canonical projection, source authorization, Verifier, EI/Core, prompt
+or budget change. No Tavily/DeepSeek/Futu, Host POST or deployment.
+
+Post-fix ordinary public GET returned the same 37,112-byte raw hash. The exact
+existing public-HTML parse dispatch now returns `sec-edgar-cover-layout-v4`,
+IREN, one registrant and one marker anchor, and one v0.7 Parent definition/
+occurrence match each. This is in-memory public-HTML normalization, not a
+Host-issued admission receipt, verified claim/date binding or EI acceptance.
+No original body was saved. 56 source-admission tests and139 related
+Event/World/Core/Direct regressions pass; independent focused v4/boundary
+review passes. Compilation, added links/fences and diff checks pass; no full
+suite or real Event/World execution is claimed. Whole-phase editing/process
+were not completely timed; no70/30 percentage is inferred from test counts.
+
+Read-only downstream check identifies a separate explicit authority boundary:
+known v3/v4 IDs are excluded from legacy listing sources; the current v4
+SEC-reference/Yahoo composite supports Common Stock only, not this filing's
+Ordinary shares / generic Nasdaq row. Parser success alone therefore cannot
+make this IREN input listing-ready. Do not remove that exclusion or extend
+listing authority under this parser-only grant. All paid grants remain spent;
+no real EI ACCEPTED/Futu/Core result or executable preregistration is claimed.
+
 ## Declared Parent / reference-date authority — 2026-11-02
 
 User approved the bounded IREN-style date semantics previously deferred below.

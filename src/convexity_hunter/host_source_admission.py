@@ -1726,6 +1726,7 @@ class _SecCoverSemanticHTML(_BoundedHTML):
         self.semantic_segments = []
         self._semantic_chunks = []
         self._semantic_inline_break = False
+        self._semantic_pending_inline_break = False
 
     def _finish_semantic_segment(self):
         if self._semantic_chunks:
@@ -1739,6 +1740,7 @@ class _SecCoverSemanticHTML(_BoundedHTML):
             )
         self._semantic_chunks = []
         self._semantic_inline_break = False
+        self._semantic_pending_inline_break = False
 
     @staticmethod
     def _hidden_start(tag, attrs):
@@ -1757,8 +1759,15 @@ class _SecCoverSemanticHTML(_BoundedHTML):
             return
         if raw_start == raw_end:
             if self._semantic_chunks and text in ("\n", "\n\n"):
-                self._semantic_inline_break = True
+                before = _sec_cover_layout_v4_fold(
+                    "".join(chunk[0] for chunk in self._semantic_chunks)
+                )
+                if before:
+                    self._semantic_pending_inline_break = True
             return
+        if self._semantic_pending_inline_break and _sec_cover_layout_v4_fold(text):
+            self._semantic_inline_break = True
+            self._semantic_pending_inline_break = False
         table_id = self._table_stack[-1] if self._table_stack else None
         self._semantic_chunks.append((text, raw_start, raw_end, table_id))
 

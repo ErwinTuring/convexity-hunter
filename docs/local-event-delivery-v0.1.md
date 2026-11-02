@@ -400,6 +400,18 @@ or claim real compatibility from those aggregates.
 A successful v4 parse is only source-text admission. A fresh bounded live
 validation is required for actual compatibility; failure must remain failure.
 
+Bounded v4 implementation correction (2026-11-03): the approved complete
+visible-segment rule does not make an empty leading/trailing `<br>` part of
+an issuer name. Classify an inline break as internal only when meaningful
+visible text under the existing v4 fold occurs on both sides within the same
+segment. Internal name/marker splits remain rejected. Preserve hidden/block/
+table rules, literal visible body, anchors, hashes and all metadata; no new
+parser version or listing/date/EI authority is created. Earlier v4 records
+retain their meanings. Implementation/review status is in the checkpoint.
+The correction is implemented and independently reviewed: 56 admission and
+139 related regressions pass. A same-hash public-HTML normalization confirms
+the IREN format parses as v4; this is not a normal Host admission/EI run.
+
 ## Trusted Host connection
 
 Current normal Host Event wiring (2026-10-10) uses catalog runtime v0.6,
