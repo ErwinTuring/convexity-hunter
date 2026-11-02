@@ -1003,6 +1003,9 @@ _LISTING_YAHOO_QUOTE = "NasdaqGS - Delayed Quote•USD"
 _LISTING_SEC_PRIMARY_SHARE_CLASS = re.compile(
     r"Common Stock(?:, par value \$[0-9]+(?:\.[0-9]+)? per share)?\Z"
 )
+_LISTING_SEC_PRIMARY_SHARE_CLASS_PAR_VALUE = re.compile(
+    r"Common Stock, \$[0-9]+(?:\.[0-9]+)? Par Value\Z"
+)
 _LISTING_SEC_PRIMARY_EXCHANGE = "The Nasdaq Capital Market"
 _LISTING_SEC_PRIMARY_MARKET_PAIRS = (
     (
@@ -1408,10 +1411,19 @@ def _parse_sec_primary_cover(
         return None
     row_index, row = rows[0]
     share_class, row_symbol, exchange = row
+    par_value_spelling = (
+        _LISTING_SEC_PRIMARY_SHARE_CLASS_PAR_VALUE.fullmatch(share_class) is not None
+    )
     if (
         issuer is None
         or row_symbol != symbol
-        or not _LISTING_SEC_PRIMARY_SHARE_CLASS.fullmatch(share_class)
+        or not (
+            _LISTING_SEC_PRIMARY_SHARE_CLASS.fullmatch(share_class)
+            or (
+                exchange == "The Nasdaq Global Select Market"
+                and par_value_spelling
+            )
+        )
         or exchange not in tuple(pair[0] for pair in _LISTING_SEC_PRIMARY_MARKET_PAIRS)
     ):
         return None
@@ -1849,12 +1861,14 @@ def _make_listing_source_preparer(
                     continue
                 reference_source, cover_evidence, yahoo_evidence = evidence
                 source_evidence_items = (reference_source, cover_evidence, yahoo_evidence)
-                rule_version = (
-                    "host-listing-source-composite-v0.2"
-                    if cover_evidence["registered_exchange"]
-                    == _LISTING_SEC_PRIMARY_EXCHANGE
-                    else "host-listing-source-composite-v0.3"
-                )
+                if _LISTING_SEC_PRIMARY_SHARE_CLASS_PAR_VALUE.fullmatch(
+                    cover_evidence["share_class"]
+                ):
+                    rule_version = "host-listing-source-composite-v0.4"
+                elif cover_evidence["registered_exchange"] == _LISTING_SEC_PRIMARY_EXCHANGE:
+                    rule_version = "host-listing-source-composite-v0.2"
+                else:
+                    rule_version = "host-listing-source-composite-v0.3"
             else:
                 if symbol not in evidence_by_symbol:
                     evidence_by_symbol[symbol] = _listing_evidence_for_symbol(

@@ -75,6 +75,9 @@ _SEC_EXCHANGE = "Name of each exchange on which registered"
 _SEC_PRIMARY_COMMON_STOCK = re.compile(
     r"Common Stock(?:, par value \$[0-9]+(?:\.[0-9]+)? per share)?\Z"
 )
+_SEC_PRIMARY_COMMON_STOCK_PAR_VALUE = re.compile(
+    r"Common Stock, \$[0-9]+(?:\.[0-9]+)? Par Value\Z"
+)
 _SEC_ISSUER = re.compile(r"[\x20-\x7e]+\Z")
 _SEC_MARKDOWN_UNSAFE = frozenset("\\`*_{}[]#<>|~")
 _NASDAQ_HEADING = re.compile(
@@ -2011,7 +2014,10 @@ def _is_global_select_common_stock_projection(parsed_body: str) -> bool:
         cells = tuple(value.strip(" \t") for value in line.strip(" \t|").split("|"))
         if (
             len(cells) == 3
-            and _SEC_PRIMARY_COMMON_STOCK.fullmatch(cells[0])
+            and (
+                _SEC_PRIMARY_COMMON_STOCK.fullmatch(cells[0])
+                or _SEC_PRIMARY_COMMON_STOCK_PAR_VALUE.fullmatch(cells[0])
+            )
             and cells[2] == "The Nasdaq Global Select Market"
         ):
             return True

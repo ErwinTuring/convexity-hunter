@@ -1,5 +1,19 @@
 # Project State
 
+## SEC cover-format compatibility — 2026-11-02
+
+Bounded user-approved format correction; targeted preflight READY and contract
+frozen, BUILD/independent REVIEW PASS. Only the additional exact Common Stock par-value
+spelling with Global Select/NasdaqGS USD is covered, including admission
+promotion and new v0.4 composite provenance. Dates/aliases, EI/Core, prompts,
+budgets and maturity policy remain unchanged. No new paid run/deployment or
+real EI/Core result is authorized or claimed. 84 Event/55 admission/44
+World-Core/7 Direct regression tests pass, plus independent targeted checks;
+compile, added-link/fence and diff checks pass. IREN/CIFR date/identity gaps
+remain; no eligible preregistered event is established. See
+[checkpoint](current-checkpoint.md) and
+[format boundary](host-listing-source-composite-v0.1.md#sec-primary-par-value-spelling-compatibility-v04--2026-11-02).
+
 ## ONE readiness Event acceptance — 2026-11-01
 
 Code `d0aacad` deployed via original launcher/UTC11-01, PID20793/session53658,

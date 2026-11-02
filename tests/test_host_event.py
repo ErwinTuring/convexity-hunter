@@ -3458,6 +3458,12 @@ class HostEventGrounderTests(unittest.TestCase):
             "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
         )
         capital_cover = _sec_primary_raw_cover_html()
+        par_value_global_cover = _sec_primary_raw_cover_html(
+            share_class="Common Stock, $0.001 Par Value"
+        ).replace(
+            b"The Nasdaq&#13;Capital Market",
+            b"The Nasdaq Global Select Market",
+        )
         yahoo_cm = (
             "<html><body><div>NasdaqCM - Nasdaq Real Time Price USD</div>"
             "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
@@ -3467,6 +3473,7 @@ class HostEventGrounderTests(unittest.TestCase):
             ("global-select-compact-cover-valid", compact_global_cover, yahoo_gs, True),
             ("global-select-with-capital-yahoo", global_cover, yahoo_cm, False),
             ("capital-with-global-select-yahoo", capital_cover, yahoo_gs, False),
+            ("par-value-global-select-with-capital-yahoo", par_value_global_cover, yahoo_cm, False),
         )
         for run_id, cover, yahoo, expected in cases:
             with self.subTest(run_id=run_id):
@@ -3510,6 +3517,74 @@ class HostEventGrounderTests(unittest.TestCase):
                             "ACME", None, UnderlyingSecurityType.EQUITY, "USD"
                         ),
                     )
+
+    def test_sec_primary_par_value_spelling_uses_authenticated_v04_composite(self):
+        share_class = "Common Stock, $0.001 Par Value"
+        raw_cover = _sec_primary_raw_cover_html(share_class=share_class).replace(
+            b"The Nasdaq&#13;Capital Market",
+            b"The Nasdaq Global Select Market",
+        )
+        yahoo_gs = (
+            "<html><body><div>NasdaqGS - Nasdaq Real Time Price USD</div>"
+            "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
+        )
+        snapshot, receipt, context, client, records, _calls, hypothesis_id, _ri = (
+            _sec_primary_listing_case(
+                run_id="sec-primary-v04-par-value-run",
+                cover_html_override=raw_cover,
+                yahoo_override=yahoo_gs,
+            )
+        )
+        cover_record = records[0]
+        self.assertEqual(cover_record.parser_id, "sec-edgar-cover-layout-v4")
+        class_anchor = next(
+            anchor for anchor in cover_record.raw_anchors
+            if anchor.field == "sec_cover.value.0"
+        )
+        raw_text = raw_cover.decode("utf-8")
+        self.assertEqual(raw_text[class_anchor.raw_start:class_anchor.raw_end], share_class)
+        self.assertEqual(
+            cover_record.parsed_body[
+                class_anchor.parsed_start:class_anchor.parsed_end
+            ],
+            share_class,
+        )
+
+        preparer = _make_listing_source_preparer(
+            tuple(record.source_id for record in records),
+            admission_records=records,
+            sec_composite=(client, ("ACME",), records, 1_500_000, 1_500_000),
+        )
+        prepared = preparer(snapshot, receipt, context)
+        pair = (hypothesis_id, "ACME")
+        self.assertIn(pair, prepared.underlying_bindings)
+        key, reference_text = prepared.underlying_bindings[pair]
+        self.assertEqual(
+            key, UnderlyingKey("ACME", None, UnderlyingSecurityType.EQUITY, "USD")
+        )
+        reference = json.loads(reference_text)
+        self.assertEqual(
+            reference["rule_version"], "host-listing-source-composite-v0.4"
+        )
+        cover_evidence = reference["sources"][1]
+        self.assertEqual(cover_evidence["share_class"], share_class)
+        self.assertEqual(
+            cover_evidence["registered_exchange"], "The Nasdaq Global Select Market"
+        )
+        self.assertTrue(
+            any(
+                "| {} | ACME | The Nasdaq Global Select Market |".format(share_class)
+                in excerpt["text"]
+                for excerpt in cover_evidence["excerpts"]
+            )
+        )
+        self.assertEqual(
+            [source["role"] for source in reference["sources"]],
+            ["sec_issuer_reference", "sec_cover_security_class", "yahoo_quote_denomination"],
+        )
+        for source in reference["sources"]:
+            self.assertIn("source_admission", source)
+            self.assertTrue(source["excerpts"])
 
     def test_sec_primary_cover_uses_v4_marker_span_for_wrapped_marker(self):
         raw_cover = _sec_primary_raw_cover_html().replace(

@@ -129,7 +129,7 @@ a replay of spent probes or a market/model experiment.
 
 ### SEC-primary par-value spelling compatibility v0.4 — 2026-11-02
 
-Status: FROZEN / BUILD AUTHORIZED; implementation not yet claimed.
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS.
 The user approved bounded source-format compatibility correction. Read-only
 preflight is READY for this class-only scope; IREN date/alias rules are deferred.
 
@@ -155,6 +155,13 @@ and reject wrong class/case/venue/USD/issuer/CIK/ticker or detached evidence.
 Event and World share the same preparer; Direct is unchanged. Offline PASS
 cannot establish real EI acceptance or Futu/Core closure. No new paid run,
 deployment, or case substitution is authorized by this freeze.
+
+Validation: 84 Host Event and 55 source-admission tests passed, plus 44
+World/Core and 7 Direct regression tests. Independent review passed with
+7 targeted offline checks. The new authenticated fixture uses the inspected
+`$0.001` spelling; synthetic evidence does not establish live admission or
+EI/Core acceptance. Targeted compilation, added-link/fence validation and
+`git diff --check` passed; no full suite or external paid run is claimed.
 
 ### SEC-primary association correction and source-only BUILD boundary
 

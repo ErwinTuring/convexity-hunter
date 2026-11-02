@@ -1660,6 +1660,55 @@ class HostSourceAdmissionTests(unittest.TestCase):
                         )
                     )
 
+    def test_global_select_par_value_spelling_promotes_only_exact_class_to_v4(self):
+        exact_class = "Common Stock, $0.001 Par Value"
+        cases = (
+            ("exact-global-select", exact_class, "The Nasdaq Global Select Market", True),
+            ("wrong-case", "common Stock, $0.001 Par Value", "The Nasdaq Global Select Market", False),
+            ("wrong-par-value-case", "Common Stock, $0.001 par value", "The Nasdaq Global Select Market", False),
+            ("capital-market", exact_class, "The Nasdaq Capital Market", False),
+        )
+        for label, share_class, exchange, expected_v4 in cases:
+            with self.subTest(case=label):
+                raw_body = _sec_layout_v3_html(
+                    width=3,
+                    data_rows=([share_class, "ACME", exchange],),
+                )
+                transport = _ResponseTransport({SEC_LOCATOR: [_ok(raw_body)]})
+                result = _client(transport).admit_candidates((SEC_LOCATOR,))
+                self.assertEqual(len(result.admissions), 1)
+                admitted = result.admissions[0]
+                if expected_v4:
+                    self.assertEqual(admitted.parser_id, "sec-edgar-cover-layout-v4")
+                    self.assertEqual(admitted.parser_version, "4")
+                    self.assertEqual(admitted.raw_body_sha256, hashlib.sha256(raw_body).hexdigest())
+                    anchor = next(
+                        item for item in admitted.raw_anchors
+                        if item.field == "sec_cover.value.0"
+                    )
+                    raw_text = raw_body.decode("utf-8")
+                    self.assertEqual(
+                        raw_text[anchor.raw_start:anchor.raw_end], exact_class
+                    )
+                    self.assertEqual(
+                        anchor.raw_sha256,
+                        hashlib.sha256(exact_class.encode("utf-8")).hexdigest(),
+                    )
+                    self.assertEqual(
+                        admitted.parsed_body[
+                            anchor.parsed_start:anchor.parsed_end
+                        ], exact_class
+                    )
+                    self.assertIsNotNone(
+                        _revalidate_source_admission(
+                            admitted, max_raw_bytes=100_000, max_parsed_bytes=100_000
+                        )
+                    )
+                else:
+                    self.assertNotEqual(
+                        admitted.parser_id, "sec-edgar-cover-layout-v4"
+                    )
+
     def test_sec_layout_v4_requires_complete_segments_and_safe_unique_shape(self):
         marker = admission._SEC_MARKER
         cases = (

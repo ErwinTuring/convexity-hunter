@@ -1,5 +1,44 @@
 # Current Checkpoint
 
+## Bounded SEC cover-format compatibility — 2026-11-02
+
+User approved source-format correction, not another paid acceptance. Fresh
+HEAD/main/origin/main `87fe360`, clean. Read-only preparation found no eligible
+preregistered event among IREN/CIFR/COGT; this does not prove their economic
+mechanisms invalid or identify historical first-failure checks.
+
+Formal targeted preflight READY; frozen scope is the additional exact
+`Common Stock, $<ASCII decimal> Par Value` spelling only with existing Global
+Select/NasdaqGS USD evidence. The same spelling must reach the existing v4
+admission parser; new composite provenance is v0.4, legacy versions unchanged.
+See the [bounded freeze](host-listing-source-composite-v0.1.md#sec-primary-par-value-spelling-compatibility-v04--2026-11-02).
+BUILD/independent REVIEW PASS. Production changes are limited to the existing
+admission promotion gate and shared listing composite; no new parser or API.
+84 Event +55 source-admission tests,44 World/Core and7 Direct regressions pass;
+the independent reviewer also passed7 targeted offline checks. New fixtures
+use the inspected `$0.001` literal and preserve raw/parsed anchors and source
+provenance. Compilation, added links/fences and diff checks pass; no full
+suite or live-source compatibility is claimed. Historical private `/tmp`
+links were not restored or rewritten; validation covers newly added links.
+
+Timing is partial: the Builder recorded about2m20s through validation, with
+0.78s measured test/compile runtime, but did not separately time editing.
+Whole-phase implementation versus process was not fully instrumented; no
+70/30 percentage is inferred from elapsed time or test counts.
+
+IREN remains deferred: its definition uses `IREN Limited` while the cover is
+uppercase, the occurrence uses `the Parent, as Guarantor`, and its paragraph
+contains another date. An alias-only fix would not establish compatibility.
+Do not relax exact-subject or multi-date rules, select a substitute witness,
+or infer event dates from filing/announcement/deadline labels. CIFR's inspected
+formats also remain unsupported. No candidate is made preregistration-ready
+by this class-only correction; reassessment and mode evidence remain separate.
+
+No prompt, budget, date, EI/Core or maturity-policy change; no Tavily, DeepSeek,
+Futu, Event/World POST, deployment or private capture. Existing once-only
+grants remain SPENT. Direct historical closure remains unchanged; no new real
+Event/World EI ACCEPTED or Core result is claimed.
+
 ## ONE readiness Event completed — 2026-11-01
 
 Reviewed readiness code `d0aacad` deployed through the original unobserved
