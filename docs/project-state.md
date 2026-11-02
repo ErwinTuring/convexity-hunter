@@ -1,5 +1,16 @@
 # Project State
 
+## ONE IREN Event — approved, scheduled, not attempted — 2026-11-03
+
+New user grant covers original normal deployment and ONE IREN Event, not
+another BUILD. Native heartbeat `iren-event-rth`, COUNT=1, targets22:35 Beijing
+today (14:35 UTC/09:35 ET), with fresh RTH/milestone/runtime checks. Private
+hashed plan and fresh persistent guard are prepared outside Git; guard absent,
+no paid operation or Host POST/deployment yet. Tavily3requests/3reservations,
+models2perrole, old limits/profile/neutral authority unchanged. Prerequisite
+failure or ambiguous send cannot authorize a rerun; task stops and disables
+itself. No real EI/Futu/Core result is claimed. See [checkpoint](current-checkpoint.md).
+
 ## Strict v4 Ordinary Shares identity path — 2026-11-03
 
 User-approved additive v0.5 composition: preflight READY, contract frozen,

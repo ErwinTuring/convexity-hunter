@@ -1,5 +1,48 @@
 # Current Checkpoint
 
+## ONE IREN Event approved and scheduled — 2026-11-03
+
+User explicitly approved deployment plus ONE new normal IREN Event, following
+the v0.5 identity BUILD. Reviewed production HEAD/main/origin/main `e1d0fd7`,
+clean. Currently outside RTH: no Host deployment, POST or paid operation has
+run. The new grant is APPROVED / NOT ATTEMPTED; earlier grants remain spent.
+
+Native thread automation `iren-event-rth` is ACTIVE with COUNT=1, scheduled
+2026-11-03 22:35 Beijing /14:35 UTC /09:35 America/New_York. It is not daily
+recurring work. At wakeup recheck actual regular session, source-backed
+future review milestone and all runtime prerequisites; missed/outside window
+or unmet prerequisites stop without automatic reschedule/extra paid diagnosis.
+The current ordinary IR page read returned403, not a new successful milestone
+verification. Public Nasdaq schedule confirms normal weekday09:30-16:00 ET;
+the actual runtime must revalidate, not rely on this stored schedule alone.
+
+Private600 plan (outside Git):
+`/Users/erwinlee/convexity-hunter/local-mvp/iren-event-acceptance-20261103.json`.
+Plan SHA-256 `4c6f8204cc1307388bdc7436d41ed272d2c6b515a421e2eb4b359222a4103c46`;
+input SHA-256 `c8b00bb4a3b97369a558946a72dbf64e1ae8d763151f90c9ecc5d0a9d60abe5a`.
+New persistent700 guard directory is adjacent under
+`local-mvp/acceptances/iren-event-20261103`; guard does NOT exist yet. Create
+`one-post.guard` with O_EXCL/0600 immediately before the only POST; existing
+guard or ambiguous send means spent. Do not reuse or delete older guards.
+
+Fixed Event/World configs, standard-research-profile v0.4 and neutral
+structural authority. Bounds4submissions/8hypotheses/512rows/512cases/15s.
+Tavily<=3 requests/3 credit reservations; DeepSeek<=2 per role; existing
+token/byte/timeout limits unchanged, PAYGO off required. Local flag is not
+live account verification. URLs are only search hints; no prefilled claims,
+bindings, hypotheses or submission, no forced mode or impact end. Lawful EI
+acceptance and maturity compatibility must automatically continue existing
+Futu/Core/SQLite/Chinese Workbench. Honest INCOMPLETE/unavailable/Core
+DATA_INSUFFICIENT_CORE/REJECT remain allowed. No World, provider substitution,
+observer, private candidate/rationale capture, production fix or outer retry.
+
+Original launcher's offline --check for UTC2026-11-03 PASS (no secret values
+loaded, Host not started); current input/config/plan permissions and absent
+guard verified, database inspected read-only. These are preparation checks,
+not live readiness or execution. Keep the computer/app/OpenD available; login
+or unlock needs user action. Scheduled task records completion or exact block,
+then disables/deletes itself. No full suite is needed for this docs-only grant.
+
 ## Strict v4 Ordinary Shares identity composition — 2026-11-03
 
 User approved the previously excluded Ordinary Shares/v4 identity path, not a
