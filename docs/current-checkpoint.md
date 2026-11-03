@@ -1,5 +1,50 @@
 # Current Checkpoint
 
+## Authorized paragraph-capacity correction and ONE next IREN run — 2026-11-04 Beijing
+
+User approved the offline capacity correction plus one further normal IREN
+acceptance. Catalog contract confirms `max_catalog_paragraphs` counts all scanned
+spans before nonunique/overlong exclusions; it is independent of eligible-entry
+and canonical-byte bounds. Only external Event config changed128 to1024 scans.
+Entries128, catalog65536bytes, run-input arrays128 (verified actual value),
+Discovery input80000bytes, Semantic input262144bytes and all source/model/token/
+timeout/profile/EI/Core limits remained unchanged. Generator/parser/production
+code did not change. Three existing focused catalog tests PASS: repeated
+exclusions beyond128, 1024/1025 boundaries, and independent complete-catalog
+bounds before model calls. This is a runtime resource adjustment, not evidence
+truncation or a schema/acceptance change; it cannot guarantee complete requests
+fit the independent model input bound.
+
+Event config hash changed from
+`66f4e0c05ef8149251f0e68772026b339d2b9be151dcebc7f8c105e9e9c7bc32` to
+`26a12bd5a90bcb1f42851e0bb7910c5f85dc8806e54348feec4277af30bcf568`;
+World config unchanged. Excluding that one key, parsed Event configuration is
+identical. Original normal Host restarted after confirming no active runs;
+actual UTC evaluation date remains2026-11-03, profilev0.4 and neutral maturity.
+New private600 plan `local-mvp/iren-event-acceptance-20261104.json` has SHA-256
+`cde92c789f42faab2f1d34d719aede2b2a47576ca739d281495382dc895538cf`;
+input/bounds/budgets equal the previous plan, with a fresh independent guard.
+
+Exactly ONE POST produced run `48aca9dd-d76d-49dd-8a4f-4fbc0e00e3e2` in RTH,
+UTC16:43:58.027–16:44:04.794 (Beijing November4 00:43:58–00:44:04).
+Terminal result `BLOCKED / MODEL_REQUEST_TOO_LARGE`. Normal retained producer
+failure audit records attempt1 `call_failed`, null call receipt and no output
+hash. Catalog construction no longer blocked this run; the Producer request
+failed the local encoded-input check before `client.complete`/remote dispatch,
+against unchanged80000-byte Discovery input capacity. No Producer output,
+Semantic Verifier, submission, EI, Futu/Core or report followed. Exact encoded
+request size was not retained: do not invent a required next limit. Source
+requests/credits consumed remain UNKNOWN; no billing probe was added.
+
+SQLite/normal GET retain the terminal stage and no batch/cases. Both one-shot
+guards are SPENT and preserved; no retry, truncation, automatic further limit
+increase, new raw/private capture, World call or production fix occurred.
+Next decision is a bounded Discovery input-capacity/budget adjustment, not
+another identity/date/semantic loosening. Any further paid acceptance requires
+a fresh grant. Validate request-size headroom offline before another run rather
+than escalating one live capacity failure at a time. Direct historical real
+closure remains unchanged; Event and World real EI/Core closure remain unproven.
+
 ## ONE IREN Event executed; catalog paragraph limit — 2026-11-04 Beijing
 
 After the scheduled wakeup did not produce an execution, the user explicitly

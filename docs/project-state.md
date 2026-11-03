@@ -1,5 +1,20 @@
 # Project State
 
+## ONE next IREN Event — catalog passes, model input blocked — 2026-11-04 Beijing
+
+User approved narrow external Event scan-cap128→1024 plus one new normal run.
+Three existing focused tests and offline config validation PASS; no production
+or test code changed, no evidence truncation or EI change. Entries128,
+catalog65536bytes, arrays128, Discovery input80000bytes and all other budgets
+remain fixed. Normal Host redeployed and one fresh-guard RTH run
+`48aca9dd-d76d-49dd-8a4f-4fbc0e00e3e2` ended
+`BLOCKED / MODEL_REQUEST_TOO_LARGE` before Producer remote dispatch.
+No output/submission/EI/Futu/Core/report; exact request bytes and actual source
+usage were not retained. Both guards remain SPENT; no automatic further cap
+increase/retry. Next is an explicit model-input capacity decision with offline
+headroom validation, not lowered evidence standards. Event/World real EI/Core
+closure remains unproven; Direct unchanged. See [checkpoint](current-checkpoint.md).
+
 ## ONE IREN Event — executed, catalog capacity blocked — 2026-11-04 Beijing
 
 User explicitly requested immediate execution after the scheduled wakeup failed
