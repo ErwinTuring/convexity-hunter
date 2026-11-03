@@ -1,6 +1,44 @@
 # Current Checkpoint
 
-## ONE IREN Event approved and scheduled — 2026-11-03
+## ONE IREN Event executed; catalog paragraph limit — 2026-11-04 Beijing
+
+After the scheduled wakeup did not produce an execution, the user explicitly
+requested one immediate IREN acceptance. Fresh fetch confirmed clean
+HEAD/main/origin/main `bd87ebf`; only scheduling documentation follows reviewed
+production `e1d0fd7`. The original unobserved Host was started with actual UTC
+evaluation date2026-11-03, unchanged private configs/database, Standard Research
+Profile v0.4 and NEUTRAL_STRUCTURAL_RESEARCH. Public Nasdaq hours/calendar and
+the official IREN November5 earnings announcement were rechecked; OpenD reported
+quote login=true and market_us=AFTERNOON. No trading call was made.
+
+Exactly ONE normal POST created run
+`0d54c468-a9c3-4b8a-a004-47824c3fd04f`, from UTC16:36:49.665 to16:37:03.169
+(Beijing November4 00:36:49–00:37:03). It terminated
+`BLOCKED / EVIDENCE_CATALOG_INVALID`. The existing normal Host warning records
+`grounder_catalog_failed check=PARAGRAPH_LIMIT`; unchanged configuration allows
+128 catalog paragraphs. This identifies a catalog construction capacity stop,
+not an economic-mechanism rejection or EI INCOMPLETE. The exact paragraph total
+and offending source are not retained and must not be inferred.
+
+The catalog is built before the Producer request: Producer/Verifier were not
+reached, no submission or EI assessment was produced, and Futu/Core/report
+execution did not occur. SQLite stores the normal terminal run/stage; normal
+GET returns no batch summary and no cases. Source requests/credits actually
+consumed are UNKNOWN because this failure result does not retain those totals;
+the original Tavily3requests/3reservations and models2perrole caps were unchanged.
+No new private observer, raw response/body, candidate/rationale capture or
+credential material was retained.
+
+The original private plan/input/config hashes remain unchanged. Its persistent
+0600 `one-post.guard` now exists: authorization SPENT, no retry. The missed
+`iren-event-rth` automation was deleted before the manual POST to prevent a
+late duplicate. No production/test/config changes, limit increase or replacement
+batch were made. Any further paid acceptance needs a new bounded grant; capacity
+changes are not authorized by this one-shot run. This result does not establish
+or disprove the new date/listing path's live semantic success. Direct's earlier
+real closure remains historical and unchanged; no World run was performed.
+
+## Historical: ONE IREN Event approved and scheduled — 2026-11-03
 
 User explicitly approved deployment plus ONE new normal IREN Event, following
 the v0.5 identity BUILD. Reviewed production HEAD/main/origin/main `e1d0fd7`,

@@ -1,6 +1,20 @@
 # Project State
 
-## ONE IREN Event — approved, scheduled, not attempted — 2026-11-03
+## ONE IREN Event — executed, catalog capacity blocked — 2026-11-04 Beijing
+
+User explicitly requested immediate execution after the scheduled wakeup failed
+to produce a run. Fresh clean `bd87ebf`/reviewed production `e1d0fd7` was deployed
+through the original Host with unchanged UTC2026-11-03/profile/config/budgets.
+One normal Event run `0d54c468-a9c3-4b8a-a004-47824c3fd04f` terminated in RTH
+`BLOCKED / EVIDENCE_CATALOG_INVALID`; existing Host warning identifies
+`PARAGRAPH_LIMIT` (configured128). No Producer/Verifier request, submission, EI,
+Futu/Core or report followed; SQLite holds the normal blocked run/stage only.
+Exact source usage, paragraph total and offending source were not retained.
+Guard SPENT, missed automation deleted, no retry or production/config change.
+Another paid run or capacity increase is not covered by this grant. See
+[checkpoint](current-checkpoint.md) for the precise evidence boundary.
+
+## Historical: ONE IREN Event — approved, scheduled, not attempted — 2026-11-03
 
 New user grant covers original normal deployment and ONE IREN Event, not
 another BUILD. Native heartbeat `iren-event-rth`, COUNT=1, targets22:35 Beijing
