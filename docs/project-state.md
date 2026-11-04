@@ -1,5 +1,22 @@
 # Project State
 
+## Scheduled IREN reached EI; still INCOMPLETE — 2026-11-04
+
+One actual RTH Event run `981a6477-c8a9-4351-8885-e577ac7c9b57` completed normal
+Grounder/independent Verifier/Builder and produced a submission assessed by EI.
+No input-capacity stop: Discovery/Semantic requests92379/132788bytes, one call
+per role. EI returned incomplete: event_date_range, underlying_key,
+distribution_mode and temporal_applicability remain missing. Shared executor
+recorded one UNAVAILABLE assessment/zero Core cases; no Futu research acquisition
+or Core calculation/report. SQLite normal audit and batch summary retained.
+This is real submission→EI execution, NOT EI ACCEPTED or real Event/Core closure.
+Precise upstream cause of each missing field is not established by this summary;
+no inference of missing source evidence, model failure or implementation defect.
+Grant SPENT, task `iren` deleted, no retry or production/config changes. Next
+bounded work is offline retained-field attribution, not another capacity rise.
+Direct unchanged; World still lacks real EI/Core proof. See
+[checkpoint](current-checkpoint.md) for exact stages and budget evidence.
+
 ## Unified input capacity prepared; ONE IREN acceptance pending RTH — 2026-11-04
 
 User approved unified offline sizing and continued one bounded IREN acceptance.

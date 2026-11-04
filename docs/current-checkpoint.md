@@ -1,5 +1,55 @@
 # Current Checkpoint
 
+## Scheduled IREN executed: submission reached EI, INCOMPLETE — 2026-11-04
+
+The native heartbeat actually woke at UTC14:35:20/Beijing22:35:20. Fresh fetch
+confirmed clean HEAD/main/origin/main `1a7a758`, with documentation-only changes
+since reviewed production `e1d0fd7`. Plan/input/config hashes and600/700 private
+permissions matched; new guard was absent. Official Nasdaq calendar/hours and
+the IREN November5 earnings announcement were freshly checked; OpenD reported
+quote login=true and market_us=AFTERNOON. Known normal Host had no active runs
+and was restarted with actual UTC evaluation date2026-11-04, original database,
+profilev0.4, neutral maturity and approved512KiB model input caps.
+
+Exactly ONE normal POST created `981a6477-c8a9-4351-8885-e577ac7c9b57` at
+UTC14:36:50.079, terminal14:37:33.995 (Beijing22:36:50–22:37:34).
+Result `BLOCKED / HOST_BATCH_BLOCKED`, but unlike the earlier capacity stops:
+grounder COMPLETED, semantic RECEIPT_VALIDATED, Builder COMPLETED,
+submission PRESENT, EI ASSESSED with assessment status `incomplete`.
+Normal audit:5 source bodies,11 claims,1 hypothesis,23 field bindings;
+event-fact anchor selected c1; semantic_rejections=[] and diagnostic_counts=[].
+An empty rejection array is not EI acceptance or complete research evidence.
+
+One Discovery and one Semantic response were received, both finish_reason=stop;
+full request sizes92379/132788bytes, below524288. Semantic transport used1 of2
+permitted attempts, with reported39869 prompt/3851 completion tokens. No outer
+retry, format/binding repair call or further limit increase was made. Actual
+Tavily request/credit totals and billed dollar cost are UNKNOWN from the normal
+retained view;5 source bodies must not be counted as5 Tavily requests. All
+approved source/output/token/time/count budgets remained fixed.
+
+The shared executor then performed the existing EI gate, saving one UNAVAILABLE
+assessment and zero Core cases. Exact reasons:
+`event_intelligence_not_accepted`, `incomplete_event_date_range`,
+`missing_underlying_key`, `missing_distribution_mode`,
+`missing_temporal_applicability`. No Futu research quote/chain acquisition or
+Core research calculation/report followed; the earlier OpenD state check is
+not a Futu/Core research success. SQLite/normal GET retain the submission-stage
+audit, terminal executor stage and blocked batch summary. No positive EI/Core
+closure is claimed. These projected gaps alone do not establish whether source
+evidence was absent, a model omitted a field, or a deterministic preparation
+rule refused it; do not invent more precise attribution or reinterpret this as
+an economic mechanism rejection. No historical/private raw-output recovery.
+
+New guard is now SPENT and preserved; both older guards remain untouched.
+Task `iren` was deleted after this terminal result: no daily recurrence,
+rescheduling, new batch, World call, production/config change or additional fee
+authorization. Next work, if approved, should inspect the retained structured
+field/preparation evidence offline rather than increase capacity or rerun just
+to obtain ACCEPTED. Direct historical closure remains unchanged; Event has now
+proved real normal Grounder→Builder→submission→EI execution, not EI ACCEPTED or
+Futu/Core execution; World real EI/Core closure remains unproven.
+
 ## Unified input-capacity policy prepared; ONE next IREN pending RTH — 2026-11-04
 
 User approved the unified offline capacity audit/input-capacity adjustment and
