@@ -1,5 +1,69 @@
 # Current Checkpoint
 
+## Unified input-capacity policy prepared; ONE next IREN pending RTH — 2026-11-04
+
+User approved the unified offline capacity audit/input-capacity adjustment and
+continued bounded acceptance. Fresh fetch: clean HEAD/main/origin/main `c738556`,
+reviewed production remains `e1d0fd7`. Actual preparation clock UTC00:17 onward
+is outside RTH: no new Event POST, Tavily/model request or Futu quote batch.
+The two earlier IREN guards remain SPENT; this new authorization is NOT ATTEMPTED.
+
+Only external Event configuration changed: Discovery max_input_bytes80000 and
+Semantic262144 both become524288 (512KiB). New config SHA-256
+`296a25465519de953c8b091ee4cc9a62de2bf536739094d9c88104106c36d68c`.
+Canonical parsed configuration excluding those two fields has identical hash
+`42c439f27519e58bfa01bb01549c490ca1a5bd95659639a324c74ace2aa24a95`.
+Source/model request limits remain3/3credits and2perrole; output tokens8000/6000,
+output bytes40000perrole, timeouts180/45s, source total20000bytes, catalog
+128entries/65536bytes, scans1024, arrays128 and max_json_bytes1048576 unchanged.
+No schema, generator, Producer/Verifier prompt, EI/Core, evidence selection or
+truncation change. Higher allowed input may increase billed input tokens;
+byte limits are not token counts, fixed cost, or live account/balance evidence.
+
+One-off repository-external offline script uses synthetic source bodies and
+the actual serializer only, with a transport that cannot send. Source bodies
+approach20KB; catalogs49–60KB and96–128entries. It measures whole requests,
+including actual v0.10 system notices, registered body/catalog JSON nesting,
+format-repair notice, near40KB synthetic prior DTO and128 binding objects:
+
+| Synthetic text | Initial Producer | Format repair | Binding repair | Verifier |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 99746 | 100254 | 144380 | 155959 |
+| Quote/backslash stress | 335724 | 336232 | 420062 | 511203 |
+| Multibyte UTF-8 | 100371 | 100879 | 144808 | 156387 |
+
+Numbers are encoded request bytes, NOT prior live request sizes, valid semantic
+submissions or investment evidence.512KiB fits these declared fixtures, not all
+schema-legal inputs. The normalized envelope can expand toward its separate1MiB
+bound; larger inputs/metadata or repeated quote expansion may still exceed wire
+capacity. Existing full-body pre-send refusal remains mandatory; no automatic
+limit escalation to guarantee success. Two existing model budget/failure tests
+and one synthetic config-load check PASS; independent bounded inspection finds
+no schema/transport conflict. No credential resolution or external request in
+these checks. Production/test code untouched; no full suite required.
+
+Private600 plan `local-mvp/iren-event-input-capacity-20261104.json`, SHA-256
+`17962dd5b987a6c03193b207e0f5af50f78c86dbd3691f5611b2c97476805c84`, preserves
+exact input hash `c8b00bb4a3b97369a558946a72dbf64e1ae8d763151f90c9ecc5d0a9d60abe5a`
+and prior bounds/profilev0.4/NEUTRAL_STRUCTURAL_RESEARCH. New private700 guard
+directory `local-mvp/acceptances/iren-event-input-capacity-20261104` has NO guard.
+Only create its0600 O_EXCL|O_NOFOLLOW marker immediately before the unique POST.
+Any existing marker or ambiguous send consumes the grant; never touch old guards.
+
+Native thread automation `iren` created/viewed and saved ACTIVE, COUNT=1,
+targets Beijing2026-11-04 22:35 /UTC14:35 /New York09:35. This is the one approved
+acceptance, not an extra batch or daily task. Prompt permits only that day's
+valid RTH, requires fresh Git/official session/future November5 milestone checks,
+actual UTC evaluation date2026-11-04, known normal Host with no active work and
+restart to apply new config/date. The still-listening original Host was not
+redeployed during preparation and must not be assumed to use these new values.
+Login/unlock needs user action; any precondition failure stops without paid
+diagnosis, rescheduling or a retry. Legal EI acceptance and maturity compatibility
+must continue automatically through existing Futu/Core/SQLite/Chinese Workbench.
+All other outcomes remain honest terminal results. Disable/delete after outcome
+or missed window. Prior scheduler non-execution is unresolved: task creation is
+not proof it will wake or proof of a real run. Computer/app/OpenD must be available.
+
 ## Authorized paragraph-capacity correction and ONE next IREN run — 2026-11-04 Beijing
 
 User approved the offline capacity correction plus one further normal IREN

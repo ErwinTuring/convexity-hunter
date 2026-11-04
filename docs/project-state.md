@@ -1,5 +1,22 @@
 # Project State
 
+## Unified input capacity prepared; ONE IREN acceptance pending RTH — 2026-11-04
+
+User approved unified offline sizing and continued one bounded IREN acceptance.
+Only external model input caps now512KiB each; all request/output/source/time/
+catalog/array limits, public contracts, prompts and EI/Core standards unchanged.
+Actual serializer stress audits initial/format-repair/binding-repair/Verifier
+requests, up to511203bytes in the declared synthetic fixtures. Not a universal
+maximum: expanded envelopes/metadata can still exceed capacity and must fail
+closed. Three focused checks and bounded independent inspection PASS; no
+production/test code, credentials or paid calls changed/consumed in preparation.
+New hashed private plan and distinct unused guard prepared; older grants SPENT.
+Native thread task `iren`, COUNT=1, targets tonight November4 22:35 Beijing,
+requires fresh RTH/milestone/Git/normal Host checks and redeployment with actual
+UTC date/new caps. Creation is not execution, and previous scheduler failure
+remains unexplained. No new EI/Futu/Core result claimed. See
+[checkpoint](current-checkpoint.md) for sizes, hashes and execution conditions.
+
 ## ONE next IREN Event — catalog passes, model input blocked — 2026-11-04 Beijing
 
 User approved narrow external Event scan-cap128→1024 plus one new normal run.
