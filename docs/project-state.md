@@ -1,5 +1,19 @@
 # Project State
 
+## Retained IREN field attribution completed offline — 2026-11-04
+
+Existing structured submission decodes and re-assesses identically; no
+SQLite/EI round-trip loss found. Mode and temporal fields are null in the
+retained hypothesis, which explicitly withholds mode support. Selected c1
+paraphrases/combines the event and fails the frozen v0.7 Parent-occurrence
+text pattern; this proves a necessary-condition mismatch, not its first failing
+date/admission check. Underlying source/composition failure is not reconstructed
+from the null key. h1's later Mackenzie financing must not be merged with c1's
+May29 Hardware3 guarantee. No new production defect proven, speculative patch,
+field fill or paid rerun. A bounded versioned Producer output-guidance change
+is the proposed next work unit, with all acceptance gates preserved; see
+[checkpoint](current-checkpoint.md). Historical EI INCOMPLETE remains unchanged.
+
 ## Scheduled IREN reached EI; still INCOMPLETE — 2026-11-04
 
 One actual RTH Event run `981a6477-c8a9-4351-8885-e577ac7c9b57` completed normal

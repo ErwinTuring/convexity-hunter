@@ -1,5 +1,49 @@
 # Current Checkpoint
 
+## Offline retained IREN submission attribution — 2026-11-04
+
+User requested continuation after the spent scheduled run. Read-only access
+was restricted to its existing normal structured submission snapshot, not raw
+model responses/source bodies or a new private capture. Decoding with the
+existing snapshot decoder and recomputing EI exactly reproduces the stored
+INCOMPLETE assessment. No SQLite/assessment round-trip field loss was found;
+this does not reconstruct all pre-Builder inputs or prove source sufficiency.
+
+Retained h1 has underlying_key, distribution_mode, expected_window and
+reassessment all null. Its text explicitly withholds distribution mode and
+states that direction/magnitude/mode support is not established; the existing
+Builder copies supplied mode and temporal fields rather than inventing them.
+Do not substitute a mode, November5 impact end/reassessment, or symbol inferred
+from prose merely to make this case ACCEPTED. Raw underlying_symbol and exact
+identity-composition receipts are not present in this projection, so the exact
+upstream cause of underlying_key=null remains unproven.
+
+Selected observed statement c1 includes May29 but rewrites the subject as
+`IREN Limited (the Parent)` and joins the act with a separate non-guarantee
+qualification. Its retained text fails the existing v0.7 Parent-occurrence
+pattern. Frozen v0.7 also requires exact equality to the original occurrence
+sentence, an explicit ISO claim event_date and an independently verified date
+binding. Thus c1 cannot satisfy that rule as written. This is a demonstrated
+necessary-condition mismatch, NOT proof of the first failed check: original
+claim.event_date, bound quote and issued admission were not retained here.
+The normal Producer DTO permits descriptive claim text/nullable dates; whether
+to add an explicitly versioned exact-anchor output instruction is a separate
+bounded output-contract work unit, not permission to relax date authority.
+
+The submitted h1 primarily uses a later Mackenzie financing described through
+a secondary source; c1 anchors the May29 Hardware3 guarantee. The retained
+contradiction review explicitly distinguishes these financings. Do not merge
+their guarantees, dates or payment terms to repair this submission. Only two
+used sources remain in the EI snapshot; this does not mean the five-body input
+registry lacked the other sources, listing evidence or earnings notice.
+
+No proven production transmission defect was established in this audit, so no
+speculative code patch, source/model call, rerun, temporal-policy assumption or
+automatic field fill was made. Historical run/assessment remain unchanged.
+Further output guidance must preserve the existing exact-source/date/identity
+and interpretation gates, be versioned/reviewed, and make no acceptance promise.
+Any new paid Event/World acceptance still requires a fresh bounded grant.
+
 ## Scheduled IREN executed: submission reached EI, INCOMPLETE — 2026-11-04
 
 The native heartbeat actually woke at UTC14:35:20/Beijing22:35:20. Fresh fetch
