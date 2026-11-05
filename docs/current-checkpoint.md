@@ -1,6 +1,48 @@
 # Current Checkpoint
 
-## ONE post-guidance IREN acceptance approved / scheduled — 2026-11-05
+## Post-guidance IREN executed: source-body total cap — 2026-11-05
+
+Heartbeat woke UTC14:35:12/Beijing22:35:12. Fresh fetch confirmed clean
+HEAD/main/origin/main `0a9ebad`; only scheduling docs follow reviewed production
+`0dca40e`. Plan/input/config hashes and private permissions matched; fresh
+guard was absent. Nasdaq calendar/regular hours were checked. The planned
+IR-page Web read returned403; the same IREN-issued announcement was read on
+[GlobeNewswire](https://www.globenewswire.com/news-release/2026/10/22/3386871/0/en/index.html)
+and corroborated in the issuer's [news index](https://www.iren.com/investors/news).
+Its November5 17:00 ET conference call remained future. These were preflight
+public reads, not Tavily results or injected Grounder evidence; exact POST
+input remained unchanged. No Provider/model source substitution occurred.
+
+Port8080 had no listener; original normal Host started with actual UTC
+evaluation date2026-11-05 and reviewed code, original config/database,
+profilev0.4/neutral authority. OpenD quote login=true, market_us=AFTERNOON;
+that state probe is not research quote evidence or a canonical timestamp claim.
+
+Exactly ONE normal POST created `4117d0b0-8cc1-4cd3-8276-b075efdac2b9`,
+UTC14:38:58.998–14:39:12.427 (Beijing22:38:59–22:39:12).
+Terminal `BLOCKED / SOURCE_BODY_LIMIT_EXCEEDED`. The fixed cumulative UTF-8
+source-body bound is20000bytes; the existing guard rejects before catalog
+construction and Producer dispatch. No new model output, semantic receipt,
+submission, EI, Futu research acquisition, Core or report followed. SQLite/
+normal GET retain only the terminal Grounder stage, no batch summary/cases.
+This does not validate or disprove the new Producer guidance's real output.
+
+Exact accumulated/complete body size, body count and offending source were
+not retained. Source requests/credits actually consumed and billed cost remain
+UNKNOWN in the normal result; do not infer them or perform a billing/refetch
+probe. No outer retry, cap/query/production/config change, clipping, private
+observer/capture, World call, case substitution, provider or trading operation.
+All approved budgets unchanged. A future change to source-body capacity is
+an explicit bounded resource decision, not automatic escalation or grounds to
+weaken source/EI rules; do not rerun just to obtain success.
+
+Fresh0600 guard is now SPENT, three older guards untouched. Immutable plan/
+config hashes remain matched. One-shot task `iren-producer-rth` deleted after
+terminal result, no recurrence/rescheduling. Direct historical closure and
+the previous IREN EI INCOMPLETE remain unchanged; Event/World real EI ACCEPTED
+to Core closure is still unproven. No further paid acceptance authorized.
+
+## Historical: ONE post-guidance IREN acceptance approved / scheduled — 2026-11-05
 
 User explicitly approved one new IREN RTH acceptance after reviewed production
 `0dca40e`. Fresh fetch confirms clean HEAD/main/origin/main at that commit.

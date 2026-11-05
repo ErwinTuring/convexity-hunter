@@ -1,6 +1,20 @@
 # Project State
 
-## ONE post-guidance IREN acceptance approved / pending RTH — 2026-11-05
+## Post-guidance IREN executed; pre-Producer source cap — 2026-11-05
+
+Scheduled RTH run `4117d0b0-8cc1-4cd3-8276-b075efdac2b9` actually executed
+through the normal Host on reviewed `0dca40e`, ending
+`BLOCKED / SOURCE_BODY_LIMIT_EXCEEDED`. Accumulated source bodies exceeded the
+unchanged20000-byte total before catalog/Producer dispatch. No model output,
+Verifier, submission, EI/Futu/Core/report; new Producer guidance remains
+unvalidated by a real model output. Normal SQLite stage retained, no batch/cases.
+Exact size/source and actual source usage unretained; no guess, refetch or
+private capture. Grant SPENT, task `iren-producer-rth` deleted; no retry,
+reschedule or production/config/cap increase. A further source-body budget
+change and paid acceptance need explicit scope. Direct/history unchanged;
+see [checkpoint](current-checkpoint.md) for preflight/source-role boundaries.
+
+## Historical: ONE post-guidance IREN acceptance approved / pending RTH — 2026-11-05
 
 New user approval covers one normal IREN acceptance of reviewed `0dca40e`, not
 an extra BUILD. Fresh Git clean; outside RTH during preparation, no deployment,
