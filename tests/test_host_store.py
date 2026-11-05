@@ -671,7 +671,11 @@ def make_v1_database(path):
 
 class HostStoreTests(unittest.TestCase):
     def test_grounder_v010_prompt_pair_uses_existing_bound_object_wire(self):
-        from convexity_hunter.host_store import _grounder_verifier_route_is_valid
+        from convexity_hunter.host_store import (
+            _grounder_bound_object_route_is_valid,
+            _grounder_producer_wire_version_is_valid,
+            _grounder_verifier_route_is_valid,
+        )
 
         self.assertTrue(_grounder_verifier_route_is_valid(
             "host-grounder-discovery-prompt-v0.10",
@@ -698,6 +702,74 @@ class HostStoreTests(unittest.TestCase):
             "host-grounder-semantic-verifier-prompt-v0.10",
             "semantic-verdict-v0.3",
         ))
+        self.assertTrue(_grounder_verifier_route_is_valid(
+            "host-grounder-discovery-prompt-v0.12",
+            "host-grounder-semantic-verifier-prompt-v0.10",
+            "semantic-verdict-v0.4",
+        ))
+        for producer_version in ("v0.12", "v0.13"):
+            with self.subTest(new_producer_legacy_verifier=producer_version):
+                self.assertFalse(_grounder_verifier_route_is_valid(
+                    "host-grounder-discovery-prompt-" + producer_version,
+                    "host-grounder-semantic-verifier-prompt-v0.7",
+                    "semantic-verdict-v0.3",
+                ))
+        self.assertTrue(_grounder_bound_object_route_is_valid(
+            "host-grounder-discovery-prompt-v0.12",
+            "host-grounder-semantic-verifier-prompt-v0.10",
+            "semantic-verdict-v0.4",
+        ))
+        self.assertTrue(_grounder_verifier_route_is_valid(
+            "host-grounder-discovery-prompt-v0.13",
+            "host-grounder-semantic-verifier-prompt-v0.11",
+            "semantic-verdict-v0.5",
+        ))
+        self.assertTrue(_grounder_bound_object_route_is_valid(
+            "host-grounder-discovery-prompt-v0.13",
+            "host-grounder-semantic-verifier-prompt-v0.11",
+            "semantic-verdict-v0.5",
+        ))
+        self.assertFalse(_grounder_verifier_route_is_valid(
+            "host-grounder-discovery-prompt-v0.13",
+            "host-grounder-semantic-verifier-prompt-v0.10",
+            "semantic-verdict-v0.4",
+        ))
+        self.assertFalse(_grounder_verifier_route_is_valid(
+            "host-grounder-discovery-prompt-v0.11",
+            "host-grounder-semantic-verifier-prompt-v0.11",
+            "semantic-verdict-v0.5",
+        ))
+        self.assertTrue(_grounder_producer_wire_version_is_valid(
+            "host-grounder-discovery-prompt-v0.13", "grounder-output-v0.4"
+        ))
+        self.assertFalse(_grounder_producer_wire_version_is_valid(
+            "host-grounder-discovery-prompt-v0.13", "grounder-output-v0.3"
+        ))
+
+    def test_grounder_v013_archive_requires_its_world_source_coverage_binding(self):
+        from convexity_hunter.host_store import _grounder_stage_outcome
+
+        result = make_grounder_no_submission_result()
+        run_id = result.build_result.context.run_id
+        sidecar = json.loads(result.audit.sidecar_utf8)
+        sidecar.update({
+            "producer_wire_version": "grounder-output-v0.4",
+            "producer_prompt_version": "host-grounder-discovery-prompt-v0.13",
+            "verifier_wire_version": "semantic-verdict-v0.5",
+            "validator_version": "host-grounder-semantic-verifier-prompt-v0.11",
+        })
+        sidecar_wire = json.dumps(
+            sidecar, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        forged_audit = replace(
+            result.audit,
+            sidecar_utf8=sidecar_wire,
+            sidecar_sha256=hashlib.sha256(sidecar_wire).hexdigest(),
+        )
+        with self.assertRaisesRegex(ValueError, "World Producer archive has invalid source coverage"):
+            _grounder_stage_outcome(
+                replace(result, audit=forged_audit), run_id, "synthetic fixture event"
+            )
 
     def setUp(self):
         canonical_temp_root = pathlib.Path(tempfile.gettempdir()).resolve()

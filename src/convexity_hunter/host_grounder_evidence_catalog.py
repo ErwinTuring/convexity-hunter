@@ -48,6 +48,8 @@ _PRODUCER_PROMPT_VERSION_V0_8 = "host-grounder-discovery-prompt-v0.8"
 _PRODUCER_PROMPT_VERSION_V0_9 = "host-grounder-discovery-prompt-v0.9"
 _PRODUCER_PROMPT_VERSION_V0_10 = "host-grounder-discovery-prompt-v0.10"
 _PRODUCER_PROMPT_VERSION_V0_11 = "host-grounder-discovery-prompt-v0.11"
+_PRODUCER_PROMPT_VERSION_V0_12 = "host-grounder-discovery-prompt-v0.12"
+_PRODUCER_PROMPT_VERSION_V0_13 = "host-grounder-discovery-prompt-v0.13"
 _PRODUCER_PROMPT_VERSIONS = frozenset(
     (
         _PRODUCER_PROMPT_VERSION_V0_4,
@@ -58,6 +60,8 @@ _PRODUCER_PROMPT_VERSIONS = frozenset(
         _PRODUCER_PROMPT_VERSION_V0_9,
         _PRODUCER_PROMPT_VERSION_V0_10,
         _PRODUCER_PROMPT_VERSION_V0_11,
+        _PRODUCER_PROMPT_VERSION_V0_12,
+        _PRODUCER_PROMPT_VERSION_V0_13,
     )
 )
 _PRODUCER_PROMPT_VERSION = _PRODUCER_PROMPT_VERSION_V0_4
@@ -92,6 +96,14 @@ _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD = (
     _PRODUCER_PROMPT_VERSION_V0_11,
     _VERIFIER_PROMPT_VERSION_V0_11,
 )
+_BINDING_OMISSION_FAILURE_ROUTE_V0_12 = (
+    _PRODUCER_PROMPT_VERSION_V0_12,
+    _VERIFIER_PROMPT_VERSION_V0_10,
+)
+_BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD = (
+    _PRODUCER_PROMPT_VERSION_V0_13,
+    _VERIFIER_PROMPT_VERSION_V0_11,
+)
 _BINDING_OMISSION_FAILURE_MARKERS = frozenset((
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     _BINDING_OMISSION_DELTA_FAILURE_CHECK,
@@ -110,6 +122,12 @@ _VERIFIER_PROMPT_VERSIONS = frozenset(
 
 
 def _valid_prompt_pair(producer_prompt_version: str, semantic_prompt_version: str) -> bool:
+    # New Producer identities are deliberately not allowed through the legacy
+    # verifier fallthrough below. They preserve the existing Event/World pairs.
+    if producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_12:
+        return semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_10
+    if producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_13:
+        return semantic_prompt_version == _VERIFIER_PROMPT_VERSION_V0_11
     if semantic_prompt_version in (
         _VERIFIER_PROMPT_VERSION_V0_8,
         _VERIFIER_PROMPT_VERSION_V0_9,
@@ -141,6 +159,8 @@ def _producer_repair_prompt_version(
             _PRODUCER_PROMPT_VERSION_V0_9,
             _PRODUCER_PROMPT_VERSION_V0_10,
             _PRODUCER_PROMPT_VERSION_V0_11,
+            _PRODUCER_PROMPT_VERSION_V0_12,
+            _PRODUCER_PROMPT_VERSION_V0_13,
         )
         and semantic_prompt_version in (
             _VERIFIER_PROMPT_VERSION_V0_8,
@@ -1411,7 +1431,10 @@ class HostEvidenceCatalogAuditHolder:
                 "canonical_input_hash": self._canonical_input_hash,
                 "producer_wire_version": (
                     "grounder-output-v0.4"
-                    if self._producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+                    if self._producer_prompt_version in (
+                        _PRODUCER_PROMPT_VERSION_V0_11,
+                        _PRODUCER_PROMPT_VERSION_V0_13,
+                    )
                     else _PRODUCER_WIRE_VERSION
                 ),
                 "producer_prompt_version": self._producer_prompt_version,

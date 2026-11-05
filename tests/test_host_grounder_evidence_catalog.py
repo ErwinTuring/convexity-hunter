@@ -329,7 +329,10 @@ def _run_v09(run_input, context, producer, verdict, *, discovery=None):
     return result, calls
 
 
-def _run_v0_10(run_input, context, producer, verdict, *, discovery=None):
+def _run_v0_10(
+    run_input, context, producer, verdict, *, discovery=None,
+    producer_anchor_guidance_enabled=False,
+):
     calls = discovery.calls if discovery is not None else []
     result = runtime_module._run_host_grounder_same_run_evidence_catalog_v0_10(
         run_input,
@@ -347,6 +350,7 @@ def _run_v0_10(run_input, context, producer, verdict, *, discovery=None):
         max_catalog_paragraphs=128,
         host_context_preparer=lambda _snapshot, _receipt, supplied: supplied,
         default_recipe_enabled=True,
+        producer_anchor_guidance_enabled=producer_anchor_guidance_enabled,
     )
     return result, calls
 
@@ -1630,6 +1634,117 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         self.assertNotIn("PDUFA target action date", _DISCOVERY_SYSTEM_PROMPT_V0_9)
         self.assertNotIn("PDUFA target action date", runtime_module._SEMANTIC_SYSTEM_PROMPT_V0_9)
 
+    def test_v012_v013_anchor_guidance_is_shared_and_prompt_pairs_are_closed(self):
+        guidance = runtime_module._PRODUCER_DATE_ANCHOR_GUIDANCE_V0_1
+        event_prompt = runtime_module._DISCOVERY_SYSTEM_PROMPT_V0_12
+        world_prompt = runtime_module._DISCOVERY_SYSTEM_PROMPT_V0_13
+        self.assertIn("host-grounder-discovery-prompt-v0.12", event_prompt)
+        self.assertIn("host-grounder-discovery-prompt-v0.13", world_prompt)
+        self.assertTrue(event_prompt.endswith(guidance))
+        self.assertTrue(world_prompt.endswith(guidance))
+        for required in (
+            "not to every observed fact",
+            "exact full original sentence",
+            "complete catalog paragraph",
+            "same paragraph supports the date in its occurrence role",
+            "preserve legitimately supported values under their unchanged contracts",
+        ):
+            self.assertIn(required, guidance)
+        self.assertNotIn("IREN", guidance)
+
+        event_pair = (
+            "host-grounder-discovery-prompt-v0.12",
+            "host-grounder-semantic-verifier-prompt-v0.10",
+        )
+        world_pair = (
+            "host-grounder-discovery-prompt-v0.13",
+            "host-grounder-semantic-verifier-prompt-v0.11",
+        )
+        self.assertTrue(catalog_module._valid_prompt_pair(*event_pair))
+        self.assertTrue(catalog_module._valid_prompt_pair(*world_pair))
+        legacy_verifiers = tuple(
+            "host-grounder-semantic-verifier-prompt-v0.{}".format(version)
+            for version in (5, 6, 7, 8, 9)
+        )
+        for producer_version in (event_pair[0], world_pair[0]):
+            for verifier_version in legacy_verifiers:
+                with self.subTest(producer=producer_version, verifier=verifier_version):
+                    self.assertFalse(
+                        catalog_module._valid_prompt_pair(
+                            producer_version, verifier_version
+                        )
+                    )
+        self.assertFalse(catalog_module._valid_prompt_pair(event_pair[0], world_pair[1]))
+        self.assertFalse(catalog_module._valid_prompt_pair(world_pair[0], event_pair[1]))
+        for pair in (event_pair, world_pair):
+            self.assertEqual(
+                catalog_module._producer_repair_prompt_version(
+                    "rejected",
+                    catalog_module._BINDING_OMISSION_FIRST_FAILURE_CHECK,
+                    *pair,
+                ),
+                catalog_module._BINDING_OMISSION_REPAIR_PROMPT_VERSION,
+            )
+
+        run_input, context = _fixture()
+        catalog = _catalog_for(run_input, context)
+        for pair, producer_wire in (
+            (event_pair, "grounder-output-v0.3"),
+            (world_pair, "grounder-output-v0.4"),
+        ):
+            holder = HostEvidenceCatalogAuditHolder(
+                run_id=run_input.run_id,
+                canonical_input_hash=run_input.canonical_input_hash,
+            )
+            holder._begin(
+                run_input.run_id,
+                run_input.canonical_input_hash,
+                catalog.canonical_utf8,
+                catalog.catalog_sha256,
+                producer_prompt_version=pair[0],
+                semantic_prompt_version=pair[1],
+            )
+            holder._capture_producer_content(b"{}")
+            audit = holder._finalize(
+                b"{}",
+                catalog=catalog,
+                expected_producer_prompt_version=pair[0],
+                expected_semantic_prompt_version=pair[1],
+            )
+            sidecar = json.loads(audit.sidecar_utf8)
+            self.assertEqual(sidecar["producer_wire_version"], producer_wire)
+            self.assertEqual(
+                sidecar["verifier_wire_version"],
+                "semantic-verdict-v0.4" if pair == event_pair else "semantic-verdict-v0.5",
+            )
+
+    def test_v013_world_pair_without_source_coverage_stops_before_calls(self):
+        run_input, context = _fixture()
+        calls = []
+        with self.assertRaises(HostGrounderRuntimeError) as raised:
+            runtime_module._run_host_grounder_same_run_evidence_catalog(
+                run_input,
+                context,
+                discovery_client=_FakeClient("discovery", "{}", calls),
+                semantic_client=_FakeClient("semantic", "{}", calls),
+                audit_holder=HostEvidenceCatalogAuditHolder(
+                    run_id=run_input.run_id,
+                    canonical_input_hash=run_input.canonical_input_hash,
+                ),
+                max_json_bytes=100_000,
+                max_source_body_bytes=20_000,
+                max_catalog_entries=64,
+                max_catalog_bytes=32_768,
+                max_catalog_paragraphs=128,
+                producer_prompt_version="host-grounder-discovery-prompt-v0.13",
+                semantic_prompt_version="host-grounder-semantic-verifier-prompt-v0.11",
+                context_preparer=lambda _snapshot, _receipt, supplied: supplied,
+                producer_diagnostics_v0_3=True,
+                producer_format_repair_enabled=True,
+            )
+        self.assertEqual(raised.exception.code, "SOURCE_COVERAGE_BINDING_INVALID")
+        self.assertEqual(calls, [])
+
     def test_semantic_v06_has_literal_version_header_and_format_only_map_rule(self):
         self.assertEqual(
             hashlib.sha256(SEMANTIC_SYSTEM_PROMPT_V0_6.encode("utf-8")).hexdigest(),
@@ -2493,6 +2608,44 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
             sidecar["producer_repair_prompt_version"],
             "host-grounder-discovery-binding-omission-repair-v0.2",
         )
+
+        calls = []
+        discovery = _FakeClient(
+            "discovery", [_canonical(first), _canonical(corrected)], calls,
+            request_budget=2,
+        )
+        guided_verdict = _wire_verdict_v0_4(
+            run_input, context, catalog, corrected_envelope, corrected_bytes, corrected
+        )
+        guided_result, calls = _run_v0_10(
+            run_input,
+            context,
+            corrected,
+            guided_verdict,
+            discovery=discovery,
+            producer_anchor_guidance_enabled=True,
+        )
+        self.assertEqual(
+            [call[0] for call in calls], ["discovery", "discovery", "semantic"]
+        )
+        for prompt_call in calls[:2]:
+            self.assertIn(
+                "Potential event-occurrence anchor guidance (v0.1; shared Event/World)",
+                prompt_call[1],
+            )
+        guided_sidecar = json.loads(guided_result.audit.sidecar_utf8)
+        self.assertEqual(
+            (
+                guided_sidecar["producer_prompt_version"],
+                guided_sidecar["validator_version"],
+                guided_sidecar["producer_repair_prompt_version"],
+            ),
+            (
+                "host-grounder-discovery-prompt-v0.12",
+                "host-grounder-semantic-verifier-prompt-v0.10",
+                "host-grounder-discovery-binding-omission-repair-v0.2",
+            ),
+        )
         attempts = sidecar["producer_attempts"]
         self.assertEqual([item["status"] for item in attempts], ["rejected", "accepted"])
         self.assertEqual(
@@ -2545,6 +2698,35 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         self.assertEqual(
             [item.status for item in repaired.audit.producer_attempts],
             ["format_rejected", "accepted"],
+        )
+
+        calls = []
+        discovery = _FakeClient(
+            "discovery", ["[]", _canonical(producer)], calls, request_budget=2
+        )
+        guided_repair, calls = _run_v0_10(
+            run_input,
+            context,
+            producer,
+            verdict,
+            discovery=discovery,
+            producer_anchor_guidance_enabled=True,
+        )
+        self.assertEqual(
+            [call[0] for call in calls], ["discovery", "discovery", "semantic"]
+        )
+        for prompt_call in calls[:2]:
+            self.assertIn(
+                "Potential event-occurrence anchor guidance (v0.1; shared Event/World)",
+                prompt_call[1],
+            )
+        guided_sidecar = json.loads(guided_repair.audit.sidecar_utf8)
+        self.assertEqual(
+            (guided_sidecar["producer_prompt_version"], guided_sidecar["validator_version"]),
+            (
+                "host-grounder-discovery-prompt-v0.12",
+                "host-grounder-semantic-verifier-prompt-v0.10",
+            ),
         )
 
     def test_v010_source_backed_exposure_and_future_milestone_reach_ei_offline(self):
@@ -2851,9 +3033,45 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(len(retained["producer_attempts"]), 2)
 
+        calls = []
+        guided_discovery = _FakeClient(
+            "discovery", [_canonical(first), _canonical(first)], calls,
+            request_budget=2,
+        )
+        with self.assertRaises(HostGrounderRuntimeError) as guided_raised:
+            _run_v0_10(
+                run_input,
+                context,
+                producer,
+                verdict,
+                discovery=guided_discovery,
+                producer_anchor_guidance_enabled=True,
+            )
+        guided_error = guided_raised.exception
+        self.assertEqual(
+            guided_error._semantic_transport_route,
+            (
+                "host-grounder-discovery-prompt-v0.12",
+                "host-grounder-semantic-verifier-prompt-v0.10",
+            ),
+        )
+        from convexity_hunter.host_server import _grounder_producer_failure_audit
+        from convexity_hunter.host_store import _validate_grounder_producer_failure_audit
+
+        guided_failure = _grounder_producer_failure_audit(guided_error, "BLOCKED")
+        self.assertIsNotNone(guided_failure)
+        self.assertEqual(
+            (guided_failure["producer_prompt_version"], guided_failure["verifier_prompt_version"]),
+            guided_error._semantic_transport_route,
+        )
+        self.assertEqual(
+            _validate_grounder_producer_failure_audit(guided_failure), guided_failure
+        )
+
     def test_v011_covered_world_route_retains_exact_prompt_pair_and_rejects_mixed_pair(self):
         from convexity_hunter.host_grounder_evidence_catalog import (
             _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
         )
         from convexity_hunter.host_server import _grounder_producer_failure_audit
         from convexity_hunter.host_source_coverage import HostSourceCoverageAudit
@@ -2947,6 +3165,45 @@ class EvidenceCatalogRuntimeTests(unittest.TestCase):
         mixed_audit["verifier_prompt_version"] = mixed_route[1]
         with self.assertRaises(ValueError):
             _validate_grounder_producer_failure_audit(mixed_audit)
+
+        guided_calls = []
+        guided_discovery = _FakeClient(
+            "discovery", [_canonical(producer), _canonical(producer)], guided_calls,
+            request_budget=2,
+        )
+        with self.assertRaises(HostGrounderRuntimeError) as guided_raised:
+            _run_v0_10(
+                run_input,
+                covered_context,
+                producer,
+                "semantic must not be called",
+                discovery=guided_discovery,
+                producer_anchor_guidance_enabled=True,
+            )
+        guided_error = guided_raised.exception
+        self.assertEqual(
+            guided_error._semantic_transport_route,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
+        )
+        self.assertEqual(
+            guided_error._producer_failure_route,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
+        )
+        self.assertEqual(len(guided_calls), 2)
+        self.assertTrue(all(
+            "Potential event-occurrence anchor guidance (v0.1; shared Event/World)"
+            in call[1]
+            for call in guided_calls
+        ))
+        guided_failure = _grounder_producer_failure_audit(guided_error, "BLOCKED")
+        self.assertIsNotNone(guided_failure)
+        self.assertEqual(
+            (guided_failure["producer_prompt_version"], guided_failure["verifier_prompt_version"]),
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
+        )
+        self.assertEqual(
+            _validate_grounder_producer_failure_audit(guided_failure), guided_failure
+        )
 
     def test_v010_no_spare_producer_budget_stops_on_first_binding_omission(self):
         run_input, context = _fixture()

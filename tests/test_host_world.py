@@ -659,6 +659,8 @@ class HostWorldTests(unittest.TestCase):
             _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
             _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_12,
+            _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
         )
         from convexity_hunter.host_grounder_runtime import (
             _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK,
@@ -677,6 +679,16 @@ class HostWorldTests(unittest.TestCase):
             return error, calls
 
         accepted_fixtures = (
+            (
+                "normal-event-v0.12-pair",
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_12,
+                lambda: omission_failure(True, _BINDING_OMISSION_FAILURE_ROUTE_V0_12)[0],
+            ),
+            (
+                "covered-world-v0.13-pair",
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
+                lambda: omission_failure(True, _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD)[0],
+            ),
             (
                 "legacy-v0.9-v0.8",
                 _BINDING_OMISSION_FAILURE_ROUTE,
@@ -743,16 +755,23 @@ class HostWorldTests(unittest.TestCase):
                 ),
             ),
         )
-        parsed_compliance_error._semantic_transport_route = next(
-            route for route in _BINDING_COMPLIANCE_CLOSURE_ROUTES
-            if route[0] == "host-grounder-discovery-prompt-v0.11"
-        )
-        self.grounder_query_error = parsed_compliance_error
-        with self.assertRaises(HostGrounderRuntimeError) as raised:
-            self._run_through_real_core(skill_result=empty_skill)
-        self.assertIs(raised.exception, parsed_compliance_error)
+        for closure_route in _BINDING_COMPLIANCE_CLOSURE_ROUTES:
+            with self.subTest(parsed_compliance_route=closure_route):
+                parsed_compliance_error._semantic_transport_route = closure_route
+                self.grounder_query_error = parsed_compliance_error
+                with self.assertRaises(HostGrounderRuntimeError) as raised:
+                    self._run_through_real_core(skill_result=empty_skill)
+                self.assertIs(raised.exception, parsed_compliance_error)
 
         invalid_fixtures = (
+            (
+                "covered-world-v0.13-mixed-pair",
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
+                (
+                    "host-grounder-discovery-prompt-v0.13",
+                    "host-grounder-semantic-verifier-prompt-v0.10",
+                ),
+            ),
             ("unstamped", None, None),
             (
                 "route-mismatch",

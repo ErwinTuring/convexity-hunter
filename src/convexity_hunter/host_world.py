@@ -33,6 +33,8 @@ from .host_grounder_evidence_catalog import (
     _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
     _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
     _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_12,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
 )
 from .host_grounder_runtime import (
@@ -1875,6 +1877,8 @@ def _create_world_runner_impl(
                                 _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
                                 _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
                                 _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+                                _BINDING_OMISSION_FAILURE_ROUTE_V0_12,
+                                _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
                             )
                             and getattr(error, "_semantic_transport_route", route)
                             == route

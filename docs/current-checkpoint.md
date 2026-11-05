@@ -1,5 +1,39 @@
 # Current Checkpoint
 
+## Producer date-anchor guidance v0.1 — implemented / reviewed / tested — 2026-11-05
+
+User approved the smallest explicitly versioned Producer output-guidance work
+unit. Grounded clean HEAD/main/origin/main `d517054`; implementation follows
+the frozen guidance section in [source-facts v0.7](host-event-source-facts-v0.7.md#producer-date-anchor-output-guidance-v01--2026-11-05).
+New normal Producer versions12(Event)/13(World) retain unchanged Verifier10/11,
+wire DTOs and exact date/source/identity/EI/Core authority. A private opt-in flag
+leaves prior/custom routes and earlier prompt texts unchanged. Default Event
+factory enables it; World reuses that factory. Version/audit/repair readers must
+retain exact matching and fail closed on cross-pair or coverage mismatches.
+
+Guidance asks for an evidenced anchor's exact original sentence, complete
+catalog paragraph evidence_id, and supported occurrence date/date-role binding.
+It forbids invented completion, not legitimately supported non-date values.
+Material qualifications/counterevidence remain; no sentence surgery, automatic
+date fill, inferred identity/mode/window/reassessment, or IREN hard-coding.
+Related Host/Direct regression346tests and runtime35tests pass. Main fixed
+current-factory test expectations and two synthetic fixture mistakes (correct
+Verifier wire/hash for repaired DTO; guidance belongs only to Producer).
+Initial runner import/socket errors were corrected through PYTHONPATH/local
+test permission, not production changes. An omitted World failure-route pair
+was added to the existing closed list; its focused regression passes.
+Independent review then found archive validation's old-Verifier fallthrough.
+The accepted fix permits Producer12 only with Verifier10 and Producer13 only
+with Verifier11 before entering old fallback logic; two counterexamples added,
+all69 Store tests pass. Independent targeted re-review PASS; Main accepted the
+fix with no remaining review blocker. This is not real EI acceptance.
+Six prior prompt/notice byte hashes and the two Event
+exports remain unchanged; changed Python compilation and diff checks pass.
+No paid run, deployment, source/model budget increase or
+additional real acceptance is authorized. Previous guards remain SPENT and
+historical IREN INCOMPLETE remains unchanged. Resume from the actual diff,
+not another source investigation or live rerun.
+
 ## Offline retained IREN submission attribution — 2026-11-04
 
 User requested continuation after the spent scheduled run. Read-only access

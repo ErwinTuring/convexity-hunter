@@ -78,7 +78,56 @@ Independent review and focused regression precede commit/push. No paid run,
 deployment, private capture, case substitution or historical rewrite is
 authorized by this correction.
 
-## Implementation validation
+## Producer date-anchor output guidance v0.1 — 2026-11-05
+
+Status: FROZEN / IMPLEMENTED / INDEPENDENT REVIEW PASS. This is output guidance only.
+The user approved the smallest explicitly versioned Producer correction after
+the retained IREN mismatch. The date authority above remains unchanged.
+
+New normal Event/World Producer prompt identities are v0.12/v0.13, paired only
+with unchanged Verifier v0.10/v0.11 respectively. Preserve earlier prompts,
+versions and legacy/custom routes. Opt in only the normal default recipe;
+do not add a public DTO, API export, source, model stage or call.
+
+If existing evidence supports an observed event-occurrence anchor, instruct
+Producer to preserve the exact complete original occurrence sentence as its
+claim text, not a paraphrase, issuer substitution or combination of sentences.
+Use its existing complete catalog paragraph evidence_id, without inventing
+quote/offset DTO fields. Supply event_date only for that statement's explicit
+supported occurrence date, with the existing indexed date-role binding from
+the same paragraph. Host and the independent Verifier still decide whether
+all existing source, date, role, identity, ambiguity and receipt gates pass.
+
+Do not remove an in-sentence negation/qualification to force a match. Preserve
+other material qualifications and counterevidence in appropriate existing
+claims without appending unrelated sentences to the anchor. When the exact
+witness/date/binding cannot be supported, abstention remains valid. Do not
+infer dates from user input, filing/publication time or future milestones;
+do not invent symbol, distribution mode, expected window or reassessment to
+force acceptance; legitimately supported values remain allowed under their
+unchanged contracts. Do not merge distinct financings, hard-code IREN, or
+promise EI acceptance. Non-anchor
+facts/interpretations retain their existing contracts. Format/binding repairs
+reuse the same guidance within the existing two-call limit. No new live run
+is authorized by this work unit.
+
+Guidance implementation reuses the existing private orchestration with an
+exact-Boolean opt-in, false for legacy/custom routes and enabled by the normal
+default factory. Event/World share the same guidance. Audit/repair and archive
+version registries recognize only the new exact Producer/Verifier/wire pairs;
+World coverage binding is still mandatory. No public DTO/export or date parser,
+Verifier wording, identity proof, EI/Core rule, configuration or budget changes.
+
+Validation:346 related Host/Direct tests and35 runtime tests pass; the last
+World closure-route fix passed a focused test and the archive fallback fix
+passed all69 Store tests. Six prior prompt/notice hashes and two Event exports
+remain unchanged; changed source/test compilation and diff checks pass.
+Independent review identified the archive legacy-Verifier fallthrough; the
+accepted fix rejects new Producers before that fallback and adds both negative
+cases. Targeted re-review passes; no remaining review blocker. No live run or deployment claimed;
+the historical IREN INCOMPLETE result is not changed by synthetic validation.
+
+## Implementation validation (original v0.7 date rule)
 
 The shared private date validator retains the unchanged v0.4 wrapper/policy;
 only the normal v0.6 witness route attempts the new v0.7 fallback. Source

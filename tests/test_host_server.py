@@ -2037,7 +2037,9 @@ class HostServerBatchTests(unittest.TestCase):
             create_event_grounder,
         )
         from convexity_hunter.host_grounder_runtime import (
-            _DISCOVERY_SYSTEM_PROMPT_V0_10,
+            _DISCOVERY_SYSTEM_PROMPT_V0_12,
+            _PRODUCER_BINDING_COMPLIANCE_NOTICE,
+            _PRODUCER_HYPOTHESIS_READINESS_NOTICE_V0_1,
             _SEMANTIC_SYSTEM_PROMPT_V0_10,
         )
         from convexity_hunter.host_store import HostStore
@@ -2136,7 +2138,7 @@ class HostServerBatchTests(unittest.TestCase):
                         json.loads(runtime_result.audit.sidecar_utf8.decode("utf-8"))[
                             "producer_prompt_version"
                         ],
-                        "host-grounder-discovery-prompt-v0.10",
+                        "host-grounder-discovery-prompt-v0.12",
                     )
                     self.assertEqual(
                         json.loads(runtime_result.audit.sidecar_utf8.decode("utf-8"))[
@@ -2150,7 +2152,9 @@ class HostServerBatchTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         discovery_request["messages"][0]["content"],
-                        _DISCOVERY_SYSTEM_PROMPT_V0_10,
+                        _DISCOVERY_SYSTEM_PROMPT_V0_12
+                        + _PRODUCER_BINDING_COMPLIANCE_NOTICE
+                        + _PRODUCER_HYPOTHESIS_READINESS_NOTICE_V0_1,
                     )
                     semantic_request = next(
                         call for call in model_transport.calls
@@ -2175,7 +2179,7 @@ class HostServerBatchTests(unittest.TestCase):
                     self.assertEqual(run["events"][1]["status"], "COMPLETED")
                     self.assertEqual(
                         outcome["provenance"]["producer_prompt_version"],
-                        "host-grounder-discovery-prompt-v0.10",
+                        "host-grounder-discovery-prompt-v0.12",
                     )
                     self.assertEqual(
                         outcome["provenance"]["validator_version"],
@@ -2232,7 +2236,7 @@ class HostServerBatchTests(unittest.TestCase):
                             recovered_run["events"][1]["outcome"]["provenance"][
                                 "producer_prompt_version"
                             ],
-                            "host-grounder-discovery-prompt-v0.10",
+                            "host-grounder-discovery-prompt-v0.12",
                         )
                         self.assertEqual(
                             recovered_run["events"][1]["outcome"]["provenance"][

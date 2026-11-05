@@ -1574,8 +1574,11 @@ class _SyntheticModelTransport:
             content = content.pop(0)
         if (
             model == "fixture-discovery"
-            and "host-grounder-discovery-prompt-v0.11"
-            in payload["messages"][0]["content"]
+            and any(
+                "host-grounder-discovery-prompt-{}".format(version)
+                in payload["messages"][0]["content"]
+                for version in ("v0.11", "v0.13")
+            )
         ):
             response = json.loads(content)
             request_data = json.loads(payload["messages"][1]["content"])
@@ -2914,7 +2917,7 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertNotIn(failed_source_id, build.context.source_bodies)
         self.assertEqual(
             sidecar["producer_prompt_version"],
-            "host-grounder-discovery-prompt-v0.11",
+            "host-grounder-discovery-prompt-v0.13",
         )
         self.assertEqual(
             sidecar["validator_version"],
@@ -2923,6 +2926,14 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(sidecar["producer_wire_version"], "grounder-output-v0.4")
         self.assertEqual(sidecar["verifier_wire_version"], "semantic-verdict-v0.5")
         self.assertEqual(len(model_transport.calls), 2)
+        self.assertIn(
+            "Potential event-occurrence anchor guidance (v0.1; shared Event/World)",
+            model_transport.calls[0]["messages"][0]["content"],
+        )
+        self.assertNotIn(
+            "Potential event-occurrence anchor guidance (v0.1; shared Event/World)",
+            model_transport.calls[1]["messages"][0]["content"],
+        )
         for model_call in model_transport.calls:
             request = json.loads(model_call["messages"][1]["content"])
             self.assertEqual(request["source_coverage_sha256"], audit.sha256)
@@ -4515,8 +4526,12 @@ class HostEventGrounderTests(unittest.TestCase):
             (
                 "semantic-verdict-v0.4",
                 "host-grounder-semantic-verifier-prompt-v0.10",
-                "host-grounder-discovery-prompt-v0.10",
+                "host-grounder-discovery-prompt-v0.12",
             ),
+        )
+        self.assertIn(
+            "Potential event-occurrence anchor guidance (v0.1; shared Event/World)",
+            model_transport.calls[0]["messages"][0]["content"],
         )
         self.assertEqual(
             admission_calls, [_SEC_LOCATOR, reference_locator, yahoo_locator]
@@ -6578,6 +6593,12 @@ class HostEventGrounderTests(unittest.TestCase):
         system_prompts = [call["messages"][0]["content"] for call in model_transport.calls]
         self.assertTrue(
             any("host-grounder-discovery-prompt-v0.10" in prompt for prompt in system_prompts)
+        )
+        self.assertTrue(
+            all(
+                "Potential event-occurrence anchor guidance" not in prompt
+                for prompt in system_prompts
+            )
         )
         self.assertTrue(
             any("host-grounder-semantic-verifier-prompt-v0.10" in prompt for prompt in system_prompts)

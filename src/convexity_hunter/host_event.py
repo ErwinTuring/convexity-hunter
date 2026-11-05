@@ -4023,6 +4023,7 @@ def create_event_grounder(
             host_context_preparer=run_context_preparer,
             semantic_transport_retry_enabled=default_recipe,
             default_recipe_enabled=default_recipe,
+            producer_anchor_guidance_enabled=default_recipe,
         )
         if event_fact_anchor_capture is None:
             return result

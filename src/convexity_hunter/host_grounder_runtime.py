@@ -39,6 +39,8 @@ from .host_grounder_evidence_catalog import (
     _BINDING_OMISSION_FAILURE_ROUTE_V0_10,
     _BINDING_OMISSION_FAILURE_ROUTE_V0_11,
     _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_12,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
     _BINDING_OMISSION_DELTA_FAILURE_CHECK,
     _BINDING_OMISSION_REPAIR_PROMPT_VERSION,
@@ -51,6 +53,8 @@ from .host_grounder_evidence_catalog import (
     _PRODUCER_PROMPT_VERSION_V0_9,
     _PRODUCER_PROMPT_VERSION_V0_10,
     _PRODUCER_PROMPT_VERSION_V0_11,
+    _PRODUCER_PROMPT_VERSION_V0_12,
+    _PRODUCER_PROMPT_VERSION_V0_13,
     _VERIFIER_PROMPT_VERSION as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION,
     _VERIFIER_PROMPT_VERSION_V0_6 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_6,
     _VERIFIER_PROMPT_VERSION_V0_7 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_7,
@@ -58,6 +62,7 @@ from .host_grounder_evidence_catalog import (
     _VERIFIER_PROMPT_VERSION_V0_9 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_9,
     _VERIFIER_PROMPT_VERSION_V0_10 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10,
     _VERIFIER_PROMPT_VERSION_V0_11 as _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11,
+    _valid_prompt_pair,
     build_host_evidence_catalog,
     _build_host_binding_objects,
     parse_grounder_output_v0_3,
@@ -116,6 +121,8 @@ _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK = (
 _BINDING_COMPLIANCE_CLOSURE_ROUTES = frozenset((
     (_PRODUCER_PROMPT_VERSION_V0_10, _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10),
     _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_12,
+    _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD,
 ))
 _PRODUCER_V0_3_INTERNAL_SCHEMA_FAILURE_CHECK = (
     "producer_v0_3_internal_v0_1_schema"
@@ -1044,6 +1051,42 @@ _DISCOVERY_SYSTEM_PROMPT_V0_11 = _replace_prompt_fragment(
     "existing v0.10 schema, binding, chronology, uncertainty, and non-invention "
     "rule."
 )
+
+_PRODUCER_DATE_ANCHOR_GUIDANCE_V0_1 = (
+    "\n\nPotential event-occurrence anchor guidance (v0.1; shared Event/World): "
+    "This applies only when existing registered evidence supports a potential "
+    "observed event-occurrence anchor, not to every observed fact. Preserve "
+    "that occurrence as one observed_fact claim whose text is the exact full "
+    "original sentence; do not paraphrase it, substitute an issuer, or combine "
+    "sentences. Use the existing evidence_id for the complete catalog "
+    "paragraph containing the sentence. Preserve its attribution, negation, "
+    "modality, and every material qualification; do not strip language to force "
+    "a match. Set event_date only to the explicit, source-supported occurrence "
+    "date in that sentence, as ISO YYYY-MM-DD, and include the existing "
+    "indexed /claims/<index>/event_date binding with semantic_role date only "
+    "when that same paragraph supports the date in its occurrence role. If the "
+    "exact sentence, occurrence date, or same-paragraph date role is not "
+    "supported, leave event_date null and omit its unsupported binding; use "
+    "the existing unresolved/abstention behavior. Keep other material "
+    "qualifications and counterevidence in appropriate existing claims without "
+    "appending unrelated sentences to the anchor. Do not infer this occurrence "
+    "date from user input, filing/publication time, or future milestones. Do not "
+    "invent or populate symbol, distribution mode, expected window, or "
+    "reassessment merely to force completeness or acceptance; preserve "
+    "legitimately supported values under their unchanged contracts. Do not merge "
+    "distinct events or financings, and do not imply that Host acceptance is "
+    "guaranteed."
+)
+_DISCOVERY_SYSTEM_PROMPT_V0_12 = _replace_prompt_fragment(
+    _DISCOVERY_SYSTEM_PROMPT_V0_10,
+    "Prompt version: host-grounder-discovery-prompt-v0.10.",
+    "Prompt version: host-grounder-discovery-prompt-v0.12.",
+) + _PRODUCER_DATE_ANCHOR_GUIDANCE_V0_1
+_DISCOVERY_SYSTEM_PROMPT_V0_13 = _replace_prompt_fragment(
+    _DISCOVERY_SYSTEM_PROMPT_V0_11,
+    "Prompt version: host-grounder-discovery-prompt-v0.11.",
+    "Prompt version: host-grounder-discovery-prompt-v0.13.",
+) + _PRODUCER_DATE_ANCHOR_GUIDANCE_V0_1
 
 _SEMANTIC_SYSTEM_PROMPT_V0_11 = _replace_prompt_fragment(
     _SEMANTIC_SYSTEM_PROMPT_V0_10,
@@ -2546,7 +2589,10 @@ def _run_host_grounder_same_run_evidence_catalog(
     """Run the explicit paragraph-catalog v0.3 wire path exactly once per role."""
     max_json_bytes = _positive_int(max_json_bytes, "JSON_LIMIT_INVALID")
     source_coverage_route = (
-        producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+        producer_prompt_version in (
+            _PRODUCER_PROMPT_VERSION_V0_11,
+            _PRODUCER_PROMPT_VERSION_V0_13,
+        )
         and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
     )
     if type(context) is not HostBuildContext:
@@ -2571,9 +2617,18 @@ def _run_host_grounder_same_run_evidence_catalog(
         discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_10
     elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11:
         discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_11
+    elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_12:
+        discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_12
+    elif producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_13:
+        discovery_system_prompt = _DISCOVERY_SYSTEM_PROMPT_V0_13
     else:
         raise HostGrounderRuntimeError("DISCOVERY_PROMPT_VERSION_INVALID")
     if type(semantic_prompt_version) is not str:
+        raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
+    if producer_prompt_version in (
+        _PRODUCER_PROMPT_VERSION_V0_12,
+        _PRODUCER_PROMPT_VERSION_V0_13,
+    ) and not _valid_prompt_pair(producer_prompt_version, semantic_prompt_version):
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     if type(producer_format_repair_enabled) is not bool:
         raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_FLAG_INVALID")
@@ -2588,6 +2643,10 @@ def _run_host_grounder_same_run_evidence_catalog(
             or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
             and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
             or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_12
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_13
             and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
         )
         and callable(context_preparer)
@@ -2606,6 +2665,10 @@ def _run_host_grounder_same_run_evidence_catalog(
             and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
             or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
             and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_12
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_13
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
         )
         and producer_format_repair_enabled
     ):
@@ -2616,6 +2679,8 @@ def _run_host_grounder_same_run_evidence_catalog(
         _PRODUCER_PROMPT_VERSION_V0_9,
         _PRODUCER_PROMPT_VERSION_V0_10,
         _PRODUCER_PROMPT_VERSION_V0_11,
+        _PRODUCER_PROMPT_VERSION_V0_12,
+        _PRODUCER_PROMPT_VERSION_V0_13,
     ):
         raise HostGrounderRuntimeError("PRODUCER_FORMAT_REPAIR_ROUTE_INVALID")
     if semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION:
@@ -2641,12 +2706,18 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     if (
         semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
-        and producer_prompt_version != _PRODUCER_PROMPT_VERSION_V0_10
+        and producer_prompt_version not in (
+            _PRODUCER_PROMPT_VERSION_V0_10,
+            _PRODUCER_PROMPT_VERSION_V0_12,
+        )
     ):
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     if (
         semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
-        and producer_prompt_version != _PRODUCER_PROMPT_VERSION_V0_11
+        and producer_prompt_version not in (
+            _PRODUCER_PROMPT_VERSION_V0_11,
+            _PRODUCER_PROMPT_VERSION_V0_13,
+        )
     ):
         raise HostGrounderRuntimeError("SEMANTIC_PROMPT_VERSION_INVALID")
     receipt_failure_default_route = (
@@ -2655,6 +2726,8 @@ def _run_host_grounder_same_run_evidence_catalog(
             producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
             or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
             or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_12
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_13
         )
         and semantic_prompt_version in (
             _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_8,
@@ -2780,6 +2853,14 @@ def _run_host_grounder_same_run_evidence_catalog(
         and producer_diagnostics_v0_3
         and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
         and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
+        or producer_format_repair_enabled
+        and producer_diagnostics_v0_3
+        and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_12
+        and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
+        or producer_format_repair_enabled
+        and producer_diagnostics_v0_3
+        and producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_13
+        and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
     )
     binding_compliance_closure_enabled = (
         producer_format_repair_enabled
@@ -2788,6 +2869,10 @@ def _run_host_grounder_same_run_evidence_catalog(
             producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_10
             and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
             or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_11
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_12
+            and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
+            or producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_13
             and semantic_prompt_version == _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
         )
     )
@@ -3828,25 +3913,42 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
     ] = None,
     semantic_transport_retry_enabled: bool = False,
     default_recipe_enabled: bool = False,
+    producer_anchor_guidance_enabled: bool = False,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Private normal-Event route with explicit temporal-role prompts."""
     if not callable(host_context_preparer):
         raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARER_INVALID")
     if type(default_recipe_enabled) is not bool:
         raise HostGrounderRuntimeError("DEFAULT_RECIPE_FLAG_INVALID")
+    if type(producer_anchor_guidance_enabled) is not bool:
+        raise HostGrounderRuntimeError("PRODUCER_ANCHOR_GUIDANCE_FLAG_INVALID")
+    if producer_anchor_guidance_enabled and not default_recipe_enabled:
+        raise HostGrounderRuntimeError("PRODUCER_ANCHOR_GUIDANCE_ROUTE_INVALID")
     covered_world_route = (
         type(context) is HostBuildContext and context.source_coverage is not None
     )
     producer_prompt_version = (
-        _PRODUCER_PROMPT_VERSION_V0_11
-        if covered_world_route
-        else _PRODUCER_PROMPT_VERSION_V0_10
+        (
+            _PRODUCER_PROMPT_VERSION_V0_13
+            if covered_world_route
+            else _PRODUCER_PROMPT_VERSION_V0_12
+        )
+        if producer_anchor_guidance_enabled
+        else (
+            _PRODUCER_PROMPT_VERSION_V0_11
+            if covered_world_route
+            else _PRODUCER_PROMPT_VERSION_V0_10
+        )
     )
     semantic_prompt_version = (
         _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_11
         if covered_world_route
         else _EVIDENCE_CATALOG_VERIFIER_PROMPT_VERSION_V0_10
     )
+    if producer_anchor_guidance_enabled and not _valid_prompt_pair(
+        producer_prompt_version, semantic_prompt_version
+    ):
+        raise HostGrounderRuntimeError("PRODUCER_ANCHOR_GUIDANCE_ROUTE_INVALID")
     try:
         return _run_host_grounder_same_run_evidence_catalog(
             run_input,
@@ -3879,7 +3981,11 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
             and attempts[0].failure_check == _BINDING_OMISSION_FIRST_FAILURE_CHECK
         ):
             error._producer_failure_route = (
-                _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD
+                _BINDING_OMISSION_FAILURE_ROUTE_V0_13_WORLD
+                if producer_anchor_guidance_enabled and covered_world_route
+                else _BINDING_OMISSION_FAILURE_ROUTE_V0_12
+                if producer_anchor_guidance_enabled
+                else _BINDING_OMISSION_FAILURE_ROUTE_V0_11_WORLD
                 if covered_world_route
                 else _BINDING_OMISSION_FAILURE_ROUTE_V0_11
             )

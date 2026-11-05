@@ -1,5 +1,18 @@
 # Project State
 
+## Producer date-anchor guidance — implemented / reviewed / tested — 2026-11-05
+
+User-approved output guidance is implemented against the frozen
+[v0.7 guidance section](host-event-source-facts-v0.7.md#producer-date-anchor-output-guidance-v01--2026-11-05):
+normal Event/World Producer12/13, unchanged Verifier10/11, old/custom behavior
+preserved. Exact original anchor/date-binding instructions do not establish
+evidence or change date/identity/EI/Core acceptance. Production wiring and
+related regression346tests+runtime35tests pass. Review found archive version
+fallthrough; fix and two counterexamples pass69 Store tests, independent targeted
+re-review PASS. Original prompt byte hashes/public Event exports unchanged; no live run or
+deployment. All earlier IREN guards SPENT; no new paid acceptance authorized.
+See [checkpoint](current-checkpoint.md) and actual diff before resuming.
+
 ## Retained IREN field attribution completed offline — 2026-11-04
 
 Existing structured submission decodes and re-assesses identically; no
