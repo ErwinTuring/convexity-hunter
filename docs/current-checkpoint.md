@@ -1,5 +1,60 @@
 # Current Checkpoint
 
+## New bounded IREN capacity grant; outside RTH — 2026-11-06
+
+User approved source-body total capacity 20000 -> 40000 bytes and ONE new
+normal Event acceptance, all other source/model/token/time/catalog budgets
+unchanged. Fresh fetch: clean HEAD/main/origin/main `9461ad0`. No production
+change, paid call, new run, guard consumption or live success in this preparation.
+The four previous IREN attempts remain SPENT; this grant does not reset them.
+
+Read-only public preflight confirms the November5 results are now published
+in the [issuer news index](https://iren.com/investors/news). That earnings
+node is no longer future. The new results' January31 operating ARR target,
+which may extend through February, is not treated as this exact financing's
+deadline or as an impact end. No aggregate target is silently bound to the
+May29 guarantee.
+
+The [original SEC 8-K](https://www.sec.gov/Archives/edgar/data/1878848/000114036126023427/ef20075181_8k.htm),
+Item1.01, explicitly identifies Hardware3/Microsoft financing, the May29,2026
+limited parent guarantees and a delayed-draw availability period through
+May29,2027 **subject to certain extensions**. That future contractual node is
+a potential source-backed reassessment basis only. Preflight is not Tavily
+evidence, a verified statement, a submission or EI acceptance. The next normal
+input may ask the Grounder to verify this node and its relevance, preserving
+the extension qualification; it must not prefill a reassessment, force a
+distribution mode or convert availability into narrative duration/maturity.
+
+Preparation clock was approximately Beijing07:19 November6 / NewYork18:19
+November5, outside RTH. The next same-day eligible window is November6
+09:30–16:00 NewYork / Beijing22:30–November7 05:00, subject to fresh official
+market/time checks. No Host restart or POST outside that window; existing
+Host may still carry November5 evaluation date and old capacity. Before the
+one POST, verify the original listener identity, no active work, new loaded
+Event capacity and actual UTC evaluation date, unchanged World/profile/budgets,
+new private plan/input hashes and fresh O_EXCL guard. No automated task was
+requested or created by this approval; preparation is not scheduled execution.
+If future-basis or runtime checks fail, stop without consuming API calls,
+inventing a date, rescheduling or adding another attempt.
+
+Offline preparation completed: external Event config changed only
+`max_source_body_bytes`20000->40000, SHA256
+`653283bde0d4041b4f306c5e1fb9225b641a1376a0070968d0e3d99c3ea383dd`;
+World hash unchanged
+`4fbea98f0cb569a6840f204a37ed887a62ac1a8ebc51e0b4bf0bed7e03292ce1`.
+Private600 plan `local-mvp/iren-event-source-capacity-20261106.json`, SHA256
+`01e7e7728161b41dda82f90ddc238c1185ce9b713e64adad80dc68a5b44fdafc`;
+input hash `40fa629d663f92f94ad9d6b904bebf27c56abcad5922c3d7e5f04d3d4e7495d2`.
+Input retains the exact May29 guarantee research scope and asks for independent
+verification of the same financing's qualified future contractual node instead
+of the expired earnings date; it is not a supplied fact/submission. New private700
+guard directory `local-mvp/acceptances/iren-event-source-capacity-20261106`
+has no `one-post.guard`. New helper
+`/private/tmp/iren-event-source-capacity-one-post-20261106.py` was compiled
+without execution; it checks new date/hash/auth/config/profile,600/700 permissions
+and unique fsynced guard. No deployment/POST. Old plan hash unchanged.
+This is PREPARED_NOT_ATTEMPTED_NOT_DEPLOYED, not an executed/scheduled trial.
+
 ## Post-guidance IREN executed: source-body total cap — 2026-11-05
 
 Heartbeat woke UTC14:35:12/Beijing22:35:12. Fresh fetch confirmed clean

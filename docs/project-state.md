@@ -1,5 +1,21 @@
 # Project State
 
+## New IREN source-capacity approval; not yet executed — 2026-11-06
+
+User approved Event source-body total 40000bytes (was20000), other budgets
+unchanged, and ONE new bounded acceptance. Prior four guards stay SPENT.
+Public preflight reconfirmed the original SEC Hardware3 financing's future
+May29,2027 delayed-draw availability node, subject to extensions; this is
+only a possible review basis, not accepted reassessment or impact/maturity
+authority. November5 earnings is now past. No prefilled EI material.
+Outside RTH during preparation: no new paid run, Host deployment, EI/Futu/Core
+claim or scheduled task. See [checkpoint](current-checkpoint.md) for the
+execution window, normal runtime checks and unchanged evidence boundaries.
+External Event config now has the approved40000-byte cap only; World unchanged.
+New private600 plan, unused700 guard directory and offline-compiled normal HTTP
+helper prepared for November6 RTH, not deployed/executed/scheduled. Hashes in
+checkpoint; the grant remains unused, old plans/guards unchanged.
+
 ## Post-guidance IREN executed; pre-Producer source cap — 2026-11-05
 
 Scheduled RTH run `4117d0b0-8cc1-4cd3-8276-b075efdac2b9` actually executed
