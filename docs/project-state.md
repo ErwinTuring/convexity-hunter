@@ -1,5 +1,18 @@
 # Project State
 
+## ONE post-guidance IREN acceptance approved / pending RTH — 2026-11-05
+
+New user approval covers one normal IREN acceptance of reviewed `0dca40e`, not
+an extra BUILD. Fresh Git clean; outside RTH during preparation, no deployment,
+POST or paid call. New private hashed plan/unused guard prepared; older grants
+remain SPENT. Task `iren-producer-rth`, COUNT=1, targets tonight22:35 Beijing,
+with fresh RTH/future-milestone/Git/Host checks and actual UTC date2026-11-05.
+Tavily3requests/3credits, models2perrole and all other caps/profile/neutral
+authority unchanged. No forced completeness or repeat; lawful EI acceptance
+must continue the normal Futu/Core path automatically. Task creation is not
+execution; terminal/missed window stops and deletes task. See
+[checkpoint](current-checkpoint.md) for plan/hash/guard and stop conditions.
+
 ## Producer date-anchor guidance — implemented / reviewed / tested — 2026-11-05
 
 User-approved output guidance is implemented against the frozen

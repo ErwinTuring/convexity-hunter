@@ -1,5 +1,46 @@
 # Current Checkpoint
 
+## ONE post-guidance IREN acceptance approved / scheduled — 2026-11-05
+
+User explicitly approved one new IREN RTH acceptance after reviewed production
+`0dca40e`. Fresh fetch confirms clean HEAD/main/origin/main at that commit.
+Preparation clock UTC12:43/Beijing20:43 is outside RTH; no new Host deployment,
+POST, Tavily/model call or Futu quote batch has occurred. New grant is APPROVED
+/NOT ATTEMPTED; three older IREN guards remain SPENT and must not be reused.
+
+Native thread task `iren-producer-rth` created/viewed ACTIVE, COUNT=1, scheduled
+tonight2026-11-05 22:35 Beijing /14:35 UTC /09:35 New York. This is the approved
+one attempt, not another batch or daily task. At execution recheck actual RTH,
+official November5 future milestone, fresh Git and normal Host/OpenD readiness.
+Restart only the identified idle normal Host, use actual UTC date2026-11-05,
+original database/config/profilev0.4/neutral maturity, and reviewed new default
+Producer12/Verifier10. Any prerequisite failure/missed window stops without
+paid diagnosis or automatic rescheduling. Delete the task after terminal outcome.
+
+Private600 plan `local-mvp/iren-event-anchor-guidance-20261105.json`, SHA-256
+`1acffbc6a69631f5c387ff886137ca0cee4057833d8a002e5730fc3cfbb5ce5a`.
+Input hash remains `c8b00bb4a3b97369a558946a72dbf64e1ae8d763151f90c9ecc5d0a9d60abe5a`;
+payload/bounds/budgets match the earlier plan. Event/World config hashes remain
+`296a25465519de953c8b091ee4cc9a62de2bf536739094d9c88104106c36d68c` /
+`4fbea98f0cb569a6840f204a37ed887a62ac1a8ebc51e0b4bf0bed7e03292ce1`.
+New private700 guard directory under
+`local-mvp/acceptances/iren-event-anchor-guidance-20261105` has no marker.
+Create0600 O_EXCL|O_NOFOLLOW/fsynced marker only immediately before the unique
+POST; an existing marker or ambiguous send consumes the grant, never retry.
+Prepared helper `/private/tmp/iren-event-anchor-guidance-one-post-20261105.py`
+checks this new plan/hash/authorization/date, normal READY/profile/CSRF/no-active
+run and exact body. Compilation/hashes/private permissions/offline launcher
+check PASS, no helper execution. Creation/check success is not a real run.
+
+Tavily<=3requests/3credits, each DeepSeek role<=2totalrequests including the
+existing repair/transport coordination; all512KiB input/output/token/time and
+source/catalog/array caps unchanged. No extra round, World, provider, trading,
+production patch, private capture or invented claim/date/mode/identity/window.
+Only lawful EI acceptance and compatible maturity may automatically continue
+Futu/Core/SQLite/Chinese Workbench; honest incomplete/unavailable/Core rejection
+is allowed. Computer/app/OpenD availability remains required. No new real
+success, usage/billing amount or deployment is claimed by this preparation.
+
 ## Producer date-anchor guidance v0.1 — implemented / reviewed / tested — 2026-11-05
 
 User approved the smallest explicitly versioned Producer output-guidance work
