@@ -1,6 +1,19 @@
 # Project State
 
-## New IREN source-capacity approval; not yet executed — 2026-11-06
+## IREN 40000-byte trial executed; catalog entry bound — 2026-11-06
+
+Real normal RTH run `192c77e4-0dfc-44c3-8a9b-b9db52069ef5` ended
+`BLOCKED / EVIDENCE_CATALOG_INVALID`, normal Host log `check=ENTRY_LIMIT`.
+Source-body40000-byte check passed; catalog candidates exceeded current128
+entry/array bound. Complete catalog/count/size and billing were not retained.
+No Producer/Verifier/submission/EI/Futu research/Core/report. New guidance is
+still not live-validated. New guard SPENT, previous four unchanged; hashes
+unchanged, no retry/extra call/cap or production change. Next catalog capacity
+and new trial need bounded approval. Original Host left running with Nov6 date;
+Direct remains historically proven, Event/World positive closure unproven.
+See [checkpoint](current-checkpoint.md) for precise stage/unknown boundaries.
+
+## Historical: New IREN source-capacity approval; not yet executed — 2026-11-06
 
 User approved Event source-body total 40000bytes (was20000), other budgets
 unchanged, and ONE new bounded acceptance. Prior four guards stay SPENT.

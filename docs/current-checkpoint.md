@@ -1,6 +1,49 @@
 # Current Checkpoint
 
-## New bounded IREN capacity grant; outside RTH — 2026-11-06
+## IREN 40000-byte trial executed: catalog ENTRY_LIMIT — 2026-11-06
+
+User resumed during RTH. Fresh fetch confirmed clean HEAD/main/origin/main
+`96c48be`, with no production changes after reviewed `0dca40e`. Clock
+UTC15:51 / Beijing23:51 / NewYork10:51; official Nasdaq hours/calendar and
+the original SEC future, extension-qualified availability node reconfirmed.
+Public preflight was not injected source evidence. Plan/input/config hashes,
+private permissions and unused guard matched the preparation below.
+
+No8080 listener existed. Original unobserved launcher started with actual
+UTC evaluation date2026-11-06 and approved Event40000-byte cap, original
+database/profilev0.4/neutral authority. Sandboxed listener start failed before
+POST; normal permitted launch succeeded. READY/configured/no-active run and
+OpenD quote login=true/market_us=AFTERNOON confirmed; health state is not
+canonical research quote/session evidence.
+
+Exactly ONE normal POST: `192c77e4-0dfc-44c3-8a9b-b9db52069ef5`,
+UTC15:53:18.863–15:53:32.278 (Beijing23:53:19–23:53:32).
+Terminal `BLOCKED / EVIDENCE_CATALOG_INVALID`. Normal Host stderr retained
+`grounder_catalog_failed check=ENTRY_LIMIT`; normal GET/SQLite retained the
+generic terminal Grounder stage, no batch/cases. Source-body validation
+completed before catalog construction, so the40000-byte guard was passed
+in this attempt. Catalog did not complete: no Producer/Verifier/submission,
+EI, Futu research acquisition, Core or report; guidance still untested live.
+
+Code maps entry/array-bound errors to ENTRY_LIMIT. Both catalog entries and
+array bound are128; source count is separately validated before building,
+so this path establishes eligible catalog candidates exceeded128. The
+builder stops upon crossing the bound, not after measuring the complete
+catalog. Exact complete count/body size/catalog size, source bodies and
+actual billed usage remain unretained/UNKNOWN. Do not guess all remaining
+capacity needs or replay sources. This is a resource-bound failure, not a
+model/economic-mechanism/EI semantic rejection, and not an independently
+established implementation defect.
+
+New guard now SPENT; original four guards untouched. Plan/config hashes
+unchanged after execution. No extra call, retry, cap change, capture, World,
+provider, trading or production patch. No scheduled task existed/was created.
+The one new paid grant is consumed. Further catalog/array capacity and any
+new acceptance require explicit bounded authorization; using quota faster
+does not itself change this trial's frozen limits. Direct history unchanged;
+real Event/World EI ACCEPTED-to-Core remains unproven.
+
+## Historical: New bounded IREN capacity grant; outside RTH — 2026-11-06
 
 User approved source-body total capacity 20000 -> 40000 bytes and ONE new
 normal Event acceptance, all other source/model/token/time/catalog budgets
