@@ -1,5 +1,39 @@
 # Current Checkpoint
 
+## Catalog capacity approved; weekend preparation only — 2026-11-07
+
+User approved catalog entries128->256, run-input array128->256 and catalog
+bytes65536->131072, plus ONE new bounded IREN acceptance. Fresh fetch clean
+HEAD/main/origin/main `bc0069f`. External Event config changed exactly these
+three values; source total40000, paragraph scan1024, two512KiB model inputs,
+output/token/time limits, Tavily3requests/3credits and each role2requests
+unchanged. World config, public DTO/production code/EI/Core unchanged.
+No selection/truncation, evidence relaxation or claim of capacity sufficiency.
+
+Clock UTC09:31 / Beijing17:31 SaturdayNovember7 is outside RTH. Official
+[Nasdaq calendar](https://www.nasdaq.com/market-activity/stock-market-holiday-schedule)
+shows next normal weekday window MondayNovember9 09:30–16:00 NewYork,
+BeijingNovember9 22:30–November10 05:00; fresh checks still required then.
+No paid call, Host restart, new run, guard consumption, schedule or automation.
+This is approved/offline-prepared, not deployed/executed. Five earlier guards
+remain SPENT. Do not run the old November6 driver or reuse old responses.
+
+Event config SHA256
+`b5e9d6518f0501b1b85aada30a58c13d40f90ed45a88e0a794809c9bb41b5e6e`;
+World remains `4fbea98f0cb569a6840f204a37ed887a62ac1a8ebc51e0b4bf0bed7e03292ce1`.
+Private600 plan `local-mvp/iren-event-catalog-capacity-20261109.json`, SHA256
+`5b6deb2b75eb66dfe5041a55c59ec86b583d46ecf008a2cde67c0ad20a1cfa5d`;
+same exact input hash `40fa629d663f92f94ad9d6b904bebf27c56abcad5922c3d7e5f04d3d4e7495d2`.
+Fresh700 `local-mvp/acceptances/iren-event-catalog-capacity-20261109` contains
+no guard. Helper `/private/tmp/iren-event-catalog-capacity-one-post-20261109.py`
+compiled only; new date/auth/hashes and O_EXCL|O_NOFOLLOW/fsync guard retained.
+Normal launcher --check for Nov9 PASS with no secret values loaded/no Host
+start. Before POST freshly verify known idle listener, loaded capacities,
+actual UTC evaluation date, source/future-node applicability and OpenD quote
+login. Old Host may still have Nov6 date and128-entry capacity. No automatic
+roll-forward/retry/additional grant. Lawful EI acceptance must automatically
+continue existing Futu/SharedCore/SQLite/report; incomplete is allowed.
+
 ## IREN 40000-byte trial executed: catalog ENTRY_LIMIT — 2026-11-06
 
 User resumed during RTH. Fresh fetch confirmed clean HEAD/main/origin/main

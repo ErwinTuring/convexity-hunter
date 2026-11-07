@@ -1,5 +1,15 @@
 # Project State
 
+## Catalog capacity approved; next real trial not attempted — 2026-11-07
+
+Approved external Event catalog entries/array256 and catalog131072bytes;
+source40000 and all other budgets/production/evidence rules unchanged.
+Offline exact-delta/hash/permissions/launcher checks and new private plan/
+unused guard/helper preparation PASS. Weekend: no paid run or deployment,
+no automation. Next valid RTH November9 needs fresh time/source/runtime checks;
+one grant remains unused, five historical guards SPENT. See
+[checkpoint](current-checkpoint.md) for hashes and execution boundaries.
+
 ## IREN 40000-byte trial executed; catalog entry bound — 2026-11-06
 
 Real normal RTH run `192c77e4-0dfc-44c3-8a9b-b9db52069ef5` ended
