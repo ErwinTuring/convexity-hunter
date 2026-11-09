@@ -1,5 +1,15 @@
 # Project State
 
+## IREN after balance restoration: EI assessed, not accepted — 2026-11-09
+
+Real Event `ec2de6f8-f7ff-40cf-a409-b609da157c49` passed capacity checks and
+completed Producer/Verifier/Builder with a present submission. EI INCOMPLETE:
+event description/date, underlying, distribution mode and temporal applicability
+not established. Executor blocked with zero Core research cases; no Futu/report.
+DeepSeek availability restored for this run, new guard SPENT. No production or
+config change, no replay. [Checkpoint](current-checkpoint.md) records exact
+reason codes; evidence gaps are not proof of an implementation defect.
+
 ## IREN passed capacity checks; DeepSeek API blocked Producer — 2026-11-09
 
 Real RTH Event run `4be11fc8-3ddc-4e4b-869a-4129ff5ef0e0` passed source and

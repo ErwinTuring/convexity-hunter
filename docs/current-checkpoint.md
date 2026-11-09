@@ -1,5 +1,39 @@
 # Current Checkpoint
 
+## IREN after balance restoration: real submission, EI INCOMPLETE — 2026-11-09
+
+User confirmed DeepSeek availability restored. Fresh Git clean at `c881b5c`;
+same Nov9 normal Host, exact input/profile/neutral maturity and existing
+approved capacity/fee bounds. New private plan
+`local-mvp/iren-event-balance-restored-20261109.json`, SHA256
+`8745f25ab1ca338e39428f413d99c587b4520d5a502dfd55e99e7dddf68fadca`;
+new O_EXCL guard is SPENT. No old guard, responses, production or config changed.
+
+One real RTH POST `ec2de6f8-f7ff-40cf-a409-b609da157c49`,
+UTC14:39:36.118–14:40:41.390 (Beijing22:39:36–22:40:41). Source/catalog
+passed; Producer v0.12 and Verifier v0.10 each returned once from DeepSeek
+Flash. Normal audit: six bodies, 17 claims, two hypotheses, 37 field bindings;
+Verifier receipt validated, Builder completed, submission PRESENT, EI ASSESSED
+/ `incomplete`. This confirms balance was no longer a blocker for this run.
+
+No selected fact anchor (`event_fact_anchor_v0_2`, unresolved); one validator-
+rejected hypothesis and one unresolved underlying in the stage diagnostics.
+Retained semantic categories include required-field binding and unresolved
+Verifier outcomes; their presence does not prove a mechanical defect.
+Executor `BLOCKED / HOST_BATCH_BLOCKED`, one UNAVAILABLE assessment, zero Core
+research cases. Exact EI gate reasons: `event_intelligence_not_accepted`,
+`missing_event_description`, `incomplete_event_date_range`,
+`missing_underlying_key`, `missing_distribution_mode`,
+`missing_temporal_applicability`. No Futu research, Core execution or Chinese
+research report. Exact first failed evidence rule and billed usage are not
+established by normal audit. No raw output, source body or observer capture.
+
+Do not re-run the same IREN input merely to get a different model result or
+soften EI. Next productive integration work should start with a concrete,
+source-supported candidate whose event identity, listing and applicability
+can be checked before spending another batch. Preserve the shared path and
+normal Producer/Verifier, and continue same-level work without repeat approval.
+
 ## IREN catalog-capacity trial reached Producer; DeepSeek HTTP 402 — 2026-11-09
 
 Fresh fetch clean HEAD/main/origin/main `911138d`. Normal Nasdaq RTH and
