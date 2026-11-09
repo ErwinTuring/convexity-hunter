@@ -1,5 +1,38 @@
 # Current Checkpoint
 
+## Next same-budget Event: CAPR manufacturing lease — 2026-11-10
+
+Continuation after IREN EI INCOMPLETE, not a replay. Fresh fetch clean
+`9ba76f9`; no production/evidence/config change. ARRAY/Shoals merger was not
+chosen: current SEC covers identify Nasdaq Global Market, which is not a
+supported exact listing-composite pair. Do not expand identity rules here.
+
+Selected CAPR: [original SEC 8-K](https://www.sec.gov/Archives/edgar/data/1133869/000110465926083559/capr-20260709x8k.htm)
+expressly dates the manufacturing-facility lease to July9,2026 and identifies
+CAPR common stock on The Nasdaq Global Select Market. The lease summary gives
+a conditional termination right if specified FDA approval is not obtained by
+December31,2026. The [issuer's August SEC exhibit](https://www.sec.gov/Archives/edgar/data/1133869/000110465926100071/capr-20260824xex99d1.htm)
+reports the November22 PDUFA target. Distinguish both dates from an expected
+market-impact end; neither guarantees an approval, termination, or maturity
+alignment. The approved market/currency source has a CAPR NasdaqGS/USD search
+listing, but direct public read was rate-limited; normal independent admission
+still required. No preaccepted identity, event facts or temporal submission.
+Recheck current issuer/FDA updates and lease applicability before POST.
+
+Clock at grounding BeijingNovember10 06:57 / NewYorkNovember9 17:57, outside
+RTH. Next normal window November10 NewYork09:30–16:00 / Beijing22:30–November11
+05:00. Offline prepared, not deployed, scheduled or attempted; do not submit
+outside RTH. New private600 plan `local-mvp/capr-event-lease-20261110.json`,
+SHA256 `46050b33cdbedb6837e215f5fefd9bc319354c8a39204811d8bc3560050b0f6b`,
+input SHA256 `e458cc59f3c3072257ccee75898fa54f0965b9bb2befc0a8b04cca5b95081f22`.
+Fresh700 `local-mvp/acceptances/capr-event-lease-20261110` guard absent. Helper
+`/private/tmp/capr-event-lease-one-post-20261110.py` compiled, not executed.
+Exact same config hashes/limits/budget as Nov9, launcher Nov10 offline check
+PASS. Fresh Git, official session, normal idle Host Nov10 UTC date, OpenD quote
+login, plan/input hashes and fresh guard required before the one POST. No
+duplicate approval, automatic retries, extra batches or invented inputs.
+If EI ACCEPTED and maturity eligible, continue normal Futu/Core automatically.
+
 ## IREN after balance restoration: real submission, EI INCOMPLETE — 2026-11-09
 
 User confirmed DeepSeek availability restored. Fresh Git clean at `c881b5c`;

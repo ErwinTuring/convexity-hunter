@@ -1,5 +1,14 @@
 # Project State
 
+## CAPR next Event preflight prepared — 2026-11-10
+
+Selected CAPR's dated manufacturing lease and conditional regulatory-linked
+termination provision for the next normal same-budget Event. SEC/market
+preflight is not accepted EI evidence; recheck current applicability. Private
+plan, new unused guard, helper compilation and launcher offline checks passed.
+No deployment/paid run/schedule outside RTH, no production/config change.
+[Checkpoint](current-checkpoint.md) records exact plan and next window.
+
 ## IREN after balance restoration: EI assessed, not accepted — 2026-11-09
 
 Real Event `ec2de6f8-f7ff-40cf-a409-b609da157c49` passed capacity checks and
