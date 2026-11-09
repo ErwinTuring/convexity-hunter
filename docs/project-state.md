@@ -1,6 +1,17 @@
 # Project State
 
-## Catalog capacity approved; next real trial not attempted — 2026-11-07
+## IREN passed capacity checks; DeepSeek API blocked Producer — 2026-11-09
+
+Real RTH Event run `4be11fc8-3ddc-4e4b-869a-4129ff5ef0e0` passed source and
+catalog checks, attempted Producer once and stopped `DISCOVERY_CALL_FAILED`
+with HTTP402 (provider insufficient balance). No model output, EI or Core.
+Guard SPENT, no retry; exact usage and account balance unknown. User prioritizes
+MVP and authorizes ordinary same-level bounded validation without repeat
+approval. Restore provider availability before another fresh guarded run;
+no recharge, budget/evidence expansion or provider switch implied. See
+[checkpoint](current-checkpoint.md) for stage and authorization boundaries.
+
+## Historical: Catalog capacity approved; next real trial not attempted — 2026-11-07
 
 Approved external Event catalog entries/array256 and catalog131072bytes;
 source40000 and all other budgets/production/evidence rules unchanged.

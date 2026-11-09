@@ -1,6 +1,33 @@
 # Current Checkpoint
 
-## Catalog capacity approved; weekend preparation only — 2026-11-07
+## IREN catalog-capacity trial reached Producer; DeepSeek HTTP 402 — 2026-11-09
+
+Fresh fetch clean HEAD/main/origin/main `911138d`. Normal Nasdaq RTH and
+original SEC future contractual milestone reconfirmed. Plan/config hashes,
+permissions and unused guard matched; normal Host launched with UTC November9
+and approved256-entry/array,131072-byte catalog and40000-byte source caps.
+OpenD quote login/regular state confirmed, not canonical research evidence.
+
+One normal Event POST `4be11fc8-3ddc-4e4b-869a-4129ff5ef0e0`,
+UTC14:35:07.425–14:35:24.107 (Beijing22:35:07–22:35:24), reached the first
+Producer (discovery) call after source and catalog validation. Terminal
+`BLOCKED / DISCOVERY_CALL_FAILED`; normal Host log `role=discovery
+code=HTTP_ERROR status=402`. Normal audit: one `call_failed`, no output or
+call receipt. [DeepSeek documents 402 as insufficient balance](https://api-docs.deepseek.com/zh-cn/quick_start/error_codes/).
+No balance amount or billed usage established. No Producer output, Verifier,
+submission, EI, Futu research, Core or report. The capacity adjustment passed
+for this input, not a universal capacity guarantee or positive MVP closure.
+
+Guard SPENT; earlier guards/config/plan unchanged, no retry or runtime code
+change. Current external blocker: restore DeepSeek API account availability.
+User's November9 execution priority: advance ordinary MVP work and fresh
+same-level bounded validations without repeating approval requests. This
+does not reuse spent guards, authorize recharge/provider change, raise cost
+or evidence bounds, or permit automatic retries. After availability returns,
+use a fresh guarded same-budget run in a valid window; no duplicate approval
+needed. Direct history unchanged, real Event/World closure still unproven.
+
+## Historical: Catalog capacity approved; weekend preparation only — 2026-11-07
 
 User approved catalog entries128->256, run-input array128->256 and catalog
 bytes65536->131072, plus ONE new bounded IREN acceptance. Fresh fetch clean
