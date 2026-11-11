@@ -2689,7 +2689,9 @@ def create_server(
         raise ValueError("request timeout must be a finite positive number")
 
     class _LoopbackHTTPServer(HTTPServer):
-        allow_reuse_address = False
+        # Permit restart after closed connections enter TIME_WAIT. This does
+        # not enable SO_REUSEPORT or allow two live listeners on this address.
+        allow_reuse_address = True
 
         def handle_error(self, _request: Any, _client_address: Any) -> None:
             # Never print tracebacks that may include request-adjacent data.

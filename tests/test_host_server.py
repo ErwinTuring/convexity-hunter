@@ -662,6 +662,32 @@ class HostServerTests(unittest.TestCase):
     def test_server_binds_ipv4_loopback_only(self):
         self.assertEqual(self.server.server_address[0], "127.0.0.1")
 
+    def test_closed_host_can_immediately_rebind_after_http_request(self):
+        server = create_server(MemoryJournal(), render_workbench=lambda _: "<!doctype html>", port=0)
+        port = server.server_port
+        worker = threading.Thread(target=server.handle_request)
+        worker.start()
+        try:
+            client = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+            client.request("GET", "/api/status")
+            response = client.getresponse()
+            self.assertEqual(response.status, 200)
+            response.read()
+            client.close()
+            worker.join(timeout=3)
+            self.assertFalse(worker.is_alive())
+        finally:
+            server.server_close()
+        restarted = create_server(MemoryJournal(), render_workbench=lambda _: "<!doctype html>", port=port)
+        try:
+            self.assertEqual(restarted.server_address, ("127.0.0.1", port))
+        finally:
+            restarted.server_close()
+
+    def test_live_listener_still_rejects_second_instance(self):
+        with self.assertRaises(OSError):
+            create_server(MemoryJournal(), render_workbench=lambda _: "<!doctype html>", port=self.server.server_port)
+
     def test_status_profile_and_response_safety_headers(self):
         status = self.request("GET", "/api/status")
         self.assertEqual(status[0], 200)

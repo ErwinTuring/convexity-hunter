@@ -1,5 +1,15 @@
 # Project State
 
+## Workbench immediate restart fix — 2026-11-12
+
+Reproduced immediate rebind failure (errno48) after a closed HTTP connection
+on an isolated temporary loopback port. Enabled SO_REUSEADDR, not SO_REUSEPORT;
+IPv4 loopback-only binding and journal exclusive lock unchanged. Focused tests
+prove immediate restart and rejection of a second live listener. This identifies
+a reproducible restart defect, not the unrecorded cause of every earlier
+startup failure. No market/source/model calls or research semantics changed.
+14 focused Host tests, compilation, diff check and independent review PASS.
+
 ## World archive to optional Event continuation — 2026-11-12
 
 Bounded product delivery: explicit read of existing World EI submissions,
