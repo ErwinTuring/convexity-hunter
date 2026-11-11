@@ -3283,6 +3283,16 @@ class HostServerBatchTests(unittest.TestCase):
             self._start_server()
             reopened_run_response = self._request("GET", run_path)
             reopened_case_response = self._request("GET", case_path)
+            research_response = self._request("GET", run_path + "/research")
+            self.assertEqual(research_response[0], 200)
+            research = self._decoded(research_response)
+            self.assertEqual(research["status"], "WORLD_RETAINED")
+            self.assertTrue(research["selections"])
+            self.assertNotIn("ei_audit", research)
+            for selection in research["selections"]:
+                self.assertIn(selection["assessment_status"], ("accepted", "incomplete"))
+                self.assertIn("sources", selection)
+                self.assertNotEqual(selection["original_input"], raw_input)
             self.assertEqual(reopened_run_response[0], 200)
             self.assertEqual(reopened_case_response[0], 200)
             self.assertEqual(

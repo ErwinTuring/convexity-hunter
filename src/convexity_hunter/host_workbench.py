@@ -133,8 +133,9 @@ _DOCUMENT = r'''<!doctype html>
       <p id="run-status" class="status-pill">状态缺失（尚未读取）</p>
       <h3>诊断</h3><pre id="run-diagnostics">运行响应尚未提供。</pre>
       <h3>阶段事件</h3><pre id="run-events">运行响应尚未提供。</pre>
-      <h3>Event 证据与缺口</h3>
-      <button id="read-event-research" type="button">查看已保留 Event 材料（只读）</button>
+      <h3>已归档事件、证据与缺口</h3>
+      <button id="read-event-research" type="button">查看已保留 Event / World 材料（只读）</button>
+      <div id="world-research-selections" class="record-list"></div>
       <pre id="event-research-view">尚未读取 Event。</pre>
       <label for="event-supplement">补充来源 URL / 待核验事实（不是 supported）</label>
       <textarea id="event-supplement" autocomplete="off"></textarea>
@@ -1003,15 +1004,50 @@ _DOCUMENT = r'''<!doctype html>
     setText(byId("submit-state"), "续研草稿已取消；未调用服务。可正常开始其他研究。");
   });
   byId("read-event-research").addEventListener("click", async () => {
-    if (state.runMode !== "event" || safeRunId(state.runId) === null) return;
+    if (!["event", "world"].includes(state.runMode) || safeRunId(state.runId) === null) return;
     const runId = state.runId;
+    const mode = state.runMode;
     try {
       const view = await getJson(API.runs + "/" + safeRunId(runId) + "/research");
-      if (state.runId === runId && state.runMode === "event") renderEventResearch({mode:"event",event_research:view});
+      if (state.runId === runId && state.runMode === mode) {
+        if (mode === "world") renderWorldResearch(view);
+        else renderEventResearch({mode:"event",event_research:view});
+      }
     } catch (error) {
-      if (state.runId === runId) renderEventResearch(null);
+      if (state.runId === runId) {
+        setText(byId("world-research-selections"), "");
+        renderEventResearch(null);
+      }
     }
   });
+  function renderWorldResearch(view) {
+    renderEventResearch(null);
+    const list = byId("world-research-selections");
+    setText(list, "");
+    if (!isRecord(view) || view.status !== "WORLD_RETAINED" || !Array.isArray(view.selections) || view.selections.length === 0) {
+      setText(byId("event-research-view"), "未保留可展示的 World submission。原始候选未保存时不补造；可自行从 Event 输入开始研究。");
+      return;
+    }
+    setText(byId("event-research-view"), "下列仅为已归档 submission，不是完整发现候选集合，也不证明反证不存在。按归档顺序显示，无默认选择、排名或推荐。请选择一项查看；选择和准备均不调用研究服务。");
+    for (const item of view.selections) {
+      if (!isRecord(item)) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      setText(button, compactScalar(item.submission_id) + " | " + (item.original_input || "未保留事件描述") + " | EI：" + compactScalar(item.assessment_status));
+      button.addEventListener("click", () => {
+        const selected = Object.assign({}, item);
+        if (typeof item.original_input === "string" && item.original_input.trim()) {
+          selected.original_input += "\n归档来源线索（未核验，须重新准入和独立核验，不继承旧结论）：\n"
+            + (item.sources || []).map(source => typeof source.locator === "string" ? source.locator : "").filter(Boolean).join("\n");
+        }
+        renderEventResearch({mode:"event",event_research:selected});
+        if (typeof item.original_input !== "string" || !item.original_input.trim()) {
+          setText(byId("event-research-view"), byId("event-research-view").textContent + "\n未保留事件描述，不能自动准备 Event 草稿；不会用 World 范围代替事件。");
+        }
+      });
+      list.appendChild(button);
+    }
+  }
   function renderEventResearch(data) {
     continuationResearch = null;
     const button = byId("prepare-event-continuation");
@@ -1038,7 +1074,7 @@ _DOCUMENT = r'''<!doctype html>
     lines.push("EI 缺口：");
     for (const issue of view.issues || []) lines.push(compactScalar(issue.code) + " | " + compactScalar(issue.subject_id));
     setText(byId("event-research-view"), lines.join("\n"));
-    if (view.assessment_status === "incomplete" && typeof view.original_input === "string" && isRecord(view.bounds)) {
+    if (view.assessment_status === "incomplete" && typeof view.original_input === "string" && view.original_input.trim() && isRecord(view.bounds)) {
       continuationResearch = view;
       button.disabled = false;
     }
@@ -1063,6 +1099,7 @@ _DOCUMENT = r'''<!doctype html>
   });
 
   function renderRun(data, requestedRunId) {
+    setText(byId("world-research-selections"), "");
     renderEventResearch(data);
     if (!isRecord(data)) {
       state.runMode = null;
@@ -1103,6 +1140,7 @@ _DOCUMENT = r'''<!doctype html>
   }
 
   async function loadRun(runId) {
+    setText(byId("world-research-selections"), "");
     renderEventResearch(null);
     const encodedId = safeRunId(runId);
     if (encodedId === null) return;

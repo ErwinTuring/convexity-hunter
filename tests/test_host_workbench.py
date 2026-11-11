@@ -901,6 +901,30 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   const posted = assisted.calls.find(x => x.method === "POST");
   if (!posted || JSON.parse(posted.body).mode !== "event" || !JSON.parse(posted.body).input.includes("未核验")) throw new Error("continuation bypassed normal Event submit");
   if (JSON.parse(posted.body).bounds.quote_timeout_seconds !== 2.5) throw new Error("budget changed");
+  const wb = {max_submissions:2,max_hypotheses:3,max_browser_rows:20,max_cases:8,quote_timeout_seconds:2.5};
+  const worldAssist = await scenario({mode:"world",cases:[],events:[],
+    executors:{world:"CONFIGURED",event:"CONFIGURED",direct:"NOT_CONFIGURED"},
+    eventResearch:{status:"WORLD_RETAINED",selections:[
+      {submission_id:"first",status:"RETAINED",original_input:"archived first event",bounds:wb,assessment_status:"incomplete",sources:[{source_id:"s",locator:"https://example.org/source"}],statements:[],issues:[]},
+      {submission_id:"second",status:"RETAINED",original_input:null,bounds:wb,assessment_status:"incomplete",sources:[],statements:[],issues:[]}]}});
+  await worldAssist.clickRun();
+  await worldAssist.elements.get("read-event-research").click();
+  const choices = worldAssist.elements.get("world-research-selections").children;
+  if (choices.length !== 2 || !choices[0].textContent.startsWith("first") || !choices[1].textContent.startsWith("second")) throw new Error("archived submissions lost or reordered");
+  if (!worldAssist.elements.get("prepare-event-continuation").disabled) throw new Error("World selection defaulted");
+  const n = worldAssist.calls.length;
+  await choices[1].click();
+  if (!worldAssist.elements.get("prepare-event-continuation").disabled) throw new Error("missing description fabricated");
+  await choices[0].click();
+  worldAssist.elements.get("event-supplement").value = "new unverified lead";
+  await worldAssist.elements.get("prepare-event-continuation").click();
+  if (worldAssist.calls.length !== n) throw new Error("World selection/draft made provider calls");
+  const draft = worldAssist.elements.get("raw-input").value;
+  if (!draft.includes("archived first event") || !draft.includes("https://example.org/source") || !draft.includes("须重新准入")) throw new Error("World draft lost scope/source unverified boundary");
+  await worldAssist.elements.get("run-form").handlers.submit[0]({preventDefault(){}});
+  const wp = worldAssist.calls.find(x=>x.method === "POST");
+  if (!wp || JSON.parse(wp.body).mode !== "event" || JSON.parse(wp.body).bounds.max_cases !== 8) throw new Error("World continued through wrong executor/budget");
+  if (innerHtmlWrites) throw new Error("untrusted material used innerHTML");
   console.log("fake DOM behavior checks passed");
 })().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });
 '''

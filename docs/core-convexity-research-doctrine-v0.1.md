@@ -82,8 +82,11 @@ Verifier, Builder, EI and Core. Supplementation is not a mandatory selection
 gate, factual authority, or permission to edit a verified submission. Preserve
 the previous run and all evidence, temporal, maturity and economic rules.
 Assisted continuation does not prove autonomous three-entry live acceptance.
-The first bounded implementation covers Event only; it does not redesign World
-or add providers, budgets or automatic retries.
+The first bounded implementation covers Event. Its approved continuation may
+also expose World submissions already retained in the existing archive for
+optional human selection into a new unverified Event draft. This is not a
+complete discovery-candidate archive, does not change default autonomous World
+branching, and does not add providers, budgets or automatic retries.
 
 The Core requires explicit, non-defaulted inputs needed by the selected claim:
 

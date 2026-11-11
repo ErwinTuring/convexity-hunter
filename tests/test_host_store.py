@@ -688,6 +688,89 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(self.store.get_event_research(event)["status"], "NOT_RETAINED")
         self.assertIsNone(self.store.get_event_research(self.create_run("world")))
 
+    def test_world_research_projects_all_submissions_in_archive_order_read_only(self):
+        from convexity_hunter.core_application import SourceSubmissionBatch, run_world_core
+        from tests.test_core_application import (
+            FakeMarketBridge, make_policy, make_row, make_submission,
+        )
+        from tests.test_host_batch_snapshot import _metadata, _standard_profile_result
+
+        raw_input = "World scope only; not an event description"
+        submissions = (
+            make_submission("submission-z", ("hypothesis-z",)),
+            replace(
+                make_submission("submission-a", ("hypothesis-a",)),
+                event_description=None,
+            ),
+        )
+        batch = SourceSubmissionBatch(raw_input, submissions)
+        policy = make_policy(
+            [], max_submissions=2, max_hypotheses=3,
+            max_browser_rows=20, max_cases=8,
+        )
+        result = run_world_core(
+            raw_input,
+            source_producer=lambda _raw: batch,
+            market_bridge=FakeMarketBridge((make_row(
+                datetime.date(2030, 1, 31), "CALL", "100"
+            ),)),
+            policy=policy,
+        )
+        result = _standard_profile_result(result)
+        run_id = self.store.create_run(
+            "world", raw_input, policy.bounds,
+            STANDARD_RESEARCH_PROFILE.snapshot(), _metadata("world"),
+        )
+        self.store.save_batch_result(run_id, result)
+
+        before = self.store.get_run(run_id)
+        changes_before = self.store._conn().total_changes
+        view = self.store.get_world_research(run_id)
+        self.assertEqual(self.store._conn().total_changes, changes_before)
+        self.assertEqual(self.store.get_run(run_id), before)
+
+        archive, _decoded = self.store._read_batch_archive(run_id)
+        audited = archive["ei_audit"]["submissions"]
+        self.assertEqual(
+            [item["submission_id"] for item in audited],
+            ["submission-z", "submission-a"],
+        )
+        self.assertEqual(
+            [item["assessment"]["status"] for item in audited],
+            ["accepted", "incomplete"],
+        )
+        self.assertEqual(view["status"], "WORLD_RETAINED")
+        self.assertEqual(view["selections"], [
+            {
+                "submission_id": item["submission_id"],
+                "status": "RETAINED",
+                "original_input": item["event_description"] or None,
+                "bounds": before["bounds"],
+                "sources": item["sources"],
+                "statements": item["statements"],
+                "issues": item["assessment"]["issues"],
+                "assessment_status": item["assessment"]["status"],
+            }
+            for item in audited
+        ])
+        self.assertIsNone(view["selections"][1]["original_input"])
+        self.assertNotEqual(view["selections"][1]["original_input"], raw_input)
+        expected_fields = {
+            "submission_id", "status", "original_input", "bounds", "sources",
+            "statements", "issues", "assessment_status",
+        }
+        self.assertTrue(all(set(item) == expected_fields for item in view["selections"]))
+        view["selections"][0]["sources"].clear()
+        self.assertTrue(self.store.get_world_research(run_id)["selections"][0]["sources"])
+
+    def test_world_research_is_none_outside_world_and_not_retained_without_archive(self):
+        self.assertIsNone(self.store.get_world_research(self.create_run("event")))
+        world_run = self.create_run("world", "no archived batch")
+        self.assertEqual(
+            self.store.get_world_research(world_run),
+            {"status": "NOT_RETAINED", "selections": []},
+        )
+
     def test_grounder_v010_prompt_pair_uses_existing_bound_object_wire(self):
         from convexity_hunter.host_store import (
             _grounder_bound_object_route_is_valid,

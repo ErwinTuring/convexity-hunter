@@ -1,5 +1,16 @@
 # Project State
 
+## World archive to optional Event continuation — 2026-11-12
+
+Bounded product delivery: explicit read of existing World EI submissions,
+neutral archive-order selection, and reuse of Event's unverified supplement /
+new normal run. Missing archive or event description is not reconstructed.
+Default autonomous World, all evidence/economic gates and budgets unchanged.
+No new source discovery, CAPR, paid acceptance, schema or Provider work.
+Implemented with no schema change. 150 focused Store/HTTP/Node-DOM tests,
+compilation, documentation checks and independent narrow review PASS. No live
+autonomous closure or new real research claim.
+
 ## Product delivery priority: automatic default, assisted continuation — 2026-11-11
 
 User approved B as default autonomous flow and A as optional assistance after

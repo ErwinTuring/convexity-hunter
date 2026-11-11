@@ -3810,6 +3810,32 @@ class HostStore:
                 })
             return view
 
+    def get_world_research(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Read retained World EI submissions from the validated batch archive."""
+        with self._lock:
+            run = self.get_run(run_id)
+            if run is None or run["mode"] != "world":
+                return None
+            archive, _decoded = self._read_batch_archive(run_id)
+            submissions = [] if archive is None else archive["ei_audit"]["submissions"]
+            selections = [
+                {
+                    "submission_id": submission["submission_id"],
+                    "status": "RETAINED",
+                    "original_input": submission["event_description"] or None,
+                    "bounds": run["bounds"],
+                    "sources": submission["sources"],
+                    "statements": submission["statements"],
+                    "issues": submission["assessment"]["issues"],
+                    "assessment_status": submission["assessment"]["status"],
+                }
+                for submission in submissions
+            ]
+            return {
+                "status": "WORLD_RETAINED" if selections else "NOT_RETAINED",
+                "selections": selections,
+            }
+
     def list_runs(self) -> List[Dict[str, Any]]:
         with self._lock:
             rows = self._conn().execute(

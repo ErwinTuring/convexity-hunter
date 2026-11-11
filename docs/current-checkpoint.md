@@ -1,5 +1,18 @@
 # Current Checkpoint
 
+## World archive → optional Event continuation delivered — 2026-11-12
+
+The explicit research read endpoint now also projects existing validated World
+`ei_audit` submissions. Workbench lists every retained submission in archive
+order, without ranking/default selection, and permits user selection into the
+same Event supplement/draft/new POST path. Source locators are unverified
+leads, not inherited authority. No archive/description means no fabricated
+event or automatic draft. Existing Event mode/budget guard remains; ordinary
+run GET stays redacted and default autonomous World unchanged. No database
+schema, provider, model, budget or research/economic gate change.
+150 focused tests, compilation/docs checks and independent review PASS.
+No CAPR, new discovery, paid research or claimed autonomous live closure.
+
 ## Product BUILD: optional Event evidence continuation — 2026-11-11
 
 User approved automatic B default with optional A assistance after insufficient

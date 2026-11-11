@@ -1769,7 +1769,10 @@ class HostRequestHandler(BaseHTTPRequestHandler):
 
     def _get_event_research(self, run_id: str) -> None:
         try:
-            getter = getattr(self.server.journal, "get_event_research", None)
+            run = self.server.journal.get_run(run_id)
+            mode = run.get("mode") if type(run) is dict else None
+            method = {"event": "get_event_research", "world": "get_world_research"}.get(mode)
+            getter = getattr(self.server.journal, method, None) if method else None
             view = getter(run_id) if callable(getter) else None
         except Exception:
             self._send_json(500, {"error": "journal unavailable"})
