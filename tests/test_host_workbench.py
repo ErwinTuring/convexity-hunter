@@ -235,7 +235,7 @@ class Element {
   }
 }
 
-async function scenario({ mode, cases, batchSummary = null, events, runStatus = "COMPLETED", responses = [], listedRunId = runId, executors }) {
+async function scenario({ mode, cases, batchSummary = null, events, runStatus = "COMPLETED", responses = [], listedRunId = runId, executors, eventResearch = null }) {
   const ids = [...input.page.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
   const elements = new Map(ids.map((id) => [id, new Element(id)]));
   const tabs = ["world", "event", "direct"].map((name) => {
@@ -259,11 +259,13 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   };
   const run = { run_id: runId, mode, status: runStatus, cases, batch_summary: batchSummary, events };
   const fetch = async (path, options = {}) => {
-    calls.push({ path, method: options.method || "GET" });
+    calls.push({ path, method: options.method || "GET", body: options.body });
+    if (path === "/api/runs" && options.method === "POST") return response({run_id: runId, status: "BLOCKED"});
     if (path === "/api/status") return response({ executors });
     if (path === "/api/profile") return response({ profile: "synthetic" });
     if (path === "/api/runs") return response({ runs: [{ run_id: listedRunId, mode, status: runStatus }] });
     if (path === "/api/runs/" + encodeURIComponent(runId)) return response(run);
+    if (path === "/api/runs/" + encodeURIComponent(runId) + "/research") return response(eventResearch);
     if (path.startsWith("/api/runs/" + encodeURIComponent(runId) + "/cases/")) {
       const next = responses[Math.min(caseResponseIndex, responses.length - 1)];
       caseResponseIndex += 1;
@@ -870,6 +872,34 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   });
   if (unknown.tabs.some((tab) => !tab.disabled)) throw new Error("unknown executor status was treated as configured");
   if (unknown.calls.some((call) => !["/api/status", "/api/profile", "/api/runs"].includes(call.path))) throw new Error("unexpected external/market call");
+  const assisted = await scenario({mode: "event", cases: [], events: [],
+    executors: {event: "CONFIGURED", world: "NOT_CONFIGURED", direct: "CONFIGURED"},
+    eventResearch: {status: "RETAINED", assessment_status: "incomplete", original_input: "original event",
+      bounds: {max_submissions: 2, max_hypotheses: 3, max_browser_rows: 20, max_cases: 8, quote_timeout_seconds: 2.5},
+      sources: [{source_id:"s1", title:"source", locator:"public source"}],
+      statements: [{kind:"observed_fact", text:report, source_ids:["s1"]}], issues:[{code:"missing_underlying_key",subject_id:"h1"}]}});
+  await assisted.clickRun();
+  if (assisted.elements.get("event-research-view").textContent.includes(report)) throw new Error("material exposed before explicit read");
+  await assisted.elements.get("read-event-research").click();
+  if (!assisted.elements.get("event-research-view").textContent.includes(report)) throw new Error("retained text lost");
+  const reads = assisted.calls.length;
+  assisted.elements.get("event-supplement").value = "new source to verify";
+  await assisted.elements.get("prepare-event-continuation").click();
+  if (assisted.calls.length !== reads) throw new Error("draft preparation called services");
+  if (!assisted.elements.get("raw-input").value.includes("original event") || !assisted.elements.get("raw-input").value.includes("new source to verify")) throw new Error("draft content missing");
+  const form = assisted.elements.get("run-form");
+  assisted.elements.get("bound-max-cases").value = "99";
+  await form.handlers.submit[0]({preventDefault(){}});
+  if (assisted.calls.some(x=>x.method === "POST")) throw new Error("increased continuation budget submitted");
+  assisted.elements.get("bound-max-cases").value = "8";
+  await assisted.tabs[2].click();
+  await form.handlers.submit[0]({preventDefault(){}});
+  if (assisted.calls.some(x=>x.method === "POST")) throw new Error("continuation changed mode");
+  await assisted.tabs[1].click();
+  await form.handlers.submit[0]({preventDefault(){}});
+  const posted = assisted.calls.find(x => x.method === "POST");
+  if (!posted || JSON.parse(posted.body).mode !== "event" || !JSON.parse(posted.body).input.includes("未核验")) throw new Error("continuation bypassed normal Event submit");
+  if (JSON.parse(posted.body).bounds.quote_timeout_seconds !== 2.5) throw new Error("budget changed");
   console.log("fake DOM behavior checks passed");
 })().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });
 '''

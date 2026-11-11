@@ -73,6 +73,18 @@ this target; this ADR does not implement that bridge.
 
 ### Core inputs and fail-closed semantics
 
+#### Approved interaction clarification — 2026-11-11
+
+Autonomous World/Event remains the default. After an incomplete Event result,
+the user may stop or voluntarily supplement source URLs / facts to verify and
+submit a new Event run through the same Source Admission, Grounder, independent
+Verifier, Builder, EI and Core. Supplementation is not a mandatory selection
+gate, factual authority, or permission to edit a verified submission. Preserve
+the previous run and all evidence, temporal, maturity and economic rules.
+Assisted continuation does not prove autonomous three-entry live acceptance.
+The first bounded implementation covers Event only; it does not redesign World
+or add providers, budgets or automatic retries.
+
 The Core requires explicit, non-defaulted inputs needed by the selected claim:
 
 - exact identity, supported structure grammar, maturity, quantity, and

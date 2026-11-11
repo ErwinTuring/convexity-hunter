@@ -1659,6 +1659,9 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                 return
             self._get_case(route[3], route[5])
             return
+        if len(route) == 5 and route[:3] == ("", "api", "runs") and route[4] == "research" and _RUN_ID_RE.fullmatch(route[3]):
+            self._get_event_research(route[3])
+            return
         self._send_json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
@@ -1763,6 +1766,18 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": "journal unavailable"})
             return
         self._send_json(200, {"runs": public_runs})
+
+    def _get_event_research(self, run_id: str) -> None:
+        try:
+            getter = getattr(self.server.journal, "get_event_research", None)
+            view = getter(run_id) if callable(getter) else None
+        except Exception:
+            self._send_json(500, {"error": "journal unavailable"})
+            return
+        if view is None:
+            self._send_json(404, {"error": "Event research not found"})
+            return
+        self._send_json(200, view)
 
     def _get_run(self, run_id: str) -> None:
         try:

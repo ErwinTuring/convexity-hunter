@@ -670,6 +670,24 @@ def make_v1_database(path):
 
 
 class HostStoreTests(unittest.TestCase):
+    def test_event_research_reads_retained_submission_without_mutating_history(self):
+        run_id = self.create_run("event", "synthetic fixture event")
+        stage = self.store.start_stage(run_id, "grounder")
+        self.store.save_grounder_submission_stage_result(run_id, stage, make_grounder_submission_result(run_id))
+        before = self.store.get_run(run_id)
+        view = self.store.get_event_research(run_id)
+        self.assertEqual(view["status"], "RETAINED")
+        self.assertEqual(view["original_input"], "synthetic fixture event")
+        self.assertTrue(view["statements"])
+        self.assertEqual(set(view), {"status", "original_input", "bounds", "sources", "statements", "issues", "assessment_status"})
+        self.assertEqual(self.store.get_run(run_id), before)
+        self.assertEqual(len(self.store.list_runs()), 1)
+
+    def test_event_research_missing_material_and_other_modes_do_not_invent_evidence(self):
+        event = self.create_run("event", "no retained material")
+        self.assertEqual(self.store.get_event_research(event)["status"], "NOT_RETAINED")
+        self.assertIsNone(self.store.get_event_research(self.create_run("world")))
+
     def test_grounder_v010_prompt_pair_uses_existing_bound_object_wire(self):
         from convexity_hunter.host_store import (
             _grounder_bound_object_route_is_valid,

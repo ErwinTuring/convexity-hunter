@@ -3782,6 +3782,34 @@ class HostStore:
             result["events"] = stage_events
             return result
 
+    def get_event_research(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Read only retained EI material, never raw provider/model evidence."""
+        with self._lock:
+            run = self.get_run(run_id)  # validates archive integrity before projection
+            if run is None or run["mode"] != "event":
+                return None
+            view = {
+                "status": "NOT_RETAINED", "original_input": run["input"],
+                "bounds": run["bounds"], "sources": [], "statements": [],
+                "issues": [], "assessment_status": None,
+            }
+            for event in self._events_for(run_id):
+                if event["event_type"] != "stage_finished" or event["stage_name"] != "grounder":
+                    continue
+                outcome = _decode_canonical_json(event["payload_json"])["outcome"]
+                if type(outcome) is not dict or "submission" not in outcome:
+                    continue
+                checked = _validate_grounder_submission_stage_outcome(outcome)
+                submission = checked["submission"]
+                view.update({
+                    "status": "RETAINED",
+                    "sources": submission["sources"],
+                    "statements": submission["statements"],
+                    "issues": submission["assessment"]["issues"],
+                    "assessment_status": submission["assessment"]["status"],
+                })
+            return view
+
     def list_runs(self) -> List[Dict[str, Any]]:
         with self._lock:
             rows = self._conn().execute(

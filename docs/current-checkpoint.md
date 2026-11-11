@@ -1,5 +1,33 @@
 # Current Checkpoint
 
+## Product BUILD: optional Event evidence continuation — 2026-11-11
+
+User approved automatic B default with optional A assistance after insufficient
+evidence. Event-only bounded implementation reuses validated retained submission
+in SQLite, explicit same-origin read-only research view, and original Event
+POST for a new unverified supplemented input. No schema/model/provider/Core/EI
+or budget changes. History is immutable; missing retained material is not
+reconstructed; no automated resubmit or supported override. Existing accepted
+and incomplete execution gates remain in the focused regression.
+
+Workbench: open Event history, explicitly view retained materials, enter source
+URLs/facts to verify, prepare draft without calls, inspect original budgets and
+submit through the existing form. Separate research GET retains ordinary run
+summary privacy. Source facts and conditional interpretations are labelled
+separately; historical private rationales, raw responses and full source bodies
+are not exposed. Optional assistance is not autonomous three-entry acceptance.
+
+148 focused Store/HTTP/Node fake-DOM tests and modified-module compilation pass.
+Initial socket test permission errors were resolved by allowing test-only
+loopback listeners. Regression caught ordinary GET exposing old private
+submission text; corrected with an explicit user-invoked research endpoint,
+legacy GET privacy test preserved. Independent review found draft mode/budget
+drift: fixed by capturing the five original bounds and rejecting mode/budget
+changes before POST; explicit cancel clears draft/input. Counterexamples added,
+targeted independent re-review PASS. No new numerical/evidence semantics.
+No CAPR, new event search, paid call, real market acceptance or resource increase.
+The old CAPR preparation below is historical: do NOT execute or schedule it.
+
 ## Next same-budget Event: CAPR manufacturing lease — 2026-11-10
 
 Continuation after IREN EI INCOMPLETE, not a replay. Fresh fetch clean

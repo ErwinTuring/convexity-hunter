@@ -133,6 +133,14 @@ _DOCUMENT = r'''<!doctype html>
       <p id="run-status" class="status-pill">状态缺失（尚未读取）</p>
       <h3>诊断</h3><pre id="run-diagnostics">运行响应尚未提供。</pre>
       <h3>阶段事件</h3><pre id="run-events">运行响应尚未提供。</pre>
+      <h3>Event 证据与缺口</h3>
+      <button id="read-event-research" type="button">查看已保留 Event 材料（只读）</button>
+      <pre id="event-research-view">尚未读取 Event。</pre>
+      <label for="event-supplement">补充来源 URL / 待核验事实（不是 supported）</label>
+      <textarea id="event-supplement" autocomplete="off"></textarea>
+      <button id="prepare-event-continuation" type="button" disabled>准备补充研究（不调用服务）</button>
+      <button id="cancel-event-continuation" type="button">取消续研草稿</button>
+      <p class="help">可在此结束。准备后请检查上方 Event 草稿和预算，再点击原提交按钮；新运行重新核验，旧记录不变。不要输入密钥或账户资料。</p>
       <h3>其他运行快照</h3><pre id="run-snapshot">尚未读取运行快照。</pre>
       <h3>批量研究摘要</h3>
       <p class="help">Core 分类不是买入建议或估值判断；Ask 基准仅为 INDICATIVE_ONLY。未知成本显示为未提供，不按 0 处理。批量状态只描述已保留研究分支；不证明原始请求已全面核实。</p>
@@ -987,7 +995,73 @@ _DOCUMENT = r'''<!doctype html>
     setText(target, lines.join("\n"));
   }
 
+  let continuationResearch = null;
+  let continuationDraftBounds = null;
+  byId("cancel-event-continuation").addEventListener("click", () => {
+    continuationDraftBounds = null;
+    byId("raw-input").value = "";
+    setText(byId("submit-state"), "续研草稿已取消；未调用服务。可正常开始其他研究。");
+  });
+  byId("read-event-research").addEventListener("click", async () => {
+    if (state.runMode !== "event" || safeRunId(state.runId) === null) return;
+    const runId = state.runId;
+    try {
+      const view = await getJson(API.runs + "/" + safeRunId(runId) + "/research");
+      if (state.runId === runId && state.runMode === "event") renderEventResearch({mode:"event",event_research:view});
+    } catch (error) {
+      if (state.runId === runId) renderEventResearch(null);
+    }
+  });
+  function renderEventResearch(data) {
+    continuationResearch = null;
+    const button = byId("prepare-event-continuation");
+    button.disabled = true;
+    byId("event-supplement").value = "";
+    const view = data && data.mode === "event" ? data.event_research : null;
+    if (!isRecord(view) || view.status !== "RETAINED") {
+      setText(byId("event-research-view"), "未保留可展示的 Event submission；不补造历史事实。原阶段原因仍见上方。");
+      return;
+    }
+    const lines = ["已保留的核验后 submission 材料；不代表 EI 已接受或市场事实必然成立。",
+      "EI：" + compactScalar(view.assessment_status), "来源："];
+    for (const source of view.sources || []) {
+      lines.push(compactScalar(source.source_id) + " | " + compactScalar(source.title) + " | " + compactScalar(source.locator));
+    }
+    lines.push("事实 / 条件性解释（按类型分列，不把解释当作事实）：");
+    for (const statement of view.statements || []) {
+      const kind = statement.kind === "observed_fact" ? "来源事实" : statement.kind === "interpretation" ? "条件性解释（非事实）" : "未知类型";
+      lines.push("[" + kind + "] " + compactScalar(statement.text)
+        + " | 来源：" + compactStringList(statement.source_ids));
+    }
+    lines.push("EI 缺口：");
+    for (const issue of view.issues || []) lines.push(compactScalar(issue.code) + " | " + compactScalar(issue.subject_id));
+    setText(byId("event-research-view"), lines.join("\n"));
+    if (view.assessment_status === "incomplete" && typeof view.original_input === "string" && isRecord(view.bounds)) {
+      continuationResearch = view;
+      button.disabled = false;
+    }
+  }
+
+  byId("prepare-event-continuation").addEventListener("click", () => {
+    const view = continuationResearch;
+    if (!view || byId("tab-event").disabled) return;
+    const supplement = byId("event-supplement").value;
+    if (!supplement.trim()) {
+      setText(byId("submit-state"), "请补充待核验信息；未提交。");
+      return;
+    }
+    byId("tab-event").click();
+    byId("raw-input").value = view.original_input + "\n\n用户补充（未核验，须经原独立核验，不继承旧结论）：\n" + supplement;
+    for (const key of integerBoundNames) {
+      byId("bound-" + key.replaceAll("_", "-")).value = String(view.bounds[key]);
+    }
+    byId("bound-quote-timeout").value = String(view.bounds.quote_timeout_seconds);
+    continuationDraftBounds = Object.assign({}, view.bounds);
+    setText(byId("submit-state"), "Event 草稿已准备，尚未调用服务。请检查预算并显式提交新运行；旧记录不变。");
+  });
+
   function renderRun(data, requestedRunId) {
+    renderEventResearch(data);
     if (!isRecord(data)) {
       state.runMode = null;
       state.batchCaseKeys.clear();
@@ -1010,7 +1084,7 @@ _DOCUMENT = r'''<!doctype html>
     renderBatchSummary(data.batch_summary);
     const extras = Object.create(null);
     for (const key of Object.keys(data)) {
-      if (["run_id", "status", "diagnostics", "events", "cases", "batch_summary", "case_details", "caseDetails"].includes(key)) continue;
+      if (["event_research", "run_id", "status", "diagnostics", "events", "cases", "batch_summary", "case_details", "caseDetails"].includes(key)) continue;
       extras[key] = data[key];
     }
     setText(byId("run-snapshot"), Object.keys(extras).length ? jsonText(extras, true) : "运行响应未提供其他非用例快照字段。");
@@ -1027,6 +1101,7 @@ _DOCUMENT = r'''<!doctype html>
   }
 
   async function loadRun(runId) {
+    renderEventResearch(null);
     const encodedId = safeRunId(runId);
     if (encodedId === null) return;
     state.runId = runId;
@@ -1170,6 +1245,11 @@ _DOCUMENT = r'''<!doctype html>
       return;
     }
     const payload = { mode: state.mode, input: rawInput, bounds: bounds };
+    if (continuationDraftBounds !== null && (state.mode !== "event" ||
+        [...integerBoundNames, "quote_timeout_seconds"].some(key => bounds[key] !== continuationDraftBounds[key]))) {
+      setText(byId("submit-state"), "续研必须保持 Event 入口和原预算；请恢复原值或取消续研草稿，未提交。");
+      return;
+    }
     const button = byId("submit-run");
     button.disabled = true;
     setText(byId("submit-state"), "正在提交新运行……");

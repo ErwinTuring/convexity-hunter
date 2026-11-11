@@ -1,5 +1,19 @@
 # Project State
 
+## Product delivery priority: automatic default, assisted continuation — 2026-11-11
+
+User approved B as default autonomous flow and A as optional assistance after
+insufficient evidence. Current bounded BUILD: Event evidence view and explicit
+supplement/new run in the existing Workbench. Independent verification, EI,
+maturity and Core rules remain unchanged; no manual supported/submission edit.
+No CAPR run, new case search, paid acceptance, capacity increase or model prompt
+change. CAPR preparation below is historical and must not trigger execution.
+Assisted delivery does not count as autonomous three-entry live acceptance.
+Implemented: explicit read-only retained-material view, labelled facts versus
+interpretations/gaps, supplementary draft and new normal Event submit; original
+mode/budget binding enforced, cancel supported. 148 focused tests, compilation
+and independent review/targeted fix PASS. No real paid acceptance in this unit.
+
 ## CAPR next Event preflight prepared — 2026-11-10
 
 Selected CAPR's dated manufacturing lease and conditional regulatory-linked

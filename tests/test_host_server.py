@@ -1909,6 +1909,15 @@ class HostServerBatchTests(unittest.TestCase):
                 b"PRIVATE_SOURCE_TITLE",
             ):
                 self.assertNotIn(private_value, serialized)
+            evidence_response = self._request("GET", "/api/runs/{}/research".format(run_id))
+            self.assertEqual(evidence_response[0], 200)
+            evidence = self._decoded(evidence_response)
+            self.assertEqual(evidence["status"], "RETAINED")
+            self.assertEqual(evidence["assessment_status"], "incomplete")
+            self.assertEqual(evidence["original_input"], raw_input)
+            self.assertNotIn("submission", evidence)
+            self.assertEqual(len(core_calls), 1)
+            self.assertEqual(market_bridge.calls, [])
         finally:
             self._stop_server()
             store.close()

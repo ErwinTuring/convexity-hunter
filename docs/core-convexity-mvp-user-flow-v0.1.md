@@ -82,6 +82,20 @@ Core evidence or disposition semantics.
 
 ## User entry examples
 
+### Optional Event continuation
+
+The default flow remains automatic. When an Event has a retained submission
+but insufficient EI evidence, Workbench may display its retained verified
+statements, source references, conditional interpretations and missing reasons.
+The user may finish or supply additional URLs / unverified facts, then explicitly
+submit a new normal Event run. Opening history and editing a draft do not query
+sources or models. User additions never become `supported` merely by submission;
+all pass through the original verification and EI gates. Earlier runs remain
+immutable. Missing historical material stays unavailable; it is not reconstructed.
+EI acceptance and compatible maturity continue the existing shared research path;
+honest INCOMPLETE remains a valid stopping result. This optional assistance is
+not a claim that autonomous World/Event live closure is complete.
+
 - **World:** “Find current eligible supported long-option structures related to
   this world event.” The system grounds the request and runs Event Intelligence
   acceptance; only accepted hypotheses enter deterministic branches. Result: one
