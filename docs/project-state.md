@@ -13,6 +13,8 @@ Implemented: explicit read-only retained-material view, labelled facts versus
 interpretations/gaps, supplementary draft and new normal Event submit; original
 mode/budget binding enforced, cancel supported. 148 focused tests, compilation
 and independent review/targeted fix PASS. No real paid acceptance in this unit.
+Browser interaction check confirmed history/read/draft/cancel without submission.
+Unread material now has a distinct message from an absent retained submission.
 
 ## CAPR next Event preflight prepared — 2026-11-10
 

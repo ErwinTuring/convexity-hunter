@@ -879,6 +879,7 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
       sources: [{source_id:"s1", title:"source", locator:"public source"}],
       statements: [{kind:"observed_fact", text:report, source_ids:["s1"]}], issues:[{code:"missing_underlying_key",subject_id:"h1"}]}});
   await assisted.clickRun();
+  if (!assisted.elements.get("event-research-view").textContent.includes("尚未读取 Event 材料")) throw new Error("unread material mistaken for absent archive");
   if (assisted.elements.get("event-research-view").textContent.includes(report)) throw new Error("material exposed before explicit read");
   await assisted.elements.get("read-event-research").click();
   if (!assisted.elements.get("event-research-view").textContent.includes(report)) throw new Error("retained text lost");

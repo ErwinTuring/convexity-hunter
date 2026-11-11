@@ -1019,7 +1019,9 @@ _DOCUMENT = r'''<!doctype html>
     byId("event-supplement").value = "";
     const view = data && data.mode === "event" ? data.event_research : null;
     if (!isRecord(view) || view.status !== "RETAINED") {
-      setText(byId("event-research-view"), "未保留可展示的 Event submission；不补造历史事实。原阶段原因仍见上方。");
+      setText(byId("event-research-view"), isRecord(view) && view.status === "NOT_RETAINED"
+        ? "未保留可展示的 Event submission；不补造历史事实。原阶段原因仍见上方。"
+        : "尚未读取 Event 材料。请选择历史 Event，再点击查看按钮；尚未读取不代表未保留。");
       return;
     }
     const lines = ["已保留的核验后 submission 材料；不代表 EI 已接受或市场事实必然成立。",
