@@ -81,6 +81,13 @@ def _retained_empty_batch_summary(mode):
 
 
 class HostWorkbenchTests(unittest.TestCase):
+    def test_gap_help_covers_current_ei_reasons_without_changing_the_contract(self):
+        from convexity_hunter.event_intelligence import EventIntelligenceIssueCode
+        page = render_workbench("fixture")
+        help_text = page.split("const eiGapHelp = Object.freeze({", 1)[1].split("});", 1)[0]
+        self.assertEqual(set(re.findall(r"^    ([a-z_]+):", help_text, re.M)),
+                         {code.value for code in EventIntelligenceIssueCode})
+
     def test_csrf_token_is_attribute_escaped_and_not_written_into_script(self):
         token = '"><script>alert(1)</script>&'
         page = render_workbench(token)
@@ -883,6 +890,8 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   if (assisted.elements.get("event-research-view").textContent.includes(report)) throw new Error("material exposed before explicit read");
   await assisted.elements.get("read-event-research").click();
   if (!assisted.elements.get("event-research-view").textContent.includes(report)) throw new Error("retained text lost");
+  const helped = assisted.elements.get("event-research-view").textContent;
+  if (!helped.includes("missing_underlying_key") || !helped.includes("上市证券身份未建立") || !helped.includes("不保证补充后通过")) throw new Error("actionable gap disclosure lost code or boundary");
   const reads = assisted.calls.length;
   assisted.elements.get("event-supplement").value = "new source to verify";
   await assisted.elements.get("prepare-event-continuation").click();

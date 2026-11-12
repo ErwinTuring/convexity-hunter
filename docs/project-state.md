@@ -1,5 +1,13 @@
 # Project State
 
+## Actionable EI gap presentation — 2026-11-12
+
+Workbench now explains all 24 current EI incomplete reason codes in Chinese,
+alongside original code/subject and bounded source-supplement hints. Technical
+metadata gaps are not presented as user-fillable evidence; no invented dates,
+default narrative duration or supported override. Read failure is distinguished
+from unretained material. Presentation only; EI/model/Builder/Core unchanged.
+
 ## Workbench immediate restart fix — 2026-11-12
 
 Reproduced immediate rebind failure (errno48) after a closed HTTP connection

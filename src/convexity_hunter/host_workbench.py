@@ -1017,6 +1017,7 @@ _DOCUMENT = r'''<!doctype html>
       if (state.runId === runId) {
         setText(byId("world-research-selections"), "");
         renderEventResearch(null);
+        setText(byId("event-research-view"), "材料读取失败；尚不能判断是否保留。没有重新研究、补造材料或自动重试。");
       }
     }
   });
@@ -1048,6 +1049,32 @@ _DOCUMENT = r'''<!doctype html>
       list.appendChild(button);
     }
   }
+  const eiGapHelp = Object.freeze({
+    missing_event_id: "缺少事件标识：这是结构化准备缺项，不要自行编造内部 ID。",
+    missing_producer_id: "缺少生产者标识：属于系统准备字段，不要求你填写模型或内部 ID。",
+    missing_producer_version: "缺少生产者版本：属于系统准备字段，不要求你编造版本。",
+    missing_observed_at: "缺少观察时间：不要用事件发生日代替系统观察时间。",
+    missing_event_description: "缺少明确事件描述：可补充直接说明谁发生了什么的原始来源。",
+    incomplete_event_date_range: "事件发生日期不完整：可补充明确记载发生日的来源；公告日、报送日或未来目标日不能自动代替。",
+    no_structured_sources: "未形成结构化来源：可补充可访问的原始来源 URL，不只是新闻摘要。",
+    source_locator_missing: "来源缺少定位信息：可补充对应原文 URL。",
+    no_statements: "未形成事实或解释：可补充具体待核验陈述及其来源，不是直接标记 supported。",
+    statement_text_missing: "声明正文缺失：可明确说明待核验的事实或条件性解释。",
+    observed_fact_source_missing: "事实缺少来源关联：可指出支持该陈述的具体原文。",
+    interpretation_source_closure_missing: "解释缺少可追溯事实依据：可补充支持其前提的来源，不把解释改写成事实。",
+    missing_underlying_key: "上市证券身份未建立：可补充发行人、证券类别、ticker、交易所及币种依据；单有股票代码不够。",
+    missing_impact_path: "企业经济传导未建立：可补充事件如何影响收入、成本、融资或经营约束的来源及条件。",
+    missing_distribution_mode: "分布变化模式未建立：现有材料未支持相应模式；不要为了通过而猜测方向或波动。",
+    missing_distribution_hypothesis: "缺少可检验的分布变化假设：可说明条件性的经济分叉及依据，不预测价格或概率。",
+    incomplete_expected_window: "已声明的影响窗口不完整：只能补充有依据的影响区间；监管目标日不自动成为影响终点。",
+    missing_temporal_applicability: "缺少时间适用性：可补充来源支持的未来复核节点及其关联；复核期限不是影响终点或期权期限锚点，不自动填 30/60/90 天。",
+    missing_supporting_evidence: "假设缺少支持材料关联：可补充对应的事实、条件性解释及来源。",
+    missing_supporting_observed_fact: "假设缺少来源事实支持：可补充可核验的原始事实及出处。",
+    missing_supporting_interpretation: "假设缺少条件性解释：可说明来源事实到企业结果的传导，区分前提与推论。",
+    missing_contradiction_review: "缺少反证审查：可补充相反信息或限制条件；没有找到不等于不存在。",
+    missing_uncertainties: "缺少不确定性说明：可列出尚未建立的关键条件，不能伪装成已知事实。",
+    missing_falsification_conditions: "缺少可证伪条件：可说明哪些可观察事实会使假设不再成立。"
+  });
   function renderEventResearch(data) {
     continuationResearch = null;
     const button = byId("prepare-event-continuation");
@@ -1072,7 +1099,12 @@ _DOCUMENT = r'''<!doctype html>
         + " | 来源：" + compactStringList(statement.source_ids));
     }
     lines.push("EI 缺口：");
-    for (const issue of view.issues || []) lines.push(compactScalar(issue.code) + " | " + compactScalar(issue.subject_id));
+    lines.push("以下解释缺项含义和可补充线索，不是上游失败归因，也不保证补充后通过。新增内容仍须独立核验；你也可以结束研究。");
+    for (const issue of view.issues || []) {
+      lines.push(compactScalar(issue.code) + " | " + compactScalar(issue.subject_id));
+      lines.push(Object.prototype.hasOwnProperty.call(eiGapHelp, issue.code)
+        ? eiGapHelp[issue.code] : "未提供该原因码的中文说明；保留原码，不推断缺失证据。");
+    }
     setText(byId("event-research-view"), lines.join("\n"));
     if (view.assessment_status === "incomplete" && typeof view.original_input === "string" && view.original_input.trim() && isRecord(view.bounds)) {
       continuationResearch = view;
