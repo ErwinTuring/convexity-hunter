@@ -1,5 +1,17 @@
 # Current Checkpoint
 
+## Structure-first Event/World: authority approved, BUILD active — 2026-11-19
+
+User requests exploration without universal EI ACCEPTED/directional-hypothesis
+prerequisites, retaining EI for formal event/distribution claims. Current request,
+Futu and Core context contracts all require an accepted handoff; deleting the
+application gate alone is insufficient. [Minimal decision](structure-first-exploration-decision-v0.1.md)
+freezes a separate explicit exploration request/authority and neutral 30–150 DTE
+policy, independently verified fact/entity/exposure admission and shared Core.
+Independent decision review PASS; user explicitly approved. BUILD is authorized,
+not yet complete or live-validated. Existing authorities and historical results
+retain their meaning. No paid run, CAPR, provider request or Prompt repair.
+
 ## World archive → optional Event continuation delivered — 2026-11-12
 
 The explicit research read endpoint now also projects existing validated World

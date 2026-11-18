@@ -1,5 +1,16 @@
 # Project State
 
+## Structure-first exploration: approved BUILD — 2026-11-19
+
+New product direction separates exploratory structure research from EI claim
+acceptance, without weakening evidence or Core. [Bounded decision](structure-first-exploration-decision-v0.1.md)
+identifies exact accepted-handoff, request, enumeration and context coupling.
+Independent exploration authority/request and neutral 30–150 DTE policy are now
+explicitly approved after decision review PASS. BUILD active, not yet completed
+or live-validated; Direct and EI acceptance semantics remain unchanged. No new
+research/provider calls. Deliver one shared-Core Event slice and World reuse,
+not another Producer experiment.
+
 ## Actionable EI gap presentation — 2026-11-12
 
 Workbench now explains all 24 current EI incomplete reason codes in Chinese,
