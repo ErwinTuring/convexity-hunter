@@ -45,6 +45,26 @@ contracts are preserved.
 
 ### Target flow and three equivalent entries
 
+#### Structure-first routing correction — approved 2026-11-19
+
+The [exploration authority contract](structure-first-exploration-decision-v0.1.md)
+adds an explicit Event/World exploration route. A supported event/change fact,
+independently verified security identity and a source-supported entity/exposure
+link can authorize bounded structure exploration without a complete directional
+hypothesis or EI ACCEPTED. The new `EXPLORATORY_STRUCTURE_RESEARCH` authority is
+neutral 30–150 calendar DTE with `NOT_ESTABLISHED` maturity alignment. It does not
+redefine either existing authority or permit bypass of an applicable accepted
+hypothesis's stronger maturity boundary. Runtime completion is tracked in the
+checkpoint, not implied by this doctrine.
+
+Explore all three supported structure grammars without inferring direction,
+ranking or picking a best contract. Source/identity admission, EI claim acceptance
+and Core qualification are distinct. EI INCOMPLETE does not erase lawful geometry;
+geometry does not prove event transmission, underpricing or a positive expected
+return. Missing mandatory cost/loss/survival evidence still prevents a
+`RESEARCHABLE_CONVEXITY` result. The existing accepted-hypothesis routes below
+remain available, but are no longer the sole approved target route.
+
 All three entries converge on the same structured Core record and the same
 disposition path:
 

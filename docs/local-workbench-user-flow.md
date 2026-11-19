@@ -13,6 +13,26 @@
 
 ## 启动与输入
 
+### 已批准的结构优先探索
+
+在已配置的正常 Host 启动命令上显式增加
+`--enable-exploratory-research`，启用独立的探索权限；不加此参数保持原有
+EI 驱动路径。本机私有 Python 启动器也透传此参数：
+
+```bash
+python3 /Users/erwinlee/convexity-hunter/local-mvp/launch_host.py \
+  --evaluation-date YYYY-MM-DD --enable-exploratory-research
+```
+
+日期须替换为执行时明确采用的真实 UTC 评估日期。此开关不自动提交研究、
+增加调用预算或读取新行情；本轮不授权新的真实付费验收。
+Event/World 在来源事实、证券身份及暴露联系均通过独立核验后，可在方向未知时
+进入同一 Browser/Core。探索仅用 30–150 日 DTE 中性研究政策，不声称期限
+匹配，也不表示事件分布主张通过 EI。缺少事实/身份/联系则无行情请求，
+缺少 Core 强制成本/损失依据则不产生合格结论。查看批量比较与按需详情，
+分别阅读探索准入、EI 状态和 Core 分类。参见
+[已批准边界](structure-first-exploration-decision-v0.1.md)及检查点的实际完成状态。
+
 本机部署注意：日期是显式研究输入，新会话应使用执行时真实 UTC 日期，
 不能改写历史记录。仅在确认无活动运行后停止已核实的 Host PID。通过受限
 执行环境启动时，应先在相同权限模式下确认可绑定 localhost；原启动器已设置

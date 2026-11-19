@@ -17,6 +17,14 @@ or execute trades. The canonical product direction remains in
 
 ## 1. MVP research question and entry modes
 
+The approved [structure-first exploration contract](structure-first-exploration-decision-v0.1.md)
+adds a separate, explicitly enabled Event/World route for verified event/entity/
+exposure leads that lack complete distribution claims. EI ACCEPTED remains the
+gate for the old hypothesis-driven route and formal event-impact claims, not a
+universal prerequisite for every exact structure calculation. Existing source,
+identity and Core economic gates remain mandatory; see checkpoint for BUILD and
+real-validation status.
+
 The target Core must answer:
 
 > Which exact supported long option structures can be deterministically

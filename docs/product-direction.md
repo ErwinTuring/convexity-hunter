@@ -13,6 +13,16 @@ BUILD is authorized, but this is not a runtime or code-complete declaration.
 
 ## 1. Product objective
 
+The approved [structure-first exploration addition](structure-first-exploration-decision-v0.1.md)
+separates Event/World factual/entity exploration admission from EI acceptance of
+specific distribution claims. Explicit exploration policy allows verified leads
+with unknown direction to enumerate Long Calls, Long Puts and paired Straddles
+through the SAME Browser/Core, using neutral 30–150 calendar DTE and
+NOT_ESTABLISHED alignment. It does not make every news item market-eligible or
+alter existing accepted-hypothesis maturity constraints. The accepted-hypothesis
+flows documented below remain compatible routes, not universal prerequisites.
+Implementation/live status remains in the current checkpoint.
+
 Convexity Hunter's target starts from uncertainty or event context, resolves
 exact supported Long Option structures, computes auditable payoff geometry,
 explicit cost/loss budgets, sensitivity, and survival/repeatability, and emits

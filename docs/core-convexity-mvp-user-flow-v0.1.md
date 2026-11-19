@@ -56,7 +56,31 @@ output does not prove that the mechanism is absent: source insufficiency and
 demonstrated extraction/binding loss must be distinguished, and unresolved
 attribution stays unresolved. Existing `GROUNDING_NO_SUBMISSION`/BLOCKED
 records are not retroactively relabeled as success or software failure.
-Supported branches still require the unchanged EI gates before Core research.
+Accepted-hypothesis branches still require the unchanged EI gates. The explicit
+[structure-first exploration authority](structure-first-exploration-decision-v0.1.md)
+adds a distinct route; it does not relax those gates.
+
+### Structure-first Event/World addition
+
+When exploration is explicitly enabled in the application, the existing Grounder
+may retain independently verified source facts, an exact verified listing and a
+verified event/entity exposure link even if it cannot form a complete hypothesis.
+Those leads may enter the same real-contract Browser and Core through
+`EXPLORATORY_STRUCTURE_RESEARCH`: neutral 30–150 calendar DTE, no direction
+inferred, and `hypothesis_maturity_alignment = NOT_ESTABLISHED`.
+
+The user enters an Event or a bounded World request and explicit operation
+bounds. All admitted branches are processed without ranking or a manual structure
+selection gate. The result is a case-set summary and neutral compact comparison;
+details render lazily from the saved Core record, without another source/market
+run. A missing identity, fact or exposure link stops before market access. Missing
+mandatory Core costs/loss/survival inputs prevents qualification, while lawful
+geometry remains visible. EI absent/INCOMPLETE is disclosed separately, never
+presented as a supported event/distribution explanation. Existing accepted
+hypothesis routes take precedence where applicable; Direct remains unchanged.
+
+BUILD/live-validation status is recorded in the checkpoint. The new route's code
+or offline fixtures do not establish a real automatic three-entry closure.
 
 ```text
 uncertainty / event context

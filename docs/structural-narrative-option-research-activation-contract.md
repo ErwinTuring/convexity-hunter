@@ -2,6 +2,13 @@
 
 ## Status
 
+This remains the frozen accepted-hypothesis activation contract. The separately
+approved [structure-first addition](structure-first-exploration-decision-v0.1.md)
+introduces a third authority with a DISTINCT request and evidence admission.
+It does not reinterpret either authority below or remove their EI ACCEPTED and
+temporal requirements. Option-chain request v0.5 documents that additive API;
+historical v0.4 API counts below describe this contract's original migration.
+
 This Tier-A contract is frozen and implemented as one atomic runtime migration.
 Option-Chain Discovery Request v0.4 now supports the two exact authorities
 defined below. The historical v0.3 behavior remains available through the

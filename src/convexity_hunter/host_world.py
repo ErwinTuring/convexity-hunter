@@ -20,6 +20,8 @@ from .core_application import (
     CoreOperationalBounds,
     CoreRunResult,
     SourceSubmissionBatch,
+    assess_event_intelligence_submission,
+    effective_source_batch_counts,
     run_world_core,
 )
 from .core_futu import FutuMarketBridge
@@ -38,10 +40,12 @@ from .host_grounder_evidence_catalog import (
     _BINDING_OMISSION_FIRST_FAILURE_CHECK,
 )
 from .host_grounder_runtime import (
+    HostGrounderEvidenceCatalogRuntimeResult,
     HostGrounderRuntimeError,
     _BINDING_COMPLIANCE_CLOSURE_FAILURE_CHECK,
     _BINDING_COMPLIANCE_CLOSURE_ROUTES,
 )
+from .host_grounder_builder import HostBuildResult
 from .host_event import (
     HostEventGrounderConfig,
     _SOURCE_SEARCH_POLICY_WORLD_NATIVE,
@@ -53,7 +57,10 @@ from .host_event import (
 )
 from .host_grounder_run_input import HostGrounderRunInput, HostGrounderSubquestion
 from .host_model import ChatCompletionsClient, ModelTransportError
-from .option_chain_discovery import OptionMaturityAuthority
+from .option_chain_discovery import (
+    OptionMaturityAuthority,
+    validate_exploration_lead,
+)
 from .host_profile import APPROVED_STANDARD_RESEARCH_PROFILE, create_core_research_policy
 from .host_sources import TavilyTransportError
 from .host_skill import (
@@ -734,12 +741,32 @@ def _validate_covered_world_result(
 
         batch = case_set.submissions
         batch_submissions = ()
+        batch_leads = ()
         if batch is not None:
             if type(batch) is not SourceSubmissionBatch or batch.raw_input is not raw_input:
                 raise ValueError
             batch_submissions = batch.submissions
-        if len(batch_submissions) > bounds.max_submissions:
-            raise ValueError
+            batch_leads = batch.exploration_leads
+            for lead in batch_leads:
+                validate_exploration_lead(lead)
+        if batch is not None:
+            accepted_hypotheses = []
+            for submission in batch_submissions:
+                assessment = assess_event_intelligence_submission(submission)
+                if assessment.status.value != "accepted":
+                    continue
+                accepted_hypotheses.extend(
+                    (assessment, submission, hypothesis)
+                    for hypothesis in submission.hypotheses
+                )
+            effective_counts = effective_source_batch_counts(
+                batch, tuple(accepted_hypotheses)
+            )
+            if (
+                effective_counts.source_items > bounds.max_submissions
+                or effective_counts.hypothesis_items > bounds.max_hypotheses
+            ):
+                raise ValueError
         if {item.submission_id for item in batch_submissions} != set(
             row_by_submission_id
         ):
@@ -790,18 +817,87 @@ def _validate_covered_world_result(
                 if entry is not None and reference.locator != entry["locator"]:
                     raise ValueError
 
-        def context_submission(case_context: object):
+        unit_by_lead_object = []
+        seen_lead_ids = set()
+        for lead in batch_leads:
+            if lead.lead_id in seen_lead_ids:
+                raise ValueError
+            seen_lead_ids.add(lead.lead_id)
+            validation = json.loads(lead.validation_reference)
+            if (
+                type(validation) is not dict
+                or validation.get("schema_version")
+                != "host-exploration-lead-validation-v0.1"
+                or type(validation.get("run_id")) is not str
+            ):
+                raise ValueError
+            matches = tuple(
+                row for row in rows
+                if row_payloads[row.unit_id]["source_coverage"] is not None
+                and row_payloads[row.unit_id]["source_coverage"]["run_id"]
+                == validation["run_id"]
+            )
+            if len(matches) != 1:
+                raise ValueError
+            row = matches[0]
+            payload = row_payloads[row.unit_id]["source_coverage"]
+            if payload["status"] == "EMPTY":
+                raise ValueError
+            available = {
+                entry["source_id"]: entry
+                for entry in payload["entries"]
+                if entry["status"] == "BODY_AVAILABLE"
+            }
+            failed_ids = {
+                entry["source_id"]
+                for entry in payload["entries"]
+                if entry["status"] == "FAILED"
+            }
+            failed_locators = {
+                entry["locator"]
+                for entry in payload["entries"]
+                if entry["status"] == "FAILED"
+            }
+            for source in lead.sources:
+                if (
+                    source.source_id in failed_ids
+                    or source.locator in failed_locators
+                    or (
+                        source.source_id in available
+                        and source.locator != available[source.source_id]["locator"]
+                    )
+                ):
+                    raise ValueError
+            unit_by_lead_object.append((lead, row))
+
+        def context_unit_row(case_context: object):
             if (
                 case_context is None
                 or getattr(case_context, "raw_input", None) is not raw_input
                 or case_context.submissions is not batch
-                or case_context.assessment is None
             ):
                 raise ValueError
-            submission = case_context.assessment.submission
-            if not any(submission is item for item in batch_submissions):
+            if case_context.assessment is not None:
+                submission = case_context.assessment.submission
+                if not any(submission is item for item in batch_submissions):
+                    raise ValueError
+                matches = tuple(
+                    row for linked_submission, row in unit_by_submission_object
+                    if linked_submission is submission
+                )
+                if len(matches) != 1:
+                    raise ValueError
+                return matches[0]
+            lead = case_context.exploration_lead
+            if lead is None or not any(lead is item for item in batch_leads):
                 raise ValueError
-            return submission
+            matches = tuple(
+                row for linked_lead, row in unit_by_lead_object
+                if linked_lead is lead
+            )
+            if len(matches) != 1:
+                raise ValueError
+            return matches[0]
 
         seen_case_ids = set()
         if len(case_set.cases) > bounds.max_cases:
@@ -809,13 +905,7 @@ def _validate_covered_world_result(
         for case in case_set.cases:
             if type(case) is not CoreCaseRecord:
                 raise ValueError
-            submission = context_submission(case.context)
-            matches = tuple(
-                linked_row
-                for linked_submission, linked_row in unit_by_submission_object
-                if linked_submission is submission
-            )
-            row = matches[0] if len(matches) == 1 else None
+            row = context_unit_row(case.context)
             if row is None or row.source_coverage is None:
                 raise ValueError
             if case.case_id in seen_case_ids:
@@ -826,13 +916,7 @@ def _validate_covered_world_result(
             if type(unavailable) is not CoreUnavailableCase:
                 raise ValueError
             if unavailable.context is not None:
-                submission = context_submission(unavailable.context)
-                matches = tuple(
-                    linked_row
-                    for linked_submission, linked_row in unit_by_submission_object
-                    if linked_submission is submission
-                )
-                row = matches[0] if len(matches) == 1 else None
+                row = context_unit_row(unavailable.context)
                 if row is None or row.source_coverage is None:
                     raise ValueError
         for row in rows:
@@ -859,6 +943,7 @@ def _covered_world_case_links(
     core_result: CoreRunResult,
     unit_rows: tuple,
     submission_links: tuple,
+    exploration_lead_links: tuple = (),
     *,
     raw_input: object,
 ) -> tuple:
@@ -868,13 +953,20 @@ def _covered_world_case_links(
         if type(case) is not CoreCaseRecord or case.context.raw_input is not raw_input:
             raise HostWorldError("WORLD_COVERAGE_LINK_INVALID")
         assessment = case.context.assessment
-        if assessment is None:
-            raise HostWorldError("WORLD_COVERAGE_LINK_INVALID")
-        submission = assessment.submission
-        matches = tuple(
-            unit_id for linked_submission, unit_id in submission_links
-            if linked_submission is submission
-        )
+        if assessment is not None:
+            submission = assessment.submission
+            matches = tuple(
+                unit_id for linked_submission, unit_id in submission_links
+                if linked_submission is submission
+            )
+        else:
+            lead = case.context.exploration_lead
+            if lead is None:
+                raise HostWorldError("WORLD_COVERAGE_LINK_INVALID")
+            matches = tuple(
+                unit_id for linked_lead, unit_id in exploration_lead_links
+                if linked_lead is lead
+            )
         if len(matches) != 1:
             raise HostWorldError("WORLD_COVERAGE_LINK_INVALID")
         row = next((item for item in unit_rows if item.unit_id == matches[0]), None)
@@ -1169,6 +1261,20 @@ def _empty_batch(raw_request: object) -> SourceSubmissionBatch:
     return SourceSubmissionBatch(raw_request, ())
 
 
+def _world_policy(
+    config: HostWorldConfig,
+    bounds: CoreOperationalBounds,
+    exploration_enabled: bool,
+):
+    policy = create_core_research_policy(
+        APPROVED_STANDARD_RESEARCH_PROFILE,
+        evaluation_date=config.evaluation_date,
+        maturity_authority=config.maturity_authority,
+        bounds=bounds,
+    )
+    return replace(policy, exploration_enabled=True) if exploration_enabled else policy
+
+
 def _world_unit_id(index: int, lead: Optional[tuple] = None) -> str:
     if lead is None:
         identity = b"world-scope-fallback-v0.1"
@@ -1356,6 +1462,7 @@ def _create_world_runner_impl(
     stage_runner: Optional[Callable[..., Any]] = None,
     skill_clock: Optional[Callable[[], datetime.datetime]] = None,
     _covered: bool,
+    exploration_enabled: bool = False,
 ) -> WorldExecutor:
     """Compose native last30days leads, the existing Grounder, and World Core.
 
@@ -1365,6 +1472,11 @@ def _create_world_runner_impl(
     """
     if type(config) is not HostWorldConfig:
         raise TypeError("config must be HostWorldConfig")
+    if type(exploration_enabled) is not bool:
+        raise TypeError("exploration_enabled must be a Boolean")
+    exploration_runtime_options = (
+        {"exploration_enabled": True} if exploration_enabled else {}
+    )
     expected_coverage_policy = (
         _SOURCE_COVERAGE_POLICY_VALIDATED_PARTIAL_V0_1
         if _covered
@@ -1396,6 +1508,7 @@ def _create_world_runner_impl(
     world_configuration_snapshot_bytes = _safe_configuration_snapshot(
         _revalidate_config(config.grounder),
         source_search_policy_version=source_search_policy_version,
+        exploration_enabled=exploration_enabled,
     )
 
     # Each existing per-role budget is the run-wide authorization. Reserve one
@@ -1435,6 +1548,7 @@ def _create_world_runner_impl(
         source_transport=source_transport,
         discovery_transport=discovery_transport,
         semantic_transport=semantic_transport,
+        **exploration_runtime_options,
     )
     world_source_query_factory = getattr(
         grounder, "_world_source_query_factory", None
@@ -1465,6 +1579,7 @@ def _create_world_runner_impl(
 
         covered_unit_rows = []
         submission_links = []
+        exploration_lead_links = []
 
         def finish(result: CoreRunResult):
             if not _covered:
@@ -1473,17 +1588,13 @@ def _create_world_runner_impl(
                 result,
                 tuple(covered_unit_rows),
                 tuple(submission_links),
+                tuple(exploration_lead_links),
                 raw_input=raw_input,
             )
             return _CoveredWorldResult(result, linked_rows)
 
         if not _valid_world_source_query(raw_input):
-            policy = create_core_research_policy(
-                APPROVED_STANDARD_RESEARCH_PROFILE,
-                evaluation_date=config.evaluation_date,
-                maturity_authority=config.maturity_authority,
-                bounds=bounds,
-            )
+            policy = _world_policy(config, bounds, exploration_enabled)
             result = run_world_core(
                 raw_input,
                 source_producer=_empty_batch,
@@ -1495,12 +1606,7 @@ def _create_world_runner_impl(
             raw_input, config.evaluation_date
         )
         if source_query is None or not _valid_world_source_query(source_query):
-            policy = create_core_research_policy(
-                APPROVED_STANDARD_RESEARCH_PROFILE,
-                evaluation_date=config.evaluation_date,
-                maturity_authority=config.maturity_authority,
-                bounds=bounds,
-            )
+            policy = _world_policy(config, bounds, exploration_enabled)
             result = run_world_core(
                 raw_input,
                 source_producer=_empty_batch,
@@ -1513,20 +1619,12 @@ def _create_world_runner_impl(
                 raw_input,
                 source_producer=_empty_batch,
                 market_bridge=market_bridge,
-                policy=create_core_research_policy(
-                    APPROVED_STANDARD_RESEARCH_PROFILE,
-                    evaluation_date=config.evaluation_date,
-                    maturity_authority=config.maturity_authority,
-                    bounds=config.bounds,
+                policy=_world_policy(
+                    config, config.bounds, exploration_enabled
                 ),
             )
             return finish(_append_reasons(result, ("world_bounds_exceed_config",)))
-        policy = create_core_research_policy(
-            APPROVED_STANDARD_RESEARCH_PROFILE,
-            evaluation_date=config.evaluation_date,
-            maturity_authority=config.maturity_authority,
-            bounds=bounds,
-        )
+        policy = _world_policy(config, bounds, exploration_enabled)
         if not _preflight_bounds(bounds):
             result = run_world_core(
                 raw_input,
@@ -1799,6 +1897,7 @@ def _create_world_runner_impl(
                         source_transport=source_transport,
                         discovery_transport=discovery_transport,
                         semantic_transport=semantic_transport,
+                        **exploration_runtime_options,
                     )
                 except Exception:
                     reasons.append("world_grounder_failed")
@@ -1820,6 +1919,8 @@ def _create_world_runner_impl(
                 return _empty_batch(raw_request)
 
             submissions = []
+            exploration_leads = []
+            seen_exploration_lead_ids = set()
             seen_submission_ids = set()
             for unit_id, query, unit_input, run_id, seed_urls in plans:
                 try:
@@ -1919,7 +2020,38 @@ def _create_world_runner_impl(
                     )
                     continue
 
-                build_result = getattr(grounded, "build_result", None)
+                if exploration_enabled:
+                    if type(grounded) is not HostGrounderEvidenceCatalogRuntimeResult:
+                        unit_failures.append((unit_id, "world_unit_grounder_output_invalid"))
+                        reasons.append("world_grounder_output_invalid")
+                        continue
+                    build_result = grounded.build_result
+                    if type(build_result) is not HostBuildResult:
+                        unit_failures.append((unit_id, "world_unit_grounder_output_invalid"))
+                        reasons.append("world_grounder_output_invalid")
+                        continue
+                    unit_exploration_leads = grounded.exploration_leads
+                else:
+                    # Keep the pre-exploration callback contract intact on the
+                    # default route; only opt-in projection requires the exact
+                    # runtime result shape and its additive lead field.
+                    build_result = getattr(grounded, "build_result", None)
+                    unit_exploration_leads = ()
+                if type(unit_exploration_leads) is not tuple:
+                    unit_failures.append((unit_id, "world_unit_grounder_output_invalid"))
+                    reasons.append("world_grounder_output_invalid")
+                    continue
+                if unit_exploration_leads and not exploration_enabled:
+                    unit_failures.append((unit_id, "world_unit_grounder_output_invalid"))
+                    reasons.append("world_grounder_output_invalid")
+                    continue
+                try:
+                    for exploration_lead in unit_exploration_leads:
+                        validate_exploration_lead(exploration_lead)
+                except (TypeError, ValueError):
+                    unit_failures.append((unit_id, "world_unit_grounder_output_invalid"))
+                    reasons.append("world_grounder_output_invalid")
+                    continue
                 audit = None
                 audit_payload = None
                 if _covered:
@@ -1944,72 +2076,156 @@ def _create_world_runner_impl(
                         reasons.append("world_grounder_no_submission")
                         continue
                 grounded_batch = getattr(build_result, "source_batch", None)
-                if (
+                if not exploration_enabled:
+                    if (
+                        type(grounded_batch) is not SourceSubmissionBatch
+                        or grounded_batch.raw_input
+                        is not getattr(build_result, "raw_input", None)
+                        or len(grounded_batch.submissions) != 1
+                    ):
+                        unit_failures.append((unit_id, "world_unit_no_submission"))
+                        reasons.append("world_grounder_no_submission")
+                        continue
+                    unit_batch_leads = ()
+                    submission = grounded_batch.submissions[0]
+                elif build_result.submission is None:
+                    if grounded_batch is not None:
+                        unit_failures.append((unit_id, "world_unit_grounder_output_invalid"))
+                        reasons.append("world_grounder_output_invalid")
+                        continue
+                    if not unit_exploration_leads:
+                        unit_failures.append((unit_id, "world_unit_no_submission"))
+                        reasons.append("world_grounder_no_submission")
+                        continue
+                    unit_batch_leads = unit_exploration_leads
+                    submission = None
+                elif (
                     type(grounded_batch) is not SourceSubmissionBatch
-                    or grounded_batch.raw_input
-                    is not getattr(build_result, "raw_input", None)
+                    or grounded_batch.raw_input is not build_result.raw_input
                     or len(grounded_batch.submissions) != 1
+                    or grounded_batch.submissions[0] is not build_result.submission
                 ):
                     unit_failures.append((unit_id, "world_unit_no_submission"))
                     reasons.append("world_grounder_no_submission")
                     continue
-
-                submission = grounded_batch.submissions[0]
-                if _covered:
-                    if audit_payload["status"] == "EMPTY":
-                        retain_unit_audit(unit_id, None)
-                        unit_failures.append(
-                            (unit_id, "world_unit_source_coverage_invalid")
-                        )
+                else:
+                    try:
+                        grounded_batch.__post_init__()
+                        for existing_lead in grounded_batch.exploration_leads:
+                            validate_exploration_lead(existing_lead)
+                    except (TypeError, ValueError):
+                        unit_failures.append((unit_id, "world_unit_grounder_output_invalid"))
                         reasons.append("world_grounder_output_invalid")
                         continue
-                    validated_audit = _validated_source_coverage_audit(
-                        audit,
-                        host_run_id=host_run_id,
-                        unit_id=unit_id,
-                        run_id=run_id,
-                        canonical_input_hash=getattr(
-                            context, "canonical_input_hash", None
-                        ),
-                        source_bodies=getattr(context, "source_bodies", None),
-                        submissions=(submission,),
+                    unit_batch_leads = (
+                        grounded_batch.exploration_leads + unit_exploration_leads
                     )
-                    if validated_audit is None:
+                    submission = grounded_batch.submissions[0]
+                if _covered:
+                    if audit_payload["status"] == "EMPTY" and (
+                        submission is not None or unit_batch_leads
+                    ):
                         retain_unit_audit(unit_id, None)
                         unit_failures.append(
                             (unit_id, "world_unit_source_coverage_invalid")
                         )
                         reasons.append("world_grounder_output_invalid")
                         continue
-                if submission.submission_id in seen_submission_ids:
+                    validated_audit = (
+                        None
+                        if submission is None
+                        else _validated_source_coverage_audit(
+                            audit,
+                            host_run_id=host_run_id,
+                            unit_id=unit_id,
+                            run_id=run_id,
+                            canonical_input_hash=getattr(
+                                context, "canonical_input_hash", None
+                            ),
+                            source_bodies=getattr(context, "source_bodies", None),
+                            submissions=(submission,),
+                        )
+                    )
+                    coverage_sources = {
+                        entry["source_id"]: entry
+                        for entry in audit_payload["entries"]
+                        if entry["status"] == "BODY_AVAILABLE"
+                    }
+                    failed_ids = {
+                        entry["source_id"]
+                        for entry in audit_payload["entries"]
+                        if entry["status"] == "FAILED"
+                    }
+                    failed_locators = {
+                        entry["locator"]
+                        for entry in audit_payload["entries"]
+                        if entry["status"] == "FAILED"
+                    }
+                    lead_coverage_invalid = any(
+                        source.source_id in failed_ids
+                        or source.locator in failed_locators
+                        or (
+                            source.source_id in coverage_sources
+                            and source.locator
+                            != coverage_sources[source.source_id]["locator"]
+                        )
+                        for item in unit_batch_leads
+                        for source in item.sources
+                    )
+                    if (submission is not None and validated_audit is None) or lead_coverage_invalid:
+                        retain_unit_audit(unit_id, None)
+                        unit_failures.append(
+                            (unit_id, "world_unit_source_coverage_invalid")
+                        )
+                        reasons.append("world_grounder_output_invalid")
+                        continue
+                unit_lead_ids = tuple(item.lead_id for item in unit_batch_leads)
+                if (
+                    len(set(unit_lead_ids)) != len(unit_lead_ids)
+                    or bool(set(unit_lead_ids) & seen_exploration_lead_ids)
+                ):
+                    unit_failures.append(
+                        (unit_id, "world_unit_exploration_lead_identity_conflict")
+                    )
+                    reasons.append("world_grounder_output_invalid")
+                    continue
+                if submission is not None and submission.submission_id in seen_submission_ids:
                     unit_failures.append(
                         (unit_id, "world_unit_submission_identity_conflict")
                     )
                     reasons.append("world_grounder_output_invalid")
                     continue
-                seen_submission_ids.add(submission.submission_id)
-                pipeline_submission = _pipeline_provenance(
-                    submission,
-                    skill_version=config.skill.skill_pin.version,
-                    skill_status=last30days_status,
-                    producer_version=(
-                        _WORLD_PARTIAL_PRODUCER_VERSION
-                        if _covered
-                        else _WORLD_PRODUCER_VERSION
-                    ),
-                )
-                submissions.append(pipeline_submission)
-                if _covered:
-                    for row_index, row in enumerate(covered_unit_rows):
-                        if row.unit_id == unit_id:
-                            covered_unit_rows[row_index] = replace(
-                                row,
-                                submission_ids=row.submission_ids
-                                + (pipeline_submission.submission_id,),
-                            )
-                            break
-                    submission_links.append((pipeline_submission, unit_id))
-            return SourceSubmissionBatch(raw_request, tuple(submissions))
+                if submission is not None:
+                    seen_submission_ids.add(submission.submission_id)
+                    pipeline_submission = _pipeline_provenance(
+                        submission,
+                        skill_version=config.skill.skill_pin.version,
+                        skill_status=last30days_status,
+                        producer_version=(
+                            _WORLD_PARTIAL_PRODUCER_VERSION
+                            if _covered
+                            else _WORLD_PRODUCER_VERSION
+                        ),
+                    )
+                    submissions.append(pipeline_submission)
+                    if _covered:
+                        for row_index, row in enumerate(covered_unit_rows):
+                            if row.unit_id == unit_id:
+                                covered_unit_rows[row_index] = replace(
+                                    row,
+                                    submission_ids=row.submission_ids
+                                    + (pipeline_submission.submission_id,),
+                                )
+                                break
+                        submission_links.append((pipeline_submission, unit_id))
+                for exploration_lead in unit_batch_leads:
+                    seen_exploration_lead_ids.add(exploration_lead.lead_id)
+                    exploration_leads.append(exploration_lead)
+                    if _covered:
+                        exploration_lead_links.append((exploration_lead, unit_id))
+            return SourceSubmissionBatch(
+                raw_request, tuple(submissions), tuple(exploration_leads)
+            )
 
         result = run_world_core(
             raw_input,
@@ -2060,6 +2276,7 @@ def create_world_runner(
     semantic_transport: Optional[Callable[[Any, float], Any]] = None,
     stage_runner: Optional[Callable[..., Any]] = None,
     skill_clock: Optional[Callable[[], datetime.datetime]] = None,
+    exploration_enabled: bool = False,
 ) -> WorldExecutor:
     """Build the legacy strict executor, which always returns CoreRunResult."""
     if type(config) is not HostWorldConfig:
@@ -2076,6 +2293,7 @@ def create_world_runner(
         stage_runner=stage_runner,
         skill_clock=skill_clock,
         _covered=False,
+        exploration_enabled=exploration_enabled,
     )
 
 
@@ -2089,6 +2307,7 @@ def _create_covered_world_executor(
     semantic_transport: Optional[Callable[[Any, float], Any]] = None,
     stage_runner: Optional[Callable[..., Any]] = None,
     skill_clock: Optional[Callable[[], datetime.datetime]] = None,
+    exploration_enabled: bool = False,
 ) -> _CoveredWorldExecutor:
     if type(config) is not HostWorldConfig:
         raise TypeError("config must be HostWorldConfig")
@@ -2107,6 +2326,7 @@ def _create_covered_world_executor(
         stage_runner=stage_runner,
         skill_clock=skill_clock,
         _covered=True,
+        exploration_enabled=exploration_enabled,
     )
     return _CoveredWorldExecutor(
         runner._covered_execute,

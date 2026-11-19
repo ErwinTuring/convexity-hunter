@@ -13,9 +13,11 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from convexity_hunter import core_research
 from convexity_hunter.core_application import (
+    CoreCaseContext,
     CoreOperationalBounds,
     CoreResearchPolicy,
     SourceSubmissionBatch,
+    effective_source_batch_counts,
     run_direct_core,
     run_event_core,
     run_world_core,
@@ -42,7 +44,12 @@ from convexity_hunter.event_intelligence import (
     assess_event_intelligence_submission,
 )
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
-from convexity_hunter.option_chain_discovery import OptionMaturityAuthority
+from convexity_hunter.option_chain_discovery import (
+    ExplorationLead,
+    ExploratoryOptionChainRequest,
+    OptionChainDiscoveryRequest,
+    OptionMaturityAuthority,
+)
 from convexity_hunter.providers import futu
 
 
@@ -345,6 +352,7 @@ def make_policy(
     max_browser_rows=100,
     max_cases=100,
     case_id_transform=None,
+    exploration_enabled=False,
 ):
     return CoreResearchPolicy(
         evaluation_date=EVALUATION_DATE,
@@ -360,6 +368,61 @@ def make_policy(
         request_factory=make_request_factory(
             calls, case_id_transform=case_id_transform
         ),
+        exploration_enabled=exploration_enabled,
+    )
+
+
+def make_exploration_lead_from_submission(
+    submission=None,
+    *,
+    lead_id="exploration-lead",
+    observed_at=None,
+    anchor_statement_id=None,
+):
+    if submission is None:
+        source_id = "exploration-source"
+        source = EventSourceReference(
+            source_id,
+            "https://example.test/exploration",
+            "Exploration source",
+            datetime.datetime(2029, 12, 31, tzinfo=UTC),
+        )
+        fact = EventStatement(
+            "exploration-fact",
+            EventStatementKind.OBSERVED_FACT,
+            "The issuer disclosed a dated contract award.",
+            (source_id,),
+        )
+        statements = (fact,)
+        sources = (source,)
+        event_description = "The issuer disclosed a dated contract award."
+        underlying_key = UNDERLYING
+    else:
+        sources = submission.sources
+        statements = submission.statements
+        fact = (
+            next(item for item in statements if item.kind is EventStatementKind.OBSERVED_FACT)
+            if anchor_statement_id is None
+            else next(
+                item for item in statements
+                if item.statement_id == anchor_statement_id
+            )
+        )
+        event_description = submission.event_description or "Retained event."
+        underlying_key = submission.hypotheses[0].underlying_key
+    return ExplorationLead(
+        lead_id=lead_id,
+        event_description=event_description,
+        observed_at=observed_at
+        or datetime.datetime(2030, 1, 1, tzinfo=UTC),
+        underlying_key=underlying_key,
+        sources=sources,
+        statements=statements,
+        event_statement_id=fact.statement_id,
+        exposure_statement_id=fact.statement_id,
+        underlying_reference="host://underlying-binding/exploration",
+        validation_reference="host://receipt-listing-binding/exploration",
+        uncertainties=("Distribution change is not established.",),
     )
 
 
@@ -444,6 +507,444 @@ def make_native_quote(verification, ask):
 
 
 class CoreApplicationIntegrationTests(unittest.TestCase):
+    def test_exploration_lead_reaches_shared_geometry_without_ei_hypothesis(self):
+        row_call = make_row(datetime.date(2030, 1, 31), "CALL", "100")
+        row_put = make_row(datetime.date(2030, 1, 31), "PUT", "100")
+        lead = make_exploration_lead_from_submission()
+        raw = object()
+        batch = SourceSubmissionBatch(raw, (), (lead,))
+        bridge = FakeMarketBridge((row_call, row_put))
+        factory_calls = []
+        result = run_world_core(
+            raw,
+            source_producer=lambda actual: batch,
+            market_bridge=bridge,
+            policy=make_policy(factory_calls, exploration_enabled=True),
+        )
+
+        self.assertEqual(len(result.case_set.cases), 3)
+        self.assertEqual(
+            [item.kernel_result.request.structure.legs[0].option_type.value
+             if len(item.kernel_result.request.structure.legs) == 1
+             else "STRADDLE" for item in result.case_set.cases],
+            ["CALL", "STRADDLE", "PUT"],
+        )
+        self.assertEqual([item[0] for item in bridge.calls].count("quote"), 1)
+        self.assertEqual([item[0] for item in bridge.calls].count("verify"), 4)
+        for case in result.case_set.cases:
+            self.assertIs(case.exploration_lead, lead)
+            self.assertIsNone(case.assessment)
+            self.assertIsNone(case.hypothesis)
+            self.assertIsNone(case.automated_handoff)
+            self.assertIs(type(case.discovery_request), ExploratoryOptionChainRequest)
+            self.assertIs(
+                case.maturity_authority,
+                OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH,
+            )
+            self.assertIsNone(case.discovery_request.event_window_end_date)
+            self.assertFalse(hasattr(case.discovery_request, "distribution_mode"))
+            self.assertIs(
+                case.kernel_result.geometry.status,
+                core_research.CoreGeometryStatus.AVAILABLE,
+            )
+            self.assertIs(
+                case.kernel_result.disposition,
+                core_research.CoreDisposition.DATA_INSUFFICIENT_CORE,
+            )
+            self.assertIn(
+                core_research.CoreReasonCode.COST_LEDGER_MISSING,
+                case.kernel_result.reasons,
+            )
+
+        compact_case = result.compact.table[0]
+        self.assertEqual(compact_case.source_evidence_path, "HOST_PROJECTED_EXPLORATION_LEAD")
+        self.assertEqual(compact_case.event_intelligence_status, "NOT_SUBMITTED")
+        self.assertEqual(compact_case.exploration_lead_id, lead.lead_id)
+        self.assertEqual(
+            compact_case.hypothesis_maturity_alignment, "not_established"
+        )
+        rendered = report(result.case_set.cases[0])
+        self.assertIn("来源准入、receipt与listing核验由Host负责", rendered)
+        self.assertIn("不形成EI支持的分布声明", rendered)
+        self.assertIn("hypothesis_maturity_alignment=not_established", rendered)
+
+    def test_exploration_policy_blocks_before_bridge_and_bounds_count_leads(self):
+        lead = make_exploration_lead_from_submission()
+        raw = object()
+        batch = SourceSubmissionBatch(raw, (), (lead,))
+        bridge = FakeMarketBridge((make_row(datetime.date(2030, 1, 31), "CALL", "100"),))
+        disabled = run_world_core(
+            raw,
+            source_producer=lambda actual: batch,
+            market_bridge=bridge,
+            policy=make_policy([]),
+        )
+        self.assertEqual(bridge.calls, [])
+        self.assertEqual(disabled.case_set.cases, ())
+        self.assertEqual(disabled.case_set.unavailable[0].reasons, ("exploration_disabled",))
+        self.assertIs(disabled.case_set.unavailable[0].exploration_lead, lead)
+
+        bounded_bridge = FakeMarketBridge(bridge.rows)
+        bounded = run_world_core(
+            raw,
+            source_producer=lambda actual: batch,
+            market_bridge=bounded_bridge,
+            policy=make_policy([], max_submissions=0, exploration_enabled=True),
+        )
+        self.assertEqual(bounded.case_set.status, "LIMIT_EXCEEDED")
+        self.assertIn("source_items:1>0", bounded.case_set.reasons)
+        self.assertEqual(bounded_bridge.calls, [])
+
+        hypothesis_bounded_bridge = FakeMarketBridge(bridge.rows)
+        hypothesis_bounded = run_world_core(
+            raw,
+            source_producer=lambda actual: batch,
+            market_bridge=hypothesis_bounded_bridge,
+            policy=make_policy(
+                [], max_hypotheses=0, exploration_enabled=True
+            ),
+        )
+        self.assertEqual(hypothesis_bounded.case_set.status, "LIMIT_EXCEEDED")
+        self.assertIn(
+            "hypotheses_and_exploration_leads:1>0",
+            hypothesis_bounded.case_set.reasons,
+        )
+        self.assertEqual(hypothesis_bounded_bridge.calls, [])
+
+    def test_future_observation_and_forged_lead_fail_before_bridge(self):
+        future_lead = make_exploration_lead_from_submission(
+            observed_at=datetime.datetime(2030, 1, 2, tzinfo=UTC)
+        )
+        raw = object()
+        future_batch = SourceSubmissionBatch(raw, (), (future_lead,))
+        bridge = FakeMarketBridge((make_row(datetime.date(2030, 1, 31), "CALL", "100"),))
+        result = run_world_core(
+            raw,
+            source_producer=lambda actual: future_batch,
+            market_bridge=bridge,
+            policy=make_policy([], exploration_enabled=True),
+        )
+        self.assertEqual(bridge.calls, [])
+        self.assertEqual(result.case_set.cases, ())
+        self.assertEqual(
+            result.case_set.unavailable[0].reasons,
+            ("exploration_request_failure",),
+        )
+
+        valid_lead = make_exploration_lead_from_submission(lead_id="forged-lead")
+        for field_name, bad_value in (
+            ("statements", (replace(valid_lead.statements[0], text=None),)),
+            ("sources", (replace(valid_lead.sources[0], locator=None),)),
+        ):
+            forged = object.__new__(ExplorationLead)
+            for name in ExplorationLead.__dataclass_fields__:
+                object.__setattr__(forged, name, getattr(valid_lead, name))
+            object.__setattr__(forged, field_name, bad_value)
+            with self.subTest(field=field_name):
+                with self.assertRaisesRegex(ValueError, "malformed"):
+                    SourceSubmissionBatch(object(), (), (forged,))
+        self.assertEqual(bridge.calls, [])
+
+    def test_mismatched_exploration_request_lead_identity_is_rejected(self):
+        raw = object()
+        lead = make_exploration_lead_from_submission(lead_id="retained-lead")
+        other_lead = make_exploration_lead_from_submission(lead_id="other-lead")
+        batch = SourceSubmissionBatch(raw, (), (lead,))
+        request = ExploratoryOptionChainRequest(other_lead, EVALUATION_DATE)
+        with self.assertRaisesRegex(ValueError, "lead identity"):
+            CoreCaseContext(
+                raw_input=raw,
+                maturity_authority=OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH,
+                submissions=batch,
+                discovery_request=request,
+                exploration_lead=lead,
+            )
+
+    def test_incomplete_ei_audit_remains_separate_from_exploration_geometry(self):
+        submission = make_submission("incomplete-ei")
+        incomplete = replace(
+            submission,
+            event_date_range=MethodologizedDateRange(None, None, None),
+        )
+        lead = make_exploration_lead_from_submission(incomplete)
+        raw = object()
+        batch = SourceSubmissionBatch(raw, (incomplete,), (lead,))
+        rows = (
+            make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+            make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+        )
+        result = run_world_core(
+            raw,
+            source_producer=lambda actual: batch,
+            market_bridge=FakeMarketBridge(rows),
+            policy=make_policy([], exploration_enabled=True),
+        )
+        self.assertEqual(len(result.case_set.cases), 3)
+        self.assertEqual(
+            result.case_set.unavailable[0].assessment.status.value,
+            "incomplete",
+        )
+        self.assertTrue(
+            all(case.assessment is None and case.hypothesis is None
+                for case in result.case_set.cases)
+        )
+        self.assertEqual(
+            result.compact.table[0].event_intelligence_audits,
+            ("incomplete-ei:incomplete",),
+        )
+        self.assertEqual(
+            result.compact.table[0].event_intelligence_status,
+            "SEPARATE_BATCH_AUDIT",
+        )
+        self.assertIn("incomplete-ei:incomplete", report(result.case_set.cases[0]))
+
+    def test_accepted_matching_path_precedes_lead_and_never_falls_back(self):
+        submission = make_submission("accepted-match")
+        lead = make_exploration_lead_from_submission(
+            submission, lead_id="same-event-lead"
+        )
+        raw = object()
+        batch = SourceSubmissionBatch(raw, (submission,), (lead,))
+        rows = (
+            make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+            make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+        )
+        bridge = FakeMarketBridge(rows)
+        accepted = run_world_core(
+            raw,
+            source_producer=lambda actual: batch,
+            market_bridge=bridge,
+            policy=make_policy([], exploration_enabled=True),
+        )
+        self.assertEqual(len(accepted.case_set.cases), 1)
+        self.assertIs(type(accepted.case_set.cases[0].discovery_request), OptionChainDiscoveryRequest)
+        self.assertIsNone(accepted.case_set.cases[0].exploration_lead)
+        self.assertEqual([call[0] for call in bridge.calls].count("discover"), 1)
+
+        independent_anchor = EventStatement(
+            "independent-description-binding-anchor",
+            EventStatementKind.OBSERVED_FACT,
+            "The filing directly identifies ABC as an award counterparty.",
+            (submission.sources[0].source_id,),
+        )
+        root_submission = replace(
+            submission,
+            statements=submission.statements + (independent_anchor,),
+        )
+        stronger_window = MethodologizedDateRange(
+            datetime.date(2030, 6, 1),
+            datetime.date(2030, 6, 1),
+            "Source-backed impact window used for the empty-interval regression.",
+        )
+        stronger = replace(
+            root_submission.hypotheses[0], expected_window=stronger_window
+        )
+        stronger_submission = replace(root_submission, hypotheses=(stronger,))
+        stronger_lead = make_exploration_lead_from_submission(
+            stronger_submission,
+            lead_id="strong-window-lead",
+            anchor_statement_id=independent_anchor.statement_id,
+        )
+        self.assertEqual(
+            stronger_submission.event_description,
+            stronger_lead.event_description,
+        )
+        self.assertNotIn(
+            independent_anchor.statement_id,
+            stronger.supporting_statement_ids,
+        )
+        self.assertTrue(
+            all(
+                independent_anchor.statement_id
+                not in statement.dependency_statement_ids
+                for statement in stronger_submission.statements
+            )
+        )
+        stale_raw = object()
+        stronger_batch = SourceSubmissionBatch(
+            stale_raw, (stronger_submission,), (stronger_lead,)
+        )
+        stale_bridge = FakeMarketBridge(rows)
+        no_fallback = run_world_core(
+            stale_raw,
+            source_producer=lambda actual: stronger_batch,
+            market_bridge=stale_bridge,
+            policy=replace(
+                make_policy(
+                    [],
+                    max_submissions=1,
+                    max_hypotheses=1,
+                    exploration_enabled=True,
+                ),
+                maturity_authority=OptionMaturityAuthority.HYPOTHESIS_ALIGNED,
+            ),
+        )
+        self.assertEqual(no_fallback.case_set.cases, ())
+        self.assertEqual(stale_bridge.calls, [])
+        self.assertEqual(len(no_fallback.case_set.unavailable), 2)
+        self.assertEqual(
+            no_fallback.case_set.unavailable[0].reasons,
+            ("maturity_request_failure",),
+        )
+        self.assertIn(
+            "discovery expiration interval is empty",
+            str(no_fallback.case_set.unavailable[0].failure),
+        )
+        unresolved = no_fallback.case_set.unavailable[1]
+        self.assertIs(unresolved.exploration_lead, stronger_lead)
+        self.assertIsNone(unresolved.discovery_request)
+        self.assertEqual(
+            unresolved.reasons,
+            ("exploration_same_event_hypothesis_link_unresolved",),
+        )
+        self.assertEqual(
+            no_fallback.case_set.submissions.exploration_leads,
+            (stronger_lead,),
+        )
+
+    def test_accepted_priority_suppressed_lead_does_not_consume_tight_bounds(self):
+        submission = make_submission("tight-bound-accepted")
+        independent_anchor = EventStatement(
+            "tight-bound-independent-root",
+            EventStatementKind.OBSERVED_FACT,
+            "The filing separately identifies ABC as a counterparty.",
+            (submission.sources[0].source_id,),
+        )
+        submission = replace(
+            submission,
+            statements=submission.statements + (independent_anchor,),
+        )
+        lead = make_exploration_lead_from_submission(
+            submission, lead_id="tight-bound-matching-lead"
+        )
+        unresolved_lead = make_exploration_lead_from_submission(
+            submission,
+            lead_id="tight-bound-unresolved-lead",
+            anchor_statement_id=independent_anchor.statement_id,
+        )
+        raw = object()
+        batch = SourceSubmissionBatch(
+            raw, (submission,), (lead, unresolved_lead)
+        )
+        assessment = assess_event_intelligence_submission(submission)
+        operational_counts = effective_source_batch_counts(
+            batch,
+            ((assessment, submission, submission.hypotheses[0]),),
+        )
+        self.assertEqual(operational_counts.effective_exploration_leads, ())
+        self.assertEqual(operational_counts.matched_exploration_leads, (lead,))
+        self.assertEqual(
+            operational_counts.unresolved_exploration_leads,
+            (unresolved_lead,),
+        )
+        self.assertEqual(operational_counts.source_items, 1)
+        self.assertEqual(operational_counts.hypothesis_items, 1)
+        rows = (
+            make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+            make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+        )
+        bridge = FakeMarketBridge(rows)
+        result = run_world_core(
+            raw,
+            source_producer=lambda actual: batch,
+            market_bridge=bridge,
+            policy=make_policy(
+                [],
+                max_submissions=1,
+                max_hypotheses=1,
+                exploration_enabled=True,
+            ),
+        )
+
+        self.assertEqual(result.case_set.status, "COMPLETE")
+        self.assertEqual(len(result.case_set.cases), 1)
+        self.assertIs(
+            type(result.case_set.cases[0].discovery_request),
+            OptionChainDiscoveryRequest,
+        )
+        self.assertIsNone(result.case_set.cases[0].exploration_lead)
+        self.assertEqual(
+            result.case_set.submissions.exploration_leads,
+            (lead, unresolved_lead),
+            "priority-reviewed sidecars remain in raw batch provenance",
+        )
+        self.assertIs(result.case_set.submissions.exploration_leads[0], lead)
+        self.assertEqual(len(result.case_set.unavailable), 1)
+        self.assertIs(
+            result.case_set.unavailable[0].exploration_lead, unresolved_lead
+        )
+        self.assertEqual(
+            result.case_set.unavailable[0].reasons,
+            ("exploration_same_event_hypothesis_link_unresolved",),
+        )
+        self.assertEqual(
+            [call[0] for call in bridge.calls].count("discover"), 1
+        )
+
+    def test_unrelated_lead_remains_eligible_alongside_accepted_submission(self):
+        submission = make_submission("accepted-unrelated-lead")
+        lead = make_exploration_lead_from_submission(lead_id="independent-event")
+        raw = object()
+        batch = SourceSubmissionBatch(raw, (submission,), (lead,))
+        rows = (
+            make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+            make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+        )
+        bridge = FakeMarketBridge(rows)
+        result = run_world_core(
+            raw,
+            source_producer=lambda actual: batch,
+            market_bridge=bridge,
+            policy=make_policy([], exploration_enabled=True),
+        )
+
+        accepted_cases = [
+            case for case in result.case_set.cases
+            if type(case.discovery_request) is OptionChainDiscoveryRequest
+        ]
+        explored_cases = [
+            case for case in result.case_set.cases
+            if case.exploration_lead is lead
+        ]
+        self.assertEqual(len(accepted_cases), 1)
+        self.assertEqual(len(explored_cases), 3)
+        self.assertTrue(
+            all(
+                type(case.discovery_request) is ExploratoryOptionChainRequest
+                for case in explored_cases
+            )
+        )
+        self.assertEqual(result.case_set.unavailable, ())
+        self.assertEqual(
+            [call[0] for call in bridge.calls].count("discover"), 2
+        )
+
+    def test_exploration_row_and_case_limits_fail_closed_before_quotes(self):
+        lead = make_exploration_lead_from_submission()
+        raw = object()
+        batch = SourceSubmissionBatch(raw, (), (lead,))
+        rows = (
+            make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+            make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+        )
+        for kwargs, expected_bound in (
+            ({"max_browser_rows": 1}, "browser_rows"),
+            ({"max_cases": 2}, "cases"),
+        ):
+            with self.subTest(bound=expected_bound):
+                bridge = FakeMarketBridge(rows)
+                result = run_world_core(
+                    raw,
+                    source_producer=lambda actual: batch,
+                    market_bridge=bridge,
+                    policy=make_policy(
+                        [], exploration_enabled=True, **kwargs
+                    ),
+                )
+                self.assertEqual(result.case_set.status, "LIMIT_EXCEEDED")
+                self.assertTrue(any(expected_bound in item for item in result.case_set.reasons))
+                self.assertEqual([call[0] for call in bridge.calls], ["discover"])
+
     def test_three_entries_share_kernel_all_hypotheses_and_no_policy_is_dsc(self):
         row_call = make_row(datetime.date(2030, 1, 31), "CALL", "100")
         row_put = make_row(datetime.date(2030, 1, 31), "PUT", "100")

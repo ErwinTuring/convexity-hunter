@@ -11,6 +11,7 @@ from dataclasses import dataclass as _dataclass
 from dataclasses import replace as _replace
 from typing import Callable as _Callable
 from typing import Optional as _Optional
+from typing import Union as _Union
 
 from .core_futu import (
     FutuNativeDirectAskEvidence,
@@ -30,10 +31,14 @@ from .event_intelligence import (
     assess_event_intelligence_submission,
 )
 from .option_chain_discovery import (
+    ExplorationLead,
+    ExploratoryOptionChainRequest,
     HypothesisMaturityAlignment,
     OptionChainDiscoveryRequest,
     OptionMaturityAuthority,
     create_option_chain_discovery_request,
+    validate_exploration_lead,
+    validate_exploratory_option_chain_request,
 )
 from .providers import futu as _futu
 
@@ -43,6 +48,8 @@ __all__ = (
     "CoreResearchPolicy",
     "CoreWorldRequest",
     "SourceSubmissionBatch",
+    "EffectiveSourceBatchCounts",
+    "effective_source_batch_counts",
     "CoreCaseContext",
     "CoreCaseRecord",
     "CoreUnavailableCase",
@@ -109,12 +116,21 @@ class CoreResearchPolicy:
     generated_quantity: int
     bounds: CoreOperationalBounds
     request_factory: _Callable
+    exploration_enabled: bool = False
 
     def __post_init__(self) -> None:
         if type(self.evaluation_date) is not _datetime.date:
             raise TypeError("evaluation_date must have exact type date")
         if type(self.maturity_authority) is not OptionMaturityAuthority:
             raise TypeError("maturity_authority must be OptionMaturityAuthority")
+        if self.maturity_authority not in {
+            OptionMaturityAuthority.HYPOTHESIS_ALIGNED,
+            OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
+        }:
+            raise ValueError(
+                "CoreResearchPolicy maturity_authority must select an "
+                "accepted-hypothesis authority"
+            )
         if type(self.generated_quantity) is not int or isinstance(
             self.generated_quantity, bool
         ):
@@ -124,6 +140,8 @@ class CoreResearchPolicy:
         if type(self.bounds) is not CoreOperationalBounds:
             raise TypeError("bounds must be CoreOperationalBounds")
         _validate_factory(self.request_factory)
+        if type(self.exploration_enabled) is not bool:
+            raise TypeError("exploration_enabled must be a Boolean")
 
 
 @_dataclass(frozen=True)
@@ -145,6 +163,7 @@ class SourceSubmissionBatch:
 
     raw_input: object
     submissions: tuple
+    exploration_leads: tuple = ()
 
     def __post_init__(self) -> None:
         if type(self.submissions) is not tuple:
@@ -157,6 +176,14 @@ class SourceSubmissionBatch:
             if submission.submission_id in seen:
                 raise ValueError("submission IDs must be unique")
             seen.add(submission.submission_id)
+        if type(self.exploration_leads) is not tuple:
+            raise TypeError("exploration_leads must have exact type tuple")
+        lead_ids = set()
+        for lead in self.exploration_leads:
+            validate_exploration_lead(lead)
+            if lead.lead_id in lead_ids:
+                raise ValueError("exploration lead IDs must be unique")
+            lead_ids.add(lead.lead_id)
 
 
 def _optional_exact(name: str, value: object, kind: object) -> None:
@@ -166,6 +193,22 @@ def _optional_exact(name: str, value: object, kind: object) -> None:
 
 def _identity_member(value: object, values: tuple) -> bool:
     return any(value is item for item in values)
+
+
+def _validate_option_chain_request(value: object) -> OptionChainDiscoveryRequest:
+    if type(value) is not OptionChainDiscoveryRequest:
+        raise TypeError("request must have exact type OptionChainDiscoveryRequest")
+    try:
+        rebuilt = OptionChainDiscoveryRequest(
+            value.discovery_entry_handoff,
+            value.evaluation_date,
+            value.maturity_authority,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("discovery request is malformed") from error
+    if rebuilt != value:
+        raise ValueError("discovery request is not intrinsically valid")
+    return value
 
 
 @_dataclass(frozen=True)
@@ -178,7 +221,9 @@ class CoreCaseContext:
     assessment: _Optional[EventIntelligenceAcceptanceResult] = None
     hypothesis: _Optional[EventUnderlyingHypothesis] = None
     automated_handoff: _Optional[DiscoveryEntryHandoff] = None
-    discovery_request: _Optional[OptionChainDiscoveryRequest] = None
+    discovery_request: _Optional[
+        _Union[OptionChainDiscoveryRequest, ExploratoryOptionChainRequest]
+    ] = None
     browser: object = None
     listed_rows: tuple = ()
     listed_row: object = None
@@ -192,6 +237,7 @@ class CoreCaseContext:
     reasons: tuple = ()
     quote_reference_temporal_alignment: str = "not_established"
     cross_structure_quote_synchronicity: str = "not_established"
+    exploration_lead: _Optional[ExplorationLead] = None
 
     def __post_init__(self) -> None:
         if type(self.maturity_authority) is not OptionMaturityAuthority:
@@ -201,6 +247,16 @@ class CoreCaseContext:
                 raise TypeError("submissions must be SourceSubmissionBatch or None")
             if self.submissions.raw_input is not self.raw_input:
                 raise ValueError("submission batch must retain raw input identity")
+            try:
+                rebuilt_batch = SourceSubmissionBatch(
+                    self.submissions.raw_input,
+                    self.submissions.submissions,
+                    self.submissions.exploration_leads,
+                )
+            except (AttributeError, TypeError, ValueError) as error:
+                raise ValueError("submission batch is malformed") from error
+            if rebuilt_batch != self.submissions:
+                raise ValueError("submission batch is not intrinsically valid")
         _optional_exact("assessment", self.assessment, EventIntelligenceAcceptanceResult)
         if self.assessment is not None:
             if self.submissions is None or self.assessment.submission not in self.submissions.submissions:
@@ -223,12 +279,57 @@ class CoreCaseContext:
                 raise ValueError("handoff must retain assessment identity")
             if self.hypothesis is None or self.automated_handoff.selected_hypothesis is not self.hypothesis:
                 raise ValueError("handoff must retain hypothesis identity")
-        _optional_exact("discovery_request", self.discovery_request, OptionChainDiscoveryRequest)
-        if self.discovery_request is not None:
+        _optional_exact("exploration_lead", self.exploration_lead, ExplorationLead)
+        if self.exploration_lead is not None:
+            validate_exploration_lead(self.exploration_lead)
+            if self.submissions is None or not any(
+                self.exploration_lead is lead
+                for lead in self.submissions.exploration_leads
+            ):
+                raise ValueError("exploration lead identity is not retained by batch")
+        if self.discovery_request is not None and type(
+            self.discovery_request
+        ) is OptionChainDiscoveryRequest:
+            _validate_option_chain_request(self.discovery_request)
             if self.automated_handoff is None or self.discovery_request.discovery_entry_handoff is not self.automated_handoff:
                 raise ValueError("discovery request must retain handoff identity")
             if self.discovery_request.maturity_authority is not self.maturity_authority:
                 raise ValueError("discovery request authority mismatch")
+            if self.exploration_lead is not None:
+                raise ValueError("accepted-hypothesis context cannot retain exploration lead")
+        elif self.discovery_request is not None and type(
+            self.discovery_request
+        ) is ExploratoryOptionChainRequest:
+            request = validate_exploratory_option_chain_request(self.discovery_request)
+            if self.exploration_lead is None or request.lead is not self.exploration_lead:
+                raise ValueError("exploratory request must retain lead identity")
+            if self.automated_handoff is not None or self.assessment is not None or self.hypothesis is not None:
+                raise ValueError("exploratory request cannot claim EI handoff")
+            if self.maturity_authority is not OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH:
+                raise ValueError("exploratory request authority mismatch")
+        elif self.discovery_request is not None:
+            raise TypeError("discovery_request has an unsupported exact type")
+        elif self.exploration_lead is not None:
+            if self.maturity_authority is not OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH:
+                raise ValueError("requestless exploration context has wrong authority")
+            if self.automated_handoff is not None or self.assessment is not None or self.hypothesis is not None:
+                raise ValueError("requestless exploration context cannot claim EI handoff")
+            if any(
+                value is not None
+                for value in (
+                    self.browser,
+                    self.listed_row,
+                    self.quote_batch,
+                    self.core_structure,
+                    self.kernel_request,
+                    self.kernel_result,
+                )
+            ) or self.listed_rows or self.native_verification or self.native_quotes or self.provider_references:
+                raise ValueError(
+                    "requestless exploration context cannot retain market/Core evidence"
+                )
+        elif self.maturity_authority is OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH:
+            raise ValueError("exploration authority requires its exact lead")
         if self.browser is not None:
             if type(self.browser) is not _futu.FutuExactContractBrowser:
                 raise TypeError("browser must be a FutuExactContractBrowser")
@@ -320,6 +421,7 @@ class CoreCaseRecord:
         if name in {
             "raw_input", "submissions", "assessment", "hypothesis",
             "automated_handoff", "discovery_request", "maturity_authority",
+            "exploration_lead",
             "browser", "listed_rows", "listed_row", "native_verification",
             "quote_batch", "native_quotes", "provider_references",
             "core_structure",
@@ -355,6 +457,7 @@ class CoreUnavailableCase:
         if self.context is not None and name in {
             "raw_input", "submissions", "assessment", "hypothesis",
             "automated_handoff", "discovery_request", "maturity_authority",
+            "exploration_lead",
             "browser", "listed_rows", "listed_row", "native_verification",
             "quote_batch", "native_quotes", "provider_references",
             "core_structure",
@@ -505,6 +608,14 @@ def _normalize_source_batch(raw_input: object, value: object) -> SourceSubmissio
         raise TypeError("source producer must return SourceSubmissionBatch")
     if value.raw_input is not raw_input:
         raise ValueError("source producer must retain the exact raw input")
+    try:
+        rebuilt = SourceSubmissionBatch(
+            value.raw_input, value.submissions, value.exploration_leads
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("source producer batch is malformed") from error
+    if rebuilt != value:
+        raise ValueError("source producer batch is not intrinsically valid")
     return value
 
 
@@ -527,11 +638,19 @@ def _case_context(
     core_structure: object = None,
     kernel_request: object = None,
     kernel_result: object = None,
+    exploration_lead: object = None,
+    maturity_authority: object = None,
     reasons: tuple = (),
 ) -> CoreCaseContext:
+    if maturity_authority is not None:
+        authority = maturity_authority
+    elif discovery_request is not None:
+        authority = discovery_request.maturity_authority
+    else:
+        authority = policy.maturity_authority
     return CoreCaseContext(
         raw_input=raw_input,
-        maturity_authority=policy.maturity_authority,
+        maturity_authority=authority,
         submissions=submissions,
         assessment=assessment,
         hypothesis=hypothesis,
@@ -548,6 +667,7 @@ def _case_context(
         kernel_request=kernel_request,
         kernel_result=kernel_result,
         reasons=reasons,
+        exploration_lead=exploration_lead,
     )
 
 
@@ -583,16 +703,46 @@ def _limited_case_set(
 class _PendingBranch:
     raw_input: object
     submissions: SourceSubmissionBatch
-    assessment: EventIntelligenceAcceptanceResult
-    hypothesis: EventUnderlyingHypothesis
-    handoff: DiscoveryEntryHandoff
-    discovery_request: OptionChainDiscoveryRequest
+    assessment: _Optional[EventIntelligenceAcceptanceResult]
+    hypothesis: _Optional[EventUnderlyingHypothesis]
+    handoff: _Optional[DiscoveryEntryHandoff]
+    discovery_request: _Union[
+        OptionChainDiscoveryRequest, ExploratoryOptionChainRequest
+    ]
     browser: object
+    branch_id: str
+    exploration_lead: _Optional[ExplorationLead] = None
 
 
 def _enumerate_browser(browser: object) -> tuple:
     rows = browser.rows
-    mode = browser.discovery_evidence.discovery_request.distribution_mode
+    request = browser.discovery_evidence.discovery_request
+    if type(request) is ExploratoryOptionChainRequest:
+        validate_exploratory_option_chain_request(request)
+        groups = {}
+        positions = {id(row): index for index, row in enumerate(rows)}
+        for row in rows:
+            key = (row.provider_underlying, row.expiration, row.strike, row.lot_size)
+            groups.setdefault(key, []).append(row)
+        pairs_by_first_row = {}
+        for group in groups.values():
+            calls = [item for item in group if item.option_type == "call"]
+            puts = [item for item in group if item.option_type == "put"]
+            if len(calls) == 1 and len(puts) == 1:
+                pair = (calls[0], puts[0])
+                first_position = min(positions[id(item)] for item in pair)
+                pairs_by_first_row[first_position] = pair
+        structures = []
+        for index, row in enumerate(rows):
+            structures.append((row,))
+            pair = pairs_by_first_row.get(index)
+            if pair is not None:
+                structures.append(pair)
+        return tuple(structures), ()
+    if type(request) is not OptionChainDiscoveryRequest:
+        raise TypeError("Browser request has an unsupported exact type")
+    _validate_option_chain_request(request)
+    mode = request.distribution_mode
     directional = {
         "event_directional_up": "call",
         "extreme_tail_up": "call",
@@ -792,12 +942,11 @@ def _provider_references(verifications: tuple, quote_batch: object, native_quote
 
 
 def _branch_case_id(
-    submission_id: str,
-    hypothesis_id: str,
+    branch_id: str,
     rows: tuple,
 ) -> str:
     row_id = ":".join(row.provider_identifier for row in rows)
-    return f"{submission_id}:{hypothesis_id}:{row_id}"
+    return f"{branch_id}:{row_id}"
 
 
 def _core_structure_from_verified_rows(
@@ -869,6 +1018,162 @@ def _core_structure_from_verified_rows(
     )
 
 
+def _statement_dependency_closure(statement_ids: tuple, statements: dict) -> set:
+    closure = set()
+    pending = list(statement_ids)
+    while pending:
+        statement_id = pending.pop()
+        if statement_id in closure:
+            continue
+        statement = statements.get(statement_id)
+        if statement is None:
+            return set()
+        closure.add(statement_id)
+        pending.extend(statement.dependency_statement_ids)
+    return closure
+
+
+def _accepted_hypothesis_lead_relation(
+    lead: ExplorationLead,
+    submission: EventIntelligenceSubmission,
+    hypothesis: EventUnderlyingHypothesis,
+) -> str:
+    """Classify exact lead identity against one accepted hypothesis.
+
+    Only an exact retained fact/source anchor inside this hypothesis's support
+    closure is a match. The same anchor plus top-level event description, but
+    without that support link, is unresolved rather than inferred as aligned.
+    """
+
+    if lead.underlying_key != hypothesis.underlying_key:
+        return "unrelated"
+    statements = {item.statement_id: item for item in submission.statements}
+    lead_statements = {item.statement_id: item for item in lead.statements}
+    lead_fact = lead_statements.get(lead.event_statement_id)
+    accepted_fact = statements.get(lead.event_statement_id)
+    if lead_fact is None or accepted_fact is None or lead_fact != accepted_fact:
+        return "unrelated"
+    if lead_fact.kind.value != "observed_fact" or not lead_fact.source_ids:
+        return "unrelated"
+    lead_sources = {item.source_id: item for item in lead.sources}
+    accepted_sources = {item.source_id: item for item in submission.sources}
+    exact_fact_source = any(
+        source_id in accepted_sources
+        and lead_sources.get(source_id) == accepted_sources[source_id]
+        for source_id in lead_fact.source_ids
+    )
+    if not exact_fact_source:
+        return "unrelated"
+    event_description_binding = (
+        type(submission.event_description) is str
+        and lead.event_description == submission.event_description
+    )
+    hypothesis_support_binding = lead.event_statement_id in (
+        _statement_dependency_closure(hypothesis.supporting_statement_ids, statements)
+    )
+    if hypothesis_support_binding:
+        return "matched"
+    if event_description_binding:
+        return "unresolved"
+    return "unrelated"
+
+
+@_dataclass(frozen=True)
+class EffectiveSourceBatchCounts:
+    """Effective leads and counts after accepted-hypothesis priority review."""
+
+    effective_exploration_leads: tuple
+    matched_exploration_leads: tuple
+    unresolved_exploration_leads: tuple
+    source_items: int
+    hypothesis_items: int
+
+    def __post_init__(self) -> None:
+        for name in (
+            "effective_exploration_leads",
+            "matched_exploration_leads",
+            "unresolved_exploration_leads",
+        ):
+            leads = getattr(self, name)
+            if type(leads) is not tuple:
+                raise TypeError(f"{name} must have exact type tuple")
+            for lead in leads:
+                validate_exploration_lead(lead)
+        retained_leads = (
+            self.effective_exploration_leads
+            + self.matched_exploration_leads
+            + self.unresolved_exploration_leads
+        )
+        if len({id(lead) for lead in retained_leads}) != len(retained_leads):
+            raise ValueError("lead priority dispositions must be disjoint")
+        for name in ("source_items", "hypothesis_items"):
+            value = getattr(self, name)
+            if type(value) is not int or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+
+
+def effective_source_batch_counts(
+    submissions: SourceSubmissionBatch,
+    accepted_hypotheses: tuple,
+) -> EffectiveSourceBatchCounts:
+    """Return shared operational counts without dropping raw batch provenance.
+
+    ``accepted_hypotheses`` contains ``(assessment, submission, hypothesis)``
+    triples from independently assessed ACCEPTED submissions. Keeping this
+    resolver available at module scope lets application and archive/audit paths
+    apply the same exact accepted-priority rule before checking operational
+    bounds.
+    """
+
+    if type(submissions) is not SourceSubmissionBatch:
+        raise TypeError("submissions must be SourceSubmissionBatch")
+    if type(accepted_hypotheses) is not tuple:
+        raise TypeError("accepted_hypotheses must have exact type tuple")
+    for triple in accepted_hypotheses:
+        if type(triple) is not tuple or len(triple) != 3:
+            raise TypeError(
+                "accepted_hypotheses must contain assessment/submission/hypothesis triples"
+            )
+        assessment, submission, hypothesis = triple
+        if type(assessment) is not EventIntelligenceAcceptanceResult:
+            raise TypeError("accepted hypothesis assessment has the wrong type")
+        if assessment.status is not EventIntelligenceAcceptanceStatus.ACCEPTED:
+            raise ValueError("accepted_hypotheses must contain ACCEPTED assessments")
+        if assessment.submission is not submission:
+            raise ValueError("accepted hypothesis assessment must retain submission identity")
+        if type(submission) is not EventIntelligenceSubmission:
+            raise TypeError("accepted hypothesis submission has the wrong type")
+        if type(hypothesis) is not EventUnderlyingHypothesis:
+            raise TypeError("accepted hypothesis has the wrong type")
+        if not any(hypothesis is item for item in submission.hypotheses):
+            raise ValueError("accepted hypothesis must be retained by its submission")
+
+    effective_leads = []
+    matched_leads = []
+    unresolved_leads = []
+    for lead in submissions.exploration_leads:
+        relations = tuple(
+            _accepted_hypothesis_lead_relation(lead, submission, hypothesis)
+            for _assessment, submission, hypothesis in accepted_hypotheses
+        )
+        if "matched" in relations:
+            matched_leads.append(lead)
+        elif "unresolved" in relations:
+            unresolved_leads.append(lead)
+        else:
+            effective_leads.append(lead)
+    return EffectiveSourceBatchCounts(
+        effective_exploration_leads=tuple(effective_leads),
+        matched_exploration_leads=tuple(matched_leads),
+        unresolved_exploration_leads=tuple(unresolved_leads),
+        source_items=len(submissions.submissions) + len(effective_leads),
+        hypothesis_items=(
+            sum(len(item.hypotheses) for item in submissions.submissions)
+            + len(effective_leads)
+        ),
+    )
+
+
 def _run_source_core(
     raw_input: object,
     source_result: object,
@@ -879,89 +1184,240 @@ def _run_source_core(
 ) -> CoreRunResult:
     submissions = _normalize_source_batch(raw_input, source_result)
     bounds = policy.bounds
-    if len(submissions.submissions) > bounds.max_submissions:
+    submission_count = len(submissions.submissions)
+    submission_hypothesis_count = sum(
+        len(item.hypotheses) for item in submissions.submissions
+    )
+    # Preserve the legacy preflight ordering when accepted source inputs alone
+    # exceed a bound. Matching independent leads are resolved after assessment
+    # but before the combined operational limits are applied.
+    if submission_count > bounds.max_submissions:
         return _limited_case_set(
-            entry_origin, raw_input, submissions, "submissions",
-            len(submissions.submissions), bounds.max_submissions,
+            entry_origin,
+            raw_input,
+            submissions,
+            "submissions",
+            submission_count,
+            bounds.max_submissions,
         )
-    total_hypotheses = sum(len(item.hypotheses) for item in submissions.submissions)
-    if total_hypotheses > bounds.max_hypotheses:
+    if submission_hypothesis_count > bounds.max_hypotheses:
         return _limited_case_set(
-            entry_origin, raw_input, submissions, "hypotheses",
-            total_hypotheses, bounds.max_hypotheses,
+            entry_origin,
+            raw_input,
+            submissions,
+            "hypotheses",
+            submission_hypothesis_count,
+            bounds.max_hypotheses,
+        )
+
+    assessed_submissions = []
+    accepted_hypotheses = []
+    for submission in submissions.submissions:
+        assessment = assess_event_intelligence_submission(submission)
+        assessed_submissions.append((assessment, submission))
+        if assessment.status is not EventIntelligenceAcceptanceStatus.ACCEPTED:
+            continue
+        for hypothesis in submission.hypotheses:
+            accepted_hypotheses.append((assessment, submission, hypothesis))
+
+    effective_counts = effective_source_batch_counts(
+        submissions, tuple(accepted_hypotheses)
+    )
+    if effective_counts.source_items > bounds.max_submissions:
+        return _limited_case_set(
+            entry_origin,
+            raw_input,
+            submissions,
+            "source_items",
+            effective_counts.source_items,
+            bounds.max_submissions,
+        )
+    if effective_counts.hypothesis_items > bounds.max_hypotheses:
+        return _limited_case_set(
+            entry_origin,
+            raw_input,
+            submissions,
+            "hypotheses_and_exploration_leads",
+            effective_counts.hypothesis_items,
+            bounds.max_hypotheses,
         )
 
     unavailable = []
     enumerated = []
     browser_row_count = 0
     candidate_count = 0
-    for submission in submissions.submissions:
-        assessment = assess_event_intelligence_submission(submission)
-        if assessment.status is not EventIntelligenceAcceptanceStatus.ACCEPTED:
-            reasons = ("event_intelligence_not_accepted",) + tuple(
-                getattr(issue.code, "value", str(issue.code))
-                for issue in assessment.issues
+    for assessment, submission in assessed_submissions:
+        if assessment.status is EventIntelligenceAcceptanceStatus.ACCEPTED:
+            continue
+        reasons = ("event_intelligence_not_accepted",) + tuple(
+            getattr(issue.code, "value", str(issue.code))
+            for issue in assessment.issues
+        )
+        context = _case_context(
+            raw_input, policy, submissions=submissions, assessment=assessment,
+            reasons=reasons,
+        )
+        unavailable.append(
+            _unavailable(f"{submission.submission_id}:assessment", reasons, context)
+        )
+
+    # Complete every accepted-hypothesis branch before considering independent
+    # leads. Matching leads are suppressed below even when this request is stale
+    # or otherwise invalid; they never become an authority fallback.
+    for assessment, submission, hypothesis in accepted_hypotheses:
+        case_prefix = f"{submission.submission_id}:{hypothesis.hypothesis_id}"
+        try:
+            handoff = create_discovery_entry_handoff(assessment, hypothesis)
+            discovery_request = create_option_chain_discovery_request(
+                handoff,
+                evaluation_date=policy.evaluation_date,
+                maturity_authority=policy.maturity_authority,
             )
+        except Exception as error:
+            reasons = ("maturity_request_failure",)
             context = _case_context(
                 raw_input, policy, submissions=submissions, assessment=assessment,
+                hypothesis=hypothesis, reasons=reasons,
+            )
+            unavailable.append(_unavailable(case_prefix, reasons, context, error))
+            continue
+        try:
+            browser = _bridge_method(market_bridge, "discover_browser")(
+                discovery_request
+            )
+            if type(browser) is not _futu.FutuExactContractBrowser:
+                raise TypeError("market bridge must return FutuExactContractBrowser")
+            if browser.discovery_evidence.discovery_request is not discovery_request:
+                raise ValueError("Browser must retain exact discovery request")
+        except Exception as error:
+            reasons = ("browser_discovery_failure",)
+            context = _case_context(
+                raw_input, policy, submissions=submissions, assessment=assessment,
+                hypothesis=hypothesis, handoff=handoff,
+                discovery_request=discovery_request, reasons=reasons,
+            )
+            unavailable.append(_unavailable(case_prefix, reasons, context, error))
+            continue
+        browser_row_count += len(browser.rows)
+        if browser_row_count > bounds.max_browser_rows:
+            return _limited_case_set(
+                entry_origin, raw_input, submissions, "browser_rows",
+                browser_row_count, bounds.max_browser_rows,
+            )
+        branch = _PendingBranch(
+            raw_input=raw_input,
+            submissions=submissions,
+            assessment=assessment,
+            hypothesis=hypothesis,
+            handoff=handoff,
+            discovery_request=discovery_request,
+            browser=browser,
+            branch_id=case_prefix,
+        )
+        structures, non_structures = _enumerate_browser(branch.browser)
+        candidate_count += len(structures)
+        if candidate_count > bounds.max_cases:
+            return _limited_case_set(
+                entry_origin, raw_input, submissions, "cases",
+                candidate_count, bounds.max_cases,
+            )
+        enumerated.append((branch, structures, non_structures))
+
+    for lead in effective_counts.unresolved_exploration_leads:
+        reasons = ("exploration_same_event_hypothesis_link_unresolved",)
+        context = _case_context(
+            raw_input,
+            policy,
+            submissions=submissions,
+            exploration_lead=lead,
+            maturity_authority=OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH,
+            reasons=reasons,
+        )
+        unavailable.append(_unavailable(lead.lead_id, reasons, context))
+
+    for lead in effective_counts.effective_exploration_leads:
+        validate_exploration_lead(lead)
+        if not policy.exploration_enabled:
+            reasons = ("exploration_disabled",)
+            context = _case_context(
+                raw_input,
+                policy,
+                submissions=submissions,
+                exploration_lead=lead,
+                maturity_authority=OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH,
                 reasons=reasons,
             )
-            unavailable.append(
-                _unavailable(f"{submission.submission_id}:assessment", reasons, context)
-            )
+            unavailable.append(_unavailable(lead.lead_id, reasons, context))
             continue
-        for hypothesis in submission.hypotheses:
-            case_prefix = f"{submission.submission_id}:{hypothesis.hypothesis_id}"
-            try:
-                handoff = create_discovery_entry_handoff(assessment, hypothesis)
-                discovery_request = create_option_chain_discovery_request(
-                    handoff,
-                    evaluation_date=policy.evaluation_date,
-                    maturity_authority=policy.maturity_authority,
-                )
-            except Exception as error:
-                reasons = ("maturity_request_failure",)
-                context = _case_context(
-                    raw_input, policy, submissions=submissions, assessment=assessment,
-                    hypothesis=hypothesis, reasons=reasons,
-                )
-                unavailable.append(_unavailable(case_prefix, reasons, context, error))
-                continue
-            try:
-                browser = _bridge_method(market_bridge, "discover_browser")(
-                    discovery_request
-                )
-                if type(browser) is not _futu.FutuExactContractBrowser:
-                    raise TypeError("market bridge must return FutuExactContractBrowser")
-                if browser.discovery_evidence.discovery_request is not discovery_request:
-                    raise ValueError("Browser must retain exact discovery request")
-            except Exception as error:
-                reasons = ("browser_discovery_failure",)
-                context = _case_context(
-                    raw_input, policy, submissions=submissions, assessment=assessment,
-                    hypothesis=hypothesis, handoff=handoff,
-                    discovery_request=discovery_request, reasons=reasons,
-                )
-                unavailable.append(_unavailable(case_prefix, reasons, context, error))
-                continue
-            browser_row_count += len(browser.rows)
-            if browser_row_count > bounds.max_browser_rows:
-                return _limited_case_set(
-                    entry_origin, raw_input, submissions, "browser_rows",
-                    browser_row_count, bounds.max_browser_rows,
-                )
-            branch = _PendingBranch(
-                raw_input, submissions, assessment, hypothesis, handoff,
-                discovery_request, browser,
+        try:
+            discovery_request = ExploratoryOptionChainRequest(
+                lead, policy.evaluation_date
             )
-            structures, non_structures = _enumerate_browser(branch.browser)
-            candidate_count += len(structures)
-            if candidate_count > bounds.max_cases:
-                return _limited_case_set(
-                    entry_origin, raw_input, submissions, "cases",
-                    candidate_count, bounds.max_cases,
-                )
-            enumerated.append((branch, structures, non_structures))
+        except Exception as error:
+            reasons = ("exploration_request_failure",)
+            context = _case_context(
+                raw_input,
+                policy,
+                submissions=submissions,
+                exploration_lead=lead,
+                maturity_authority=OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH,
+                reasons=reasons,
+            )
+            unavailable.append(_unavailable(lead.lead_id, reasons, context, error))
+            continue
+        try:
+            browser = _bridge_method(market_bridge, "discover_browser")(
+                discovery_request
+            )
+            if type(browser) is not _futu.FutuExactContractBrowser:
+                raise TypeError("market bridge must return FutuExactContractBrowser")
+            if browser.discovery_evidence.discovery_request is not discovery_request:
+                raise ValueError("Browser must retain exact discovery request")
+        except Exception as error:
+            reasons = ("browser_discovery_failure",)
+            context = _case_context(
+                raw_input,
+                policy,
+                submissions=submissions,
+                discovery_request=discovery_request,
+                exploration_lead=lead,
+                reasons=reasons,
+            )
+            unavailable.append(_unavailable(lead.lead_id, reasons, context, error))
+            continue
+        browser_row_count += len(browser.rows)
+        if browser_row_count > bounds.max_browser_rows:
+            return _limited_case_set(
+                entry_origin,
+                raw_input,
+                submissions,
+                "browser_rows",
+                browser_row_count,
+                bounds.max_browser_rows,
+            )
+        branch = _PendingBranch(
+            raw_input=raw_input,
+            submissions=submissions,
+            assessment=None,
+            hypothesis=None,
+            handoff=None,
+            discovery_request=discovery_request,
+            browser=browser,
+            branch_id=lead.lead_id,
+            exploration_lead=lead,
+        )
+        structures, non_structures = _enumerate_browser(branch.browser)
+        candidate_count += len(structures)
+        if candidate_count > bounds.max_cases:
+            return _limited_case_set(
+                entry_origin,
+                raw_input,
+                submissions,
+                "cases",
+                candidate_count,
+                bounds.max_cases,
+            )
+        enumerated.append((branch, structures, non_structures))
 
     records = []
     for branch, structures, non_structures in enumerated:
@@ -987,18 +1443,17 @@ def _run_source_core(
             except Exception as error:
                 quote_failure = error
         for rows, row_reasons in non_structures:
-            row_id = ":".join(row.provider_identifier for row in rows)
             context = _case_context(
                 branch.raw_input, policy, submissions=branch.submissions,
                 assessment=branch.assessment, hypothesis=branch.hypothesis,
                 handoff=branch.handoff, discovery_request=branch.discovery_request,
+                exploration_lead=branch.exploration_lead,
                 browser=branch.browser, listed_rows=rows, listed_row=rows[0],
                 quote_batch=quote_batch, reasons=row_reasons,
             )
             unavailable.append(
                 _unavailable(
-                    f"{branch.assessment.submission.submission_id}:"
-                    f"{branch.hypothesis.hypothesis_id}:{row_id}",
+                    _branch_case_id(branch.branch_id, rows),
                     row_reasons, context,
                 )
             )
@@ -1009,6 +1464,7 @@ def _run_source_core(
                     branch.raw_input, policy, submissions=branch.submissions,
                     assessment=branch.assessment, hypothesis=branch.hypothesis,
                     handoff=branch.handoff, discovery_request=branch.discovery_request,
+                    exploration_lead=branch.exploration_lead,
                     browser=branch.browser, listed_rows=rows,
                     listed_row=rows[0] if len(rows) == 1 else None,
                     reasons=reasons,
@@ -1016,8 +1472,7 @@ def _run_source_core(
                 unavailable.append(
                     _unavailable(
                         _branch_case_id(
-                            branch.assessment.submission.submission_id,
-                            branch.hypothesis.hypothesis_id,
+                            branch.branch_id,
                             rows,
                         ),
                         reasons, context, quote_failure,
@@ -1025,11 +1480,7 @@ def _run_source_core(
                 )
             continue
         for rows in structures:
-            case_id = _branch_case_id(
-                branch.assessment.submission.submission_id,
-                branch.hypothesis.hypothesis_id,
-                rows,
-            )
+            case_id = _branch_case_id(branch.branch_id, rows)
             verifications = []
             exact_failure = None
             for row in rows:
@@ -1048,6 +1499,7 @@ def _run_source_core(
                     branch.raw_input, policy, submissions=branch.submissions,
                     assessment=branch.assessment, hypothesis=branch.hypothesis,
                     handoff=branch.handoff, discovery_request=branch.discovery_request,
+                    exploration_lead=branch.exploration_lead,
                     browser=branch.browser, listed_rows=rows,
                     listed_row=rows[0] if len(rows) == 1 else None,
                     native_verification=tuple(verifications), quote_batch=quote_batch,
@@ -1073,6 +1525,7 @@ def _run_source_core(
                     branch.raw_input, policy, submissions=branch.submissions,
                     assessment=branch.assessment, hypothesis=branch.hypothesis,
                     handoff=branch.handoff, discovery_request=branch.discovery_request,
+                    exploration_lead=branch.exploration_lead,
                     browser=branch.browser, listed_rows=rows,
                     listed_row=rows[0] if len(rows) == 1 else None,
                     native_verification=verifications_tuple,
@@ -1085,6 +1538,7 @@ def _run_source_core(
                 branch.raw_input, policy, submissions=branch.submissions,
                 assessment=branch.assessment, hypothesis=branch.hypothesis,
                 handoff=branch.handoff, discovery_request=branch.discovery_request,
+                exploration_lead=branch.exploration_lead,
                 browser=branch.browser, listed_rows=rows,
                 listed_row=rows[0] if len(rows) == 1 else None,
                 native_verification=verifications_tuple, quote_batch=quote_batch,

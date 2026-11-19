@@ -9,6 +9,7 @@ from .core_application import (
 )
 from .event_entry import UserEventInput
 from .event_intelligence import EventIntelligenceSubmission
+from .option_chain_discovery import validate_exploration_lead
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,12 @@ class GateResult:
     reason_codes: Tuple[str, ...]
 
 
-def validate_source_batch(raw_input: object, batch: object) -> GateResult:
+def validate_source_batch(
+    raw_input: object,
+    batch: object,
+    *,
+    exploration_enabled: bool = False,
+) -> GateResult:
     """Check intrinsic validity only; INCOMPLETE is the Core's decision.
 
     Reconstructed records are validation probes and are never forwarded.
@@ -30,15 +36,25 @@ def validate_source_batch(raw_input: object, batch: object) -> GateResult:
     def blocked(reason: str) -> GateResult:
         return GateResult(raw_input, batch, False, ("BLOCKED", reason))
 
+    if type(exploration_enabled) is not bool:
+        return blocked("INVALID_EXPLORATION_POLICY")
     if type(batch) is not SourceSubmissionBatch:
         return blocked("INVALID_BATCH_TYPE")
     try:
         if batch.raw_input is not raw_input:
             return blocked("RAW_INPUT_IDENTITY_MISMATCH")
         # Reuse the batch constructor for tuple/exact-type/source/ID checks.
-        SourceSubmissionBatch(batch.raw_input, batch.submissions)
-        if not batch.submissions:
+        SourceSubmissionBatch(
+            batch.raw_input, batch.submissions, batch.exploration_leads
+        )
+        if batch.exploration_leads and not exploration_enabled:
+            return blocked("EXPLORATION_DISABLED")
+        if not batch.submissions and not (
+            exploration_enabled and batch.exploration_leads
+        ):
             return blocked("EMPTY_BATCH")
+        for lead in batch.exploration_leads:
+            validate_exploration_lead(lead)
         for submission in batch.submissions:
             if type(submission) is not EventIntelligenceSubmission:
                 return blocked("INVALID_BATCH")
@@ -53,7 +69,7 @@ def validate_source_batch(raw_input: object, batch: object) -> GateResult:
 
 def run_event_core_gated(
     user_input: object, *, batch: object, market_bridge: object,
-    policy: CoreResearchPolicy,
+    policy: Optional[CoreResearchPolicy] = None,
 ) -> Tuple[GateResult, Optional[CoreRunResult]]:
     """Return (gate, None) when blocked, otherwise the untouched Core result.
 
@@ -67,7 +83,15 @@ def run_event_core_gated(
         return GateResult(
             user_input, batch, False, ("BLOCKED", "INVALID_EVENT_INPUT")
         ), None
-    gate = validate_source_batch(user_input, batch)
+    gate = validate_source_batch(
+        user_input,
+        batch,
+        exploration_enabled=(
+            policy.exploration_enabled
+            if type(policy) is CoreResearchPolicy
+            else False
+        ),
+    )
     if not gate.allowed:
         return gate, None
     return gate, run_event_core(
@@ -78,10 +102,18 @@ def run_event_core_gated(
 
 def run_world_core_gated(
     raw_request: object, *, batch: object, market_bridge: object,
-    policy: CoreResearchPolicy,
+    policy: Optional[CoreResearchPolicy] = None,
 ) -> Tuple[GateResult, Optional[CoreRunResult]]:
     """World input is opaque, matching run_world_core's existing contract."""
-    gate = validate_source_batch(raw_request, batch)
+    gate = validate_source_batch(
+        raw_request,
+        batch,
+        exploration_enabled=(
+            policy.exploration_enabled
+            if type(policy) is CoreResearchPolicy
+            else False
+        ),
+    )
     if not gate.allowed:
         return gate, None
     return gate, run_world_core(

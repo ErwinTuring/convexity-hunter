@@ -115,6 +115,7 @@ class HostWorkbenchTests(unittest.TestCase):
         self.assertIn("Ask 基准仅为 INDICATIVE_ONLY", page)
         self.assertIn("未知成本显示为未提供，不按 0 处理", page)
         self.assertIn("批量状态只描述已保留研究分支；不证明原始请求已全面核实。", page)
+        self.assertIn("结构计算、EI 对事件解释的核验、Core 分类是独立结论", page)
         self.assertIn("来源提取覆盖不完整；仅核验已取得正文，失败来源未被视为事实或反证不存在。", page)
         self.assertIn("function sourceCoverageText(value)", page)
 
@@ -289,6 +290,24 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
 }
 
 (async () => {
+  const exploratory = await scenario({
+    mode: "event", cases: [], runStatus: "RUNNING",
+    events: [{ event: "stage_finished", stage: "grounder", status: "COMPLETED", outcome: {
+      schema_version: "host-grounder-exploration-stage-outcome-v0.1",
+      exploration_status: "ADMITTED", exploration_lead_count: 1,
+      submission_status: "MISSING", ei_status: "NOT_RUN",
+      private_candidate: "EXPLORATION_PRIVATE_SENTINEL"
+    } }],
+    executors: { world: "CONFIGURED", event: "CONFIGURED", direct: "CONFIGURED" }
+  });
+  await exploratory.clickRun();
+  const exploratoryText = exploratory.elements.get("run-events").textContent;
+  for (const expected of ["探索线索准入：已准入", "探索线索数：1", "未评估，不是 ACCEPTED",
+    "hypothesis_maturity_alignment = NOT_ESTABLISHED", "不表示 Core 已执行或已合格"]) {
+    if (!exploratoryText.includes(expected)) throw new Error("Missing exploration disclosure: " + expected);
+  }
+  if (exploratoryText.includes("EXPLORATION_PRIVATE_SENTINEL")) throw new Error("Exploration stage leaked private fields");
+  if (exploratory.calls.some((call) => call.method === "POST")) throw new Error("Viewing exploration triggered research");
   const report = "<img src=x onerror=alert(1)>\nplain report";
   const feeIllustration = "CONDITIONAL_FEE_APPENDIX_ONLY";
   const direct = await scenario({
@@ -879,6 +898,32 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   });
   if (unknown.tabs.some((tab) => !tab.disabled)) throw new Error("unknown executor status was treated as configured");
   if (unknown.calls.some((call) => !["/api/status", "/api/profile", "/api/runs"].includes(call.path))) throw new Error("unexpected external/market call");
+  const explorationMaterials = await scenario({mode: "event", cases: [], events: [],
+    executors: {event:"CONFIGURED",world:"CONFIGURED",direct:"CONFIGURED"},
+    eventResearch: {status:"EXPLORATION_RETAINED",ei_status:"NOT_RUN",leads:[{
+      lead_id:"lead-1",event_description:report,underlying_key:{symbol:"XYZ",security_type:"EQUITY",currency:"USD"},
+      sources:[{source_id:"source-1",locator:"public source"}],
+      statements:[{kind:"observed_fact",text:"verified event"},{kind:"interpretation",text:"conditional exposure"}],
+      uncertainties:["direction unknown"],private_proof:"PRIVATE_EXPLORATION_PROOF"
+    }]}});
+  await explorationMaterials.clickRun();
+  await explorationMaterials.elements.get("read-event-research").click();
+  const leadText = explorationMaterials.elements.get("event-research-view").textContent;
+  for (const expected of [report,"verified event","条件性解释（非事实）","direction unknown","EI 状态：NOT_RUN","NOT_ESTABLISHED"]) {
+    if (!leadText.includes(expected)) throw new Error("Exploration material disclosure missing: " + expected);
+  }
+  if (leadText.includes("PRIVATE_EXPLORATION_PROOF")) throw new Error("Private proof exposed in material view");
+  if (!explorationMaterials.elements.get("prepare-event-continuation").disabled) throw new Error("Unassessed exploration treated as incomplete EI continuation");
+  if (explorationMaterials.calls.some(x=>x.method === "POST")) throw new Error("Exploration material read triggered services");
+  const worldExploration = await scenario({mode:"world",cases:[],events:[],
+    executors:{world:"CONFIGURED",event:"CONFIGURED",direct:"CONFIGURED"},
+    eventResearch:{status:"WORLD_EXPLORATION_RETAINED",ei_status:"NOT_RUN",selections:[],
+      leads:[{lead_id:"world-lead",event_description:"independent world fact",sources:[],statements:[],uncertainties:["direction unknown"]}]}});
+  await worldExploration.clickRun();
+  await worldExploration.elements.get("read-event-research").click();
+  if (!worldExploration.elements.get("event-research-view").textContent.includes("independent world fact")) throw new Error("World-only exploration materials were hidden");
+  if (worldExploration.elements.get("world-research-selections").children.length !== 0) throw new Error("World exploration created a mandatory manual selection");
+  if (worldExploration.calls.some(x=>x.method === "POST")) throw new Error("World exploration view triggered research");
   const assisted = await scenario({mode: "event", cases: [], events: [],
     executors: {event: "CONFIGURED", world: "NOT_CONFIGURED", direct: "CONFIGURED"},
     eventResearch: {status: "RETAINED", assessment_status: "incomplete", original_input: "original event",

@@ -1,5 +1,14 @@
 # Futu Option-Chain Discovery Evidence Contract v0.1
 
+Approved additive request compatibility: the
+[structure-first exploration contract](structure-first-exploration-decision-v0.1.md)
+also permits an intrinsically revalidated exact `ExploratoryOptionChainRequest`.
+Both closed request types use the same retrieval, Browser, quote and exact
+verification components; the evidence retains the original request by identity.
+No provider-call budget, classification, deliverable, freshness or quote
+authority is upgraded. The original accepted-hypothesis request below is
+preserved, not relaxed. See checkpoint for implementation/live status.
+
 ## Purpose
 
 This Tier-A contract consumes one exact provider-neutral

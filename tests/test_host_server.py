@@ -1504,6 +1504,7 @@ class HostServerBatchTests(unittest.TestCase):
         event_executor=None,
         event_grounder=None,
         event_core_executor=None,
+        direct_executor=None,
     ):
         server = create_server(
             self.journal,
@@ -1512,6 +1513,7 @@ class HostServerBatchTests(unittest.TestCase):
             event_executor=event_executor,
             event_grounder=event_grounder,
             event_core_executor=event_core_executor,
+            direct_executor=direct_executor,
             port=0,
             request_timeout_seconds=0.5,
         )
@@ -1566,6 +1568,130 @@ class HostServerBatchTests(unittest.TestCase):
             }
         ).encode("utf-8")
         return self._request("POST", "/api/runs", body=body, csrf=True)
+
+    def test_direct_post_keeps_event_exploration_policy_out_of_mode_metadata(self):
+        from types import SimpleNamespace
+        from convexity_hunter.host_direct import HostDirectInputError
+
+        direct_calls = []
+
+        def grounder(*_args, **_kwargs):
+            raise AssertionError("Direct POST must not invoke the Event Grounder")
+
+        grounder.exploration_enabled = True
+        grounder.configuration_snapshot = lambda: {
+            "models": [],
+            "sources": [],
+            "skills": [],
+            "exploration_policy": {
+                "schema_version": "structure-first-exploration-v0.1",
+                "authority": "exploratory_structure_research",
+                "minimum_dte_days": 30,
+                "maximum_dte_days": 150,
+                "enabled": True,
+            },
+        }
+
+        def event_core(*_args, **_kwargs):
+            raise AssertionError("Direct POST must not invoke the Event Core executor")
+
+        event_core.exploration_enabled = True
+
+        def direct(raw_input, *, bounds):
+            direct_calls.append((raw_input, bounds))
+            raise HostDirectInputError("synthetic legacy Direct rejection")
+
+        handler_type = host_server_module.HostRequestHandler
+
+        class HandlerHarness:
+            _post_run = handler_type._post_run
+            _complete_terminal_run = handler_type._complete_terminal_run
+
+            def __init__(self, server):
+                self.server = server
+                self.response = None
+
+            def _send_json(self, status, payload):
+                self.response = status, payload
+
+        harness = HandlerHarness(SimpleNamespace(
+            world_executor=None,
+            event_executor=None,
+            event_grounder=grounder,
+            event_core_executor=event_core,
+            direct_executor=direct,
+            journal=self.journal,
+        ))
+        request = host_server_module.ValidatedRunRequest(
+            "direct",
+            "synthetic Direct payload",
+            CoreOperationalBounds(2, 3, 20, 8, 2.5),
+        )
+        harness._post_run(request)
+        self.assertEqual(harness.response[0], 201)
+        self.assertEqual(harness.response[1]["status"], "BLOCKED")
+        self.assertEqual(len(direct_calls), 1)
+        run = self.journal.runs[harness.response[1]["run_id"]]
+        self.assertEqual(run["metadata"]["configuration_snapshot"], {
+            "models": [], "sources": [], "skills": []
+        })
+        self.assertNotIn(
+            "exploration_policy",
+            run["metadata"]["configuration_snapshot"],
+        )
+
+    def test_direct_post_rejects_accidentally_inherited_exploration_policy_pre_executor(self):
+        from types import SimpleNamespace
+
+        direct_calls = []
+
+        def direct(raw_input, *, bounds):
+            direct_calls.append((raw_input, bounds))
+            raise AssertionError("legacy Direct executor must not be reached")
+
+        handler_type = host_server_module.HostRequestHandler
+
+        class HandlerHarness:
+            _post_run = handler_type._post_run
+
+            def __init__(self, server):
+                self.server = server
+                self.response = None
+
+            def _send_json(self, status, payload):
+                self.response = status, payload
+
+        harness = HandlerHarness(SimpleNamespace(
+            world_executor=None,
+            event_executor=None,
+            event_grounder=None,
+            event_core_executor=None,
+            direct_executor=direct,
+            journal=self.journal,
+        ))
+        with patch(
+            "convexity_hunter.host_server._configuration_snapshot",
+            return_value={
+                "models": [],
+                "sources": [],
+                "skills": [],
+                "exploration_policy": {
+                    "schema_version": "structure-first-exploration-v0.1",
+                    "authority": "exploratory_structure_research",
+                    "minimum_dte_days": 30,
+                    "maximum_dte_days": 150,
+                    "enabled": True,
+                },
+            },
+        ):
+            harness._post_run(host_server_module.ValidatedRunRequest(
+                "direct",
+                "synthetic Direct payload",
+                CoreOperationalBounds(2, 3, 20, 8, 2.5),
+            ))
+        self.assertEqual(harness.response[0], 500)
+        self.assertEqual(direct_calls, [])
+        self.assertEqual(self.journal.runs, {})
 
     def test_batch_reason_projection_accepts_only_core_limit_reason_grammar(self):
         for label in ("submissions", "hypotheses", "browser_rows", "cases"):

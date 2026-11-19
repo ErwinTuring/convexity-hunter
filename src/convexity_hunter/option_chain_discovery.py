@@ -4,11 +4,15 @@ import datetime
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+from typing import Tuple
 
 from .discovery_entry import DiscoveryEntryHandoff
 from .evidence import OptionStructure
 from .event_intelligence import (
     DistributionChangeMode,
+    EventSourceReference,
+    EventStatement,
+    EventStatementKind,
     EventUnderlyingHypothesis,
     HypothesisReassessment,
     MethodologizedDateRange,
@@ -22,6 +26,10 @@ __all__ = (
     "OptionChainDiscoveryRequest",
     "OptionResearchMaturityContext",
     "create_option_chain_discovery_request",
+    "ExplorationLead",
+    "ExploratoryOptionChainRequest",
+    "validate_exploration_lead",
+    "validate_exploratory_option_chain_request",
 )
 
 
@@ -35,6 +43,7 @@ class OptionMaturityAuthority(str, Enum):
 
     HYPOTHESIS_ALIGNED = "hypothesis_aligned"
     NEUTRAL_STRUCTURAL_RESEARCH = "neutral_structural_research"
+    EXPLORATORY_STRUCTURE_RESEARCH = "exploratory_structure_research"
 
 
 class HypothesisMaturityAlignment(str, Enum):
@@ -79,6 +88,14 @@ def _validate_request_inputs(
         raise TypeError(
             "maturity_authority must have exact type OptionMaturityAuthority"
         )
+    if maturity_authority not in {
+        OptionMaturityAuthority.HYPOTHESIS_ALIGNED,
+        OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
+    }:
+        raise ValueError(
+            "OptionChainDiscoveryRequest does not accept "
+            "EXPLORATORY_STRUCTURE_RESEARCH"
+        )
     try:
         rebuilt_handoff = DiscoveryEntryHandoff(
             discovery_entry_handoff.acceptance_result,
@@ -117,13 +134,15 @@ def _validate_request_inputs(
     if maturity_authority is OptionMaturityAuthority.HYPOTHESIS_ALIGNED:
         if type(event_window_end) is not datetime.date:
             raise ValueError("missing_authoritative_maturity_anchor")
-    else:
+    elif maturity_authority is OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH:
         if type(event_window_end) is datetime.date:
             raise ValueError(
                 "neutral_structural_research_requires_absent_expected_window"
             )
         if hypothesis.reassessment is None:
             raise ValueError("discovery_entry_handoff is not intrinsically valid")
+    else:  # Explicit closed dispatch; the third authority has its own request.
+        raise ValueError("unsupported OptionChainDiscoveryRequest authority")
 
     try:
         minimum_expiration = evaluation_date + datetime.timedelta(
@@ -314,3 +333,279 @@ def create_option_chain_discovery_request(
         evaluation_date,
         maturity_authority,
     )
+
+
+def _validate_exploration_lead_fields(value: object) -> None:
+    for name in (
+        "lead_id",
+        "event_description",
+        "underlying_reference",
+        "validation_reference",
+    ):
+        item = getattr(value, name)
+        if type(item) is not str or not item.strip():
+            raise ValueError(f"{name} must be a non-empty string")
+
+    observed_at = value.observed_at
+    if type(observed_at) is not datetime.datetime:
+        raise TypeError("observed_at must have exact type datetime")
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise ValueError("observed_at must be timezone-aware")
+
+    underlying_key = value.underlying_key
+    if type(underlying_key) is not UnderlyingKey:
+        raise TypeError("underlying_key must have exact type UnderlyingKey")
+    try:
+        rebuilt_key = UnderlyingKey(
+            underlying_key.symbol,
+            underlying_key.listing_mic,
+            underlying_key.security_type,
+            underlying_key.currency,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("underlying_key is malformed") from error
+    if rebuilt_key != underlying_key:
+        raise ValueError("underlying_key is not intrinsically valid")
+
+    if type(value.sources) is not tuple or not value.sources:
+        raise TypeError("sources must be a non-empty tuple")
+    sources = {}
+    for source in value.sources:
+        if type(source) is not EventSourceReference:
+            raise TypeError("sources must contain EventSourceReference values")
+        try:
+            rebuilt_source = EventSourceReference(
+                source.source_id,
+                source.locator,
+                source.title,
+                source.published_at,
+            )
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError("source is malformed") from error
+        if rebuilt_source != source or source.source_id in sources:
+            raise ValueError("sources must be intrinsically valid and unique")
+        if type(source.locator) is not str or not source.locator.strip():
+            raise ValueError("every retained source locator must be non-empty")
+        sources[source.source_id] = source
+
+    if type(value.statements) is not tuple or not value.statements:
+        raise TypeError("statements must be a non-empty tuple")
+    statements = {}
+    for statement in value.statements:
+        if type(statement) is not EventStatement:
+            raise TypeError("statements must contain EventStatement values")
+        try:
+            rebuilt_statement = EventStatement(
+                statement.statement_id,
+                statement.kind,
+                statement.text,
+                statement.source_ids,
+                statement.dependency_statement_ids,
+            )
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError("statement is malformed") from error
+        if rebuilt_statement != statement or statement.statement_id in statements:
+            raise ValueError("statements must be intrinsically valid and unique")
+        if type(statement.text) is not str or not statement.text.strip():
+            raise ValueError("every retained statement text must be non-empty")
+        statements[statement.statement_id] = statement
+
+    if type(value.uncertainties) is not tuple or any(
+        type(item) is not str or not item.strip() for item in value.uncertainties
+    ):
+        raise TypeError("uncertainties must be a tuple of non-empty strings")
+
+    for statement in statements.values():
+        if set(statement.source_ids) - set(sources):
+            raise ValueError("statement references an unretained source")
+        if set(statement.dependency_statement_ids) - set(statements):
+            raise ValueError("statement references an unretained dependency")
+
+    states = {statement_id: 0 for statement_id in statements}
+    for root_id in statements:
+        if states[root_id] == 2:
+            continue
+        stack = [(root_id, False)]
+        while stack:
+            statement_id, exiting = stack.pop()
+            if exiting:
+                states[statement_id] = 2
+                continue
+            if states[statement_id] == 2:
+                continue
+            if states[statement_id] == 1:
+                raise ValueError("statement dependencies must not contain a cycle")
+            states[statement_id] = 1
+            stack.append((statement_id, True))
+            for dependency_id in reversed(
+                statements[statement_id].dependency_statement_ids
+            ):
+                if states[dependency_id] == 1:
+                    raise ValueError("statement dependencies must not contain a cycle")
+                if states[dependency_id] == 0:
+                    stack.append((dependency_id, False))
+
+    event_statement = statements.get(value.event_statement_id)
+    exposure_statement = statements.get(value.exposure_statement_id)
+    if type(value.event_statement_id) is not str or not value.event_statement_id:
+        raise ValueError("event_statement_id must be a non-empty string")
+    if type(value.exposure_statement_id) is not str or not value.exposure_statement_id:
+        raise ValueError("exposure_statement_id must be a non-empty string")
+    if event_statement is None or (
+        event_statement.kind is not EventStatementKind.OBSERVED_FACT
+        or not event_statement.source_ids
+    ):
+        raise ValueError("event statement must be a source-backed observed fact")
+    if exposure_statement is None:
+        raise ValueError("exposure statement is not retained")
+    if exposure_statement.kind is EventStatementKind.OBSERVED_FACT:
+        if not exposure_statement.source_ids:
+            raise ValueError(
+                "observed-fact exposure statement must be source-backed"
+            )
+    elif exposure_statement.kind is EventStatementKind.INTERPRETATION:
+        closure = set()
+        pending = [exposure_statement.statement_id]
+        while pending:
+            statement_id = pending.pop()
+            if statement_id in closure:
+                continue
+            closure.add(statement_id)
+            pending.extend(statements[statement_id].dependency_statement_ids)
+        if not any(
+            statements[statement_id].kind is EventStatementKind.OBSERVED_FACT
+            and bool(statements[statement_id].source_ids)
+            for statement_id in closure
+        ):
+            raise ValueError(
+                "interpretive exposure statement requires a source-backed "
+                "observed-fact dependency closure"
+            )
+    else:
+        raise ValueError("exposure statement kind is unsupported")
+
+
+@dataclass(frozen=True)
+class ExplorationLead:
+    """Host-projected evidence for neutral structure exploration.
+
+    Intrinsic reconstruction validates the retained evidence graph only. It
+    does not authenticate source truth, admission, receipt, or listing checks;
+    those remain Host-owned trust boundaries.
+    """
+
+    lead_id: str
+    event_description: str
+    observed_at: datetime.datetime
+    underlying_key: UnderlyingKey
+    sources: Tuple[EventSourceReference, ...]
+    statements: Tuple[EventStatement, ...]
+    event_statement_id: str
+    exposure_statement_id: str
+    underlying_reference: str
+    validation_reference: str
+    uncertainties: Tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        _validate_exploration_lead_fields(self)
+
+
+def validate_exploration_lead(value: object) -> ExplorationLead:
+    """Reconstruct one lead at a trust boundary without authenticating it."""
+
+    if type(value) is not ExplorationLead:
+        raise TypeError("lead must have exact type ExplorationLead")
+    try:
+        rebuilt = ExplorationLead(
+            value.lead_id,
+            value.event_description,
+            value.observed_at,
+            value.underlying_key,
+            value.sources,
+            value.statements,
+            value.event_statement_id,
+            value.exposure_statement_id,
+            value.underlying_reference,
+            value.validation_reference,
+            value.uncertainties,
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("exploration lead is malformed") from error
+    if rebuilt != value:
+        raise ValueError("exploration lead is not intrinsically valid")
+    return value
+
+
+def _validate_exploratory_request_inputs(
+    lead: object, evaluation_date: object
+) -> None:
+    validate_exploration_lead(lead)
+    evaluation_date = _validate_date_only("evaluation_date", evaluation_date)
+    try:
+        observed_utc_date = lead.observed_at.astimezone(
+            datetime.timezone.utc
+        ).date()
+    except (OverflowError, ValueError) as error:
+        raise ValueError("exploration lead observed_at is invalid") from error
+    if observed_utc_date > evaluation_date:
+        raise ValueError("exploration lead observed_at is after evaluation_date")
+    try:
+        minimum = evaluation_date + datetime.timedelta(days=_MINIMUM_DTE_DAYS)
+        maximum = evaluation_date + datetime.timedelta(days=_MAXIMUM_DTE_DAYS)
+    except (OverflowError, ValueError) as error:
+        raise ValueError("exploration expiration date arithmetic failed") from error
+    if minimum > maximum:
+        raise ValueError("exploration expiration interval is empty")
+
+
+@dataclass(frozen=True)
+class ExploratoryOptionChainRequest:
+    """Explicit 30–150 calendar-DTE request without an EI hypothesis."""
+
+    lead: ExplorationLead
+    evaluation_date: datetime.date
+
+    def __post_init__(self) -> None:
+        _validate_exploratory_request_inputs(self.lead, self.evaluation_date)
+
+    @property
+    def underlying_key(self) -> UnderlyingKey:
+        return self.lead.underlying_key
+
+    @property
+    def maturity_authority(self) -> OptionMaturityAuthority:
+        return OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH
+
+    @property
+    def hypothesis_maturity_alignment(self) -> HypothesisMaturityAlignment:
+        return HypothesisMaturityAlignment.NOT_ESTABLISHED
+
+    @property
+    def event_window_end_date(self) -> None:
+        return None
+
+    @property
+    def minimum_expiration_date(self) -> datetime.date:
+        return self.evaluation_date + datetime.timedelta(days=_MINIMUM_DTE_DAYS)
+
+    @property
+    def maximum_expiration_date(self) -> datetime.date:
+        return self.evaluation_date + datetime.timedelta(days=_MAXIMUM_DTE_DAYS)
+
+
+def validate_exploratory_option_chain_request(
+    value: object,
+) -> ExploratoryOptionChainRequest:
+    """Reconstruct the closed exploratory request at every provider boundary."""
+
+    if type(value) is not ExploratoryOptionChainRequest:
+        raise TypeError(
+            "request must have exact type ExploratoryOptionChainRequest"
+        )
+    try:
+        rebuilt = ExploratoryOptionChainRequest(value.lead, value.evaluation_date)
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("exploratory option-chain request is malformed") from error
+    if rebuilt != value:
+        raise ValueError("exploratory option-chain request is not intrinsically valid")
+    return value

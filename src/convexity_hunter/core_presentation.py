@@ -113,6 +113,12 @@ class CoreCompactCase:
     repeated_cost_upper_bound: _Optional[_Decimal] = None
     single_loss_fraction: _Optional[_Decimal] = None
     repeated_loss_fraction: _Optional[_Decimal] = None
+    source_evidence_path: str = "not_established"
+    event_intelligence_audits: _Tuple[str, ...] = ()
+    event_intelligence_status: str = "not_associated"
+    exploration_lead_id: _Optional[str] = None
+    maturity_authority: str = "unknown"
+    hypothesis_maturity_alignment: str = "unknown"
 
 
 @_dataclass(frozen=True)
@@ -170,6 +176,28 @@ def compact_summary(case_set: object) -> CoreCompactSummary:
             structure_kind = "STRADDLE"
         else:
             structure_kind = "UNSUPPORTED"
+        context = case.context
+        if context.exploration_lead is not None:
+            source_path = "HOST_PROJECTED_EXPLORATION_LEAD"
+            lead_id = context.exploration_lead.lead_id
+            ei_status = (
+                "SEPARATE_BATCH_AUDIT"
+                if context.submissions is not None
+                and context.submissions.submissions
+                else "NOT_SUBMITTED"
+            )
+        else:
+            source_path = "EVENT_INTELLIGENCE_HYPOTHESIS"
+            lead_id = None
+            ei_status = (
+                context.assessment.status.value
+                if context.assessment is not None
+                else "NOT_ASSOCIATED"
+            )
+        request = context.discovery_request
+        alignment = getattr(
+            getattr(request, "hypothesis_maturity_alignment", None), "value", "unknown"
+        )
         details.append(
             CoreCompactCase(
                 case_id=case_id,
@@ -184,6 +212,12 @@ def compact_summary(case_set: object) -> CoreCompactSummary:
                 repeated_cost_upper_bound=result.budget_stress.repeated_cost_upper_bound,
                 single_loss_fraction=result.budget_stress.single_loss_fraction,
                 repeated_loss_fraction=result.budget_stress.repeated_loss_fraction,
+                source_evidence_path=source_path,
+                event_intelligence_audits=_event_intelligence_audits(context),
+                event_intelligence_status=ei_status,
+                exploration_lead_id=lead_id,
+                maturity_authority=context.maturity_authority.value,
+                hypothesis_maturity_alignment=alignment,
             )
         )
     for item in unavailable:
@@ -202,6 +236,21 @@ def compact_summary(case_set: object) -> CoreCompactSummary:
 
 
 compact = compact_summary
+
+
+def _event_intelligence_audits(context: object) -> _Tuple[str, ...]:
+    """Render deterministic EI audit state without treating it as Core authority."""
+
+    from .event_intelligence import assess_event_intelligence_submission
+
+    submissions = getattr(getattr(context, "submissions", None), "submissions", ())
+    audits = []
+    for submission in submissions:
+        assessment = assess_event_intelligence_submission(submission)
+        audits.append(
+            f"{submission.submission_id}:{assessment.status.value}"
+        )
+    return tuple(audits)
 
 
 def report(record: object, locale: str = "zh-CN") -> str:
@@ -230,13 +279,41 @@ def report(record: object, locale: str = "zh-CN") -> str:
         case_id = record.case_id
         result = record.kernel_result
         reasons = record.reasons
-        disclosure = (
-            "maturity_authority=" + record.maturity_authority.value + "; "
-            "hypothesis_maturity_alignment="
-            + record.discovery_request.hypothesis_maturity_alignment.value
-            if record.discovery_request is not None
-            else "hypothesis_maturity_alignment=unknown"
-        )
+        if record.exploration_lead is not None:
+            lead = record.exploration_lead
+            audit_entries = _event_intelligence_audits(record.context)
+            audit_text = (
+                repr(audit_entries)
+                if audit_entries
+                else "未提交"
+            )
+            disclosure = (
+                "来源路径=Host投影的结构探索线索；来源准入、receipt与listing核验由Host负责，Core不重做；"
+                "独立结构探索，不形成EI支持的分布声明；"
+                f"独立EI批次审计={audit_text}；"
+                f"lead_id={lead.lead_id}; event_statement_id={lead.event_statement_id}; "
+                f"exposure_statement_id={lead.exposure_statement_id}; "
+                f"maturity_authority={record.maturity_authority.value}; "
+                "hypothesis_maturity_alignment=not_established; "
+                f"uncertainties={lead.uncertainties}"
+            )
+        else:
+            audit_status = (
+                record.assessment.status.value
+                if record.assessment is not None
+                else "not_associated"
+            )
+            disclosure = (
+                "来源路径=Event Intelligence hypothesis; "
+                f"event_intelligence_status={audit_status}; "
+                "maturity_authority=" + record.maturity_authority.value + "; "
+                "hypothesis_maturity_alignment="
+                + record.discovery_request.hypothesis_maturity_alignment.value
+                if record.discovery_request is not None
+                else "来源路径=Event Intelligence hypothesis; "
+                f"event_intelligence_status={audit_status}; "
+                "hypothesis_maturity_alignment=unknown"
+            )
     else:
         raise TypeError("report requires CoreCaseRecord or CoreDirectResult")
 

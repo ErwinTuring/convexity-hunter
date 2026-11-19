@@ -174,6 +174,16 @@ def _world_configuration_snapshot_v0_5():
     return snapshot
 
 
+def _exploration_policy_snapshot():
+    return {
+        "schema_version": "structure-first-exploration-v0.1",
+        "authority": "exploratory_structure_research",
+        "minimum_dte_days": 30,
+        "maximum_dte_days": 150,
+        "enabled": True,
+    }
+
+
 def _semantic_transport_audit():
     return {
         "schema_version": "host-semantic-transport-retry-v0.1",
@@ -2489,6 +2499,160 @@ class HostStoreTests(unittest.TestCase):
         self.assertEqual(
             self.store.get_run(legacy_id)["metadata"]["configuration_snapshot"],
             {"models": [], "sources": [], "skills": []},
+        )
+
+    def test_exploration_policy_is_an_explicit_closed_event_or_world_snapshot(self):
+        for mode in ("event", "world"):
+            with self.subTest(mode=mode):
+                metadata = _run_start_metadata()
+                metadata["configuration_snapshot"] = _event_configuration_snapshot()
+                metadata["configuration_snapshot"]["exploration_policy"] = (
+                    _exploration_policy_snapshot()
+                )
+                run_id = self.store.create_run(
+                    mode, "explicit exploratory opt-in", BOUNDS,
+                    STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+                )
+                self.assertEqual(
+                    self.store.get_run(run_id)["metadata"]["configuration_snapshot"]
+                    ["exploration_policy"],
+                    _exploration_policy_snapshot(),
+                )
+
+        world_metadata = _run_start_metadata()
+        world_metadata["configuration_snapshot"] = _world_configuration_snapshot_v0_5()
+        world_metadata["configuration_snapshot"]["exploration_policy"] = (
+            _exploration_policy_snapshot()
+        )
+        world_run_id = self.store.create_run(
+            "world", "World exploration with partial coverage", BOUNDS,
+            STANDARD_RESEARCH_PROFILE.snapshot(), world_metadata,
+        )
+        self.assertEqual(
+            self.store.get_run(world_run_id)["metadata"]["configuration_snapshot"],
+            world_metadata["configuration_snapshot"],
+        )
+
+    def test_exploration_policy_rejects_unapproved_modes_fields_and_values(self):
+        invalid_policies = []
+        policy = _exploration_policy_snapshot()
+        policy["enabled"] = False
+        invalid_policies.append(("disabled policy", policy))
+        policy = _exploration_policy_snapshot()
+        policy["maximum_dte_days"] = True
+        invalid_policies.append(("boolean DTE", policy))
+        policy = _exploration_policy_snapshot()
+        policy["authority"] = "neutral_structural_research"
+        invalid_policies.append(("wrong authority", policy))
+        policy = _exploration_policy_snapshot()
+        policy["unexpected"] = "field"
+        invalid_policies.append(("unknown policy field", policy))
+
+        for label, policy in invalid_policies:
+            with self.subTest(label=label):
+                metadata = _run_start_metadata()
+                metadata["configuration_snapshot"] = _event_configuration_snapshot()
+                metadata["configuration_snapshot"]["exploration_policy"] = policy
+                with self.assertRaises(ValueError):
+                    self.store.create_run(
+                        "event", "invalid opt-in", BOUNDS,
+                        STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+                    )
+
+        direct_metadata = _run_start_metadata()
+        direct_metadata["configuration_snapshot"] = {
+            "models": [], "sources": [], "skills": [],
+            "exploration_policy": _exploration_policy_snapshot(),
+        }
+        with self.assertRaises(ValueError):
+            self.store.create_run(
+                "direct", "direct must not opt into Event exploration", BOUNDS,
+                STANDARD_RESEARCH_PROFILE.snapshot(), direct_metadata,
+            )
+
+    def test_grounder_exploration_stage_is_running_and_redacts_materials_from_run_get(self):
+        from convexity_hunter.host_store import (
+            _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION,
+        )
+
+        metadata = _run_start_metadata()
+        metadata["configuration_snapshot"]["exploration_policy"] = (
+            _exploration_policy_snapshot()
+        )
+        run_id = self.store.create_run(
+            "event", "synthetic fixture event", BOUNDS,
+            STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+        )
+        stage_id = self.store.start_stage(run_id, "grounder")
+        public_lead = {
+            "lead_id": "exploration-synthetic",
+            "event_description": "Synthetic disclosed event.",
+            "underlying_key": {
+                "symbol": "ABC", "listing_mic": "XNAS",
+                "security_type": "equity", "currency": "USD",
+            },
+            "sources": [{
+                "source_id": "source-1",
+                "locator": "https://example.test/source",
+                "title": "Synthetic source",
+                "published_at": None,
+            }],
+            "statements": [{
+                "statement_id": "event-fact",
+                "kind": "observed_fact",
+                "text": "Synthetic disclosed event.",
+                "source_ids": ["source-1"],
+                "dependency_statement_ids": [],
+            }],
+            "event_statement_id": "event-fact",
+            "exposure_statement_id": "event-fact",
+            "uncertainties": ["Distribution change is not established."],
+        }
+        with patch(
+            "convexity_hunter.host_store._validated_grounder_exploration_leads",
+            return_value=[public_lead],
+        ):
+            self.store.save_grounder_exploration_stage_result(
+                run_id, stage_id, make_grounder_no_submission_result(run_id)
+            )
+
+        run = self.store.get_run(run_id)
+        self.assertEqual(run["status"], "RUNNING")
+        public_outcome = run["events"][-1]["outcome"]
+        self.assertEqual(
+            public_outcome["schema_version"],
+            _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION,
+        )
+        self.assertEqual(public_outcome["exploration_status"], "ADMITTED")
+        self.assertEqual(public_outcome["exploration_lead_count"], 1)
+        self.assertEqual(public_outcome["submission_status"], "MISSING")
+        self.assertEqual(public_outcome["ei_status"], "NOT_RUN")
+        self.assertEqual(public_outcome["source_status"], "UNKNOWN")
+        self.assertNotIn("lead_materials", public_outcome)
+        self.assertNotIn("Synthetic disclosed event", json.dumps(run))
+
+        research = self.store.get_event_research(run_id)
+        self.assertEqual(research["status"], "EXPLORATION_RETAINED")
+        self.assertEqual(research["ei_status"], "NOT_RUN")
+        self.assertEqual(research["ei_lead_association"], "NOT_ESTABLISHED")
+        self.assertEqual(research["leads"][0]["event_description"], "Synthetic disclosed event.")
+        self.assertNotIn("underlying_reference", json.dumps(research))
+        self.assertNotIn("validation_reference", json.dumps(research))
+
+    def test_exploration_lead_limit_is_a_closed_grounder_failure_diagnostic(self):
+        from convexity_hunter.host_server import _grounder_failure_status
+        from convexity_hunter.host_store import (
+            _GROUNDER_FAILURE_DIAGNOSTIC_CODES,
+            _validated_diagnostics,
+        )
+        from convexity_hunter.host_grounder_runtime import HostGrounderRuntimeError
+
+        diagnostic = "EXPLORATION_LEAD_LIMIT_EXCEEDED"
+        self.assertIn(diagnostic, _GROUNDER_FAILURE_DIAGNOSTIC_CODES)
+        self.assertEqual(_validated_diagnostics((diagnostic,)), [diagnostic])
+        self.assertEqual(
+            _grounder_failure_status(HostGrounderRuntimeError(diagnostic)),
+            ("BLOCKED", diagnostic),
         )
 
     def test_event_source_snapshot_v02_is_versioned_and_legacy_v01_remains_readable(self):

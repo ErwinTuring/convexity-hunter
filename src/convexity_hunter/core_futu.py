@@ -13,10 +13,12 @@ from dataclasses import dataclass as _dataclass
 from enum import Enum as _Enum
 from typing import Callable as _Callable
 from typing import Optional as _Optional
+from typing import Union as _Union
 
 from .market_data import UnderlyingKey as _UnderlyingKey
 from .market_data import UnderlyingSecurityType as _UnderlyingSecurityType
 from .option_chain_discovery import OptionChainDiscoveryRequest
+from .option_chain_discovery import ExploratoryOptionChainRequest
 from .providers import futu as _futu
 
 
@@ -134,7 +136,9 @@ def _validate_timeout(timeout_seconds: object) -> float:
 
 def discover_futu_browser(
     quote_context: object,
-    discovery_request: OptionChainDiscoveryRequest,
+    discovery_request: _Union[
+        OptionChainDiscoveryRequest, ExploratoryOptionChainRequest
+    ],
 ):
     """Run the existing bounded chain discovery and create its neutral Browser."""
 
@@ -146,7 +150,9 @@ def discover_futu_browser(
 
 def verify_futu_browser_row(
     quote_context: object,
-    discovery_request: OptionChainDiscoveryRequest,
+    discovery_request: _Union[
+        OptionChainDiscoveryRequest, ExploratoryOptionChainRequest
+    ],
     row: object,
 ):
     """Verify one retained Browser row using the existing exact Futu call."""
@@ -352,7 +358,12 @@ class FutuMarketBridge:
         if not callable(self.quote_context_factory):
             raise TypeError("quote_context_factory must be callable")
 
-    def discover_browser(self, discovery_request: OptionChainDiscoveryRequest):
+    def discover_browser(
+        self,
+        discovery_request: _Union[
+            OptionChainDiscoveryRequest, ExploratoryOptionChainRequest
+        ],
+    ):
         quote_context = self.quote_context_factory()
         try:
             return discover_futu_browser(quote_context, discovery_request)
@@ -360,7 +371,11 @@ class FutuMarketBridge:
             _close_owned_context(quote_context)
 
     def verify_browser_row(
-        self, discovery_request: OptionChainDiscoveryRequest, row: object
+        self,
+        discovery_request: _Union[
+            OptionChainDiscoveryRequest, ExploratoryOptionChainRequest
+        ],
+        row: object,
     ):
         quote_context = self.quote_context_factory()
         try:

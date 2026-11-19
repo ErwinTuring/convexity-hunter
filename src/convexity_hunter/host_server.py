@@ -1948,6 +1948,12 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                 configuration_snapshot = snapshot_callback()
                 if type(configuration_snapshot) is not dict:
                     raise ValueError("executor configuration snapshot is invalid")
+            if request.mode == "direct" and "exploration_policy" in configuration_snapshot:
+                # Exploration authority is valid only for Event/World Store
+                # snapshots. Keep Direct's per-mode metadata legacy-shaped and
+                # reject accidental cross-mode snapshot inheritance before its
+                # executor can run.
+                raise ValueError("exploration policy is not valid for Direct mode")
             if request.mode == "world":
                 query_policy = configuration_snapshot.get("world_source_query_policy")
                 partial_source_policy = (
@@ -2460,10 +2466,40 @@ class HostRequestHandler(BaseHTTPRequestHandler):
         try:
             from .host_grounder_builder import HostBuildResult
             from .host_grounder_runtime import HostGrounderEvidenceCatalogRuntimeResult
+            from .option_chain_discovery import validate_exploration_lead
 
-            if type(result) is not HostGrounderEvidenceCatalogRuntimeResult:
-                raise ValueError("Grounder must return the exact v0.7 runtime result")
-            build = result.build_result
+            exploration_enabled = getattr(
+                event_grounder, "exploration_enabled", False
+            )
+            executor_exploration_enabled = getattr(
+                event_core_executor, "exploration_enabled", False
+            )
+            if (
+                type(exploration_enabled) is not bool
+                or type(executor_exploration_enabled) is not bool
+                or executor_exploration_enabled is not exploration_enabled
+            ):
+                raise ValueError("Grounder exploration policy is invalid")
+            if exploration_enabled:
+                if type(result) is not HostGrounderEvidenceCatalogRuntimeResult:
+                    raise ValueError(
+                        "Grounder must return the exact v0.7 runtime result"
+                    )
+                exploration_leads = result.exploration_leads
+                if type(exploration_leads) is not tuple:
+                    raise ValueError("Grounder exploration leads are invalid")
+                for lead in exploration_leads:
+                    validate_exploration_lead(lead)
+            else:
+                if (
+                    type(result) is HostGrounderEvidenceCatalogRuntimeResult
+                    and result.exploration_leads
+                ):
+                    raise ValueError(
+                        "Grounder returned leads while exploration is disabled"
+                    )
+                exploration_leads = ()
+            build = getattr(result, "build_result", None)
             if type(build) is not HostBuildResult:
                 raise ValueError("Grounder result has no exact HostBuildResult")
         except Exception:
@@ -2485,6 +2521,51 @@ class HostRequestHandler(BaseHTTPRequestHandler):
             if build.source_batch is not None:
                 self._finish_grounder_error(
                     run_id, grounder_stage_id, "FAILED", "RUN_CONTEXT_INVALID"
+                )
+                return
+            if exploration_leads:
+                try:
+                    source_batch = SourceSubmissionBatch(
+                        build.raw_input, (), exploration_leads
+                    )
+                    if (
+                        source_batch.raw_input is not build.raw_input
+                        or len(source_batch.exploration_leads)
+                        > request.bounds.max_submissions
+                    ):
+                        raise ValueError("exploration source batch exceeds existing bounds")
+                    save_grounder_exploration = getattr(
+                        self.server.journal,
+                        "save_grounder_exploration_stage_result",
+                        None,
+                    )
+                    if not callable(save_grounder_exploration):
+                        raise ValueError("Grounder exploration-stage writer is unavailable")
+                    saved = save_grounder_exploration(
+                        run_id, grounder_stage_id, result
+                    )
+                    if saved is not None:
+                        raise ValueError(
+                            "Grounder exploration-stage writer returned invalid value"
+                        )
+                except Exception:
+                    self._finish_grounder_error(
+                        run_id, grounder_stage_id, "FAILED", "AUDIT_RETENTION_FAILED"
+                    )
+                    return
+                try:
+                    executor_stage_id = self.server.journal.start_stage(
+                        run_id, "executor"
+                    )
+                except Exception:
+                    self._send_json(500, {"error": "journal unavailable"})
+                    return
+                self._post_batch_run(
+                    request,
+                    run_id,
+                    executor_stage_id,
+                    event_core_executor,
+                    source_batch=source_batch,
                 )
                 return
             try:
@@ -2523,6 +2604,14 @@ class HostRequestHandler(BaseHTTPRequestHandler):
                 or source_batch.submissions[0] is not build.submission
             ):
                 raise ValueError("Grounder source batch is not bound to its submission")
+            if exploration_leads:
+                source_batch = SourceSubmissionBatch(
+                    build.raw_input,
+                    source_batch.submissions,
+                    source_batch.exploration_leads + exploration_leads,
+                )
+            if len(source_batch.exploration_leads) > request.bounds.max_submissions:
+                raise ValueError("exploration source batch exceeds existing bounds")
         except Exception:
             self._finish_grounder_error(
                 run_id, grounder_stage_id, "FAILED", "RUN_CONTEXT_BINDING_INVALID"
@@ -2822,6 +2911,11 @@ def _make_futu_direct_executor(port: int) -> Callable[..., CoreDirectResult]:
 def main(argv: Optional[list[str]] = None) -> int:
     from .option_chain_discovery import OptionMaturityAuthority
 
+    accepted_maturity_authorities = (
+        OptionMaturityAuthority.HYPOTHESIS_ALIGNED.value,
+        OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH.value,
+    )
+
     parser = argparse.ArgumentParser(description="Run the Convexity Hunter local Host.")
     parser.add_argument(
         "--db", required=True, type=Path, help="external SQLite journal path"
@@ -2854,8 +2948,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument(
         "--maturity-authority",
-        choices=tuple(authority.value for authority in OptionMaturityAuthority),
-        help="explicit Event maturity authority",
+        choices=accepted_maturity_authorities,
+        help="legacy accepted-hypothesis Event maturity authority",
+    )
+    parser.add_argument(
+        "--enable-exploratory-research",
+        action="store_true",
+        help=(
+            "opt in to source-verified direction-unknown Event/World structure "
+            "exploration (30-150 calendar DTE)"
+        ),
     )
     parser.add_argument(
         "--futu-port",
@@ -2865,6 +2967,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
     event_enabled = args.event_config is not None
     world_enabled = args.world_config is not None
+    if args.enable_exploratory_research and not event_enabled:
+        parser.error("--enable-exploratory-research requires --event-config")
     if world_enabled and not event_enabled:
         parser.error("--world-config requires --event-config")
     if (args.enable_direct or event_enabled) and args.futu_port is None:
@@ -2907,9 +3011,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                 )
                 return 2
 
+            exploration_runtime_options = (
+                {"exploration_enabled": True}
+                if args.enable_exploratory_research
+                else {}
+            )
             event_grounder = create_event_grounder(
                 event_config,
                 repo_root=Path(__file__).resolve().parents[2],
+                **exploration_runtime_options,
             )
             from .core_futu import FutuMarketBridge
 
@@ -2922,6 +3032,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 evaluation_date=args.evaluation_date,
                 maturity_authority=OptionMaturityAuthority(args.maturity_authority),
                 market_bridge=market_bridge,
+                **exploration_runtime_options,
             )
 
             def event_core_executor(
@@ -2934,6 +3045,10 @@ def main(argv: Optional[list[str]] = None) -> int:
                     return configured_event_core_executor(
                         raw_input, bounds=bounds, source_batch=source_batch
                     )
+
+            event_core_executor.exploration_enabled = (
+                args.enable_exploratory_research
+            )
 
             if world_enabled:
                 from .host_world import (
@@ -2966,12 +3081,14 @@ def main(argv: Optional[list[str]] = None) -> int:
                             world_config,
                             repo_root=Path(__file__).resolve().parents[2],
                             market_bridge=market_bridge,
+                        **exploration_runtime_options,
                         )
                     else:
                         configured_world_executor = create_world_runner(
                             world_config,
                             repo_root=Path(__file__).resolve().parents[2],
                             market_bridge=market_bridge,
+                            **exploration_runtime_options,
                         )
                 except HostWorldConfigurationError as error:
                     print("World configuration invalid ({})".format(error.code), file=sys.stderr)

@@ -1,6 +1,6 @@
 # Structure-first exploration: bounded authorization decision v0.1
 
-Status: **APPROVED / FROZEN — BUILD in progress, not live-validated**.
+Status: **APPROVED / FROZEN — IMPLEMENTED, offline integrated, not live-validated**.
 
 The user approved this authority and neutral 30–150 calendar DTE policy on
 2026-11-19, after independent review passed the bounded decision package.
@@ -17,7 +17,7 @@ The subsequent explicit approval authorizes the additive authority below.
 Grounded base: `e2586b82a4858a369d56defa4ed249710dbe5338`; HEAD/main/origin-main
 matched and the worktree/index were clean. No external research was run.
 
-The current runtime cannot express the requested exploration honestly:
+The pre-BUILD runtime at the grounded base could not express exploration honestly:
 
 - `core_application._run_source_core` stops each non-ACCEPTED submission before
   creating a request. This is the application routing gate to separate.
@@ -34,7 +34,7 @@ The current runtime cannot express the requested exploration honestly:
   projects it through a verified hypothesis-symbol binding. That projection
   must be separated from full hypothesis readiness, not replaced by ticker trust.
 
-The original contracts are [discovery request v0.4](option-chain-discovery-request-contract.md)
+The preserved original contracts are [discovery request v0.4](option-chain-discovery-request-contract.md)
 and [structural activation v0.1](structural-narrative-option-research-activation-contract.md).
 Direct already calls the common Core without EI; its authority convention and
 existing behavior must remain unchanged in this work unit.
@@ -63,6 +63,9 @@ and unresolved questions. A raw URL, typed ticker, JSON shape, model confidence,
 or merely admitted page is insufficient. Lack of directional/distribution proof
 does not invalidate that narrower link. This uses the existing verifier and
 listing composite, not new inference, string matching or another model stage.
+An independently verified entity mention is not an issuer/exposure role. Direct
+own-issuer witnesses must have exact issuer-role evidence; second-order witnesses
+must retain the verified relationship and its event dependency, not co-mention.
 
 Exploration is explicit opt-in under existing finite operational bounds, not a
 fallback applied to every news item. Policy activation is application
@@ -71,6 +74,12 @@ Existing lawful accepted-hypothesis routing
 and stronger maturity constraints take precedence; a stale/invalid accepted
 handoff cannot silently fall back to exploration. No automatic refresh, roll-
 forward, new numeric budget or paid execution is authorized by this proposal.
+Same-description equality alone does not establish a hypothesis-to-lead link.
+If the retained event fact matches but its connection to an accepted hypothesis
+is unresolved, stop that exploration branch with an explicit reason rather than
+borrowing maturity authority or silently bypassing it. Original accepted branches
+remain unchanged. Suppressed/non-market leads must not consume duplicate market-
+branch capacity and block an otherwise compatible legacy run.
 
 For each eligible Browser surface, enumerate all supported singleton Calls,
 singleton Puts and unambiguous same-expiry/same-strike paired Long Straddles in
@@ -111,6 +120,13 @@ raw responses, full source bodies or pre-generated prose.
 
 ## Interface impact and smallest BUILD
 
+First Host slice: direct own-issuer events with an exact existing SEC occurrence
+and issuer/CIK witness. Co-mentioned peers and general second-order relationships
+are not projected merely because their entities/listings are verified. They need
+separate supported exposure evidence; this bounded delivery does not claim a
+general narrative/exposure resolver. The pure request/Core boundary remains
+capable of consuming properly validated leads from a trusted producer.
+
 1. `option_chain_discovery.py`: add the explicit exploration request/authority
    and narrow validated lead; preserve old constructors/defaults. Update the
    frozen request/activation contract with an explicit additive successor.
@@ -136,6 +152,9 @@ produce geometry; missing mandatory cost/loss evidence prevents Core qualificati
 EI INCOMPLETE is preserved; Direct and accepted routes remain unchanged. One
 independent review; no new paid/provider trial in this work unit.
 
-The explicit approval resolves the original authority blocker. BUILD must now
-deliver the integrated path rather than unused helpers. Historical records and
-the previous runtime are not retroactively reclassified by this contract.
+Delivery: the explicit opt-in is wired through normal Event and World, shared
+Futu/Core, additive v0.3 archives and Workbench/lazy Chinese detail. 392 relevant
+offline tests pass. The positive source-to-SQLite fixture uses external transport
+fakes, actual admission/receipt/projection/Store revalidation and the common Core;
+it is not real-market acceptance. Historical records and previous runtime
+results are not retroactively reclassified. No paid trial is authorized here.

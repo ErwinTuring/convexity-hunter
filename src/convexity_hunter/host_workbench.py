@@ -145,6 +145,8 @@ _DOCUMENT = r'''<!doctype html>
       <h3>其他运行快照</h3><pre id="run-snapshot">尚未读取运行快照。</pre>
       <h3>批量研究摘要</h3>
       <p class="help">Core 分类不是买入建议或估值判断；Ask 基准仅为 INDICATIVE_ONLY。未知成本显示为未提供，不按 0 处理。批量状态只描述已保留研究分支；不证明原始请求已全面核实。</p>
+      <p class="help">结构优先探索仅在应用明确启用、来源事实与证券身份等准入条件满足时运行。探索期限为评估日起 30–150 个日历日，不表示事件期限匹配。结构计算、EI 对事件解释的核验、Core 分类是独立结论；没有完整方向性假设不代表不能计算结构，计算成功也不表示 EI 已接受或值得买入。每行是独立研究，不表示同时持有所有结构。</p>
+      <p class="help">本版自动投影先覆盖可从 SEC 原文精确认证发行主体及 CIK 的直接事件；同文提及的公司和一般二阶影响不会自动取得探索权限。</p>
       <pre id="batch-summary-view">运行响应尚未提供批量摘要。</pre>
       <div id="batch-case-list" class="record-list">尚未读取紧凑用例行。</div>
       <h4>不可用分支详情（按需读取）</h4>
@@ -671,6 +673,22 @@ _DOCUMENT = r'''<!doctype html>
       "汇总原因：" + compactStringList(summary.reasons),
       "不可用分支 case_id：" + compactStringList(summary.unavailable_case_ids)
     ];
+    const explorationHelp = {
+      exploration_disabled: "本机未启用独立探索政策；没有为此线索请求行情。",
+      exploration_request_failure: "探索请求的证据或日期校验未通过；没有为此分支请求行情。",
+      exploration_same_event_hypothesis_link_unresolved: "事件事实与已接受假设的关系尚未建立；此探索分支暂停，不借用其期限权限，也不绕过可能适用的更强期限约束。"
+    };
+    const explorationReasons = new Set(Array.isArray(summary.reasons) ? summary.reasons : []);
+    for (const item of Array.isArray(summary.unavailable_cases) ? summary.unavailable_cases : []) {
+      if (isRecord(item) && Array.isArray(item.reasons)) {
+        for (const reason of item.reasons) explorationReasons.add(reason);
+      }
+    }
+    for (const reason of explorationReasons) {
+      if (Object.prototype.hasOwnProperty.call(explorationHelp, reason)) {
+        lines.push("探索说明（" + reason + "）：" + explorationHelp[reason]);
+      }
+    }
     if (Array.isArray(summary.source_coverage_by_unit)) {
       lines.push("按实际执行单元汇总的来源覆盖：");
       if (summary.source_coverage_by_unit.length === 0) {
@@ -927,6 +945,22 @@ _DOCUMENT = r'''<!doctype html>
 
   function renderKnownStageOutcome(outcome, stageName) {
     if (!isRecord(outcome)) return [];
+    if (outcome.schema_version === "host-grounder-exploration-stage-outcome-v0.1") {
+      if (stageName !== "grounder") return ["阶段结果与阶段类型不匹配；其他字段未显示。"];
+      const admitted = outcome.exploration_status === "ADMITTED"
+        && Number.isSafeInteger(outcome.exploration_lead_count)
+        && outcome.exploration_lead_count > 0;
+      return [
+        "结构优先探索（独立于 EI 接受）：",
+        "探索线索准入：" + (admitted ? "已准入" : "字段缺失或不可识别"),
+        "探索线索数：" + (admitted ? outcome.exploration_lead_count : "未知"),
+        "EI submission：" + (outcome.submission_status === "MISSING" ? "MISSING" : "字段缺失或不可识别"),
+        "EI：" + (outcome.ei_status === "NOT_RUN" ? "NOT_RUN（未评估，不是 ACCEPTED）" : "字段缺失或不可识别"),
+        "边界：来源事实、证券身份及暴露联系的探索准入不等于事件分布主张获 EI 支持。",
+        "探索期限仅为评估日起 30–150 个日历日的研究政策；hypothesis_maturity_alignment = NOT_ESTABLISHED。",
+        "本阶段不表示 Core 已执行或已合格；请查看后续执行阶段和用例分类。未知成本不按零处理。"
+      ];
+    }
     if (["host-grounder-submission-stage-outcome-v0.1", "host-grounder-submission-stage-outcome-v0.2", "host-grounder-submission-stage-outcome-v0.3", "host-grounder-submission-stage-outcome-v0.4", "host-grounder-submission-stage-outcome-v0.5", "host-grounder-submission-stage-outcome-v0.6"].includes(outcome.schema_version)) {
       return stageName === "grounder"
         ? renderGrounderSubmissionStageOutcome(outcome)
@@ -1025,11 +1059,20 @@ _DOCUMENT = r'''<!doctype html>
     renderEventResearch(null);
     const list = byId("world-research-selections");
     setText(list, "");
+    const hasExploration = isRecord(view)
+      && ["EXPLORATION_RETAINED", "WORLD_EXPLORATION_RETAINED", "WORLD_RETAINED"].includes(view.status)
+      && Array.isArray(view.leads) && view.leads.length > 0;
+    let explorationText = "";
+    if (hasExploration) {
+      renderEventResearch({mode:"event",event_research:Object.assign({}, view, {status:"EXPLORATION_RETAINED"})});
+      explorationText = byId("event-research-view").textContent;
+    }
     if (!isRecord(view) || view.status !== "WORLD_RETAINED" || !Array.isArray(view.selections) || view.selections.length === 0) {
+      if (hasExploration) return;
       setText(byId("event-research-view"), "未保留可展示的 World submission。原始候选未保存时不补造；可自行从 Event 输入开始研究。");
       return;
     }
-    setText(byId("event-research-view"), "下列仅为已归档 submission，不是完整发现候选集合，也不证明反证不存在。按归档顺序显示，无默认选择、排名或推荐。请选择一项查看；选择和准备均不调用研究服务。");
+    setText(byId("event-research-view"), (explorationText ? explorationText + "\n\n" : "") + "下列仅为已归档 submission，不是完整发现候选集合，也不证明反证不存在。按归档顺序显示，无默认选择、排名或推荐。请选择一项查看；选择和准备均不调用研究服务。");
     for (const item of view.selections) {
       if (!isRecord(item)) continue;
       const button = document.createElement("button");
@@ -1081,6 +1124,33 @@ _DOCUMENT = r'''<!doctype html>
     button.disabled = true;
     byId("event-supplement").value = "";
     const view = data && data.mode === "event" ? data.event_research : null;
+    if (isRecord(view) && view.status === "EXPLORATION_RETAINED" && Array.isArray(view.leads)) {
+      const lines = ["独立探索线索材料（不是已接受的 EI 假设）：",
+        "EI 状态：" + compactScalar(view.ei_status),
+        "EI 评估与这些探索线索的对应关系未自动建立，不据此声称事件解释已通过。",
+        "结构的收益几何、事件解释是否成立、Core 是否合格，必须分别阅读。",
+        "maturity_authority = EXPLORATORY_STRUCTURE_RESEARCH；hypothesis_maturity_alignment = NOT_ESTABLISHED。"];
+      for (const lead of view.leads) {
+        if (!isRecord(lead)) continue;
+        lines.push("线索 ID：" + compactScalar(lead.lead_id));
+        lines.push("现实变化：" + compactScalar(lead.event_description));
+        const identity = isRecord(lead.underlying_key) ? lead.underlying_key : {};
+        lines.push("证券身份：" + compactScalar(identity.symbol) + " | "
+          + compactScalar(identity.security_type) + " | " + compactScalar(identity.currency));
+        for (const source of lead.sources || []) {
+          lines.push("来源：" + compactScalar(source.source_id) + " | " + compactScalar(source.locator));
+        }
+        for (const statement of lead.statements || []) {
+          const label = statement.kind === "observed_fact" ? "来源事实"
+            : statement.kind === "interpretation" ? "条件性解释（非事实）" : "未知类型";
+          lines.push("[" + label + "] " + compactScalar(statement.text));
+        }
+        lines.push("保留的未知问题：" + (Array.isArray(lead.uncertainties) && lead.uncertainties.length
+          ? compactStringList(lead.uncertainties) : "未提供；不代表没有不确定性。"));
+      }
+      setText(byId("event-research-view"), lines.join("\n"));
+      return;
+    }
     if (!isRecord(view) || view.status !== "RETAINED") {
       setText(byId("event-research-view"), isRecord(view) && view.status === "NOT_RETAINED"
         ? "未保留可展示的 Event submission；不补造历史事实。原阶段原因仍见上方。"

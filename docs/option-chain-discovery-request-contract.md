@@ -1,4 +1,22 @@
-# Option-Chain Discovery Request Contract v0.4
+# Option-Chain Discovery Request Contract v0.5
+
+## Additive structure-first authority — 2026-11-19
+
+The approved [exploration contract](structure-first-exploration-decision-v0.1.md)
+adds `ExplorationLead`, `ExploratoryOptionChainRequest(lead, evaluation_date)`,
+`validate_exploration_lead` and `validate_exploratory_option_chain_request` to the
+direct-module exports. The original five exports and accepted-hypothesis
+constructors below remain unchanged; the current direct-module count is nine.
+`OptionMaturityAuthority` adds `EXPLORATORY_STRUCTURE_RESEARCH`, valid ONLY for
+the new request. Passing it to the old accepted-hypothesis request is rejected.
+The new request has no distribution mode, handoff, expected window or
+reassessment; it derives the inclusive evaluation+30 through evaluation+150
+calendar-date bounds and NOT_ESTABLISHED maturity alignment. Evidence records
+are intrinsically reconstructed at provider/Core boundaries; authentic source,
+semantic and listing admission remains Host-owned. This does not authorize a
+new paid run. BUILD/live status is in the checkpoint.
+
+## Preserved v0.4 accepted-hypothesis contract
 
 > Implementation status: implemented. The v0.4 atomic migration is governed by
 > [Structural Narrative Option Research Activation Contract v0.1](structural-narrative-option-research-activation-contract.md).
@@ -17,7 +35,7 @@ discovery. It consumes one validated `DiscoveryEntryHandoff` and one explicit
 caller evaluation date. It does not call a provider or claim that any listed
 expiration or contract is eligible.
 
-The direct module `convexity_hunter.option_chain_discovery` exports exactly:
+The preserved v0.4 direct-module exports are:
 
 ```python
 OptionMaturityAuthority

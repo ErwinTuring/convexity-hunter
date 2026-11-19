@@ -13,6 +13,7 @@ from dataclasses import dataclass as _dataclass
 from enum import Enum as _Enum
 from typing import Optional as _Optional
 from typing import Tuple as _Tuple
+from typing import Union as _Union
 from zoneinfo import ZoneInfo as _ZoneInfo
 
 from convexity_hunter.direct_entry_verification import (
@@ -25,6 +26,12 @@ from convexity_hunter.evidence import OptionLeg as _OptionLeg
 from convexity_hunter.evidence import OptionStructure as _OptionStructure
 from convexity_hunter.option_chain_discovery import (
     OptionChainDiscoveryRequest as _OptionChainDiscoveryRequest,
+)
+from convexity_hunter.option_chain_discovery import (
+    ExploratoryOptionChainRequest as _ExploratoryOptionChainRequest,
+)
+from convexity_hunter.option_chain_discovery import (
+    validate_exploratory_option_chain_request as _validate_exploratory_option_chain_request,
 )
 from convexity_hunter.option_chain_discovery import (
     OptionResearchMaturityContext as _OptionResearchMaturityContext,
@@ -711,26 +718,35 @@ def _discovery_string(value: object, message: str) -> str:
     return value
 
 
-def _discovery_provider_underlying(request: _OptionChainDiscoveryRequest) -> str:
+_DiscoveryRequest = _Union[
+    _OptionChainDiscoveryRequest, _ExploratoryOptionChainRequest
+]
+
+
+def _discovery_provider_underlying(request: _DiscoveryRequest) -> str:
     return "US." + request.underlying_key.symbol
 
 
-def _validate_discovery_request(value: object) -> _OptionChainDiscoveryRequest:
-    if type(value) is not _OptionChainDiscoveryRequest:
+def _validate_discovery_request(value: object) -> _DiscoveryRequest:
+    if type(value) is _OptionChainDiscoveryRequest:
+        try:
+            rebuilt = _OptionChainDiscoveryRequest(
+                value.discovery_entry_handoff,
+                value.evaluation_date,
+                value.maturity_authority,
+            )
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError("discovery_request is malformed") from error
+        if rebuilt != value:
+            raise ValueError("discovery_request is not intrinsically valid")
+        return value
+    if type(value) is _ExploratoryOptionChainRequest:
+        return _validate_exploratory_option_chain_request(value)
+    else:
         raise TypeError(
-            "discovery_request must have exact type OptionChainDiscoveryRequest"
+            "discovery_request must have exact type OptionChainDiscoveryRequest "
+            "or ExploratoryOptionChainRequest"
         )
-    try:
-        rebuilt = _OptionChainDiscoveryRequest(
-            value.discovery_entry_handoff,
-            value.evaluation_date,
-            value.maturity_authority,
-        )
-    except (AttributeError, TypeError, ValueError) as error:
-        raise ValueError("discovery_request is malformed") from error
-    if rebuilt != value:
-        raise ValueError("discovery_request is not intrinsically valid")
-    return value
 
 
 @_dataclass(frozen=True)
@@ -855,7 +871,7 @@ class FutuOptionChainContractEvidence:
 class FutuOptionChainDiscoveryEvidence:
     """All bounded Futu expiration and chain rows for one exact request."""
 
-    discovery_request: _OptionChainDiscoveryRequest
+    discovery_request: _DiscoveryRequest
     provider_underlying: str
     expirations: _Tuple[FutuOptionChainExpirationEvidence, ...]
     contracts: _Tuple[FutuOptionChainContractEvidence, ...]
@@ -1043,7 +1059,7 @@ def _discovery_contract_row(
 def retrieve_futu_option_chain_discovery_evidence(
     quote_context: object,
     *,
-    discovery_request: _OptionChainDiscoveryRequest,
+    discovery_request: _DiscoveryRequest,
 ) -> FutuOptionChainDiscoveryEvidence:
     """Retrieve bounded provider classifications without selecting a contract."""
 

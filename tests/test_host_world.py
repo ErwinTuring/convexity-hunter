@@ -3129,6 +3129,107 @@ class HostWorldTests(unittest.TestCase):
                         bounds=policy.bounds,
                     )
 
+    def test_covered_result_uses_effective_priority_counts_for_leads(self):
+        from tests.test_core_application import (
+            FakeMarketBridge,
+            make_exploration_lead_from_submission,
+            make_policy,
+            make_row,
+            make_submission,
+        )
+        from convexity_hunter.event_intelligence import (
+            EventStatement,
+            EventStatementKind,
+        )
+
+        raw_input = "synthetic accepted World input with retained exploration leads"
+        host_run_id = "outer-run-effective-counts"
+        unit_id = "world-unit-effective-counts"
+        submission = make_submission("effective-counts")
+        grounder_run_id = submission.submission_id
+        independent_anchor = EventStatement(
+            "effective-counts-independent-anchor",
+            EventStatementKind.OBSERVED_FACT,
+            "The filing separately identifies another dated fact.",
+            (submission.sources[0].source_id,),
+        )
+        submission = replace(
+            submission,
+            statements=submission.statements + (independent_anchor,),
+        )
+        matched = make_exploration_lead_from_submission(
+            submission,
+            lead_id="effective-counts-matched",
+            anchor_statement_id="fact-hypothesis-1",
+        )
+        unresolved = make_exploration_lead_from_submission(
+            submission,
+            lead_id="effective-counts-unresolved",
+            anchor_statement_id=independent_anchor.statement_id,
+        )
+        validation_reference = json.dumps(
+            {
+                "schema_version": "host-exploration-lead-validation-v0.1",
+                "run_id": grounder_run_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        matched = replace(matched, validation_reference=validation_reference)
+        unresolved = replace(unresolved, validation_reference=validation_reference)
+        batch = SourceSubmissionBatch(
+            raw_input, (submission,), (matched, unresolved)
+        )
+        policy = make_policy(
+            [],
+            max_submissions=1,
+            max_hypotheses=1,
+            max_browser_rows=2,
+            max_cases=2,
+            exploration_enabled=True,
+        )
+        bridge = FakeMarketBridge(
+            (
+                make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+                make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+            )
+        )
+        core_result = real_run_world_core(
+            raw_input,
+            source_producer=lambda _raw: batch,
+            market_bridge=bridge,
+            policy=policy,
+        )
+        retained_batch = core_result.case_set.submissions
+        self.assertEqual(len(retained_batch.submissions), 1)
+        self.assertEqual(len(retained_batch.exploration_leads), 2)
+        self.assertTrue(core_result.case_set.cases)
+
+        source_url = submission.sources[0].locator
+        audit = _coverage_audit(
+            host_run_id,
+            unit_id,
+            grounder_run_id,
+            success=((source_url, "Synthetic covered filing body."),),
+        )
+        row = _CoveredWorldUnitCoverage(
+            unit_id, audit, (submission.submission_id,), ()
+        )
+        linked_rows = host_world_module._covered_world_case_links(
+            core_result,
+            (row,),
+            ((submission, unit_id),),
+            ((matched, unit_id), (unresolved, unit_id)),
+            raw_input=raw_input,
+        )
+        detached = _validate_covered_world_result(
+            _CoveredWorldResult(core_result, linked_rows),
+            host_run_id=host_run_id,
+            raw_input=raw_input,
+            bounds=policy.bounds,
+        )
+        self.assertEqual(detached[0]["submission_ids"], [submission.submission_id])
+
     def test_covered_executor_transports_partial_audit_through_same_core_path(self):
         host_run_id = "outer-run-synthetic-01"
         success_url = "https://covered.example/success"

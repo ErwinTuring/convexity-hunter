@@ -1,15 +1,21 @@
 # Project State
 
-## Structure-first exploration: approved BUILD — 2026-11-19
+## Structure-first exploration: implemented, offline integrated — 2026-11-19
 
 New product direction separates exploratory structure research from EI claim
 acceptance, without weakening evidence or Core. [Bounded decision](structure-first-exploration-decision-v0.1.md)
 identifies exact accepted-handoff, request, enumeration and context coupling.
-Independent exploration authority/request and neutral 30–150 DTE policy are now
-explicitly approved after decision review PASS. BUILD active, not yet completed
-or live-validated; Direct and EI acceptance semantics remain unchanged. No new
-research/provider calls. Deliver one shared-Core Event slice and World reuse,
-not another Producer experiment.
+Independent exploration authority/request and neutral 30–150 DTE policy are
+implemented with explicit Host opt-in, NOT_ESTABLISHED alignment and original
+accepted-route precedence. First Host slice uses direct SEC occurrence/issuer/
+CIK plus independent listing/currency proof; no co-mention or unsupported
+second-order projection. Event and World share the same Grounder/Browser/Core.
+Versioned SQLite archives and Workbench distinguish exploration from EI claims.
+392 relevant offline tests PASS, including normal source/receipt/projector/Store
+revalidation to Core/SQLite/Chinese detail without patching critical validators.
+Unknown costs remain missing and prevent unsupported Core qualification. Direct
+and EI semantics remain unchanged; no new paid/provider experiment or live
+three-entry completion claim. See checkpoint for validation/deployment status.
 
 ## Actionable EI gap presentation — 2026-11-12
 

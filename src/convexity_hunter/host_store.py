@@ -55,6 +55,13 @@ _METADATA_FIELDS = frozenset(
     ("configuration_snapshot", "execution_snapshot", "contract_versions")
 )
 _CONFIGURATION_FIELDS = frozenset(("models", "sources", "skills"))
+_EXPLORATION_POLICY_FIELDS = frozenset((
+    "schema_version", "authority", "minimum_dte_days", "maximum_dte_days", "enabled"
+))
+_EXPLORATION_POLICY_VERSION = "structure-first-exploration-v0.1"
+_EXPLORATION_AUTHORITY = "exploratory_structure_research"
+_EXPLORATION_MINIMUM_DTE_DAYS = 30
+_EXPLORATION_MAXIMUM_DTE_DAYS = 150
 _CONTRACT_VERSION_FIELDS = frozenset(
     ("architecture", "host_shell", "standard_research_profile")
 )
@@ -132,6 +139,7 @@ _GROUNDER_STAGE_OUTCOME_VERSION_V0_3 = "host-grounder-stage-outcome-v0.3"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_4 = "host-grounder-stage-outcome-v0.4"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_5 = "host-grounder-stage-outcome-v0.5"
 _GROUNDER_STAGE_OUTCOME_VERSION_V0_6 = "host-grounder-stage-outcome-v0.6"
+_GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION = "host-grounder-exploration-stage-outcome-v0.1"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION = "host-grounder-submission-stage-outcome-v0.1"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2 = "host-grounder-submission-stage-outcome-v0.2"
 _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3 = "host-grounder-submission-stage-outcome-v0.3"
@@ -156,6 +164,7 @@ _GROUNDER_STAGE_OUTCOME_VERSIONS = frozenset((
     _GROUNDER_STAGE_OUTCOME_VERSION_V0_4,
     _GROUNDER_STAGE_OUTCOME_VERSION_V0_5,
     _GROUNDER_STAGE_OUTCOME_VERSION_V0_6,
+    _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_2,
     _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION_V0_3,
@@ -195,6 +204,7 @@ _GROUNDER_FAILURE_DIAGNOSTIC_CODES = frozenset((
     "DISCOVERY_RESPONSE_INVALID",
     "DISCOVERY_RESPONSE_TOO_LARGE",
     "EVIDENCE_CATALOG_INVALID",
+    "EXPLORATION_LEAD_LIMIT_EXCEEDED",
     "HOST_CONTEXT_PREPARATION_REJECTED",
     "HOST_CONTEXT_PREPARER_INVALID",
     "MODEL_CLIENTS_MUST_BE_SEPARATE",
@@ -516,6 +526,27 @@ def _direct_report_version(profile_snapshot: Any) -> str:
     return _DIRECT_REPORT_VERSION_BY_PROFILE[profile.version]
 
 
+def _validated_exploration_policy(value: Any, *, mode: str) -> Dict[str, Any]:
+    if mode not in ("event", "world"):
+        raise ValueError("exploration policy is permitted only in Event or World mode")
+    if type(value) is not dict or set(value) != _EXPLORATION_POLICY_FIELDS:
+        raise ValueError("exploration policy has an invalid closed field set")
+    if (
+        type(value["schema_version"]) is not str
+        or value["schema_version"] != _EXPLORATION_POLICY_VERSION
+        or type(value["authority"]) is not str
+        or value["authority"] != _EXPLORATION_AUTHORITY
+        or type(value["minimum_dte_days"]) is not int
+        or value["minimum_dte_days"] != _EXPLORATION_MINIMUM_DTE_DAYS
+        or type(value["maximum_dte_days"]) is not int
+        or value["maximum_dte_days"] != _EXPLORATION_MAXIMUM_DTE_DAYS
+        or type(value["enabled"]) is not bool
+        or value["enabled"] is not True
+    ):
+        raise ValueError("exploration policy differs from the approved immutable authority")
+    return dict(value)
+
+
 def _validated_event_configuration_snapshot(
     value: Any,
     *,
@@ -524,6 +555,30 @@ def _validated_event_configuration_snapshot(
     _world_partial_source_policy_v0_5_validated: bool = False,
 ) -> Dict[str, Any]:
     """Accept the legacy empty shell or the exact non-secret Event snapshot."""
+
+    if type(value) is dict and "exploration_policy" in value:
+        allowed_fields = _CONFIGURATION_FIELDS | {"exploration_policy"}
+        if mode == "world":
+            allowed_fields |= {"world_source_query_policy"}
+        if set(value) not in (
+            allowed_fields,
+            allowed_fields - {"world_source_query_policy"},
+        ):
+            raise ValueError("configuration_snapshot has an invalid exploration field set")
+        policy = _validated_exploration_policy(value["exploration_policy"], mode=mode)
+        base = {key: item for key, item in value.items() if key != "exploration_policy"}
+        validated = _validated_event_configuration_snapshot(
+            base,
+            mode=mode,
+            _world_native_seed_policy_v0_4_validated=(
+                _world_native_seed_policy_v0_4_validated
+            ),
+            _world_partial_source_policy_v0_5_validated=(
+                _world_partial_source_policy_v0_5_validated
+            ),
+        )
+        validated["exploration_policy"] = policy
+        return _canonical_value(validated, "configuration_snapshot")
 
     if type(value) is dict and set(value) == (
         _CONFIGURATION_FIELDS | {"world_source_query_policy"}
@@ -1650,6 +1705,274 @@ def _grounder_stage_outcome(
     return outcome
 
 
+def _validated_grounder_exploration_leads(
+    result: Any,
+    *,
+    run_id: str,
+    max_leads: int,
+) -> List[Dict[str, Any]]:
+    """Rebind lead material to the exact validated Grounder receipt/context."""
+
+    from .event_intelligence import EventStatement, EventStatementKind
+    from .host_batch_snapshot import (
+        _exploration_lead_projection,
+        _exploration_lead_public_projection,
+        _exploration_validation_reference,
+        _validated_exploration_listing_reference,
+    )
+    from .host_grounder_builder import HostBuildContext, HostSourceBody
+    from .host_grounder_runtime import HostGrounderEvidenceCatalogRuntimeResult
+    from .option_chain_discovery import validate_exploration_lead
+
+    if (
+        type(result) is not HostGrounderEvidenceCatalogRuntimeResult
+        or type(result.exploration_leads) is not tuple
+        or not result.exploration_leads
+        or type(max_leads) is not int
+        or max_leads <= 0
+        or len(result.exploration_leads) > max_leads
+    ):
+        raise ValueError("exploration lead count exceeds the immutable Event bound")
+    admission_records = getattr(result, "_exploration_source_admissions", None)
+    if type(admission_records) is not tuple:
+        raise ValueError("exploration leads require their in-memory Host admission records")
+    from .host_event import _derive_exploration_leads
+
+    rederived_leads = _derive_exploration_leads(
+        result,
+        admission_records=admission_records,
+        max_leads=max_leads,
+    )
+    if rederived_leads != result.exploration_leads:
+        raise ValueError(
+            "exploration leads differ from the exact Host receipt, issuer, and listing derivation"
+        )
+    build = result.build_result
+    context = build.context
+    semantic = build.semantic_validation
+    if type(context) is not HostBuildContext or context.run_id != run_id:
+        raise ValueError("exploration lead context is not bound to this Host run")
+    snapshot = semantic.snapshot
+    receipt = semantic.receipt
+    try:
+        envelope = json.loads(snapshot.canonical_bytes.decode("utf-8", "strict"))
+    except (AttributeError, TypeError, UnicodeError, ValueError, RecursionError) as error:
+        raise ValueError("exploration lead has no validated semantic envelope") from error
+    if (
+        type(envelope) is not dict
+        or envelope.get("schema_version") != "grounder-output-v0.1"
+        or envelope.get("stage") != "semantic"
+        or envelope.get("request_id") != run_id
+        or type(envelope.get("claims")) is not list
+        or type(envelope.get("field_bindings")) is not list
+    ):
+        raise ValueError("exploration lead envelope has an invalid closed identity")
+    if not isinstance(context.underlying_bindings, Mapping):
+        raise ValueError("exploration leads require retained verified listing bindings")
+    claims = envelope["claims"]
+    claims_by_id = {}
+    claim_index_by_id = {}
+    for index, claim in enumerate(claims):
+        if type(claim) is not dict or type(claim.get("claim_id")) is not str:
+            raise ValueError("exploration envelope claim identity is malformed")
+        claim_id = claim["claim_id"]
+        if claim_id in claims_by_id:
+            raise ValueError("exploration envelope claim IDs are not unique")
+        claims_by_id[claim_id] = claim
+        claim_index_by_id[claim_id] = index
+    verified_claim_ids = receipt.get("verified_claim_ids")
+    verified_binding_indices = receipt.get("verified_binding_indices")
+    if type(verified_claim_ids) is not tuple or type(verified_binding_indices) is not tuple:
+        raise ValueError("exploration lead receipt partitions are malformed")
+    leads = []
+    seen = set()
+    for raw_lead in result.exploration_leads:
+        lead = validate_exploration_lead(raw_lead)
+        _exploration_lead_projection(lead)
+        proof = _exploration_validation_reference(lead)
+        listing = _validated_exploration_listing_reference(lead)
+        if (
+            proof["run_id"] != run_id
+            or proof["canonical_input_hash"] != context.canonical_input_hash
+            or proof["envelope_hash"] != semantic.envelope_hash
+            or proof["event_anchor"] != getattr(
+                result._event_fact_anchor_outcome, "selected_claim_id", None
+            )
+        ):
+            raise ValueError("exploration lead proof is not bound to the exact Host receipt")
+        expected_id = "exploration-" + hashlib.sha256(
+            json.dumps(
+                [run_id, lead.event_statement_id, lead.exposure_statement_id,
+                 lead.underlying_key.symbol],
+                ensure_ascii=False, separators=(",", ":"),
+            ).encode("utf-8", "strict")
+        ).hexdigest()
+        if lead.lead_id != expected_id or lead.lead_id in seen:
+            raise ValueError("exploration lead identity is forged or duplicated")
+        seen.add(lead.lead_id)
+        listing_binding = context.underlying_bindings.get(
+            (lead.exposure_statement_id, proof["entity_ref"])
+        )
+        if (
+            type(listing_binding) is not tuple
+            or len(listing_binding) != 2
+            or listing_binding[0] != lead.underlying_key
+            or listing_binding[1] != lead.underlying_reference
+        ):
+            raise ValueError("exploration lead differs from its retained listing binding")
+
+        closure = set()
+        active = set()
+
+        def visit(claim_id: str) -> None:
+            if claim_id in active:
+                raise ValueError("exploration claim dependency closure contains a cycle")
+            if claim_id in closure:
+                return
+            claim = claims_by_id.get(claim_id)
+            if claim is None or claim_id not in verified_claim_ids:
+                raise ValueError("exploration claim closure is not receipt-verified")
+            dependencies = claim.get("dependency_claim_ids")
+            if type(dependencies) is not list or any(type(item) is not str for item in dependencies):
+                raise ValueError("exploration claim dependency list is malformed")
+            active.add(claim_id)
+            for dependency in dependencies:
+                visit(dependency)
+            active.remove(claim_id)
+            closure.add(claim_id)
+
+        visit(lead.exposure_statement_id)
+        if lead.event_statement_id not in closure:
+            raise ValueError("exploration exposure closure omits its verified event anchor")
+        ordered_claims = [claim for claim in claims if claim["claim_id"] in closure]
+        ordered_ids = [claim["claim_id"] for claim in ordered_claims]
+        if ordered_ids != proof["claim_dependency_closure"]:
+            raise ValueError("exploration lead claim closure differs from its envelope")
+        expected_statements = []
+        expected_uncertainties = []
+        for claim in ordered_claims:
+            source_id = claim.get("source_id")
+            source = context.source_bodies.get(source_id)
+            if (
+                type(source) is not HostSourceBody
+                or claim.get("locator") != source.final_locator
+                or type(claim.get("text")) is not str
+                or type(claim.get("uncertainty")) is not list
+            ):
+                raise ValueError("exploration claim source binding is invalid")
+            try:
+                kind = (
+                    EventStatementKind.OBSERVED_FACT
+                    if claim.get("kind") == "observed_fact"
+                    else EventStatementKind.INTERPRETATION
+                    if claim.get("kind") == "interpretation"
+                    else None
+                )
+                if kind is None:
+                    raise ValueError("unsupported exploration claim kind")
+                expected_statements.append(EventStatement(
+                    claim["claim_id"], kind, claim["text"], (source_id,),
+                    tuple(claim.get("dependency_claim_ids", ())),
+                ))
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError("exploration claim cannot be projected to its retained statement") from error
+            expected_uncertainties.extend(claim["uncertainty"])
+        if tuple(expected_statements) != lead.statements:
+            raise ValueError("exploration statements differ from the exact receipt-verified closure")
+        anchor = claims_by_id.get(lead.event_statement_id)
+        if (
+            anchor is None
+            or anchor.get("kind") != "observed_fact"
+            or anchor.get("text") != lead.event_description
+            or context.observed_at != lead.observed_at
+            or tuple(dict.fromkeys(expected_uncertainties)) != lead.uncertainties
+        ):
+            raise ValueError("exploration lead event material differs from its verified anchor")
+
+        expected_binding_rows = []
+        for claim_id in ordered_ids:
+            claim_index = claim_index_by_id[claim_id]
+            prefix = "/claims/{}/".format(claim_index)
+            for index, binding in enumerate(envelope["field_bindings"]):
+                if (
+                    index in verified_binding_indices
+                    and type(binding) is dict
+                    and type(binding.get("field_path")) is str
+                    and binding["field_path"].startswith(prefix)
+                ):
+                    expected_binding_rows.append({
+                        "index": index,
+                        "field_path": binding["field_path"],
+                        "source_id": binding["source_id"],
+                        "quote": binding["quote"],
+                        "start": binding["start"],
+                        "end": binding["end"],
+                    })
+        if proof["verified_entity_bindings"] != expected_binding_rows:
+            raise ValueError("exploration entity-binding proof differs from receipt bindings")
+        if (
+            proof["coverage"] != envelope.get("coverage")
+            or proof["coverage_outcomes"]
+            != json.loads(json.dumps(receipt.get("coverage_outcomes"), ensure_ascii=False))
+        ):
+            raise ValueError("exploration semantic coverage proof differs from the exact receipt")
+
+        claim_sources = {item.source_id: item for item in lead.sources}
+        proof_sources = {item["source_id"]: item for item in proof["sources"]}
+        for source_id, lead_source in claim_sources.items():
+            source_body = context.source_bodies.get(source_id)
+            source_proof = proof_sources[source_id]
+            if (
+                type(source_body) is not HostSourceBody
+                or lead_source.locator != source_body.final_locator
+                or lead_source.title != source_body.title
+                or lead_source.published_at != source_body.published_at
+                or source_proof["body_sha256"] != source_body.body_sha256
+                or _datetime.datetime.fromisoformat(source_proof["retrieved_at"]) != source_body.retrieved_at.astimezone(_datetime.timezone.utc)
+            ):
+                raise ValueError("exploration retained source differs from registered body provenance")
+        for listing_source in listing["sources"]:
+            source_body = context.source_bodies.get(listing_source["source_id"])
+            if (
+                type(source_body) is not HostSourceBody
+                or source_body.final_locator != listing_source["locator"]
+                or source_body.body_sha256 != listing_source["body_sha256"]
+                or (
+                    listing_source["source_id"].startswith("host-admission-")
+                    and "source_admission" not in listing_source
+                )
+            ):
+                raise ValueError("exploration listing proof differs from registered body provenance")
+        leads.append(_exploration_lead_public_projection(lead))
+    return leads
+
+
+def _grounder_exploration_stage_outcome(
+    result: Any,
+    run_id: str,
+    host_raw_input: str,
+    *,
+    max_leads: int,
+) -> Dict[str, Any]:
+    """Create the closed safe-to-retain lead stage projection."""
+
+    base = _grounder_stage_outcome(result, run_id, host_raw_input)
+    public_leads = _validated_grounder_exploration_leads(
+        result, run_id=run_id, max_leads=max_leads
+    )
+    outcome = dict(base)
+    outcome.update({
+        "schema_version": _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION,
+        "exploration_status": "ADMITTED",
+        "exploration_lead_count": len(public_leads),
+        "lead_materials": public_leads,
+    })
+    _validate_grounder_stage_outcome(outcome)
+    if len(_canonical_json(outcome, "Grounder exploration stage outcome").encode("utf-8")) > _GROUNDER_STAGE_MAX_BYTES:
+        raise ValueError("Grounder exploration stage outcome exceeds its archive bound")
+    return outcome
+
+
 def _validate_event_fact_anchor_outcome(
     value: Any,
     *,
@@ -1908,6 +2231,72 @@ def _semantic_rejection_projection_for_stage(
 
 
 def _validate_grounder_stage_outcome(value: Any) -> Dict[str, Any]:
+    if (
+        type(value) is dict
+        and value.get("schema_version")
+        == _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION
+    ):
+        from .host_batch_snapshot import _validate_exploration_public_lead
+
+        exploration_fields = {
+            "exploration_status", "exploration_lead_count", "lead_materials"
+        }
+        if not exploration_fields.issubset(value):
+            raise ValueError("Grounder exploration outcome is missing required fields")
+        base = {key: item for key, item in value.items() if key not in exploration_fields}
+        provenance = base.get("provenance")
+        if "event_fact_anchor" in base:
+            base["schema_version"] = _GROUNDER_STAGE_OUTCOME_VERSION_V0_6
+        elif "semantic_rejections" in base:
+            base["schema_version"] = _GROUNDER_STAGE_OUTCOME_VERSION_V0_5
+        elif "semantic_transport" in base:
+            base["schema_version"] = _GROUNDER_STAGE_OUTCOME_VERSION_V0_4
+        elif type(provenance) is dict and "producer_attempts" in provenance:
+            base["schema_version"] = _GROUNDER_STAGE_OUTCOME_VERSION_V0_2
+        else:
+            base["schema_version"] = _GROUNDER_STAGE_OUTCOME_VERSION
+        _validate_grounder_stage_outcome(base)
+        expected_fields = set(base) | exploration_fields
+        expected_fields.add("schema_version")
+        if set(value) != expected_fields:
+            raise ValueError("Grounder exploration outcome has an invalid closed field set")
+        if (
+            value["exploration_status"] != "ADMITTED"
+            or type(value["exploration_lead_count"]) is not int
+            or value["exploration_lead_count"] <= 0
+            or type(value["lead_materials"]) is not list
+            or len(value["lead_materials"]) != value["exploration_lead_count"]
+            or len(value["lead_materials"]) > _GROUNDER_STAGE_MAX_ITEMS
+        ):
+            raise ValueError("Grounder exploration status or lead count is invalid")
+        normalized = []
+        seen_leads = set()
+        nested_count = 0
+        for item in value["lead_materials"]:
+            checked = _validate_exploration_public_lead(item)
+            if checked["lead_id"] in seen_leads:
+                raise ValueError("Grounder exploration lead IDs must be unique")
+            seen_leads.add(checked["lead_id"])
+            nested_count += (
+                len(checked["sources"]) + len(checked["statements"])
+                + len(checked["uncertainties"])
+            )
+            normalized.append(checked)
+        if nested_count > _GROUNDER_STAGE_MAX_ITEMS:
+            raise ValueError("Grounder exploration lead detail exceeds the stage item bound")
+        if normalized != value["lead_materials"]:
+            raise ValueError("Grounder exploration leads are not canonical projections")
+        fixed = {
+            "grounder_status": "COMPLETED",
+            "source_status": "UNKNOWN",
+            "semantic_status": "RECEIPT_VALIDATED",
+            "builder_status": "COMPLETED",
+            "submission_status": "MISSING",
+            "ei_status": "NOT_RUN",
+        }
+        if any(value.get(key) != expected for key, expected in fixed.items()):
+            raise ValueError("Grounder exploration stage crossed an EI or source boundary")
+        return dict(value)
     if (
         type(value) is dict
         and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_6
@@ -2367,11 +2756,19 @@ def _validate_grounder_submission_stage_outcome(value: Any) -> Dict[str, Any]:
     return dict(value)
 
 
-def _grounder_public_stage_outcome(value: Any) -> Dict[str, Any]:
+def _grounder_public_stage_outcome(
+    value: Any, *, stage_name: Optional[str] = None
+) -> Dict[str, Any]:
     """Return a closed, non-content-bearing view for Host history consumers."""
 
     if type(value) is not dict:
         return value
+    if value.get("schema_version") == _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION:
+        outcome = _validate_grounder_stage_outcome(value)
+        return {
+            key: item for key, item in outcome.items()
+            if key != "lead_materials"
+        }
     if value.get("schema_version") in (
         _GROUNDER_STAGE_OUTCOME_VERSION,
         _GROUNDER_STAGE_OUTCOME_VERSION_V0_2,
@@ -2384,6 +2781,10 @@ def _grounder_public_stage_outcome(value: Any) -> Dict[str, Any]:
     if value.get("schema_version") in _GROUNDER_PRODUCER_FAILURE_AUDIT_VERSIONS:
         return _validate_grounder_producer_failure_audit(value)
     if value.get("schema_version") not in _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSIONS:
+        if stage_name == "grounder":
+            raise StoreCorruptionError(
+                "unrecognized Grounder outcome cannot be exposed publicly"
+            )
         return value
     outcome = _validate_grounder_submission_stage_outcome(value)
     assessment_status = outcome["submission"]["assessment"]["status"]
@@ -2442,6 +2843,8 @@ def _validate_shell_outcome(value: Any) -> Any:
     if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_5:
         return _validate_grounder_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_STAGE_OUTCOME_VERSION_V0_6:
+        return _validate_grounder_stage_outcome(value)
+    if type(value) is dict and value.get("schema_version") == _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION:
         return _validate_grounder_stage_outcome(value)
     if type(value) is dict and value.get("schema_version") == _GROUNDER_SUBMISSION_STAGE_OUTCOME_VERSION:
         return _validate_grounder_submission_stage_outcome(value)
@@ -2923,6 +3326,7 @@ class HostStore:
         terminal_seen = False
         grounder_result_seen = False
         grounder_submission_result_seen = False
+        grounder_exploration_result_seen = False
         grounder_interrupted_seen = False
         grounder_failure_seen = False
         for event_index, event in enumerate(events):
@@ -3000,6 +3404,39 @@ class HostStore:
                                     "Grounder submission outcome has invalid mode or diagnostics"
                                 )
                             grounder_submission_result_seen = True
+                        elif (
+                            payload["outcome"].get("schema_version")
+                            == _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION
+                        ):
+                            if (
+                                start_snapshot.get("mode") != "event"
+                                or stage_diagnostics
+                            ):
+                                raise StoreCorruptionError(
+                                    "Grounder exploration outcome has invalid mode or diagnostics"
+                                )
+                            try:
+                                configuration = start_snapshot["metadata"]["configuration_snapshot"]
+                                policy = _validated_exploration_policy(
+                                    configuration.get("exploration_policy"),
+                                    mode=start_snapshot["mode"],
+                                )
+                            except (KeyError, TypeError, ValueError) as error:
+                                raise StoreCorruptionError(
+                                    "Grounder exploration outcome lacks immutable opt-in"
+                                ) from error
+                            if not policy["enabled"]:
+                                raise StoreCorruptionError(
+                                    "Grounder exploration outcome is disabled by its run snapshot"
+                                )
+                            if (
+                                payload["outcome"]["exploration_lead_count"]
+                                > start_snapshot["bounds"]["max_submissions"]
+                            ):
+                                raise StoreCorruptionError(
+                                    "Grounder exploration outcome exceeds immutable run bounds"
+                                )
+                            grounder_exploration_result_seen = True
                         else:
                             grounder_result_seen = True
                     elif (
@@ -3565,6 +4002,89 @@ class HostStore:
             )
         return None
 
+    def save_grounder_exploration_stage_result(
+        self, run_id: str, stage_id: str, result: Any
+    ) -> None:
+        """Retain verified lead material while leaving the run available to Core."""
+
+        self._validate_run_id(run_id)
+        self._validate_stage_id(stage_id)
+        with self._lock, self._transaction() as connection:
+            self._require_run(connection, run_id)
+            run_status, started, finished = self._status_and_stages(run_id)
+            if run_status != "RUNNING":
+                raise ValueError("Grounder exploration result requires a RUNNING Host run")
+            start_event = started.get(stage_id)
+            if (
+                start_event is None
+                or stage_id in finished
+                or start_event["stage_name"] != "grounder"
+            ):
+                raise ValueError(
+                    "Grounder exploration result requires one prior unmatched grounder stage"
+                )
+            if set(started) != finished | {stage_id}:
+                raise ValueError(
+                    "all other Host stages must finish before Grounder exploration storage"
+                )
+            if any(
+                stage["stage_name"] == "grounder" and other_id != stage_id
+                for other_id, stage in started.items()
+            ):
+                raise ValueError("Host run already contains another Grounder stage")
+            start_snapshot = _decode_canonical_json(
+                self._events_for(run_id)[0]["payload_json"]
+            )
+            if type(start_snapshot) is not dict or start_snapshot.get("mode") != "event":
+                raise ValueError("pre-Core exploration result is restricted to Event runs")
+            if (
+                type(start_snapshot.get("input")) is not str
+                or type(start_snapshot.get("input_sha256")) is not str
+                or hashlib.sha256(start_snapshot["input"].encode("utf-8", "strict")).hexdigest()
+                != start_snapshot["input_sha256"]
+            ):
+                raise StoreCorruptionError("immutable Host input snapshot hash is invalid")
+            try:
+                policy = _validated_exploration_policy(
+                    start_snapshot["metadata"]["configuration_snapshot"].get(
+                        "exploration_policy"
+                    ),
+                    mode="event",
+                )
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(
+                    "Grounder exploration result requires immutable enabled opt-in"
+                ) from error
+            if policy["enabled"] is not True:
+                raise ValueError("Grounder exploration opt-in is not enabled")
+            outcome = _grounder_exploration_stage_outcome(
+                result,
+                run_id,
+                start_snapshot["input"],
+                max_leads=start_snapshot["bounds"]["max_submissions"],
+            )
+            if outcome["provenance"]["host_raw_input_sha256"] != start_snapshot["input_sha256"]:
+                raise ValueError(
+                    "Grounder raw input digest does not match the immutable Host snapshot"
+                )
+            if connection.execute(
+                "SELECT 1 FROM direct_cases WHERE run_id=? UNION ALL "
+                "SELECT 1 FROM batch_archives WHERE run_id=? LIMIT 1",
+                (run_id, run_id),
+            ).fetchone() is not None:
+                raise ValueError("Grounder exploration result cannot follow a Core archive")
+            self._append_event(
+                connection,
+                run_id,
+                "stage_finished",
+                stage_id,
+                "grounder",
+                "COMPLETED",
+                {"outcome": outcome, "diagnostics": []},
+                _timestamp(),
+            )
+        return None
+
     def save_grounder_submission_stage_result(
         self, run_id: str, stage_id: str, result: Any
     ) -> None:
@@ -3774,7 +4294,8 @@ class HostStore:
                 if event["event_type"] == "stage_finished":
                     finish_payload = _decode_canonical_json(event["payload_json"])
                     public_event["outcome"] = _grounder_public_stage_outcome(
-                        finish_payload["outcome"]
+                        finish_payload["outcome"],
+                        stage_name=event["stage_name"],
                     )
                     public_event["diagnostics"] = finish_payload["diagnostics"]
                     public_event["completed_at"] = event["occurred_at"]
@@ -3783,7 +4304,7 @@ class HostStore:
             return result
 
     def get_event_research(self, run_id: str) -> Optional[Dict[str, Any]]:
-        """Read only retained EI material, never raw provider/model evidence."""
+        """Read retained EI and explicit safe lead material, never provider bodies."""
         with self._lock:
             run = self.get_run(run_id)  # validates archive integrity before projection
             if run is None or run["mode"] != "event":
@@ -3793,20 +4314,63 @@ class HostStore:
                 "bounds": run["bounds"], "sources": [], "statements": [],
                 "issues": [], "assessment_status": None,
             }
+            leads_by_id = {}
+            assessment_rows = []
             for event in self._events_for(run_id):
                 if event["event_type"] != "stage_finished" or event["stage_name"] != "grounder":
                     continue
                 outcome = _decode_canonical_json(event["payload_json"])["outcome"]
+                if (
+                    type(outcome) is dict
+                    and outcome.get("schema_version")
+                    == _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION
+                ):
+                    checked = _validate_grounder_stage_outcome(outcome)
+                    for lead in checked["lead_materials"]:
+                        leads_by_id[lead["lead_id"]] = lead
+                    continue
                 if type(outcome) is not dict or "submission" not in outcome:
                     continue
                 checked = _validate_grounder_submission_stage_outcome(outcome)
                 submission = checked["submission"]
+                assessment_rows.append({
+                    "submission_id": submission["submission_id"],
+                    "status": submission["assessment"]["status"].upper(),
+                })
                 view.update({
                     "status": "RETAINED",
                     "sources": submission["sources"],
                     "statements": submission["statements"],
                     "issues": submission["assessment"]["issues"],
                     "assessment_status": submission["assessment"]["status"],
+                })
+            archive, _decoded = self._read_batch_archive(run_id)
+            if archive is not None and archive.get("schema_version") == "host-batch-snapshot-v0.3":
+                from .host_batch_snapshot import (
+                    _archive_ei_status,
+                    _decode_exploration_lead,
+                    _exploration_lead_public_projection,
+                )
+
+                for lead in archive["exploration_audit"]["leads"]:
+                    decoded = _decode_exploration_lead(lead)
+                    leads_by_id[decoded.lead_id] = _exploration_lead_public_projection(decoded)
+                ei_status, assessment_rows = _archive_ei_status(archive)
+            else:
+                statuses = {item["status"] for item in assessment_rows}
+                ei_status = (
+                    "NOT_RUN" if not assessment_rows
+                    else next(iter(statuses)) if len(statuses) == 1
+                    else "MIXED"
+                )
+            if leads_by_id:
+                view.update({
+                    "status": "EXPLORATION_RETAINED",
+                    "leads": list(leads_by_id.values()),
+                    "exploration_status": "ADMITTED",
+                    "ei_status": ei_status,
+                    "ei_assessment_statuses": assessment_rows,
+                    "ei_lead_association": "NOT_ESTABLISHED",
                 })
             return view
 
@@ -3831,10 +4395,31 @@ class HostStore:
                 }
                 for submission in submissions
             ]
-            return {
+            result = {
                 "status": "WORLD_RETAINED" if selections else "NOT_RETAINED",
                 "selections": selections,
             }
+            if archive is not None and archive.get("schema_version") == "host-batch-snapshot-v0.3":
+                from .host_batch_snapshot import _archive_ei_status, _decode_exploration_lead, _exploration_lead_public_projection
+
+                result.update({
+                    "status": (
+                        "WORLD_RETAINED" if selections
+                        else "WORLD_EXPLORATION_RETAINED"
+                    ),
+                    "exploration_status": "ADMITTED",
+                    "leads": [
+                        _exploration_lead_public_projection(
+                            _decode_exploration_lead(item)
+                        )
+                        for item in archive["exploration_audit"]["leads"]
+                    ],
+                    "original_input": run["input"],
+                    "bounds": run["bounds"],
+                })
+                result["ei_status"], result["ei_assessment_statuses"] = _archive_ei_status(archive)
+                result["ei_lead_association"] = "NOT_ESTABLISHED"
+            return result
 
     def list_runs(self) -> List[Dict[str, Any]]:
         with self._lock:

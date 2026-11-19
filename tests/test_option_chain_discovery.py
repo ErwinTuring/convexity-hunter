@@ -6,7 +6,7 @@ import pathlib
 import sys
 import unittest
 from dataclasses import FrozenInstanceError, fields
-from typing import Optional
+from typing import Optional, Tuple
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
@@ -33,11 +33,15 @@ from convexity_hunter.event_intelligence import (
 from convexity_hunter.evidence import OptionLeg, OptionStructure
 from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
 from convexity_hunter.option_chain_discovery import (
+    ExplorationLead,
+    ExploratoryOptionChainRequest,
     HypothesisMaturityAlignment,
     OptionChainDiscoveryRequest,
     OptionMaturityAuthority,
     OptionResearchMaturityContext,
     create_option_chain_discovery_request,
+    validate_exploration_lead,
+    validate_exploratory_option_chain_request,
 )
 
 
@@ -117,6 +121,56 @@ def make_caller_reassessment(
     )
 
 
+def make_exploration_lead(
+    *,
+    lead_id="lead-1",
+    observed_at=datetime.datetime(2029, 12, 31, tzinfo=datetime.timezone.utc),
+    source_locator="https://www.sec.gov/example",
+    fact_text="The issuer filed a dated contract award.",
+    exposure_interpretation=False,
+):
+    source = EventSourceReference(
+        "lead-source",
+        source_locator,
+        "Issuer filing",
+        datetime.datetime(2029, 12, 30, tzinfo=datetime.timezone.utc),
+    )
+    fact = EventStatement(
+        "lead-fact",
+        EventStatementKind.OBSERVED_FACT,
+        fact_text,
+        (source.source_id,),
+    )
+    if exposure_interpretation:
+        exposure = EventStatement(
+            "lead-exposure",
+            EventStatementKind.INTERPRETATION,
+            "The contract names the issuer as a counterparty.",
+            (),
+            (fact.statement_id,),
+        )
+        statements = (fact, exposure)
+        exposure_statement_id = exposure.statement_id
+    else:
+        statements = (fact,)
+        exposure_statement_id = fact.statement_id
+    return ExplorationLead(
+        lead_id=lead_id,
+        event_description="The issuer disclosed a dated contract award.",
+        observed_at=observed_at,
+        underlying_key=UnderlyingKey(
+            "ABC", "XNAS", UnderlyingSecurityType.EQUITY, "USD"
+        ),
+        sources=(source,),
+        statements=statements,
+        event_statement_id=fact.statement_id,
+        exposure_statement_id=exposure_statement_id,
+        underlying_reference="host://underlying-binding/1",
+        validation_reference="host://source-receipt-and-listing/1",
+        uncertainties=("Economic consequence is not established.",),
+    )
+
+
 class PublicContractTests(unittest.TestCase):
     def test_exact_api_fields_signature_and_root_boundary(self) -> None:
         self.assertEqual(
@@ -127,6 +181,10 @@ class PublicContractTests(unittest.TestCase):
                 "OptionChainDiscoveryRequest",
                 "OptionResearchMaturityContext",
                 "create_option_chain_discovery_request",
+                "ExplorationLead",
+                "ExploratoryOptionChainRequest",
+                "validate_exploration_lead",
+                "validate_exploratory_option_chain_request",
             ),
         )
         for name in option_chain_discovery.__all__:
@@ -171,7 +229,11 @@ class PublicContractTests(unittest.TestCase):
         self.assertIs(signature.return_annotation, OptionChainDiscoveryRequest)
         self.assertEqual(
             tuple(item.name for item in OptionMaturityAuthority),
-            ("HYPOTHESIS_ALIGNED", "NEUTRAL_STRUCTURAL_RESEARCH"),
+            (
+                "HYPOTHESIS_ALIGNED",
+                "NEUTRAL_STRUCTURAL_RESEARCH",
+                "EXPLORATORY_STRUCTURE_RESEARCH",
+            ),
         )
         self.assertEqual(
             tuple(item.name for item in HypothesisMaturityAlignment),
@@ -188,6 +250,152 @@ class PublicContractTests(unittest.TestCase):
                 "structure": OptionStructure,
             },
         )
+        self.assertEqual(
+            tuple(field.name for field in fields(ExplorationLead)),
+            (
+                "lead_id",
+                "event_description",
+                "observed_at",
+                "underlying_key",
+                "sources",
+                "statements",
+                "event_statement_id",
+                "exposure_statement_id",
+                "underlying_reference",
+                "validation_reference",
+                "uncertainties",
+            ),
+        )
+        self.assertEqual(
+            ExplorationLead.__annotations__,
+            {
+                "lead_id": str,
+                "event_description": str,
+                "observed_at": datetime.datetime,
+                "underlying_key": UnderlyingKey,
+                "sources": Tuple[EventSourceReference, ...],
+                "statements": Tuple[EventStatement, ...],
+                "event_statement_id": str,
+                "exposure_statement_id": str,
+                "underlying_reference": str,
+                "validation_reference": str,
+                "uncertainties": Tuple[str, ...],
+            },
+        )
+        self.assertEqual(
+            tuple(field.name for field in fields(ExploratoryOptionChainRequest)),
+            ("lead", "evaluation_date"),
+        )
+        self.assertEqual(
+            ExploratoryOptionChainRequest.__annotations__,
+            {"lead": ExplorationLead, "evaluation_date": datetime.date},
+        )
+        self.assertTrue(callable(validate_exploration_lead))
+        self.assertTrue(callable(validate_exploratory_option_chain_request))
+
+    def test_old_request_explicitly_rejects_exploration_authority(self) -> None:
+        with self.assertRaisesRegex(ValueError, "does not accept"):
+            OptionChainDiscoveryRequest(
+                make_handoff(),
+                EVALUATION_DATE,
+                OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH,
+            )
+
+
+class ExploratoryRequestTests(unittest.TestCase):
+    def test_source_backed_lead_and_explicit_neutral_dte_request(self) -> None:
+        lead = make_exploration_lead(exposure_interpretation=True)
+        self.assertIs(validate_exploration_lead(lead), lead)
+        request = ExploratoryOptionChainRequest(lead, EVALUATION_DATE)
+        self.assertIs(request.lead, lead)
+        self.assertEqual(request.minimum_expiration_date, datetime.date(2030, 1, 31))
+        self.assertEqual(request.maximum_expiration_date, datetime.date(2030, 5, 31))
+        self.assertIs(
+            request.maturity_authority,
+            OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH,
+        )
+        self.assertIs(
+            request.hypothesis_maturity_alignment,
+            HypothesisMaturityAlignment.NOT_ESTABLISHED,
+        )
+        self.assertIsNone(request.event_window_end_date)
+        self.assertFalse(hasattr(request, "distribution_mode"))
+        self.assertIs(validate_exploratory_option_chain_request(request), request)
+
+    def test_observed_fact_may_witness_event_and_exposure_roles(self) -> None:
+        lead = make_exploration_lead()
+        self.assertEqual(lead.event_statement_id, lead.exposure_statement_id)
+        validate_exploration_lead(lead)
+
+    def test_source_locator_and_statement_text_must_be_nonblank(self) -> None:
+        with self.assertRaises(ValueError):
+            make_exploration_lead(source_locator=" ")
+        with self.assertRaises(ValueError):
+            make_exploration_lead(fact_text="")
+
+    def test_source_closure_and_underlying_key_reconstruction_are_closed(self) -> None:
+        lead = make_exploration_lead(exposure_interpretation=True)
+        fact = lead.statements[0]
+        dangling_exposure = EventStatement(
+            "lead-exposure",
+            EventStatementKind.INTERPRETATION,
+            "The contract names the issuer as a counterparty.",
+            (),
+            ("missing-fact",),
+        )
+        with self.assertRaisesRegex(ValueError, "dependency"):
+            ExplorationLead(
+                lead.lead_id,
+                lead.event_description,
+                lead.observed_at,
+                lead.underlying_key,
+                lead.sources,
+                (fact, dangling_exposure),
+                lead.event_statement_id,
+                dangling_exposure.statement_id,
+                lead.underlying_reference,
+                lead.validation_reference,
+                lead.uncertainties,
+            )
+
+        forged_key = object.__new__(UnderlyingKey)
+        object.__setattr__(forged_key, "symbol", "abc")
+        object.__setattr__(forged_key, "listing_mic", "XNAS")
+        object.__setattr__(forged_key, "security_type", UnderlyingSecurityType.EQUITY)
+        object.__setattr__(forged_key, "currency", "USD")
+        forged_lead = object.__new__(ExplorationLead)
+        for name in ExplorationLead.__dataclass_fields__:
+            object.__setattr__(forged_lead, name, getattr(lead, name))
+        object.__setattr__(forged_lead, "underlying_key", forged_key)
+        with self.assertRaisesRegex(ValueError, "malformed"):
+            validate_exploration_lead(forged_lead)
+
+    def test_future_utc_observation_fails_request_without_historical_ttl(self) -> None:
+        future = make_exploration_lead(
+            observed_at=datetime.datetime(2030, 1, 2, tzinfo=datetime.timezone.utc)
+        )
+        with self.assertRaisesRegex(ValueError, "after evaluation_date"):
+            ExploratoryOptionChainRequest(future, EVALUATION_DATE)
+
+    def test_constructor_bypassed_malformed_statement_is_rejected(self) -> None:
+        lead = make_exploration_lead()
+        forged = object.__new__(ExplorationLead)
+        for name in ExplorationLead.__dataclass_fields__:
+            object.__setattr__(forged, name, getattr(lead, name))
+        object.__setattr__(
+            forged,
+            "statements",
+            (
+                EventStatement(
+                    "lead-fact",
+                    EventStatementKind.OBSERVED_FACT,
+                    None,
+                    ("lead-source",),
+                ),
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "malformed"):
+            validate_exploration_lead(forged)
 
 
 class SuccessfulRequestTests(unittest.TestCase):

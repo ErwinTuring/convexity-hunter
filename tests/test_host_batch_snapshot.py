@@ -37,13 +37,20 @@ from convexity_hunter.event_intelligence import (
     DistributionChangeMode,
     EventIntelligenceAcceptanceStatus,
     EventSourceReference,
+    EventStatement,
+    EventStatementKind,
+    MethodologizedDateRange,
     assess_event_intelligence_submission,
 )
 from convexity_hunter.host_event import _safe_configuration_snapshot
-from convexity_hunter.host_batch_snapshot import case_key
+from convexity_hunter.host_batch_snapshot import (
+    case_key,
+)
 from convexity_hunter.host_profile import STANDARD_RESEARCH_PROFILE, StandardResearchProfile
 from convexity_hunter.host_source_coverage import HostSourceCoverageAudit
 from convexity_hunter.host_store import HostStore, StoreCorruptionError
+from convexity_hunter.market_data import UnderlyingKey, UnderlyingSecurityType
+from convexity_hunter.option_chain_discovery import ExplorationLead
 from tests.test_host_event import _config as _grounder_config
 
 
@@ -155,6 +162,95 @@ def _metadata(mode):
             "standard_research_profile": "standard-research-profile:v0.1",
         },
     }
+
+
+def _archive_valid_exploration_lead(run_id="grounder-unit-1"):
+    """Small closed direct-fact lead fixture; references are synthetic, never fetched."""
+    key = UnderlyingKey("ABC", "XNAS", UnderlyingSecurityType.EQUITY, "USD")
+    observed = datetime.datetime(2029, 12, 31, 16, tzinfo=datetime.timezone.utc)
+    event_locator = "https://example.test/event"
+    event_source_id = "url:" + hashlib.sha256(event_locator.encode()).hexdigest()
+    source = EventSourceReference(
+        event_source_id, event_locator, "Synthetic event source", observed
+    )
+    statement = EventStatement(
+        "event-fact", EventStatementKind.OBSERVED_FACT,
+        "The issuer disclosed a dated event.", (source.source_id,),
+    )
+    listing_sources = []
+    for role, source_id in (
+        ("sec_listing_class", "listing-sec"),
+        ("nasdaq_instrument_heading", "listing-nasdaq"),
+        ("yahoo_quote_denomination", "listing-yahoo"),
+    ):
+        listing_sources.append({
+            "role": role,
+            "source_id": source_id,
+            "locator": "https://example.test/" + source_id,
+            "body_sha256": hashlib.sha256(source_id.encode()).hexdigest(),
+            "excerpts": [],
+        })
+    underlying_reference = json.dumps({
+        "rule_version": "host-listing-source-composite-v0.1",
+        "symbol": key.symbol,
+        "security_type": key.security_type.name,
+        "listing_mic": key.listing_mic,
+        "currency": key.currency,
+        "currency_basis": "yahoo_provider_reported_quote_denomination",
+        "sources": listing_sources,
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    validation = {
+        "schema_version": "host-exploration-lead-validation-v0.1",
+        "run_id": run_id,
+        "canonical_input_hash": "a" * 64,
+        "envelope_hash": "b" * 64,
+        "event_anchor": statement.statement_id,
+        "exposure_statement_id": statement.statement_id,
+        "claim_dependency_closure": [statement.statement_id],
+        "verified_claim_ids": [statement.statement_id],
+        "verified_entity_bindings": [{
+            "index": 0,
+            "field_path": "/claims/0/entity_refs/0",
+            "source_id": source.source_id,
+            "quote": "ABC",
+            "start": 0,
+            "end": 3,
+        }],
+        "coverage": [],
+        "coverage_outcomes": [],
+        "sources": [{
+            "source_id": source.source_id,
+            "final_locator": source.locator,
+            "body_sha256": "c" * 64,
+            "retrieved_at": observed.isoformat(),
+            "admission": None,
+        }],
+        "listing_reference_sha256": hashlib.sha256(
+            underlying_reference.encode("utf-8")
+        ).hexdigest(),
+        "entity_ref": key.symbol,
+    }
+    validation_reference = json.dumps(
+        validation, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    lead_payload = json.dumps(
+        [run_id, statement.statement_id, statement.statement_id, key.symbol],
+        ensure_ascii=False, separators=(",", ":"),
+    ).encode("utf-8")
+    lead_id = "exploration-" + hashlib.sha256(lead_payload).hexdigest()
+    return ExplorationLead(
+        lead_id=lead_id,
+        event_description=statement.text,
+        observed_at=observed,
+        underlying_key=key,
+        sources=(source,),
+        statements=(statement,),
+        event_statement_id=statement.statement_id,
+        exposure_statement_id=statement.statement_id,
+        underlying_reference=underlying_reference,
+        validation_reference=validation_reference,
+        uncertainties=("Distribution change is not established.",),
+    )
 
 
 def _covered_world_metadata():
@@ -367,6 +463,200 @@ class HostBatchSnapshotTests(unittest.TestCase):
         self.addCleanup(reopened.close)
         self.assertEqual(reopened.get_batch_case(run_id, case_key(record.case_id)), detail)
         self.assertEqual(reopened.get_run(run_id)["status"], "COMPLETED")
+
+    def test_v03_pure_exploration_batch_roundtrips_core_geometry_and_lineage(self):
+        raw_input = UserEventInput(
+            "The issuer disclosed a dated event.", event_date=datetime.date(2029, 12, 31)
+        )
+        lead = _archive_valid_exploration_lead()
+        batch = SourceSubmissionBatch(raw_input, (), (lead,))
+        bridge = FakeMarketBridge((
+            make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+            make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+        ))
+        result = run_event_core(
+            raw_input,
+            grounder=lambda _raw: batch,
+            market_bridge=bridge,
+            policy=make_policy([], exploration_enabled=True),
+        )
+        result = _standard_profile_result(result)
+        self.assertGreater(len(result.case_set.cases), 0)
+        record = result.case_set.cases[0]
+        for case in result.case_set.cases:
+            self.assertIsNone(case.assessment)
+            self.assertEqual(
+                case.maturity_authority.value, "exploratory_structure_research"
+            )
+            self.assertEqual(
+                case.discovery_request.hypothesis_maturity_alignment.value,
+                "not_established",
+            )
+        self.assertTrue(bridge.calls)
+        self.assertEqual(bridge.calls[0][0], "discover")
+
+        metadata = _metadata("event")
+        metadata["configuration_snapshot"]["exploration_policy"] = {
+            "schema_version": "structure-first-exploration-v0.1",
+            "authority": "exploratory_structure_research",
+            "minimum_dte_days": 30,
+            "maximum_dte_days": 150,
+            "enabled": True,
+        }
+        run_id = self._create_run(
+            "event", raw_input.description, _policy().bounds, metadata=metadata
+        )
+        stage_id = self.store.start_stage(run_id, "event")
+        self.store.save_batch_result(run_id, result)
+        archive, _decoded = self.store._read_batch_archive(run_id)
+        self.assertEqual(archive["schema_version"], "host-batch-snapshot-v0.3")
+        self.assertEqual(archive["exploration_audit"]["status"], "ADMITTED")
+        self.assertEqual(archive["ei_audit"]["submissions"], [])
+        self.assertEqual(
+            archive["cases"][0]["lineage"],
+            {"submission_id": None, "hypothesis_id": None, "lead_id": lead.lead_id},
+        )
+        detail = self.store.get_batch_case(run_id, case_key(record.case_id))
+        self.assertEqual(detail["lead_id"], lead.lead_id)
+        self.assertEqual(detail["maturity_authority"], "exploratory_structure_research")
+        self.assertEqual(detail["hypothesis_maturity_alignment"], "not_established")
+        self.assertIn("unknown_components", detail["report"])
+        self.assertIn("EI batch status=NOT_RUN", detail["report"])
+        self.assertNotIn("underlying_reference", json.dumps(detail))
+
+        from convexity_hunter.host_batch_snapshot import validate_batch_archive
+        from convexity_hunter.host_store import (
+            _canonical_json,
+            _validate_event_source_locator,
+            _validate_source_reference_uris,
+        )
+
+        validation_arguments = {
+            "run_id": run_id,
+            "mode": "event",
+            "run_input": raw_input.description,
+            "input_sha256": hashlib.sha256(
+                raw_input.description.encode("utf-8")
+            ).hexdigest(),
+            "bounds": _policy().bounds,
+            "profile_snapshot": STANDARD_RESEARCH_PROFILE.snapshot(),
+            "metadata": metadata,
+            "canonical_json": _canonical_json,
+            "validate_locator": _validate_event_source_locator,
+            "validate_source_uris": _validate_source_reference_uris,
+        }
+        forged = json.loads(json.dumps(archive))
+        forged["exploration_audit"]["leads"][0]["lead_id"] = "forged-lead"
+        with self.assertRaises(ValueError):
+            validate_batch_archive(forged, **validation_arguments)
+        dangling = json.loads(json.dumps(archive))
+        dangling["cases"][0]["lineage"]["lead_id"] = "missing-lead"
+        with self.assertRaises(ValueError):
+            validate_batch_archive(dangling, **validation_arguments)
+        disabled = json.loads(json.dumps(metadata))
+        disabled["configuration_snapshot"]["exploration_policy"]["enabled"] = False
+        with self.assertRaises(ValueError):
+            validate_batch_archive(
+                archive, **{**validation_arguments, "metadata": disabled}
+            )
+        self.assertEqual(archive["summary"]["host_status"], "COMPLETED")
+        self.store.finish_stage(run_id, stage_id, "COMPLETED", archive["outcome"], ())
+        self.store.finish_run(run_id, "COMPLETED", ())
+        self.store.close()
+        reopened = HostStore(self.db_path)
+        self.addCleanup(reopened.close)
+        self.assertEqual(
+            reopened.get_batch_case(run_id, case_key(record.case_id)), detail
+        )
+
+        incomplete = replace(
+            make_submission("incomplete-ei", ("incomplete-hypothesis",)),
+            event_date_range=MethodologizedDateRange(None, None, None),
+        )
+        mixed_batch = SourceSubmissionBatch(raw_input, (incomplete,), (lead,))
+        mixed_result = run_event_core(
+            raw_input,
+            grounder=lambda _raw: mixed_batch,
+            market_bridge=FakeMarketBridge((
+                make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+                make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+            )),
+            policy=make_policy([], exploration_enabled=True),
+        )
+        mixed_result = _standard_profile_result(mixed_result)
+        mixed_run_id = reopened.create_run(
+            "event", raw_input.description, _policy().bounds,
+            STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+        )
+        reopened.save_batch_result(mixed_run_id, mixed_result)
+        mixed_view = reopened.get_event_research(mixed_run_id)
+        self.assertEqual(mixed_view["status"], "EXPLORATION_RETAINED")
+        self.assertEqual(mixed_view["ei_status"], "INCOMPLETE")
+        self.assertEqual(
+            mixed_view["ei_assessment_statuses"],
+            [{"submission_id": "incomplete-ei", "status": "INCOMPLETE"}],
+        )
+        self.assertEqual(mixed_view["ei_lead_association"], "NOT_ESTABLISHED")
+
+    def test_v03_world_partial_coverage_links_lead_and_preserves_failed_units(self):
+        raw_input = "synthetic covered World exploration"
+        lead = _archive_valid_exploration_lead("grounder-unit-world-1")
+        batch = SourceSubmissionBatch(raw_input, (), (lead,))
+        result = run_world_core(
+            raw_input,
+            source_producer=lambda _raw: batch,
+            market_bridge=FakeMarketBridge((
+                make_row(datetime.date(2030, 1, 31), "CALL", "100"),
+                make_row(datetime.date(2030, 1, 31), "PUT", "100"),
+            )),
+            policy=make_policy([], exploration_enabled=True),
+        )
+        result = _standard_profile_result(result)
+        self.assertGreater(len(result.case_set.cases), 0)
+
+        metadata = _covered_world_metadata()
+        metadata["configuration_snapshot"]["exploration_policy"] = {
+            "schema_version": "structure-first-exploration-v0.1",
+            "authority": "exploratory_structure_research",
+            "minimum_dte_days": 30,
+            "maximum_dte_days": 150,
+            "enabled": True,
+        }
+        host_run_id = self._create_run(
+            "world", raw_input, _policy().bounds, metadata=metadata
+        )
+        self.store.start_stage(host_run_id, "world")
+        coverage_row = {
+            "unit_id": "unit-1",
+            "source_coverage": _coverage_audit(
+                host_run_id,
+                "unit-1",
+                run_id="grounder-unit-world-1",
+                sources=lead.sources,
+                failed_count=1,
+            ),
+            "submission_ids": [],
+            "case_ids": [case.case_id for case in result.case_set.cases],
+        }
+        self.store.save_batch_result(
+            host_run_id, result, source_coverage_by_unit=(coverage_row,)
+        )
+        archive, _decoded = self.store._read_batch_archive(host_run_id)
+        self.assertEqual(archive["schema_version"], "host-batch-snapshot-v0.3")
+        row = archive["source_coverage_by_unit"][0]
+        self.assertEqual(row["exploration_lead_ids"], [lead.lead_id])
+        self.assertEqual(row["source_coverage"]["status"], "PARTIAL")
+        self.assertEqual(
+            len([
+                entry for entry in row["source_coverage"]["entries"]
+                if entry["status"] == "FAILED"
+            ]),
+            1,
+        )
+        world_view = self.store.get_world_research(host_run_id)
+        self.assertEqual(world_view["status"], "WORLD_EXPLORATION_RETAINED")
+        self.assertEqual(world_view["leads"][0]["lead_id"], lead.lead_id)
+        self.assertEqual(world_view["ei_status"], "NOT_RUN")
 
     def test_partial_source_coverage_v02_archive_and_read_projections(self):
         raw_input = "synthetic covered World request"

@@ -26,8 +26,18 @@ from urllib.parse import urlsplit
 
 from .core_application import CoreOperationalBounds
 from .event_entry import UserEventInput
-from .event_intelligence import MethodologizedDateRange
-from .host_grounder_builder import HostBuildContext, HostSourceBody
+from .event_intelligence import (
+    EventSourceReference,
+    EventStatement,
+    EventStatementKind,
+    MethodologizedDateRange,
+)
+from .host_grounder_builder import (
+    HostBuildResult,
+    HostBuildContext,
+    HostSourceBody,
+    _published_at_matches,
+)
 from .host_source_coverage import HostSourceCoverageAudit
 from .host_grounder_evidence_catalog import (
     HostEvidenceCatalogAuditHolder,
@@ -45,8 +55,10 @@ from .host_grounder_runtime import (
     _EventFactAnchorOutcome,
     _run_host_grounder_same_run_evidence_catalog_v0_10,
     _stamp_event_fact_anchor_outcome,
+    _with_exploration_leads,
     run_host_grounder_same_run_evidence_catalog_v0_6,
 )
+from .option_chain_discovery import ExplorationLead, validate_exploration_lead
 from .market_data import UnderlyingKey, UnderlyingSecurityType
 from .host_model import (
     ChatCompletionsClient,
@@ -601,6 +613,734 @@ def _preparation_evidence(snapshot: object, receipt: object, context: HostBuildC
     ):
         return None
     return envelope, frozenset(verified_claim_ids), frozenset(verified_binding_indices)
+
+
+def _exploration_binding(
+    envelope: dict,
+    verified_binding_indices: frozenset,
+    claim_index: int,
+    claim: dict,
+    field_path: str,
+    semantic_role: str,
+    source: HostSourceBody,
+):
+    bindings = envelope.get("field_bindings")
+    if type(bindings) is not list:
+        return None
+    matches = tuple(
+        (index, item)
+        for index, item in enumerate(bindings)
+        if type(item) is dict and item.get("field_path") == field_path
+    )
+    if len(matches) != 1:
+        return None
+    index, binding = matches[0]
+    start, end, quote = (
+        binding.get("start"), binding.get("end"), binding.get("quote")
+    )
+    if (
+        index not in verified_binding_indices
+        or binding.get("semantic_role") != semantic_role
+        or binding.get("status") != "supported"
+        or binding.get("source_id") != claim.get("source_id")
+        or type(start) is not int
+        or type(end) is not int
+        or start < 0
+        or end <= start
+        or end > len(source.body)
+        or type(quote) is not str
+        or source.body[start:end] != quote
+        or source.body.find(quote) != start
+        or source.body.find(quote, start + 1) >= 0
+    ):
+        return None
+    return index, binding
+
+
+def _exploration_claim_closure(
+    envelope: dict,
+    verified_claim_ids: frozenset,
+    verified_binding_indices: frozenset,
+    context: HostBuildContext,
+    root_id: str,
+):
+    """Return only fully source-backed, receipt-verified claim closure."""
+    claims = envelope.get("claims")
+    if type(claims) is not list:
+        return None
+    by_id = {}
+    index_by_id = {}
+    for index, claim in enumerate(claims):
+        if type(claim) is not dict:
+            return None
+        claim_id = claim.get("claim_id")
+        if type(claim_id) is not str or claim_id in by_id:
+            return None
+        by_id[claim_id] = claim
+        index_by_id[claim_id] = index
+
+    active = set()
+    closure = set()
+
+    def visit(claim_id: object) -> bool:
+        if type(claim_id) is not str or claim_id not in by_id:
+            return False
+        if claim_id in active:
+            return False
+        if claim_id in closure:
+            return True
+        claim = by_id[claim_id]
+        source_id = claim.get("source_id")
+        source = context.source_bodies.get(source_id)
+        dependencies = claim.get("dependency_claim_ids")
+        entity_refs = claim.get("entity_refs")
+        if (
+            claim_id not in verified_claim_ids
+            or claim_id != claim_id.strip()
+            or claim.get("kind") not in ("observed_fact", "interpretation")
+            or type(claim.get("text")) is not str
+            or not claim["text"].strip()
+            or claim["text"] != claim["text"].strip()
+            or type(source) is not HostSourceBody
+            or not source.body.strip()
+            or claim.get("locator") != source.final_locator
+            or type(claim.get("quote")) is not str
+            or not claim["quote"]
+            or source.body.find(claim["quote"]) < 0
+            or source.body.find(claim["quote"], source.body.find(claim["quote"]) + 1) >= 0
+            or type(dependencies) is not list
+            or len(set(dependencies)) != len(dependencies)
+            or (claim["kind"] == "observed_fact" and dependencies)
+            or type(entity_refs) is not list
+        ):
+            return False
+        if claim.get("published_at") is not None and not _published_at_matches(
+            claim["published_at"], source.published_at
+        ):
+            return False
+        event_date = claim.get("event_date")
+        if event_date is not None and _exploration_binding(
+            envelope,
+            verified_binding_indices,
+            index_by_id[claim_id],
+            claim,
+            "/claims/{}/event_date".format(index_by_id[claim_id]),
+            "date",
+            source,
+        ) is None:
+            return False
+        for entity_index, _entity_ref in enumerate(entity_refs):
+            if _exploration_binding(
+                envelope,
+                verified_binding_indices,
+                index_by_id[claim_id],
+                claim,
+                "/claims/{}/entity_refs/{}".format(
+                    index_by_id[claim_id], entity_index
+                ),
+                "entity",
+                source,
+            ) is None:
+                return False
+        active.add(claim_id)
+        if not all(visit(dependency) for dependency in dependencies):
+            active.remove(claim_id)
+            return False
+        active.remove(claim_id)
+        closure.add(claim_id)
+        return True
+
+    if not visit(root_id):
+        return None
+    return tuple(
+        claim for claim in claims if claim["claim_id"] in closure
+    )
+
+
+def _exploration_listing_reference_valid(
+    reference: object,
+    underlying_key: object,
+    context: HostBuildContext,
+    admission_by_id: dict,
+) -> bool:
+    if type(reference) is not str or type(underlying_key) is not UnderlyingKey:
+        return False
+    try:
+        parsed = json.loads(reference)
+    except (TypeError, ValueError, RecursionError):
+        return False
+    if (
+        type(parsed) is not dict
+        or parsed.get("symbol") != underlying_key.symbol
+        or parsed.get("listing_mic") != underlying_key.listing_mic
+        or parsed.get("currency") != underlying_key.currency
+        or parsed.get("security_type") != underlying_key.security_type.name
+        or parsed.get("currency_basis") != _LISTING_CURRENCY_BASIS
+        or type(parsed.get("sources")) is not list
+        or len(parsed["sources"]) != 3
+    ):
+        return False
+    sources = parsed["sources"]
+    required_roles = {
+        frozenset(("sec_listing_class", "nasdaq_instrument_heading", "yahoo_quote_denomination")),
+        frozenset(("sec_issuer_reference", "sec_cover_security_class", "yahoo_quote_denomination")),
+    }
+    roles = frozenset(
+        item.get("role") for item in sources if type(item) is dict
+    )
+    if roles not in required_roles:
+        return False
+    expected_rule_versions = {
+        frozenset(("sec_listing_class", "nasdaq_instrument_heading", "yahoo_quote_denomination")): {
+            "host-listing-source-composite-v0.1"
+        },
+        frozenset(("sec_issuer_reference", "sec_cover_security_class", "yahoo_quote_denomination")): {
+            "host-listing-source-composite-v0.2",
+            "host-listing-source-composite-v0.3",
+            "host-listing-source-composite-v0.4",
+            "host-listing-source-composite-v0.5",
+        },
+    }
+    if parsed.get("rule_version") not in expected_rule_versions[roles]:
+        return False
+    source_ids = set()
+    for item in sources:
+        if type(item) is not dict:
+            return False
+        source_id = item.get("source_id")
+        source = context.source_bodies.get(source_id)
+        if (
+            type(source_id) is not str
+            or source_id in source_ids
+            or type(source) is not HostSourceBody
+            or item.get("locator") != source.final_locator
+            or item.get("body_sha256") != source.body_sha256
+            or item.get("symbol") != underlying_key.symbol
+            or item.get("origin")
+            != "https://{}".format(urlsplit(source.final_locator).netloc)
+            or type(item.get("excerpts")) is not list
+            or not item["excerpts"]
+        ):
+            return False
+        for excerpt in item["excerpts"]:
+            if (
+                type(excerpt) is not dict
+                or type(excerpt.get("start")) is not int
+                or type(excerpt.get("end")) is not int
+                or not 0 <= excerpt["start"] < excerpt["end"] <= len(source.body)
+                or type(excerpt.get("text")) is not str
+                or source.body[excerpt["start"] : excerpt["end"]]
+                != excerpt["text"]
+                or excerpt.get("sha256")
+                != hashlib.sha256(
+                    excerpt["text"].encode("utf-8", errors="strict")
+                ).hexdigest()
+            ):
+                return False
+        source_ids.add(source_id)
+        admission = admission_by_id.get(source_id)
+        recorded_admission = item.get("source_admission")
+        if source_id.startswith("host-admission-") and admission is None:
+            return False
+        if admission is not None:
+            if (
+                type(admission) is not SourceAdmission
+                or admission.final_locator != source.final_locator
+                or admission.parsed_body_sha256 != source.body_sha256
+                or admission.parsed_body != source.body
+                or admission.retrieved_at != source.retrieved_at
+                or recorded_admission != admission.provenance()
+            ):
+                return False
+        elif recorded_admission is not None:
+            return False
+    return len(source_ids) == 3
+
+
+def _exploration_listing_issuer(
+    reference: str,
+    underlying_key: UnderlyingKey,
+    context: HostBuildContext,
+    admission_by_id: dict,
+) -> Optional[str]:
+    """Return the issuer identity reconstituted from the exact listing composite."""
+    if not _exploration_listing_reference_valid(
+        reference, underlying_key, context, admission_by_id
+    ):
+        return None
+    try:
+        parsed = json.loads(reference)
+    except (TypeError, ValueError, RecursionError):
+        return None
+    if type(parsed) is not dict:
+        return None
+    issuers = []
+    for item in parsed["sources"]:
+        issuer = item.get("issuer")
+        if issuer is None and item.get("role") == "sec_issuer_reference":
+            # The SEC index row is CIK/ticker corroboration; the SEC filing
+            # cover and Yahoo issuer labels remain the issuer-name witnesses.
+            continue
+        issuer = _listing_ascii_field(issuer)
+        if issuer is None:
+            return None
+        issuers.append(issuer.translate(_LISTING_ASCII_CASEFOLD))
+    expected_issuer_count = (
+        2
+        if any(
+            item.get("role") == "sec_issuer_reference"
+            for item in parsed["sources"]
+        )
+        else 3
+    )
+    if len(issuers) != expected_issuer_count or len(set(issuers)) != 1:
+        return None
+    return next(
+        item["issuer"]
+        for item in parsed["sources"]
+        if type(item.get("issuer")) is str
+    )
+
+
+def _exploration_listing_sec_cik(
+    parsed_listing: dict,
+    underlying_key: UnderlyingKey,
+    context: HostBuildContext,
+    admission_by_id: dict,
+) -> Optional[str]:
+    """Reconstruct the listing CIK from its exact SEC witness."""
+    sources = parsed_listing.get("sources")
+    if type(sources) is not list:
+        return None
+    references = tuple(
+        item for item in sources
+        if type(item) is dict and item.get("role") == "sec_issuer_reference"
+    )
+    if references:
+        if len(references) != 1:
+            return None
+        item = references[0]
+        source_id = item.get("source_id")
+        source = context.source_bodies.get(source_id)
+        admission = admission_by_id.get(source_id)
+        if (
+            type(source) is not HostSourceBody
+            or type(admission) is not SourceAdmission
+            or admission.family != "sec"
+            or admission.final_locator != source.final_locator
+            or admission.parsed_body != source.body
+            or admission.parsed_body_sha256 != source.body_sha256
+            or admission.retrieved_at != source.retrieved_at
+        ):
+            return None
+        rows = _parse_sec_reference_selected(
+            source_id, source, admission, (underlying_key.symbol,)
+        )
+        if rows is None:
+            return None
+        row, excerpt = rows[underlying_key.symbol]
+        if (
+            item.get("cik") != row[0]
+            or item.get("issuer_name") != row[1]
+            or item.get("symbol") != row[2]
+            or item.get("exchange") != row[3]
+            or item.get("excerpts") != [excerpt]
+        ):
+            return None
+        return str(row[0])
+
+    listing_sources = tuple(
+        item for item in sources
+        if type(item) is dict and item.get("role") == "sec_listing_class"
+    )
+    if len(listing_sources) != 1:
+        return None
+    source = context.source_bodies.get(listing_sources[0].get("source_id"))
+    if type(source) is not HostSourceBody:
+        return None
+    locator_parts = _sec_locator_parts(source.final_locator)
+    return None if locator_parts is None else locator_parts[0]
+
+
+def _direct_issuer_event_identity(
+    claim_index: int,
+    claim: dict,
+    envelope: dict,
+    verified_binding_indices: frozenset,
+    context: HostBuildContext,
+    admission: object,
+    listing_reference: str,
+    underlying_key: UnderlyingKey,
+    admission_by_id: dict,
+) -> bool:
+    """Require an existing exact SEC occurrence validator to name this issuer."""
+    if type(admission) is not SourceAdmission:
+        return False
+    source = context.source_bodies.get(claim.get("source_id"))
+    issuer = _exploration_listing_issuer(
+        listing_reference, underlying_key, context, admission_by_id
+    )
+    if type(source) is not HostSourceBody or issuer is None:
+        return False
+    try:
+        parsed_size = len(admission.parsed_body.encode("utf-8", errors="strict"))
+        checked = _revalidate_source_admission(
+            admission,
+            max_raw_bytes=admission.raw_body_bytes,
+            max_parsed_bytes=parsed_size,
+        )
+    except (AttributeError, TypeError, ValueError, UnicodeEncodeError):
+        return False
+    if (
+        checked is None
+        or checked.family != "sec"
+        or checked.source_id != claim.get("source_id")
+        or checked.final_locator != source.final_locator
+        or checked.parsed_body != source.body
+        or checked.parsed_body_sha256 != source.body_sha256
+        or checked.retrieved_at != source.retrieved_at
+    ):
+        return False
+
+    registrant = None
+    locator_parts = _sec_locator_parts(source.final_locator)
+    if locator_parts is not None:
+        try:
+            if _resolve_sec_occurrence_date(
+                claim_index,
+                claim,
+                source,
+                envelope,
+                verified_binding_indices,
+                context,
+            ) is not None:
+                registrant = _sec_submission_header(source.body, locator_parts)
+        except (TypeError, ValueError, KeyError, IndexError):
+            registrant = None
+    if registrant is None and checked.family == "sec":
+        try:
+            occurrence = _sec_primary_html_occurrence_date_v0_4(
+                claim_index,
+                claim,
+                source,
+                envelope,
+                verified_binding_indices,
+                context,
+                checked,
+            )
+        except (TypeError, ValueError, KeyError, IndexError):
+            occurrence = None
+        if occurrence is not None:
+            registrant = occurrence[1].get("registrant")
+            locator_parts = _sec_locator_parts(source.final_locator)
+
+    if registrant is None or locator_parts is None:
+        return False
+    normalized_registrant = _listing_ascii_field(registrant)
+    normalized_issuer = _listing_ascii_field(issuer)
+    if (
+        normalized_registrant is None
+        or normalized_issuer is None
+        or normalized_registrant.translate(_LISTING_ASCII_CASEFOLD)
+        != normalized_issuer.translate(_LISTING_ASCII_CASEFOLD)
+    ):
+        return False
+
+    try:
+        parsed_listing = json.loads(listing_reference)
+    except (TypeError, ValueError, RecursionError):
+        return False
+    sec_cik = _exploration_listing_sec_cik(
+        parsed_listing, underlying_key, context, admission_by_id
+    )
+    if type(sec_cik) is int and not isinstance(sec_cik, bool):
+        sec_cik = str(sec_cik)
+    if (
+        type(sec_cik) is not str
+        or not sec_cik.isdigit()
+        or int(sec_cik) != int(locator_parts[0])
+    ):
+        return False
+    return True
+
+
+def _derive_exploration_leads(
+    result: HostGrounderEvidenceCatalogRuntimeResult,
+    *,
+    admission_records: tuple,
+    max_leads: int,
+) -> tuple:
+    """Project narrow leads from existing receipt-verified claims and listings."""
+    if (
+        type(result) is not HostGrounderEvidenceCatalogRuntimeResult
+        or type(admission_records) is not tuple
+        or type(max_leads) is not int
+        or max_leads < 0
+    ):
+        return ()
+    build = result.build_result
+    if type(build) is not HostBuildResult:
+        return ()
+    anchor_outcome = result._event_fact_anchor_outcome
+    if type(anchor_outcome) is not _EventFactAnchorOutcome:
+        return ()
+    try:
+        checked_outcome = _EventFactAnchorOutcome(
+            anchor_outcome.subquestion_ids,
+            anchor_outcome.original_description_binding,
+            anchor_outcome.selected_claim_id,
+        )
+    except (AttributeError, TypeError, ValueError):
+        return ()
+    anchor_id = checked_outcome.selected_claim_id
+    if (
+        checked_outcome != anchor_outcome
+        or type(anchor_id) is not str
+        or not anchor_id
+        or build.context.event_description_binding != anchor_id
+    ):
+        return ()
+    semantic = build.semantic_validation
+    snapshot = getattr(semantic, "snapshot", None)
+    receipt = getattr(semantic, "receipt", None)
+    evidence = _preparation_evidence(snapshot, receipt, build.context)
+    if evidence is None:
+        return ()
+    envelope, verified_claim_ids, verified_binding_indices = evidence
+    if _event_fact_anchor_claim_id(snapshot, receipt, build.context) != anchor_id:
+        return ()
+    claims = envelope.get("claims")
+    field_bindings = envelope.get("field_bindings")
+    if type(claims) is not list or type(field_bindings) is not list:
+        return ()
+    claim_index_by_id = {
+        claim["claim_id"]: index
+        for index, claim in enumerate(claims)
+        if type(claim) is dict and type(claim.get("claim_id")) is str
+    }
+    anchor_matches = tuple(
+        claim for claim in claims
+        if type(claim) is dict and claim.get("claim_id") == anchor_id
+    )
+    if (
+        len(anchor_matches) != 1
+        or anchor_id not in verified_claim_ids
+        or anchor_matches[0].get("kind") != "observed_fact"
+    ):
+        return ()
+    anchor_claim = anchor_matches[0]
+    anchor_closure = _exploration_claim_closure(
+        envelope,
+        verified_claim_ids,
+        verified_binding_indices,
+        build.context,
+        anchor_id,
+    )
+    if anchor_closure is None:
+        return ()
+
+    admission_by_id = {}
+    for admission in admission_records:
+        if type(admission) is not SourceAdmission or admission.source_id in admission_by_id:
+            return ()
+        admission_by_id[admission.source_id] = admission
+
+    # A direct observed-fact exposure is admitted only when an existing SEC
+    # occurrence validator binds the exact fact to the admitted filing issuer,
+    # and that filing's CIK is the listing composite's CIK. Ticker mentions in
+    # the same quote are not enough to create additional market candidates.
+    candidate_roots = []
+    anchor_index = claim_index_by_id.get(anchor_id)
+    for entity_ref in anchor_claim.get("entity_refs", ()):
+        binding = build.context.underlying_bindings.get((anchor_id, entity_ref))
+        if type(binding) is not tuple or len(binding) != 2:
+            continue
+        underlying_key, underlying_reference = binding
+        if (
+            entity_ref != underlying_key.symbol
+            or not _exploration_listing_reference_valid(
+                underlying_reference,
+                underlying_key,
+                build.context,
+                admission_by_id,
+            )
+            or not _direct_issuer_event_identity(
+                anchor_index,
+                anchor_claim,
+                envelope,
+                verified_binding_indices,
+                build.context,
+                admission_by_id.get(anchor_claim.get("source_id")),
+                underlying_reference,
+                underlying_key,
+                admission_by_id,
+            )
+        ):
+            continue
+        candidate_roots.append(
+            {
+                "exposure_id": anchor_id,
+                "closure": anchor_closure,
+                "entity_ref": entity_ref,
+                "underlying_key": underlying_key,
+                "underlying_reference": underlying_reference,
+            }
+        )
+
+    leads = []
+    seen = set()
+    for candidate in candidate_roots:
+        exposure_id = candidate["exposure_id"]
+        closure = candidate["closure"]
+        entity_ref = candidate["entity_ref"]
+        underlying_key = candidate["underlying_key"]
+        underlying_reference = candidate["underlying_reference"]
+        identity = (anchor_id, exposure_id, underlying_key)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        statements = []
+        source_ids = set()
+        uncertainties = []
+        binding_rows = []
+        provenance_by_source = {}
+        closure_ids = {claim["claim_id"] for claim in closure}
+        for claim in closure:
+            source_id = claim["source_id"]
+            source = build.context.source_bodies.get(source_id)
+            if type(source) is not HostSourceBody:
+                statements = []
+                break
+            admission = admission_by_id.get(source_id)
+            if source_id.startswith("host-admission-") and admission is None:
+                statements = []
+                break
+            if admission is not None and (
+                admission.final_locator != source.final_locator
+                or admission.parsed_body_sha256 != source.body_sha256
+                or admission.parsed_body != source.body
+                or admission.retrieved_at != source.retrieved_at
+            ):
+                statements = []
+                break
+            source_ids.add(source_id)
+            provenance_by_source[source_id] = {
+                "source_id": source_id,
+                "final_locator": source.final_locator,
+                "body_sha256": source.body_sha256,
+                "retrieved_at": source.retrieved_at.astimezone(
+                    datetime.timezone.utc
+                ).isoformat(),
+                "admission": None if admission is None else admission.provenance(),
+            }
+            statements.append(
+                EventStatement(
+                    claim["claim_id"],
+                    (
+                        EventStatementKind.OBSERVED_FACT
+                        if claim["kind"] == "observed_fact"
+                        else EventStatementKind.INTERPRETATION
+                    ),
+                    claim["text"],
+                    (source_id,),
+                    tuple(claim["dependency_claim_ids"]),
+                )
+            )
+            uncertainties.extend(claim["uncertainty"])
+            for index, field_binding in enumerate(field_bindings):
+                if (
+                    field_binding.get("field_path", "").startswith(
+                        "/claims/{}/".format(
+                            claim_index_by_id.get(claim["claim_id"], -1)
+                        )
+                    )
+                    and index in verified_binding_indices
+                ):
+                    binding_rows.append(
+                        {
+                            "index": index,
+                            "field_path": field_binding["field_path"],
+                            "source_id": field_binding["source_id"],
+                            "quote": field_binding["quote"],
+                            "start": field_binding["start"],
+                            "end": field_binding["end"],
+                        }
+                    )
+        if (
+            not statements
+            or closure_ids != {item.statement_id for item in statements}
+        ):
+            continue
+        provenance_sources = [
+            provenance_by_source[source_id] for source_id in sorted(source_ids)
+        ]
+        sources = []
+        for source_id in sorted(source_ids):
+            source = build.context.source_bodies[source_id]
+            sources.append(
+                EventSourceReference(
+                    source_id,
+                    source.final_locator,
+                    source.title,
+                    source.published_at,
+                )
+            )
+        validation_reference = json.dumps(
+            {
+                "schema_version": "host-exploration-lead-validation-v0.1",
+                "run_id": build.context.run_id,
+                "canonical_input_hash": build.context.canonical_input_hash,
+                "envelope_hash": snapshot.envelope_hash,
+                "event_anchor": anchor_id,
+                "exposure_statement_id": exposure_id,
+                "claim_dependency_closure": [
+                    claim["claim_id"] for claim in closure
+                ],
+                "verified_claim_ids": sorted(
+                    claim["claim_id"] for claim in closure
+                ),
+                "verified_entity_bindings": binding_rows,
+                "coverage": envelope.get("coverage"),
+                "coverage_outcomes": receipt.get("coverage_outcomes"),
+                "sources": provenance_sources,
+                "listing_reference_sha256": hashlib.sha256(
+                    underlying_reference.encode("utf-8", errors="strict")
+                ).hexdigest(),
+                "entity_ref": entity_ref,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        lead_payload = json.dumps(
+            [build.context.run_id, anchor_id, exposure_id, underlying_key.symbol],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8", errors="strict")
+        lead_id = "exploration-" + hashlib.sha256(lead_payload).hexdigest()
+        lead = ExplorationLead(
+            lead_id=lead_id,
+            event_description=anchor_claim["text"],
+            observed_at=build.context.observed_at,
+            underlying_key=underlying_key,
+            sources=tuple(sources),
+            statements=tuple(statements),
+            event_statement_id=anchor_id,
+            exposure_statement_id=exposure_id,
+            underlying_reference=underlying_reference,
+            validation_reference=validation_reference,
+            uncertainties=tuple(dict.fromkeys(uncertainties)),
+        )
+        try:
+            validate_exploration_lead(lead)
+        except (TypeError, ValueError):
+            continue
+        leads.append(lead)
+
+    if len(leads) > max_leads:
+        raise HostGrounderRuntimeError("EXPLORATION_LEAD_LIMIT_EXCEEDED")
+    return tuple(leads)
 
 
 def _covered_event_fact(
@@ -1740,6 +2480,7 @@ def _make_listing_source_preparer(
     admission_records: tuple = (),
     sec_composite=None,
     _event_fact_anchor_capture: Optional[list] = None,
+    exploration_enabled: bool = False,
 ) -> Callable[[object, object, HostBuildContext], HostBuildContext]:
     """Create an opt-in preparer over an exact, trusted source-ID tuple."""
     if type(authorized_source_ids) is not tuple:
@@ -1764,6 +2505,8 @@ def _make_listing_source_preparer(
         raise TypeError("admission_records must be a tuple of successful Host admissions")
     if _event_fact_anchor_capture is not None and type(_event_fact_anchor_capture) is not list:
         raise TypeError("private event fact-anchor capture must be an exact list")
+    if type(exploration_enabled) is not bool:
+        raise TypeError("exploration_enabled must be a Boolean")
     admission_by_id = {item.source_id: item for item in admission_records}
     if (
         len(admission_by_id) != len(admission_records)
@@ -1835,7 +2578,7 @@ def _make_listing_source_preparer(
         validation = _preparation_evidence(snapshot, receipt, original_context)
         if validation is None or type(receipt) is not _RECEIPT_MAPPING_TYPE:
             return prepared
-        envelope, _verified_claim_ids, verified_binding_indices = validation
+        envelope, verified_claim_ids, verified_binding_indices = validation
         verified_hypothesis_ids = receipt.get("verified_hypothesis_ids")
         hypotheses = envelope.get("hypotheses")
         field_bindings = envelope.get("field_bindings")
@@ -1852,6 +2595,78 @@ def _make_listing_source_preparer(
         bindings = dict(prepared.underlying_bindings)
         changed = False
         evidence_by_symbol = {}
+
+        def bind_listed_entity(pair, symbol):
+            nonlocal changed
+            if pair in bindings or type(symbol) is not str:
+                return False
+            if sec_composite is not None and symbol in composite_symbols:
+                if symbol not in evidence_by_symbol:
+                    evidence_by_symbol[symbol] = _listing_sec_primary_evidence(
+                        original_context, composite_records, composite_symbols, symbol
+                    )
+                evidence = evidence_by_symbol[symbol]
+                if evidence is None:
+                    return False
+                reference_source, cover_evidence, yahoo_evidence = evidence
+                source_evidence_items = (
+                    reference_source, cover_evidence, yahoo_evidence
+                )
+                cover_policy = _sec_primary_cover_policy(
+                    cover_evidence["share_class"],
+                    cover_evidence["registered_exchange"],
+                )
+                if cover_policy is None:
+                    return False
+                _yahoo_label, rule_version = cover_policy
+            else:
+                if symbol not in evidence_by_symbol:
+                    evidence_by_symbol[symbol] = _listing_evidence_for_symbol(
+                        original_context, listing_source_ids, symbol
+                    )
+                evidence = evidence_by_symbol[symbol]
+                if evidence is None:
+                    return False
+                sec_evidence, nasdaq_evidence, yahoo_evidence = evidence
+                source_evidence_items = (
+                    sec_evidence, nasdaq_evidence, yahoo_evidence
+                )
+                rule_version = "host-listing-source-composite-v0.1"
+            for source_evidence in source_evidence_items:
+                admission = admission_by_id.get(source_evidence["source_id"])
+                if admission is not None:
+                    if (
+                        admission.final_locator != source_evidence["locator"]
+                        or admission.parsed_body_sha256
+                        != source_evidence["body_sha256"]
+                    ):
+                        return False
+                    source_evidence["source_admission"] = admission.provenance()
+            try:
+                underlying_key = UnderlyingKey(
+                    symbol, None, UnderlyingSecurityType.EQUITY, "USD"
+                )
+            except (TypeError, ValueError):
+                return False
+            reference = json.dumps(
+                {
+                    "rule_version": rule_version,
+                    "symbol": symbol,
+                    "security_type": "EQUITY",
+                    "listing_mic": None,
+                    "currency": "USD",
+                    "currency_basis": _LISTING_CURRENCY_BASIS,
+                    "sources": list(source_evidence_items),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            bindings[pair] = (underlying_key, reference)
+            changed = True
+            return True
+
         for hypothesis_index, hypothesis in enumerate(hypotheses):
             if type(hypothesis) is not dict:
                 continue
@@ -1879,67 +2694,58 @@ def _make_listing_source_preparer(
                 or matching[0][0] not in verified_binding_indices
             ):
                 continue
-            if sec_composite is not None and symbol in composite_symbols:
-                if symbol not in evidence_by_symbol:
-                    evidence_by_symbol[symbol] = _listing_sec_primary_evidence(
-                        original_context, composite_records, composite_symbols, symbol
-                    )
-                evidence = evidence_by_symbol[symbol]
-                if evidence is None:
-                    continue
-                reference_source, cover_evidence, yahoo_evidence = evidence
-                source_evidence_items = (reference_source, cover_evidence, yahoo_evidence)
-                cover_policy = _sec_primary_cover_policy(
-                    cover_evidence["share_class"],
-                    cover_evidence["registered_exchange"],
-                )
-                if cover_policy is None:
-                    continue
-                _yahoo_label, rule_version = cover_policy
-            else:
-                if symbol not in evidence_by_symbol:
-                    evidence_by_symbol[symbol] = _listing_evidence_for_symbol(
-                        original_context, listing_source_ids, symbol
-                    )
-                evidence = evidence_by_symbol[symbol]
-                if evidence is None:
-                    continue
-                sec_evidence, nasdaq_evidence, yahoo_evidence = evidence
-                source_evidence_items = (sec_evidence, nasdaq_evidence, yahoo_evidence)
-                rule_version = "host-listing-source-composite-v0.1"
-            admission_mismatch = False
-            for source_evidence in source_evidence_items:
-                admission = admission_by_id.get(source_evidence["source_id"])
-                if admission is not None:
+            bind_listed_entity(pair, symbol)
+
+        if exploration_enabled:
+            claims = envelope.get("claims")
+            if type(claims) is list:
+                for claim_index, claim in enumerate(claims):
                     if (
-                        admission.final_locator != source_evidence["locator"]
-                        or admission.parsed_body_sha256 != source_evidence["body_sha256"]
+                        type(claim) is not dict
+                        or claim.get("claim_id")
+                        != prepared.event_description_binding
+                        or claim.get("kind") != "observed_fact"
+                        or claim.get("claim_id") not in verified_claim_ids
+                        or type(claim.get("entity_refs")) is not list
                     ):
-                        admission_mismatch = True
-                        break
-                    source_evidence["source_admission"] = admission.provenance()
-            if admission_mismatch:
-                continue
-            reference = json.dumps(
-                {
-                    "rule_version": rule_version,
-                    "symbol": symbol,
-                    "security_type": "EQUITY",
-                    "listing_mic": None,
-                    "currency": "USD",
-                    "currency_basis": _LISTING_CURRENCY_BASIS,
-                    "sources": list(source_evidence_items),
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-                allow_nan=False,
-            )
-            bindings[pair] = (
-                UnderlyingKey(symbol, None, UnderlyingSecurityType.EQUITY, "USD"),
-                reference,
-            )
-            changed = True
+                        continue
+                    claim_id = claim["claim_id"]
+                    source = original_context.source_bodies.get(
+                        claim.get("source_id")
+                    )
+                    quote = claim.get("quote")
+                    if (
+                        type(source) is not HostSourceBody
+                        or claim.get("locator") != source.final_locator
+                        or type(quote) is not str
+                        or not quote
+                        or source.body.find(quote) < 0
+                        or source.body.find(
+                            quote, source.body.find(quote) + 1
+                        ) >= 0
+                    ):
+                        continue
+                    for entity_index, entity_ref in enumerate(claim["entity_refs"]):
+                        field_path = "/claims/{}/entity_refs/{}".format(
+                            claim_index, entity_index
+                        )
+                        matching = tuple(
+                            (index, item)
+                            for index, item in enumerate(field_bindings)
+                            if type(item) is dict
+                            and item.get("field_path") == field_path
+                        )
+                        if (
+                            len(matching) != 1
+                            or matching[0][0] not in verified_binding_indices
+                            or matching[0][1].get("semantic_role") != "entity"
+                            or matching[0][1].get("status") != "supported"
+                            or matching[0][1].get("source_id")
+                            != claim.get("source_id")
+                        ):
+                            continue
+                        bind_listed_entity((claim_id, entity_ref), entity_ref)
+
         return replace(prepared, underlying_bindings=bindings) if changed else prepared
 
     return prepare_listing_sources
@@ -3383,6 +4189,7 @@ def _safe_configuration_snapshot(
     config: HostEventGrounderConfig,
     *,
     source_search_policy_version: Optional[str] = None,
+    exploration_enabled: bool = False,
 ) -> bytes:
     """Serialize only the fixed, non-secret run-start configuration allowlist."""
     if source_search_policy_version is None:
@@ -3394,6 +4201,8 @@ def _safe_configuration_snapshot(
         _SOURCE_SEARCH_POLICY_WORLD_PARTIAL,
     ):
         raise ValueError("source search policy version is invalid")
+    if type(exploration_enabled) is not bool:
+        raise ValueError("exploration_enabled must be a Boolean")
 
     def model_snapshot(model: ModelRuntimeConfig) -> dict:
         endpoint = urlsplit(model.base_endpoint)
@@ -3469,6 +4278,14 @@ def _safe_configuration_snapshot(
         ],
         "skills": [],
     }
+    if exploration_enabled:
+        snapshot["exploration_policy"] = {
+            "schema_version": "structure-first-exploration-v0.1",
+            "authority": "exploratory_structure_research",
+            "minimum_dte_days": 30,
+            "maximum_dte_days": 150,
+            "enabled": True,
+        }
     try:
         encoded = json.dumps(
             snapshot,
@@ -3492,6 +4309,7 @@ def create_event_grounder(
     discovery_transport: Optional[Callable[[Any, float], Any]] = None,
     semantic_transport: Optional[Callable[[Any, float], Any]] = None,
     host_context_preparer: Optional[Callable[..., HostBuildContext]] = None,
+    exploration_enabled: bool = False,
 ) -> Callable[..., HostGrounderEvidenceCatalogRuntimeResult]:
     """Return the frozen server callback, creating fresh clients per run.
 
@@ -3499,6 +4317,8 @@ def create_event_grounder(
     clients. Production callers omit them and use the configured HTTP clients.
     """
     config = _revalidate_config(config)
+    if type(exploration_enabled) is not bool:
+        raise TypeError("exploration_enabled must be a Boolean")
     if host_context_preparer is not None and not callable(host_context_preparer):
         raise TypeError("host_context_preparer must be callable or None")
     for name, transport in (
@@ -3517,7 +4337,9 @@ def create_event_grounder(
     # external call. The accessor below returns a detached JSON-compatible copy.
     event_search_policy_version = _event_source_search_policy_version(config)
     snapshot_bytes = _safe_configuration_snapshot(
-        config, source_search_policy_version=event_search_policy_version
+        config,
+        source_search_policy_version=event_search_policy_version,
+        exploration_enabled=exploration_enabled,
     )
 
     def configuration_snapshot() -> dict:
@@ -3989,6 +4811,7 @@ def create_event_grounder(
                     else None
                 ),
                 _event_fact_anchor_capture=event_fact_anchor_capture,
+                exploration_enabled=exploration_enabled,
             )
 
         context = HostBuildContext(
@@ -4024,14 +4847,28 @@ def create_event_grounder(
             semantic_transport_retry_enabled=default_recipe,
             default_recipe_enabled=default_recipe,
             producer_anchor_guidance_enabled=default_recipe,
+            exploration_claim_bindings_enabled=exploration_enabled,
         )
-        if event_fact_anchor_capture is None:
-            return result
-        if len(event_fact_anchor_capture) != 1:
-            raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED")
-        return _stamp_event_fact_anchor_outcome(
-            result, event_fact_anchor_capture[0]
-        )
+        if event_fact_anchor_capture is not None:
+            if len(event_fact_anchor_capture) != 1:
+                raise HostGrounderRuntimeError("HOST_CONTEXT_PREPARATION_REJECTED")
+            result = _stamp_event_fact_anchor_outcome(
+                result, event_fact_anchor_capture[0]
+            )
+        if exploration_enabled:
+            exploration_leads = _derive_exploration_leads(
+                result,
+                admission_records=tuple(admitted_sources),
+                max_leads=bounds.max_submissions,
+            )
+            if exploration_leads:
+                result = _with_exploration_leads(result, exploration_leads)
+                object.__setattr__(
+                    result,
+                    "_exploration_source_admissions",
+                    tuple(admitted_sources),
+                )
+        return result
 
     def event_grounder(
         raw_input: str,
@@ -4112,5 +4949,6 @@ def create_event_grounder(
         return query_bound_grounder
 
     event_grounder.configuration_snapshot = configuration_snapshot
+    event_grounder.exploration_enabled = exploration_enabled
     event_grounder._world_source_query_factory = world_source_query_factory
     return event_grounder

@@ -30,6 +30,8 @@ from convexity_hunter.market_data import (
 )
 from convexity_hunter.option_chain_discovery import (
     OptionChainDiscoveryRequest,
+    ExplorationLead,
+    ExploratoryOptionChainRequest,
     create_option_chain_discovery_request,
 )
 from convexity_hunter.providers import futu
@@ -107,6 +109,35 @@ def make_request() -> OptionChainDiscoveryRequest:
     return create_option_chain_discovery_request(
         handoff, evaluation_date=EVALUATION_DATE
     )
+
+
+def make_exploratory_request() -> ExploratoryOptionChainRequest:
+    source = EventSourceReference(
+        "exploration-source",
+        "https://www.sec.gov/example",
+        "Issuer filing",
+        datetime.datetime(2029, 12, 31, tzinfo=UTC),
+    )
+    fact = EventStatement(
+        "exploration-fact",
+        EventStatementKind.OBSERVED_FACT,
+        "The issuer disclosed a dated contract award.",
+        (source.source_id,),
+    )
+    lead = ExplorationLead(
+        "exploration-lead",
+        "The issuer disclosed a dated contract award.",
+        datetime.datetime(2029, 12, 31, tzinfo=UTC),
+        UnderlyingKey("ABC", "XNAS", UnderlyingSecurityType.EQUITY, "USD"),
+        (source,),
+        (fact,),
+        fact.statement_id,
+        fact.statement_id,
+        "host://underlying-binding/1",
+        "host://receipt-listing-binding/1",
+        ("Distribution change is not established.",),
+    )
+    return ExploratoryOptionChainRequest(lead, EVALUATION_DATE)
 
 
 def expiration_row(date, cycle="MONTH"):
@@ -223,6 +254,46 @@ class PublicBoundaryTests(unittest.TestCase):
 
 
 class SuccessfulRetrievalTests(unittest.TestCase):
+    def test_exploration_request_reuses_same_futu_retrieval_and_browser(self):
+        request = make_exploratory_request()
+        context = DiscoveryContext(
+            [expiration_row(LOWER)],
+            {LOWER.isoformat(): [chain_row(LOWER, "CALL", "100")]},
+        )
+        retrieved_at = datetime.datetime(2030, 1, 1, 10, 0, tzinfo=UTC)
+        with mock.patch.object(futu, "_utc_now", return_value=retrieved_at):
+            evidence = futu.retrieve_futu_option_chain_discovery_evidence(
+                context, discovery_request=request
+            )
+        browser = futu.create_futu_exact_contract_browser(evidence)
+        self.assertIs(evidence.discovery_request, request)
+        self.assertIs(browser.discovery_evidence, evidence)
+        self.assertEqual(evidence.provider_underlying, "US.ABC")
+        self.assertEqual(tuple(row.expiration for row in browser.rows), (LOWER,))
+        self.assertEqual(
+            context.calls,
+            [
+                ("expiration", "US.ABC"),
+                ("chain", "US.ABC", LOWER.isoformat(), LOWER.isoformat()),
+            ],
+        )
+
+    def test_constructor_bypassed_exploration_request_is_revalidated(self):
+        request = make_exploratory_request()
+        future_lead = object.__new__(ExplorationLead)
+        for name in ExplorationLead.__dataclass_fields__:
+            object.__setattr__(future_lead, name, getattr(request.lead, name))
+        object.__setattr__(
+            future_lead,
+            "observed_at",
+            datetime.datetime(2030, 1, 2, tzinfo=UTC),
+        )
+        forged = object.__new__(ExploratoryOptionChainRequest)
+        object.__setattr__(forged, "lead", future_lead)
+        object.__setattr__(forged, "evaluation_date", EVALUATION_DATE)
+        with self.assertRaisesRegex(ValueError, "not intrinsically valid|malformed"):
+            futu._validate_discovery_request(forged)
+
     def test_inclusive_bounds_nonmonth_retention_calls_and_request_identity(self):
         weekly = datetime.date(2030, 3, 15)
         context = DiscoveryContext(

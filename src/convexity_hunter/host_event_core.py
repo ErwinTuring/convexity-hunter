@@ -1,6 +1,7 @@
 """Explicit adapter from a prepared Event batch to the existing Core path."""
 
 import datetime as _datetime
+from dataclasses import replace as _replace
 from typing import Callable as _Callable
 
 from .core_application import (
@@ -14,7 +15,10 @@ from .host_profile import (
     APPROVED_STANDARD_RESEARCH_PROFILE,
     create_core_research_policy,
 )
-from .option_chain_discovery import OptionMaturityAuthority
+from .option_chain_discovery import (
+    OptionMaturityAuthority,
+    validate_exploration_lead,
+)
 
 
 __all__ = ("create_event_core_executor",)
@@ -25,6 +29,7 @@ def create_event_core_executor(
     evaluation_date: _datetime.date,
     maturity_authority: OptionMaturityAuthority,
     market_bridge: object,
+    exploration_enabled: bool = False,
 ) -> _Callable[..., CoreRunResult]:
     """Bind explicit Event Core authorities without acquiring source evidence."""
 
@@ -32,6 +37,8 @@ def create_event_core_executor(
         raise TypeError("evaluation_date must have exact type date")
     if type(maturity_authority) is not OptionMaturityAuthority:
         raise TypeError("maturity_authority must be OptionMaturityAuthority")
+    if type(exploration_enabled) is not bool:
+        raise TypeError("exploration_enabled must be a Boolean")
 
     def execute_event_core(
         raw_input: str,
@@ -62,8 +69,16 @@ def create_event_core_executor(
         submissions = source_batch.submissions
         if type(submissions) is not tuple:
             raise TypeError("source_batch.submissions must be a tuple")
-        if not submissions:
+        leads = source_batch.exploration_leads
+        if type(leads) is not tuple:
+            raise TypeError("source_batch.exploration_leads must be a tuple")
+        if leads and not exploration_enabled:
+            raise ValueError("exploration is disabled for this Event executor")
+        if not submissions and not (exploration_enabled and leads):
             raise ValueError("source_batch must contain at least one submission")
+        SourceSubmissionBatch(user_input, submissions, leads).__post_init__()
+        for lead in leads:
+            validate_exploration_lead(lead)
 
         def grounder(candidate: UserEventInput) -> SourceSubmissionBatch:
             if candidate is not user_input:
@@ -76,6 +91,8 @@ def create_event_core_executor(
             maturity_authority=maturity_authority,
             bounds=bounds,
         )
+        if exploration_enabled:
+            policy = _replace(policy, exploration_enabled=True)
         return run_event_core(
             user_input,
             grounder=grounder,

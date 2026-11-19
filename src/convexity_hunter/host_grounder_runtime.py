@@ -1309,6 +1309,7 @@ class HostGrounderEvidenceCatalogRuntimeResult:
     discovery_call: HostGrounderCallSummary
     semantic_call: HostGrounderCallSummary
     audit: HostEvidenceCatalogAudit = field(repr=False)
+    exploration_leads: tuple = ()
     _event_fact_anchor_outcome: Optional["_EventFactAnchorOutcome"] = field(
         default=None, init=False, repr=False, compare=False
     )
@@ -1317,6 +1318,9 @@ class HostGrounderEvidenceCatalogRuntimeResult:
     )
     _semantic_rejection_projection: Optional[_SemanticRejectionProjection] = field(
         default=None, init=False, repr=False, compare=False
+    )
+    _exploration_source_admissions: tuple = field(
+        default=(), init=False, repr=False, compare=False
     )
 
     def __repr__(self) -> str:
@@ -1361,15 +1365,54 @@ def _stamp_event_fact_anchor_outcome(
         result.discovery_call,
         result.semantic_call,
         result.audit,
+        result.exploration_leads,
     )
     object.__setattr__(stamped, "_event_fact_anchor_outcome", outcome)
     object.__setattr__(stamped, "_semantic_transport", result._semantic_transport)
+    object.__setattr__(
+        stamped,
+        "_exploration_source_admissions",
+        result._exploration_source_admissions,
+    )
     object.__setattr__(
         stamped,
         "_semantic_rejection_projection",
         result._semantic_rejection_projection,
     )
     return stamped
+
+
+def _with_exploration_leads(
+    result: HostGrounderEvidenceCatalogRuntimeResult,
+    exploration_leads: tuple,
+) -> HostGrounderEvidenceCatalogRuntimeResult:
+    """Return a fresh runtime result retaining the exact original Builder output."""
+    if (
+        type(result) is not HostGrounderEvidenceCatalogRuntimeResult
+        or type(exploration_leads) is not tuple
+        or result.exploration_leads
+    ):
+        raise TypeError("exploration leads cannot be attached to this runtime result")
+    copied = HostGrounderEvidenceCatalogRuntimeResult(
+        result.build_result,
+        result.discovery_call,
+        result.semantic_call,
+        result.audit,
+        exploration_leads,
+    )
+    object.__setattr__(copied, "_event_fact_anchor_outcome", result._event_fact_anchor_outcome)
+    object.__setattr__(copied, "_semantic_transport", result._semantic_transport)
+    object.__setattr__(
+        copied,
+        "_exploration_source_admissions",
+        result._exploration_source_admissions,
+    )
+    object.__setattr__(
+        copied,
+        "_semantic_rejection_projection",
+        result._semantic_rejection_projection,
+    )
+    return copied
 
 
 def _positive_int(value: object, code: str) -> int:
@@ -2205,6 +2248,8 @@ def _validate_prepared_context(
     captured: Mapping[str, object],
     envelope: Mapping[str, object],
     receipt: Mapping[str, object],
+    *,
+    exploration_claim_bindings_enabled: bool = False,
 ) -> HostBuildContext:
     if type(prepared) is not HostBuildContext:
         raise ValueError("prepared context changed frozen Host identity")
@@ -2242,11 +2287,49 @@ def _validate_prepared_context(
         ) != date_range:
             raise ValueError("new date range is invalid")
 
+    if type(exploration_claim_bindings_enabled) is not bool:
+        raise ValueError("exploration claim-binding flag is invalid")
     saved_bindings = captured["bindings"]
     old_keys = {item[0] for item in saved_bindings}
     hypotheses_by_id = {item["hypothesis_id"]: item for item in envelope["hypotheses"]}
     verified_hypotheses = set(receipt["verified_hypothesis_ids"])
     verified_binding_indices = set(receipt["verified_binding_indices"])
+    verified_claim_entities = set()
+    if exploration_claim_bindings_enabled:
+        verified_claim_ids = receipt.get("verified_claim_ids")
+        claims = envelope.get("claims")
+        field_bindings = envelope.get("field_bindings")
+        if (
+            type(verified_claim_ids) is not tuple
+            or type(claims) is not list
+            or type(field_bindings) is not list
+        ):
+            raise ValueError("verified exploration claim bindings are invalid")
+        verified_claim_set = set(verified_claim_ids)
+        for claim_index, claim in enumerate(claims):
+            if type(claim) is not dict or claim.get("claim_id") not in verified_claim_set:
+                continue
+            entity_refs = claim.get("entity_refs")
+            if type(entity_refs) is not list:
+                raise ValueError("verified exploration entity references are invalid")
+            for entity_index, entity_ref in enumerate(entity_refs):
+                expected_path = "/claims/{}/entity_refs/{}".format(
+                    claim_index, entity_index
+                )
+                matching = tuple(
+                    (index, item)
+                    for index, item in enumerate(field_bindings)
+                    if type(item) is dict and item.get("field_path") == expected_path
+                )
+                if (
+                    len(matching) == 1
+                    and matching[0][0] in verified_binding_indices
+                    and matching[0][1].get("semantic_role") == "entity"
+                    and matching[0][1].get("source_id") == claim.get("source_id")
+                    and matching[0][1].get("status") == "supported"
+                    and type(entity_ref) is str
+                ):
+                    verified_claim_entities.add((claim["claim_id"], entity_ref))
     verified_underlying_symbols = set()
     for hypothesis_index, hypothesis in enumerate(envelope["hypotheses"]):
         expected_path = "/hypotheses/{}/underlying_symbol".format(hypothesis_index)
@@ -2283,13 +2366,20 @@ def _validate_prepared_context(
             raise ValueError("invalid new underlying binding")
         key, reference = value
         hypothesis = hypotheses_by_id.get(hypothesis_id)
+        hypothesis_binding_is_verified = (
+            hypothesis_id in verified_hypotheses
+            and hypothesis is not None
+            and hypothesis.get("underlying_symbol") == symbol
+            and (hypothesis_id, symbol) in verified_underlying_symbols
+        )
+        exploration_binding_is_verified = (
+            exploration_claim_bindings_enabled
+            and (hypothesis_id, symbol) in verified_claim_entities
+        )
         if (
             type(hypothesis_id) is not str
             or type(symbol) is not str
-            or hypothesis_id not in verified_hypotheses
-            or hypothesis is None
-            or hypothesis["underlying_symbol"] != symbol
-            or (hypothesis_id, symbol) not in verified_underlying_symbols
+            or not (hypothesis_binding_is_verified or exploration_binding_is_verified)
             or type(key) is not UnderlyingKey
             or key.symbol != symbol
             or reference is None
@@ -2585,6 +2675,7 @@ def _run_host_grounder_same_run_evidence_catalog(
     producer_format_repair_enabled: bool = False,
     semantic_transport_retry_enabled: bool = False,
     semantic_rejection_projection_enabled: bool = False,
+    exploration_claim_bindings_enabled: bool = False,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Run the explicit paragraph-catalog v0.3 wire path exactly once per role."""
     max_json_bytes = _positive_int(max_json_bytes, "JSON_LIMIT_INVALID")
@@ -2636,6 +2727,8 @@ def _run_host_grounder_same_run_evidence_catalog(
         raise HostGrounderRuntimeError("SEMANTIC_TRANSPORT_RETRY_FLAG_INVALID")
     if type(semantic_rejection_projection_enabled) is not bool:
         raise HostGrounderRuntimeError("SEMANTIC_REJECTION_PROJECTION_FLAG_INVALID")
+    if type(exploration_claim_bindings_enabled) is not bool:
+        raise HostGrounderRuntimeError("EXPLORATION_CLAIM_BINDING_FLAG_INVALID")
     if semantic_rejection_projection_enabled and not (
         (
             producer_prompt_version == _PRODUCER_PROMPT_VERSION_V0_9
@@ -3523,6 +3616,7 @@ def _run_host_grounder_same_run_evidence_catalog(
                 captured_context,
                 preparation_envelope,
                 readonly_receipt,
+                exploration_claim_bindings_enabled=exploration_claim_bindings_enabled,
             )
             build_envelope = parse_model_output_envelope(
                 captured_bytes.decode("utf-8", errors="strict"),
@@ -3914,6 +4008,7 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
     semantic_transport_retry_enabled: bool = False,
     default_recipe_enabled: bool = False,
     producer_anchor_guidance_enabled: bool = False,
+    exploration_claim_bindings_enabled: bool = False,
 ) -> HostGrounderEvidenceCatalogRuntimeResult:
     """Private normal-Event route with explicit temporal-role prompts."""
     if not callable(host_context_preparer):
@@ -3924,6 +4019,8 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
         raise HostGrounderRuntimeError("PRODUCER_ANCHOR_GUIDANCE_FLAG_INVALID")
     if producer_anchor_guidance_enabled and not default_recipe_enabled:
         raise HostGrounderRuntimeError("PRODUCER_ANCHOR_GUIDANCE_ROUTE_INVALID")
+    if type(exploration_claim_bindings_enabled) is not bool:
+        raise HostGrounderRuntimeError("EXPLORATION_CLAIM_BINDING_FLAG_INVALID")
     covered_world_route = (
         type(context) is HostBuildContext and context.source_coverage is not None
     )
@@ -3968,6 +4065,7 @@ def _run_host_grounder_same_run_evidence_catalog_v0_10(
             producer_format_repair_enabled=True,
             semantic_transport_retry_enabled=semantic_transport_retry_enabled,
             semantic_rejection_projection_enabled=default_recipe_enabled,
+            exploration_claim_bindings_enabled=exploration_claim_bindings_enabled,
         )
     except HostGrounderRuntimeError as error:
         error._semantic_transport_route = (producer_prompt_version, semantic_prompt_version)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import json
 import re
 from decimal import Decimal
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
@@ -27,6 +28,8 @@ from .event_intelligence import (
     EventIntelligenceAcceptanceResult,
     EventIntelligenceAcceptanceStatus,
     EventIntelligenceSubmission,
+    EventSourceReference,
+    EventStatement,
     EventStatementKind,
     EventUnderlyingHypothesis,
     HypothesisReassessment,
@@ -40,20 +43,33 @@ from .host_profile import (
     _request_has_conflicting_registered_profile,
 )
 from .host_source_coverage import HostSourceCoverageAudit
-from .market_data import UnderlyingSecurityType
-from .option_chain_discovery import HypothesisMaturityAlignment, OptionMaturityAuthority
+from .market_data import UnderlyingKey, UnderlyingSecurityType
+from .option_chain_discovery import (
+    ExplorationLead,
+    ExploratoryOptionChainRequest,
+    HypothesisMaturityAlignment,
+    OptionMaturityAuthority,
+    validate_exploration_lead,
+    validate_exploratory_option_chain_request,
+)
 
 
 SCHEMA_VERSION = "host-batch-snapshot-v0.1"
 SOURCE_COVERAGE_SCHEMA_VERSION = "host-batch-snapshot-v0.2"
+EXPLORATION_SCHEMA_VERSION = "host-batch-snapshot-v0.3"
 OUTCOME_SCHEMA_VERSION = "host-batch-outcome-v0.1"
 AUDIT_SCHEMA_VERSION = "host-ei-batch-audit-v0.1"
+EXPLORATION_AUDIT_SCHEMA_VERSION = "host-exploration-batch-audit-v0.1"
+EXPLORATION_POLICY_SCHEMA_VERSION = "structure-first-exploration-v0.1"
+EXPLORATION_AUTHORITY = "exploratory_structure_research"
+EXPLORATION_MINIMUM_DTE_DAYS = 30
+EXPLORATION_MAXIMUM_DTE_DAYS = 150
 PARTIAL_SOURCE_COVERAGE_DISCLOSURE = (
     "来源提取覆盖不完整；仅核验已取得正文，失败来源未被视为事实或反证不存在。"
 )
 _CASE_KEY_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _LIMIT_REASON_RE = re.compile(
-    r"(submissions|hypotheses|browser_rows|cases):([1-9][0-9]*)>(0|[1-9][0-9]*)\Z",
+    r"(submissions|source_items|hypotheses|hypotheses_and_exploration_leads|browser_rows|cases):([1-9][0-9]*)>(0|[1-9][0-9]*)\Z",
     re.ASCII,
 )
 _SUMMARY_FIELDS = frozenset(
@@ -140,9 +156,45 @@ _ARCHIVE_FIELDS = frozenset(
     )
 )
 _ARCHIVE_FIELDS_V0_2 = _ARCHIVE_FIELDS | frozenset(("source_coverage_by_unit",))
+_ARCHIVE_FIELDS_V0_3 = _ARCHIVE_FIELDS | frozenset(("exploration_audit",))
+_ARCHIVE_FIELDS_V0_3_WITH_SOURCE_COVERAGE = _ARCHIVE_FIELDS_V0_3 | frozenset(("source_coverage_by_unit",))
 _SOURCE_COVERAGE_UNIT_FIELDS = frozenset(
     ("unit_id", "source_coverage", "submission_ids", "case_ids")
 )
+_SOURCE_COVERAGE_UNIT_FIELDS_V0_3 = _SOURCE_COVERAGE_UNIT_FIELDS | frozenset(
+    ("exploration_lead_ids",)
+)
+_EXPLORATION_POLICY_FIELDS = frozenset((
+    "schema_version", "authority", "minimum_dte_days", "maximum_dte_days", "enabled"
+))
+_EXPLORATION_AUDIT_FIELDS = frozenset(("schema_version", "status", "leads"))
+_EXPLORATION_LEAD_FIELDS = frozenset((
+    "lead_id", "event_description", "observed_at", "underlying_key", "sources",
+    "statements", "event_statement_id", "exposure_statement_id",
+    "underlying_reference", "validation_reference", "uncertainties",
+))
+_EXPLORATION_PUBLIC_LEAD_FIELDS = frozenset((
+    "lead_id", "event_description", "underlying_key", "sources", "statements",
+    "event_statement_id", "exposure_statement_id", "uncertainties",
+))
+_EXPLORATION_SOURCE_FIELDS = frozenset(("source_id", "locator", "title", "published_at"))
+_EXPLORATION_STATEMENT_FIELDS = frozenset((
+    "statement_id", "kind", "text", "source_ids", "dependency_statement_ids",
+))
+_EXPLORATION_REQUEST_FIELDS = frozenset((
+    "request_type", "evaluation_date", "minimum_expiration_date",
+    "maximum_expiration_date", "maturity_authority",
+    "hypothesis_maturity_alignment",
+))
+_EXPLORATION_VALIDATION_FIELDS = frozenset((
+    "schema_version", "run_id", "canonical_input_hash", "envelope_hash",
+    "event_anchor", "exposure_statement_id", "claim_dependency_closure",
+    "verified_claim_ids", "verified_entity_bindings", "coverage",
+    "coverage_outcomes", "sources", "listing_reference_sha256", "entity_ref",
+))
+_LINEAGE_FIELDS_V0_3 = _LINEAGE_FIELDS | frozenset(("lead_id",))
+_BATCH_CASE_FIELDS_V0_3 = _BATCH_CASE_FIELDS | frozenset(("exploration_request",))
+_UNAVAILABLE_FIELDS_V0_3 = _UNAVAILABLE_FIELDS | frozenset(("exploration_request",))
 
 
 def _keys(value: Any, expected: frozenset, label: str) -> None:
@@ -225,6 +277,83 @@ def _source_coverage_unit_rows(value: Any, *, host_run_id: str) -> List[Dict[str
     return rows
 
 
+def _world_exploration_coverage_rows(
+    value: Any,
+    *,
+    host_run_id: str,
+    leads: Tuple[ExplorationLead, ...],
+    archived: bool,
+) -> List[Dict[str, Any]]:
+    """Retain every World coverage unit and close its exact lead-ID links."""
+
+    if type(value) not in (tuple, list):
+        raise TypeError("source_coverage_by_unit must be a sequence")
+    base_rows = []
+    for item in value:
+        if archived:
+            _keys(item, _SOURCE_COVERAGE_UNIT_FIELDS_V0_3, "source coverage unit v0.3")
+            base_rows.append({key: item[key] for key in _SOURCE_COVERAGE_UNIT_FIELDS})
+        else:
+            _keys(item, _SOURCE_COVERAGE_UNIT_FIELDS, "source coverage unit")
+            base_rows.append(dict(item))
+    rows = _source_coverage_unit_rows(base_rows, host_run_id=host_run_id)
+    by_coverage_run = {}
+    for row in rows:
+        audit_payload = row["source_coverage"]
+        if audit_payload is None:
+            continue
+        audit = HostSourceCoverageAudit.from_dict(audit_payload)
+        if audit.run_id in by_coverage_run:
+            raise ValueError("one Grounder coverage run cannot bind multiple World units")
+        by_coverage_run[audit.run_id] = row
+
+    lead_ids_by_unit = {row["unit_id"]: [] for row in rows}
+    seen_lead_ids = set()
+    for lead in leads:
+        lead = validate_exploration_lead(lead)
+        if lead.lead_id in seen_lead_ids:
+            raise ValueError("World exploration lead IDs must be unique")
+        seen_lead_ids.add(lead.lead_id)
+        proof = _exploration_validation_reference(lead)
+        row = by_coverage_run.get(proof["run_id"])
+        if row is None or row["source_coverage"] is None:
+            raise ValueError("World exploration lead has no exact source-coverage run link")
+        audit = HostSourceCoverageAudit.from_dict(row["source_coverage"])
+        if audit.status == "EMPTY":
+            raise ValueError("World exploration lead cannot bind an EMPTY coverage unit")
+        entries = audit.to_dict()["entries"]
+        failed_ids = {
+            item["source_id"] for item in entries if item["status"] == "FAILED"
+        }
+        failed_locators = {
+            item["locator"] for item in entries if item["status"] == "FAILED"
+        }
+        available = {
+            item["source_id"]: item
+            for item in entries if item["status"] == "BODY_AVAILABLE"
+        }
+        for source in lead.sources:
+            if (
+                source.source_id in failed_ids
+                or source.locator in failed_locators
+                or (
+                    source.source_id in available
+                    and source.locator != available[source.source_id]["locator"]
+                )
+            ):
+                raise ValueError("World exploration source conflicts with extraction coverage")
+        lead_ids_by_unit[row["unit_id"]].append(lead.lead_id)
+
+    projected = []
+    for row in rows:
+        item = dict(row)
+        item["exploration_lead_ids"] = lead_ids_by_unit[row["unit_id"]]
+        projected.append(item)
+    if archived and projected != value:
+        raise ValueError("World v0.3 coverage rows are not the canonical exact lead-linked form")
+    return projected
+
+
 def _validate_source_coverage_links(
     rows: List[Dict[str, Any]],
     *,
@@ -232,6 +361,7 @@ def _validate_source_coverage_links(
     submissions: List[Dict[str, Any]],
     cases: List[Dict[str, Any]],
     unavailable: List[Dict[str, Any]],
+    exploration_leads: Tuple[ExplorationLead, ...] = (),
 ) -> None:
     """Check sidecar IDs against actual EI and Core archive relationships."""
 
@@ -244,6 +374,7 @@ def _validate_source_coverage_links(
     }
     unit_by_submission: Dict[str, str] = {}
     row_by_unit = {item["unit_id"]: item for item in rows}
+    unit_by_coverage_run: Dict[str, Dict[str, Any]] = {}
     for row in rows:
         audit_value = row["source_coverage"]
         audit = (
@@ -255,6 +386,10 @@ def _validate_source_coverage_links(
             audit.host_run_id != host_run_id or audit.unit_id != row["unit_id"]
         ):
             raise ValueError("source coverage audit is bound to a different Host run or unit")
+        if audit is not None:
+            if audit.run_id in unit_by_coverage_run:
+                raise ValueError("one Grounder coverage run cannot bind multiple World units")
+            unit_by_coverage_run[audit.run_id] = row
         for submission_id in row["submission_ids"]:
             if submission_id not in actual_submissions:
                 raise ValueError("coverage submission ID does not resolve to the EI audit")
@@ -307,6 +442,47 @@ def _validate_source_coverage_links(
                 # through the existing authenticated admission pipeline.  This
                 # archive does not grant or independently re-prove that authority.
             unit_by_submission[submission_id] = row["unit_id"]
+
+    lead_ids_by_unit: Dict[str, List[str]] = {
+        unit_id: [] for unit_id in row_by_unit
+    }
+    unit_by_lead_id: Dict[str, str] = {}
+    for lead in exploration_leads:
+        validation = _exploration_validation_reference(lead)
+        row = unit_by_coverage_run.get(validation["run_id"])
+        if row is None or row["source_coverage"] is None:
+            raise ValueError("exploration lead has no exact covered World unit link")
+        audit = HostSourceCoverageAudit.from_dict(row["source_coverage"])
+        if audit.status == "EMPTY":
+            raise ValueError("exploration lead cannot bind an EMPTY coverage unit")
+        entries = audit.to_dict()["entries"]
+        failed_ids = {
+            item["source_id"] for item in entries if item["status"] == "FAILED"
+        }
+        failed_locators = {
+            item["locator"] for item in entries if item["status"] == "FAILED"
+        }
+        available = {
+            item["source_id"]: item
+            for item in entries if item["status"] == "BODY_AVAILABLE"
+        }
+        for source in lead.sources:
+            if (
+                source.source_id in failed_ids
+                or source.locator in failed_locators
+                or (
+                    source.source_id in available
+                    and source.locator != available[source.source_id]["locator"]
+                )
+            ):
+                raise ValueError("exploration lead source conflicts with World coverage")
+        lead_ids_by_unit[row["unit_id"]].append(lead.lead_id)
+        unit_by_lead_id[lead.lead_id] = row["unit_id"]
+
+    if exploration_leads:
+        for row in rows:
+            if row.get("exploration_lead_ids") != lead_ids_by_unit[row["unit_id"]]:
+                raise ValueError("World coverage lead links differ from validated lead run IDs")
     if set(unit_by_submission) != actual_submissions:
         raise ValueError("every EI submission must map to exactly one covered World unit")
 
@@ -315,8 +491,12 @@ def _validate_source_coverage_links(
     }
     for item in cases:
         lineage = item["lineage"]
-        submission_id = lineage["submission_id"]
-        unit_id = unit_by_submission.get(submission_id)
+        lead_id = lineage.get("lead_id")
+        unit_id = (
+            unit_by_lead_id.get(lead_id)
+            if lead_id is not None
+            else unit_by_submission.get(lineage["submission_id"])
+        )
         if unit_id is None:
             raise ValueError("Core case lineage has no covered World unit")
         audit = HostSourceCoverageAudit.from_dict(row_by_unit[unit_id]["source_coverage"])
@@ -325,7 +505,21 @@ def _validate_source_coverage_links(
         expected_cases_by_unit[unit_id].append(item["case_id"])
 
     for item in unavailable:
-        submission_id = item["lineage"]["submission_id"]
+        lineage = item["lineage"]
+        lead_id = lineage.get("lead_id")
+        if lead_id is not None:
+            unit_id = unit_by_lead_id.get(lead_id)
+            if unit_id is None:
+                raise ValueError("exploratory unavailable lineage has no covered World unit")
+            if item["case_id"] in row_by_unit:
+                raise ValueError("exploratory unavailable case cannot alias a coverage unit")
+            audit = HostSourceCoverageAudit.from_dict(
+                row_by_unit[unit_id]["source_coverage"]
+            )
+            if audit.status == "EMPTY":
+                raise ValueError("exploratory unavailable linkage requires non-EMPTY source coverage")
+            continue
+        submission_id = lineage["submission_id"]
         if submission_id is None:
             unit_row = row_by_unit.get(item["case_id"])
             if unit_row is not None and (
@@ -407,11 +601,231 @@ def _bounds(value: Any) -> Dict[str, Any]:
     return value
 
 
+def _exploration_policy(metadata: Any, *, mode: str) -> Dict[str, Any]:
+    configuration = metadata.get("configuration_snapshot") if type(metadata) is dict else None
+    policy = (
+        configuration.get("exploration_policy")
+        if type(configuration) is dict
+        else None
+    )
+    _keys(policy, _EXPLORATION_POLICY_FIELDS, "exploration policy")
+    if (
+        mode not in ("event", "world")
+        or type(policy["schema_version"]) is not str
+        or policy["schema_version"] != EXPLORATION_POLICY_SCHEMA_VERSION
+        or type(policy["authority"]) is not str
+        or policy["authority"] != EXPLORATION_AUTHORITY
+        or type(policy["minimum_dte_days"]) is not int
+        or policy["minimum_dte_days"] != EXPLORATION_MINIMUM_DTE_DAYS
+        or type(policy["maximum_dte_days"]) is not int
+        or policy["maximum_dte_days"] != EXPLORATION_MAXIMUM_DTE_DAYS
+        or type(policy["enabled"]) is not bool
+        or policy["enabled"] is not True
+    ):
+        raise ValueError("exploration archive requires the approved immutable enabled policy")
+    return dict(policy)
+
+
 def _enum_text(value: Any, label: str) -> str:
     result = getattr(value, "value", None)
     if type(result) is not str:
         raise TypeError("{} must be a closed enum value".format(label))
     return result
+
+
+def _exploration_validation_reference(value: Any) -> Dict[str, Any]:
+    """Validate the closed, private receipt/listing lineage retained by a lead."""
+
+    lead = validate_exploration_lead(value)
+    raw = lead.validation_reference
+    if len(raw.encode("utf-8", "strict")) > 100_000:
+        raise ValueError("exploration validation reference exceeds its archive bound")
+    try:
+        payload = json.loads(raw)
+        canonical = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError, UnicodeError, RecursionError) as error:
+        raise ValueError("exploration validation reference is not canonical JSON") from error
+    _keys(payload, _EXPLORATION_VALIDATION_FIELDS, "exploration validation reference")
+    if canonical != raw:
+        raise ValueError("exploration validation reference is not canonical JSON")
+    for name in ("canonical_input_hash", "envelope_hash", "listing_reference_sha256"):
+        if type(payload[name]) is not str or re.fullmatch(r"[0-9a-f]{64}", payload[name], re.ASCII) is None:
+            raise ValueError("exploration validation reference has an invalid digest")
+    for name in ("run_id", "event_anchor", "exposure_statement_id", "entity_ref"):
+        _text(payload[name], "exploration validation reference " + name)
+    if (
+        payload["schema_version"] != "host-exploration-lead-validation-v0.1"
+        or payload["event_anchor"] != lead.event_statement_id
+        or payload["exposure_statement_id"] != lead.exposure_statement_id
+        or payload["listing_reference_sha256"]
+        != hashlib.sha256(lead.underlying_reference.encode("utf-8", "strict")).hexdigest()
+    ):
+        raise ValueError("exploration validation reference does not bind the exact lead")
+    closure = _strings(payload["claim_dependency_closure"], "exploration claim closure", nonempty=True)
+    verified = _strings(payload["verified_claim_ids"], "exploration verified claim IDs", nonempty=True)
+    statement_ids = [item.statement_id for item in lead.statements]
+    if (
+        not closure
+        or len(closure) != len(set(closure))
+        or closure != statement_ids
+        or verified != sorted(closure)
+        or payload["event_anchor"] not in closure
+        or payload["exposure_statement_id"] not in closure
+        or len(lead_id := "exploration-" + hashlib.sha256(
+            json.dumps(
+                [payload["run_id"], payload["event_anchor"],
+                 payload["exposure_statement_id"], lead.underlying_key.symbol],
+                ensure_ascii=False, separators=(",", ":"),
+            ).encode("utf-8", "strict")
+        ).hexdigest()) == 0
+        or lead.lead_id != lead_id
+    ):
+        raise ValueError("exploration validation reference has a dangling lead or claim closure")
+    event_statement = next(
+        item for item in lead.statements
+        if item.statement_id == lead.event_statement_id
+    )
+    if lead.event_description != event_statement.text:
+        raise ValueError("exploration event description differs from its retained statement")
+
+    sources = payload["sources"]
+    if type(sources) is not list or not 1 <= len(sources) <= 32:
+        raise ValueError("exploration source proof rows are outside the archive bound")
+    source_by_id = {}
+    for item in sources:
+        _keys(
+            item,
+            frozenset(("source_id", "final_locator", "body_sha256", "retrieved_at", "admission")),
+            "exploration source proof",
+        )
+        source_id = _text(item["source_id"], "exploration source proof source_id")
+        locator = _text(item["final_locator"], "exploration source proof locator")
+        digest = item["body_sha256"]
+        if (
+            source_id in source_by_id
+            or type(digest) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", digest, re.ASCII) is None
+        ):
+            raise ValueError("exploration source proof identity or digest is invalid")
+        _parse_datetime(item["retrieved_at"], "exploration source proof retrieved_at")
+        if item["admission"] is not None and type(item["admission"]) is not dict:
+            raise ValueError("exploration source admission proof must be an object or null")
+        source_by_id[source_id] = (locator, digest)
+    lead_sources = {item.source_id: item for item in lead.sources}
+    if set(source_by_id) != set(lead_sources):
+        raise ValueError("exploration proof source IDs differ from retained lead sources")
+    for source_id, source in lead_sources.items():
+        if source_by_id[source_id][0] != source.locator:
+            raise ValueError("exploration proof locator differs from retained lead source")
+
+    bindings = payload["verified_entity_bindings"]
+    if type(bindings) is not list or not 1 <= len(bindings) <= 128:
+        raise ValueError("exploration entity proof rows are outside the archive bound")
+    binding_indexes = set()
+    for item in bindings:
+        _keys(
+            item, frozenset(("index", "field_path", "source_id", "quote", "start", "end")),
+            "exploration verified entity binding",
+        )
+        if (
+            type(item["index"]) is not int or item["index"] < 0
+            or item["index"] in binding_indexes
+            or type(item["start"]) is not int or item["start"] < 0
+            or type(item["end"]) is not int or item["end"] <= item["start"]
+            or item["source_id"] not in source_by_id
+        ):
+            raise ValueError("exploration verified entity binding is invalid")
+        _text(item["field_path"], "exploration entity binding field_path")
+        _text(item["quote"], "exploration entity binding quote")
+        binding_indexes.add(item["index"])
+    if not any("/entity_refs/" in item["field_path"] for item in bindings):
+        raise ValueError("exploration proof has no verified entity binding")
+
+    if (
+        type(payload["coverage"]) is not list or len(payload["coverage"]) > 128
+        or type(payload["coverage_outcomes"]) is not list
+        or len(payload["coverage_outcomes"]) > 128
+    ):
+        raise ValueError("exploration semantic coverage proof exceeds its archive bound")
+    return payload
+
+
+def _validated_exploration_listing_reference(lead: ExplorationLead) -> Dict[str, Any]:
+    raw = lead.underlying_reference
+    if len(raw.encode("utf-8", "strict")) > 100_000:
+        raise ValueError("exploration listing reference exceeds its archive bound")
+    try:
+        payload = json.loads(raw)
+        canonical = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError, UnicodeError, RecursionError) as error:
+        raise ValueError("exploration listing reference is not canonical JSON") from error
+    _keys(
+        payload,
+        frozenset(("rule_version", "symbol", "security_type", "listing_mic", "currency", "currency_basis", "sources")),
+        "exploration listing reference",
+    )
+    if (
+        canonical != raw
+        or payload["rule_version"] not in {
+            "host-listing-source-composite-v0.1",
+            "host-listing-source-composite-v0.2",
+            "host-listing-source-composite-v0.3",
+            "host-listing-source-composite-v0.4",
+            "host-listing-source-composite-v0.5",
+        }
+        or payload["symbol"] != lead.underlying_key.symbol
+        or payload["security_type"] != lead.underlying_key.security_type.name
+        or payload["listing_mic"] != lead.underlying_key.listing_mic
+        or payload["currency"] != lead.underlying_key.currency
+        or payload["currency_basis"] != "yahoo_provider_reported_quote_denomination"
+        or type(payload["sources"]) is not list
+        or len(payload["sources"]) != 3
+    ):
+        raise ValueError("exploration listing reference does not bind its exact underlying")
+    roles = set()
+    source_ids = set()
+    allowed_source_fields = frozenset((
+        "role", "source_id", "locator", "origin", "body_sha256", "issuer",
+        "share_class", "symbol", "registered_exchange", "security_class_authority",
+        "currency", "currency_basis", "excerpts", "source_admission",
+        "cik", "issuer_name", "exchange",
+    ))
+    for item in payload["sources"]:
+        if type(item) is not dict or not set(item).issubset(allowed_source_fields):
+            raise ValueError("exploration listing source has an unknown field")
+        if not {"role", "source_id", "locator", "body_sha256"}.issubset(item):
+            raise ValueError("exploration listing source is incomplete")
+        role = _text(item["role"], "exploration listing source role")
+        source_id = _text(item["source_id"], "exploration listing source_id")
+        _text(item["locator"], "exploration listing locator")
+        digest = item["body_sha256"]
+        if (
+            role in roles or source_id in source_ids
+            or type(digest) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", digest, re.ASCII) is None
+            or ("symbol" in item and item["symbol"] != lead.underlying_key.symbol)
+            or ("currency" in item and item["currency"] != lead.underlying_key.currency)
+        ):
+            raise ValueError("exploration listing source identity is inconsistent")
+        roles.add(role)
+        source_ids.add(source_id)
+        if "source_admission" in item and type(item["source_admission"]) is not dict:
+            raise ValueError("listing admission provenance must be an object")
+        if "excerpts" not in item or type(item["excerpts"]) is not list:
+            raise ValueError("exploration listing source excerpts are malformed")
+    allowed_roles = {
+        frozenset(("sec_listing_class", "nasdaq_instrument_heading", "yahoo_quote_denomination")),
+        frozenset(("sec_issuer_reference", "sec_cover_security_class", "yahoo_quote_denomination")),
+    }
+    if frozenset(roles) not in allowed_roles:
+        raise ValueError("exploration listing source roles do not match an approved route")
+    return payload
 
 
 def _date_range_projection(value: Any, label: str) -> Optional[Dict[str, Any]]:
@@ -509,6 +923,332 @@ def _submission_projection(
     }
 
 
+def _exploration_lead_projection(value: ExplorationLead) -> Dict[str, Any]:
+    lead = validate_exploration_lead(value)
+    _exploration_validation_reference(lead)
+    _validated_exploration_listing_reference(lead)
+    projected = {
+        "lead_id": _text(lead.lead_id, "exploration lead_id"),
+        "event_description": _text(lead.event_description, "exploration event_description"),
+        "observed_at": _datetime(lead.observed_at, "exploration observed_at"),
+        "underlying_key": {
+            "symbol": _text(lead.underlying_key.symbol, "exploration underlying symbol"),
+            "listing_mic": (
+                None if lead.underlying_key.listing_mic is None
+                else _text(lead.underlying_key.listing_mic, "exploration listing MIC")
+            ),
+            "security_type": _enum_text(
+                lead.underlying_key.security_type, "exploration security_type"
+            ),
+            "currency": _text(lead.underlying_key.currency, "exploration currency"),
+        },
+        "sources": [
+            {
+                "source_id": _text(source.source_id, "exploration source_id"),
+                "locator": _text(source.locator, "exploration source locator"),
+                "title": None if source.title is None else _text(source.title, "exploration source title"),
+                "published_at": _datetime(source.published_at, "exploration source published_at"),
+            }
+            for source in lead.sources
+        ],
+        "statements": [
+            {
+                "statement_id": _text(statement.statement_id, "exploration statement_id"),
+                "kind": _enum_text(statement.kind, "exploration statement kind"),
+                "text": _text(statement.text, "exploration statement text"),
+                "source_ids": list(_strings(statement.source_ids, "exploration statement source_ids")),
+                "dependency_statement_ids": list(
+                    _strings(
+                        statement.dependency_statement_ids,
+                        "exploration statement dependencies",
+                    )
+                ),
+            }
+            for statement in lead.statements
+        ],
+        "event_statement_id": _text(lead.event_statement_id, "event_statement_id"),
+        "exposure_statement_id": _text(lead.exposure_statement_id, "exposure_statement_id"),
+        "underlying_reference": _text(lead.underlying_reference, "underlying_reference"),
+        "validation_reference": _text(lead.validation_reference, "validation_reference"),
+        "uncertainties": list(_strings(lead.uncertainties, "exploration uncertainties")),
+    }
+    return projected
+
+
+def _exploration_lead_public_projection(value: Any) -> Dict[str, Any]:
+    """Project admitted lead material without private listing proof references."""
+
+    if type(value) is ExplorationLead:
+        lead = validate_exploration_lead(value)
+        key = lead.underlying_key
+        sources = [
+            {
+                "source_id": source.source_id,
+                "locator": source.locator,
+                "title": source.title,
+                "published_at": _datetime(source.published_at, "exploration source published_at"),
+            }
+            for source in lead.sources
+        ]
+        statements = [
+            {
+                "statement_id": statement.statement_id,
+                "kind": _enum_text(statement.kind, "exploration statement kind"),
+                "text": statement.text,
+                "source_ids": list(statement.source_ids),
+                "dependency_statement_ids": list(statement.dependency_statement_ids),
+            }
+            for statement in lead.statements
+        ]
+        return {
+            "lead_id": lead.lead_id,
+            "event_description": lead.event_description,
+            "underlying_key": {
+                "symbol": key.symbol,
+                "listing_mic": key.listing_mic,
+                "security_type": _enum_text(key.security_type, "exploration security_type"),
+                "currency": key.currency,
+            },
+            "sources": sources,
+            "statements": statements,
+            "event_statement_id": lead.event_statement_id,
+            "exposure_statement_id": lead.exposure_statement_id,
+            "uncertainties": list(lead.uncertainties),
+        }
+    _keys(value, _EXPLORATION_LEAD_FIELDS, "exploration lead")
+    # Public material is a deliberate allowlist; proof references remain in
+    # the private batch archive and are never copied into the research view.
+    return {
+        key: value[key]
+        for key in (
+            "lead_id", "event_description", "underlying_key", "sources", "statements",
+            "event_statement_id", "exposure_statement_id", "uncertainties",
+        )
+    }
+
+
+def _validate_exploration_public_lead(value: Any) -> Dict[str, Any]:
+    _keys(value, _EXPLORATION_PUBLIC_LEAD_FIELDS, "public exploration lead")
+    key_value = value["underlying_key"]
+    _keys(
+        key_value,
+        frozenset(("symbol", "listing_mic", "security_type", "currency")),
+        "public exploration underlying key",
+    )
+    try:
+        key = UnderlyingKey(
+            _text(key_value["symbol"], "public exploration symbol"),
+            _optional_text(key_value["listing_mic"], "public exploration listing MIC"),
+            UnderlyingSecurityType(_text(key_value["security_type"], "public exploration security_type")),
+            _text(key_value["currency"], "public exploration currency"),
+        )
+    except ValueError as error:
+        raise ValueError("public exploration underlying key is invalid") from error
+    if type(value["sources"]) is not list or type(value["statements"]) is not list:
+        raise TypeError("public exploration sources and statements must be arrays")
+    sources = []
+    for source in value["sources"]:
+        _keys(source, _EXPLORATION_SOURCE_FIELDS, "public exploration source")
+        sources.append(EventSourceReference(
+            _text(source["source_id"], "public exploration source_id"),
+            _text(source["locator"], "public exploration source locator"),
+            _optional_text(source["title"], "public exploration source title"),
+            _parse_datetime(source["published_at"], "public exploration source published_at", optional=True),
+        ))
+    statements = []
+    for statement in value["statements"]:
+        _keys(statement, _EXPLORATION_STATEMENT_FIELDS, "public exploration statement")
+        try:
+            kind = EventStatementKind(_text(statement["kind"], "public exploration statement kind"))
+        except ValueError as error:
+            raise ValueError("public exploration statement kind is invalid") from error
+        statements.append(EventStatement(
+            _text(statement["statement_id"], "public exploration statement_id"),
+            kind,
+            _text(statement["text"], "public exploration statement text"),
+            tuple(_strings(statement["source_ids"], "public exploration statement source_ids")),
+            tuple(_strings(
+                statement["dependency_statement_ids"],
+                "public exploration statement dependencies",
+            )),
+        ))
+    lead = ExplorationLead(
+        _text(value["lead_id"], "public exploration lead_id"),
+        _text(value["event_description"], "public exploration event_description"),
+        datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc),
+        key,
+        tuple(sources),
+        tuple(statements),
+        _text(value["event_statement_id"], "public exploration event statement_id"),
+        _text(value["exposure_statement_id"], "public exploration exposure statement_id"),
+        "public-proof-reference",
+        "public-validation-reference",
+        tuple(_strings(value["uncertainties"], "public exploration uncertainties")),
+    )
+    validate_exploration_lead(lead)
+    if _exploration_lead_public_projection(lead) != value:
+        raise ValueError("public exploration lead is not canonical structured material")
+    return dict(value)
+
+
+def _decode_exploration_lead(value: Any) -> ExplorationLead:
+    _keys(value, _EXPLORATION_LEAD_FIELDS, "exploration lead")
+    key_value = value["underlying_key"]
+    _keys(
+        key_value,
+        frozenset(("symbol", "listing_mic", "security_type", "currency")),
+        "exploration underlying key",
+    )
+    try:
+        security_type = UnderlyingSecurityType(
+            _text(key_value["security_type"], "exploration security_type")
+        )
+    except ValueError as error:
+        raise ValueError("unknown exploration security type") from error
+    underlying_key = UnderlyingKey(
+        _text(key_value["symbol"], "exploration underlying symbol"),
+        _optional_text(key_value["listing_mic"], "exploration listing MIC"),
+        security_type,
+        _text(key_value["currency"], "exploration currency"),
+    )
+    if type(value["sources"]) is not list or type(value["statements"]) is not list:
+        raise TypeError("exploration source and statement records must be arrays")
+    sources = []
+    for source in value["sources"]:
+        _keys(source, _EXPLORATION_SOURCE_FIELDS, "exploration source")
+        sources.append(
+            EventSourceReference(
+                _text(source["source_id"], "exploration source_id"),
+                _text(source["locator"], "exploration source locator"),
+                _optional_text(source["title"], "exploration source title"),
+                _parse_datetime(source["published_at"], "exploration source published_at", optional=True),
+            )
+        )
+    statements = []
+    for statement in value["statements"]:
+        _keys(statement, _EXPLORATION_STATEMENT_FIELDS, "exploration statement")
+        try:
+            kind = EventStatementKind(_text(statement["kind"], "exploration statement kind"))
+        except ValueError as error:
+            raise ValueError("unknown exploration statement kind") from error
+        statements.append(
+            EventStatement(
+                _text(statement["statement_id"], "exploration statement_id"),
+                kind,
+                _text(statement["text"], "exploration statement text"),
+                tuple(_strings(statement["source_ids"], "exploration statement source_ids")),
+                tuple(_strings(
+                    statement["dependency_statement_ids"],
+                    "exploration statement dependencies",
+                )),
+            )
+        )
+    lead = ExplorationLead(
+        _text(value["lead_id"], "exploration lead_id"),
+        _text(value["event_description"], "exploration event_description"),
+        _parse_datetime(value["observed_at"], "exploration observed_at"),
+        underlying_key,
+        tuple(sources),
+        tuple(statements),
+        _text(value["event_statement_id"], "event_statement_id"),
+        _text(value["exposure_statement_id"], "exposure_statement_id"),
+        _text(value["underlying_reference"], "underlying_reference"),
+        _text(value["validation_reference"], "validation_reference"),
+        tuple(_strings(value["uncertainties"], "exploration uncertainties")),
+    )
+    validate_exploration_lead(lead)
+    if _exploration_lead_projection(lead) != value:
+        raise ValueError("exploration lead is not the canonical normalized projection")
+    return lead
+
+
+def _exploration_audit_projection(
+    value: Any,
+    *,
+    bounds: Dict[str, Any],
+) -> Dict[str, Any]:
+    if type(value) is not tuple or not value:
+        raise TypeError("exploration leads must be a non-empty detached tuple")
+    lead_limit = bounds["max_submissions"]
+    nested_limit = (
+        bounds["max_submissions"] + bounds["max_hypotheses"]
+        + bounds["max_browser_rows"] + bounds["max_cases"]
+    )
+    if len(value) > lead_limit:
+        raise ValueError("exploration lead count exceeds immutable Core bounds")
+    leads = []
+    seen = set()
+    nested_count = 0
+    for lead in value:
+        projected = _exploration_lead_projection(lead)
+        if projected["lead_id"] in seen:
+            raise ValueError("exploration lead IDs must be unique")
+        seen.add(projected["lead_id"])
+        nested_count += (
+            len(projected["sources"]) + len(projected["statements"])
+            + len(projected["uncertainties"])
+        )
+        if nested_count > nested_limit:
+            raise ValueError("exploration evidence count exceeds bound-derived archive limit")
+        leads.append(projected)
+    return {
+        "schema_version": EXPLORATION_AUDIT_SCHEMA_VERSION,
+        "status": "ADMITTED",
+        "leads": leads,
+    }
+
+
+def _validate_exploration_audit(value: Any, *, bounds: Dict[str, Any]) -> Dict[str, Any]:
+    _keys(value, _EXPLORATION_AUDIT_FIELDS, "exploration audit")
+    if (
+        value["schema_version"] != EXPLORATION_AUDIT_SCHEMA_VERSION
+        or value["status"] != "ADMITTED"
+        or type(value["leads"]) is not list
+    ):
+        raise ValueError("exploration audit version, status, or lead array is invalid")
+    reconstructed = []
+    for item in value["leads"]:
+        reconstructed.append(_decode_exploration_lead(item))
+    canonical = _exploration_audit_projection(tuple(reconstructed), bounds=bounds)
+    if canonical != value:
+        raise ValueError("exploration audit is not the canonical structured projection")
+    return canonical
+
+
+def _exploration_request_projection(value: Any) -> Dict[str, Any]:
+    request = validate_exploratory_option_chain_request(value)
+    return {
+        "request_type": "ExploratoryOptionChainRequest",
+        "evaluation_date": _date(request.evaluation_date, "exploration evaluation_date"),
+        "minimum_expiration_date": _date(
+            request.minimum_expiration_date, "exploration minimum expiration"
+        ),
+        "maximum_expiration_date": _date(
+            request.maximum_expiration_date, "exploration maximum expiration"
+        ),
+        "maturity_authority": _enum_text(
+            request.maturity_authority, "exploration maturity authority"
+        ),
+        "hypothesis_maturity_alignment": _enum_text(
+            request.hypothesis_maturity_alignment,
+            "exploration hypothesis maturity alignment",
+        ),
+    }
+
+
+def _validate_exploration_request_projection(value: Any, lead: ExplorationLead) -> Dict[str, Any]:
+    _keys(value, _EXPLORATION_REQUEST_FIELDS, "exploration request")
+    if value["request_type"] != "ExploratoryOptionChainRequest":
+        raise ValueError("exploration request discriminator is invalid")
+    request = ExploratoryOptionChainRequest(
+        lead, _parse_date(value["evaluation_date"], "exploration evaluation_date")
+    )
+    expected = _exploration_request_projection(request)
+    if expected != value:
+        raise ValueError("exploration request does not derive from its retained lead and policy")
+    return expected
+
+
 def _event_input_projection(value: Any) -> Optional[Dict[str, Any]]:
     if value is None:
         return None
@@ -524,9 +1264,20 @@ def _event_input_projection(value: Any) -> Optional[Dict[str, Any]]:
     }
 
 
-def _lineage(context: Any, submissions: Optional[SourceSubmissionBatch]) -> Dict[str, Optional[str]]:
+def _lineage(
+    context: Any,
+    submissions: Optional[SourceSubmissionBatch],
+    *,
+    include_exploration: bool = False,
+) -> Dict[str, Optional[str]]:
+    lineage: Dict[str, Optional[str]] = {
+        "submission_id": None,
+        "hypothesis_id": None,
+    }
+    if include_exploration:
+        lineage["lead_id"] = None
     if context is None:
-        return {"submission_id": None, "hypothesis_id": None}
+        return lineage
     assessment = context.assessment
     hypothesis = context.hypothesis
     submission_id = None
@@ -539,7 +1290,28 @@ def _lineage(context: Any, submissions: Optional[SourceSubmissionBatch]) -> Dict
         if assessment is None or not any(hypothesis is item for item in assessment.submission.hypotheses):
             raise ValueError("case hypothesis is not bound to its submitted assessment")
         hypothesis_id = hypothesis.hypothesis_id
-    return {"submission_id": submission_id, "hypothesis_id": hypothesis_id}
+    lineage.update({"submission_id": submission_id, "hypothesis_id": hypothesis_id})
+    lead = getattr(context, "exploration_lead", None)
+    request = getattr(context, "discovery_request", None)
+    if lead is not None:
+        if not include_exploration:
+            raise ValueError("exploration lineage requires the v0.3 batch archive")
+        lead = validate_exploration_lead(lead)
+        if (
+            submissions is None
+            or not any(lead is item for item in submissions.exploration_leads)
+            or type(request) is not ExploratoryOptionChainRequest
+            or validate_exploratory_option_chain_request(request) != request
+            or request.lead is not lead
+            or assessment is not None
+            or hypothesis is not None
+            or context.automated_handoff is not None
+        ):
+            raise ValueError("exploration lineage is not bound to its exact source-batch lead and request")
+        lineage["lead_id"] = lead.lead_id
+    elif type(request) is ExploratoryOptionChainRequest:
+        raise ValueError("exploratory request has no exact retained lead")
+    return lineage
 
 
 def _disclosures(record: CoreCaseRecord) -> Dict[str, str]:
@@ -705,9 +1477,10 @@ def _outcome(
     unavailable_count: int,
     *,
     has_valid_submission: bool,
+    has_valid_exploration: bool = False,
     limit_exceeded: bool,
 ) -> Dict[str, Any]:
-    if not has_valid_submission or limit_exceeded:
+    if not (has_valid_submission or has_valid_exploration) or limit_exceeded:
         status = "BLOCKED"
     elif unavailable_count:
         status = "PARTIAL"
@@ -721,11 +1494,34 @@ def _outcome(
     }
 
 
+def _effective_batch_source_counts(
+    batch: Optional[SourceSubmissionBatch],
+    *,
+    raw_input: Any,
+    submissions: Tuple[EventIntelligenceSubmission, ...],
+    leads: Tuple[ExplorationLead, ...],
+    assessed_submissions: List[Tuple[EventIntelligenceAcceptanceResult, EventIntelligenceSubmission]],
+) -> Any:
+    """Use Core's shared accepted-priority helper for archive bound replay."""
+
+    from .core_application import effective_source_batch_counts
+
+    effective_batch = batch or SourceSubmissionBatch(raw_input, submissions, leads)
+    accepted_hypotheses = tuple(
+        (assessment, submission, hypothesis)
+        for assessment, submission in assessed_submissions
+        if assessment.status is EventIntelligenceAcceptanceStatus.ACCEPTED
+        for hypothesis in submission.hypotheses
+    )
+    return effective_source_batch_counts(effective_batch, accepted_hypotheses)
+
+
 def _validate_limit_diagnostics(
     reasons: List[str],
     *,
     submission_count: int,
     hypothesis_count: int,
+    exploration_lead_count: int = 0,
     bounds: Dict[str, Any],
     case_count: int,
     unavailable_count: int,
@@ -733,10 +1529,14 @@ def _validate_limit_diagnostics(
     """Validate Core's exact over-bound diagnostic and require no prefix."""
 
     has_limit = "LIMIT_EXCEEDED" in reasons
-    submission_over = submission_count > bounds["max_submissions"]
-    hypotheses_over = hypothesis_count > bounds["max_hypotheses"]
+    source_item_count = submission_count + exploration_lead_count
+    total_hypothesis_count = hypothesis_count + exploration_lead_count
+    raw_submissions_over = submission_count > bounds["max_submissions"]
+    raw_hypotheses_over = hypothesis_count > bounds["max_hypotheses"]
+    source_items_over = source_item_count > bounds["max_submissions"]
+    hypotheses_and_leads_over = total_hypothesis_count > bounds["max_hypotheses"]
     if not has_limit:
-        if submission_over or hypotheses_over:
+        if source_items_over or hypotheses_and_leads_over:
             raise ValueError("oversized Core input counts lack Core LIMIT_EXCEEDED diagnostics")
         if case_count > bounds["max_cases"]:
             raise ValueError("Core case count exceeds the immutable max_cases bound")
@@ -757,19 +1557,30 @@ def _validate_limit_diagnostics(
     observed, recorded_limit = int(observed_text), int(limit_text)
     bound_name = {
         "submissions": "max_submissions",
+        "source_items": "max_submissions",
         "hypotheses": "max_hypotheses",
+        "hypotheses_and_exploration_leads": "max_hypotheses",
         "browser_rows": "max_browser_rows",
         "cases": "max_cases",
     }[name]
     if recorded_limit != bounds[bound_name] or observed <= recorded_limit:
         raise ValueError("LIMIT_EXCEEDED diagnostic does not exceed the immutable run bound")
-    if submission_over:
+    if raw_submissions_over:
         if name != "submissions" or observed != submission_count:
-            raise ValueError("submission overflow differs from Core's first exceeded bound")
-    elif hypotheses_over:
+            raise ValueError("raw submission overflow differs from Core's first exceeded bound")
+    elif raw_hypotheses_over:
         if name != "hypotheses" or observed != hypothesis_count:
-            raise ValueError("hypothesis overflow differs from Core's first exceeded bound")
-    elif name in ("submissions", "hypotheses"):
+            raise ValueError("raw hypothesis overflow differs from Core's first exceeded bound")
+    elif source_items_over:
+        if name != "source_items" or observed != source_item_count:
+            raise ValueError("effective source-item overflow differs from Core's first exceeded bound")
+    elif hypotheses_and_leads_over:
+        if name != "hypotheses_and_exploration_leads" or observed != total_hypothesis_count:
+            raise ValueError("effective hypothesis overflow differs from Core's first exceeded bound")
+    elif name in (
+        "submissions", "source_items", "hypotheses",
+        "hypotheses_and_exploration_leads",
+    ):
         raise ValueError("Core source-count diagnostic does not match archived submissions")
     if name == "cases" and observed <= bounds["max_cases"]:
         raise ValueError("Core case-count diagnostic does not exceed max_cases")
@@ -850,11 +1661,33 @@ def build_batch_archive(
         for submission in batch.submissions:
             submission.__post_init__()
     submissions = () if batch is None else batch.submissions
+    exploration_leads = () if batch is None else batch.exploration_leads
+    exploration_audit = None
+    if exploration_leads:
+        _exploration_policy(metadata, mode=mode)
+        exploration_audit = _exploration_audit_projection(
+            exploration_leads, bounds=_bounds(bounds)
+        )
+        for lead in exploration_leads:
+            for source in lead.sources:
+                validate_locator(source.locator)
     hypothesis_count = sum(len(submission.hypotheses) for submission in submissions)
+    preassessed_submissions = [
+        (assess_event_intelligence_submission(submission), submission)
+        for submission in submissions
+    ]
+    effective_counts = _effective_batch_source_counts(
+        batch,
+        raw_input=raw_input,
+        submissions=submissions,
+        leads=exploration_leads,
+        assessed_submissions=preassessed_submissions,
+    )
     limit_exceeded = _validate_limit_diagnostics(
         list(case_set.reasons),
         submission_count=len(submissions),
         hypothesis_count=hypothesis_count,
+        exploration_lead_count=len(effective_counts.effective_exploration_leads),
         bounds=bounds,
         case_count=len(case_set.cases),
         unavailable_count=len(case_set.unavailable),
@@ -898,13 +1731,17 @@ def build_batch_archive(
 
     audit_submissions = []
     accepted_submission = False
+    preassessed_by_identity = {
+        id(submission): assessment
+        for assessment, submission in preassessed_submissions
+    }
     for submission in submissions:
         # Reuse the existing deterministic EI assessor only where a submission
         # has no case context to retain its assessment (for example, an empty
         # Browser result). This adds no acceptance rule or authority.
         assessment = by_identity.get(id(submission))
         if assessment is None:
-            assessment = assess_event_intelligence_submission(submission)
+            assessment = preassessed_by_identity[id(submission)]
         if assessment.submission is not submission:
             raise ValueError("EI assessment lost exact submission identity")
         accepted_submission = accepted_submission or (
@@ -939,11 +1776,20 @@ def build_batch_archive(
         digest = hashlib.sha256(canonical_json(snapshot, "Core snapshot").encode("utf-8")).hexdigest()
         application_reasons = _reason_tuple(record.reasons, "case reasons")
         reasons = list(dict.fromkeys(application_reasons + tuple(item.value for item in record.kernel_result.reasons)))
-        lineage = _lineage(record.context, batch)
-        if lineage["submission_id"] is None or lineage["hypothesis_id"] is None:
-            raise ValueError("evaluated World/Event case must retain its submitted hypothesis lineage")
-        core_cases.append(
-            {
+        lineage = _lineage(
+            record.context, batch, include_exploration=exploration_audit is not None
+        )
+        request_projection = None
+        if lineage.get("lead_id") is None:
+            if lineage["submission_id"] is None or lineage["hypothesis_id"] is None:
+                raise ValueError("evaluated legacy case must retain its submitted hypothesis lineage")
+            if type(record.discovery_request) is ExploratoryOptionChainRequest:
+                raise ValueError("exploratory request is not bound to the archived lead")
+        else:
+            if lineage["submission_id"] is not None or lineage["hypothesis_id"] is not None:
+                raise ValueError("exploratory case cannot claim EI submission or hypothesis lineage")
+            request_projection = _exploration_request_projection(record.discovery_request)
+        case_entry = {
                 "case_id": case_id,
                 "case_key": key,
                 "classification": record.kernel_result.disposition.value,
@@ -954,7 +1800,9 @@ def build_batch_archive(
                 "core_snapshot": snapshot,
                 "core_sha256": digest,
             }
-        )
+        if exploration_audit is not None:
+            case_entry["exploration_request"] = request_projection
+        core_cases.append(case_entry)
 
     for record in case_set.unavailable:
         if type(record) is not CoreUnavailableCase:
@@ -969,15 +1817,31 @@ def build_batch_archive(
             raise ValueError("batch case IDs and navigation keys must be unique")
         all_ids.add(case_id)
         all_keys.add(key)
-        unavailable.append(
-            {
+        lineage = _lineage(
+            record.context, batch, include_exploration=exploration_audit is not None
+        )
+        request_projection = None
+        if lineage.get("lead_id") is not None:
+            if lineage["submission_id"] is not None or lineage["hypothesis_id"] is not None:
+                raise ValueError("exploratory unavailable branch cannot claim EI lineage")
+            request = None if record.context is None else record.context.discovery_request
+            if type(request) is not ExploratoryOptionChainRequest:
+                raise ValueError("exploratory unavailable branch must retain its exact request")
+            request_projection = _exploration_request_projection(request)
+        elif record.context is not None and type(
+            record.context.discovery_request
+        ) is ExploratoryOptionChainRequest:
+            raise ValueError("unavailable exploratory request has no archived lead binding")
+        unavailable_entry = {
                 "case_id": case_id,
                 "case_key": key,
                 "classification": "UNAVAILABLE",
                 "reasons": list(_reason_tuple(record.reasons, "unavailable reasons")),
-                "lineage": _lineage(record.context, batch),
+                "lineage": lineage,
             }
-        )
+        if exploration_audit is not None:
+            unavailable_entry["exploration_request"] = request_projection
+        unavailable.append(unavailable_entry)
 
     compact_fields = _summary_projection(result.compact)
     if compact_fields != _summary_from_archived(
@@ -991,6 +1855,7 @@ def build_batch_archive(
         len(core_cases),
         len(unavailable),
         has_valid_submission=accepted_submission,
+        has_valid_exploration=exploration_audit is not None,
         limit_exceeded=limit_exceeded,
     )
     summary = dict(compact_fields)
@@ -1001,7 +1866,9 @@ def build_batch_archive(
     ]
     archive = {
         "schema_version": (
-            SOURCE_COVERAGE_SCHEMA_VERSION
+            EXPLORATION_SCHEMA_VERSION
+            if exploration_audit is not None
+            else SOURCE_COVERAGE_SCHEMA_VERSION
             if source_coverage_by_unit is not None
             else SCHEMA_VERSION
         ),
@@ -1017,9 +1884,20 @@ def build_batch_archive(
         "cases": core_cases,
         "unavailable": unavailable,
     }
+    if exploration_audit is not None:
+        archive["exploration_audit"] = exploration_audit
     if source_coverage_by_unit is not None:
-        coverage_rows = _source_coverage_unit_rows(
-            source_coverage_by_unit, host_run_id=run_id
+        coverage_rows = (
+            _world_exploration_coverage_rows(
+                source_coverage_by_unit,
+                host_run_id=run_id,
+                leads=exploration_leads,
+                archived=False,
+            )
+            if exploration_audit is not None
+            else _source_coverage_unit_rows(
+                source_coverage_by_unit, host_run_id=run_id
+            )
         )
         _validate_source_coverage_links(
             coverage_rows,
@@ -1027,6 +1905,7 @@ def build_batch_archive(
             submissions=audit_submissions,
             cases=core_cases,
             unavailable=unavailable,
+            exploration_leads=exploration_leads,
         )
         archive["source_coverage_by_unit"] = coverage_rows
     for submission in audit_submissions:
@@ -1343,6 +2222,15 @@ def validate_batch_archive(
         if mode != "world":
             raise ValueError("source coverage batch archives are World-only")
         archive_fields = _ARCHIVE_FIELDS_V0_2
+    elif schema_version == EXPLORATION_SCHEMA_VERSION:
+        has_coverage_sidecar = "source_coverage_by_unit" in archive
+        if has_coverage_sidecar and mode != "world":
+            raise ValueError("source coverage batch archives are World-only")
+        archive_fields = (
+            _ARCHIVE_FIELDS_V0_3_WITH_SOURCE_COVERAGE
+            if has_coverage_sidecar
+            else _ARCHIVE_FIELDS_V0_3
+        )
     else:
         raise ValueError("unsupported Host batch archive schema")
     _keys(archive, archive_fields, "Host batch archive")
@@ -1365,8 +2253,14 @@ def validate_batch_archive(
         type(query_policy) is dict
         and query_policy.get("schema_version") == "world-source-query-v0.5"
     )
-    if partial_policy != (schema_version == SOURCE_COVERAGE_SCHEMA_VERSION):
-        raise ValueError("World partial-coverage policy and archive schema must be paired")
+    if schema_version == SCHEMA_VERSION and partial_policy:
+        raise ValueError("World partial-coverage policy requires its successor archive schema")
+    if schema_version == SOURCE_COVERAGE_SCHEMA_VERSION and not partial_policy:
+        raise ValueError("World source-coverage archive requires its immutable v0.5 policy")
+    if schema_version == EXPLORATION_SCHEMA_VERSION:
+        _exploration_policy(metadata, mode=mode)
+        if partial_policy != ("source_coverage_by_unit" in archive):
+            raise ValueError("World partial-coverage policy and v0.3 sidecar must be paired")
     if metadata["execution_snapshot"].get(mode + "_executor") != {
         "status": "CONFIGURED", "version": "host-batch-executor-v0.1"
     }:
@@ -1378,6 +2272,37 @@ def validate_batch_archive(
     _validate_summary_shape(archive["summary"])
     _validate_event_input_audit(archive["event_input_audit"], mode, run_input, validate_locator)
     decoded_submissions = _validate_ei_audit(archive["ei_audit"], validate_locator)
+    if schema_version == EXPLORATION_SCHEMA_VERSION:
+        exploration_audit = _validate_exploration_audit(
+            archive["exploration_audit"], bounds=bounds
+        )
+        for lead_item in exploration_audit["leads"]:
+            for source in lead_item["sources"]:
+                validate_locator(source["locator"])
+        exploration_leads = tuple(
+            _decode_exploration_lead(item)
+            for item in exploration_audit["leads"]
+        )
+    else:
+        exploration_audit = None
+        exploration_leads = ()
+    exploration_by_id = {
+        lead.lead_id: lead for lead in exploration_leads
+    }
+    decoded_submission_values = tuple(
+        submission for submission, _assessment in decoded_submissions
+    )
+    assessed_submission_values = [
+        (assessment, submission)
+        for submission, assessment in decoded_submissions
+    ]
+    effective_counts = _effective_batch_source_counts(
+        SourceSubmissionBatch(run_input, decoded_submission_values, exploration_leads),
+        raw_input=run_input,
+        submissions=decoded_submission_values,
+        leads=exploration_leads,
+        assessed_submissions=assessed_submission_values,
+    )
 
     if type(archive["cases"]) is not list or type(archive["unavailable"]) is not list:
         raise TypeError("batch cases and unavailable sidecars must be arrays")
@@ -1400,7 +2325,13 @@ def validate_batch_archive(
     decoded_cases: Dict[str, CoreResearchResult] = {}
     canonical_case_entries = []
     for item in archive["cases"]:
-        _keys(item, _BATCH_CASE_FIELDS, "batch Core case")
+        _keys(
+            item,
+            _BATCH_CASE_FIELDS_V0_3
+            if schema_version == EXPLORATION_SCHEMA_VERSION
+            else _BATCH_CASE_FIELDS,
+            "batch Core case",
+        )
         case_id = _text(item["case_id"], "case_id")
         key = validate_case_key(item["case_key"])
         if key != case_key(case_id) or key in key_map:
@@ -1410,20 +2341,45 @@ def validate_batch_archive(
             raise TypeError("case classification must be text")
         _strings(item["reasons"], "case reasons", nonempty=False)
         _strings(item["application_reasons"], "application reasons", nonempty=False)
-        _keys(item["lineage"], _LINEAGE_FIELDS, "case lineage")
+        _keys(
+            item["lineage"],
+            _LINEAGE_FIELDS_V0_3
+            if schema_version == EXPLORATION_SCHEMA_VERSION
+            else _LINEAGE_FIELDS,
+            "case lineage",
+        )
         submission_id = _optional_text(item["lineage"]["submission_id"], "lineage.submission_id")
         hypothesis_id = _optional_text(item["lineage"]["hypothesis_id"], "lineage.hypothesis_id")
-        if submission_id is None or hypothesis_id is None:
-            raise ValueError("evaluated case must retain actual submission and hypothesis IDs")
-        submission_entry = submission_map.get(submission_id)
-        if submission_entry is None:
-            raise ValueError("evaluated case lineage does not resolve to audited EI IDs")
-        submission, assessment = submission_entry
-        if (
-            assessment.status is not EventIntelligenceAcceptanceStatus.ACCEPTED
-            or hypothesis_id not in {h.hypothesis_id for h in submission.hypotheses}
-        ):
-            raise ValueError("case lineage does not resolve to audited EI IDs")
+        lead_id = (
+            _optional_text(item["lineage"]["lead_id"], "lineage.lead_id")
+            if schema_version == EXPLORATION_SCHEMA_VERSION
+            else None
+        )
+        if lead_id is None:
+            if submission_id is None or hypothesis_id is None:
+                raise ValueError("evaluated legacy case must retain actual submission and hypothesis IDs")
+            submission_entry = submission_map.get(submission_id)
+            if submission_entry is None:
+                raise ValueError("evaluated case lineage does not resolve to audited EI IDs")
+            submission, assessment = submission_entry
+            if (
+                assessment.status is not EventIntelligenceAcceptanceStatus.ACCEPTED
+                or hypothesis_id not in {h.hypothesis_id for h in submission.hypotheses}
+            ):
+                raise ValueError("case lineage does not resolve to audited EI IDs")
+            if schema_version == EXPLORATION_SCHEMA_VERSION and item["exploration_request"] is not None:
+                raise ValueError("EI case cannot retain an exploratory request")
+        else:
+            if (
+                schema_version != EXPLORATION_SCHEMA_VERSION
+                or submission_id is not None
+                or hypothesis_id is not None
+                or lead_id not in exploration_by_id
+            ):
+                raise ValueError("exploratory case lineage does not resolve to one retained lead")
+            _validate_exploration_request_projection(
+                item["exploration_request"], exploration_by_id[lead_id]
+            )
         _keys(item["disclosures"], _DISCLOSURE_FIELDS, "case disclosures")
         if item["disclosures"]["maturity_authority"] not in {e.value for e in OptionMaturityAuthority}:
             raise ValueError("unknown case maturity authority")
@@ -1431,6 +2387,13 @@ def validate_batch_archive(
             raise ValueError("unknown hypothesis maturity alignment")
         if item["disclosures"]["quote_reference_temporal_alignment"] != "not_established" or item["disclosures"]["cross_structure_quote_synchronicity"] != "not_established":
             raise ValueError("batch authority disclosures are invalid")
+        if lead_id is not None and (
+            item["disclosures"]["maturity_authority"]
+            != OptionMaturityAuthority.EXPLORATORY_STRUCTURE_RESEARCH.value
+            or item["disclosures"]["hypothesis_maturity_alignment"]
+            != HypothesisMaturityAlignment.NOT_ESTABLISHED.value
+        ):
+            raise ValueError("exploratory case maturity authority or alignment is invalid")
         if type(item["core_sha256"]) is not str or re.fullmatch(r"[0-9a-f]{64}", item["core_sha256"], re.ASCII) is None:
             raise ValueError("invalid Core snapshot digest")
         validate_source_uris(item["core_snapshot"])
@@ -1453,7 +2416,13 @@ def validate_batch_archive(
 
     canonical_unavailable = []
     for item in archive["unavailable"]:
-        _keys(item, _UNAVAILABLE_FIELDS, "unavailable sidecar")
+        _keys(
+            item,
+            _UNAVAILABLE_FIELDS_V0_3
+            if schema_version == EXPLORATION_SCHEMA_VERSION
+            else _UNAVAILABLE_FIELDS,
+            "unavailable sidecar",
+        )
         case_id = _text(item["case_id"], "unavailable case_id")
         key = validate_case_key(item["case_key"])
         if key != case_key(case_id) or key in key_map:
@@ -1464,9 +2433,33 @@ def validate_batch_archive(
         if type(item["reasons"]) is not list or not item["reasons"]:
             raise ValueError("unavailable branch must retain its reasons")
         _strings(item["reasons"], "unavailable reasons", nonempty=False)
-        _keys(item["lineage"], _LINEAGE_FIELDS, "unavailable lineage")
+        _keys(
+            item["lineage"],
+            _LINEAGE_FIELDS_V0_3
+            if schema_version == EXPLORATION_SCHEMA_VERSION
+            else _LINEAGE_FIELDS,
+            "unavailable lineage",
+        )
         submission_id = _optional_text(item["lineage"]["submission_id"], "lineage.submission_id")
         hypothesis_id = _optional_text(item["lineage"]["hypothesis_id"], "lineage.hypothesis_id")
+        lead_id = (
+            _optional_text(item["lineage"]["lead_id"], "lineage.lead_id")
+            if schema_version == EXPLORATION_SCHEMA_VERSION
+            else None
+        )
+        if lead_id is not None:
+            if (
+                schema_version != EXPLORATION_SCHEMA_VERSION
+                or submission_id is not None
+                or hypothesis_id is not None
+                or lead_id not in exploration_by_id
+            ):
+                raise ValueError("exploratory unavailable lineage does not resolve to one retained lead")
+            _validate_exploration_request_projection(
+                item["exploration_request"], exploration_by_id[lead_id]
+            )
+        elif schema_version == EXPLORATION_SCHEMA_VERSION and item["exploration_request"] is not None:
+            raise ValueError("unavailable EI branch cannot retain an exploratory request")
         if submission_id is None:
             if hypothesis_id is not None:
                 raise ValueError("hypothesis lineage requires a submission ID")
@@ -1479,9 +2472,18 @@ def validate_batch_archive(
                 raise ValueError("unavailable lineage does not resolve to audited EI IDs")
         canonical_unavailable.append(item)
 
-    if schema_version == SOURCE_COVERAGE_SCHEMA_VERSION:
-        coverage_rows = _source_coverage_unit_rows(
-            archive["source_coverage_by_unit"], host_run_id=run_id
+    if "source_coverage_by_unit" in archive:
+        coverage_rows = (
+            _world_exploration_coverage_rows(
+                archive["source_coverage_by_unit"],
+                host_run_id=run_id,
+                leads=exploration_leads,
+                archived=schema_version == EXPLORATION_SCHEMA_VERSION,
+            )
+            if schema_version == EXPLORATION_SCHEMA_VERSION
+            else _source_coverage_unit_rows(
+                archive["source_coverage_by_unit"], host_run_id=run_id
+            )
         )
         if coverage_rows != archive["source_coverage_by_unit"]:
             raise ValueError("source coverage sidecar is not in its canonical closed shape")
@@ -1491,6 +2493,7 @@ def validate_batch_archive(
             submissions=archive["ei_audit"]["submissions"],
             cases=archive["cases"],
             unavailable=archive["unavailable"],
+            exploration_leads=exploration_leads,
         )
 
     compact_fields = _summary_from_archived(
@@ -1505,6 +2508,7 @@ def validate_batch_archive(
         hypothesis_count=sum(
             len(submission.hypotheses) for submission, _ in decoded_submissions
         ),
+        exploration_lead_count=len(effective_counts.effective_exploration_leads),
         bounds=bounds,
         case_count=len(archive["cases"]),
         unavailable_count=len(archive["unavailable"]),
@@ -1519,6 +2523,7 @@ def validate_batch_archive(
         len(archive["cases"]),
         len(archive["unavailable"]),
         has_valid_submission=has_valid_submission,
+        has_valid_exploration=bool(exploration_leads),
         limit_exceeded=limit_exceeded,
     )
     unavailable_projection = [
@@ -1558,13 +2563,16 @@ def validate_outcome(value: Any) -> Dict[str, Any]:
 
 def _coverage_public_projection(row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if row is None or row["source_coverage"] is None:
-        return {
+        value = {
             "unit_id": None if row is None else row["unit_id"],
             "status": "UNKNOWN",
             "successful_count": None,
             "requested_count": None,
             "failed_sources": [],
         }
+        if row is not None and "exploration_lead_ids" in row:
+            value["exploration_lead_ids"] = list(row["exploration_lead_ids"])
+        return value
     audit = HostSourceCoverageAudit.from_dict(row["source_coverage"])
     entries = audit.to_dict()["entries"]
     successful_count = sum(item["status"] == "BODY_AVAILABLE" for item in entries)
@@ -1577,22 +2585,40 @@ def _coverage_public_projection(row: Optional[Dict[str, Any]]) -> Dict[str, Any]
         for item in entries
         if item["status"] == "FAILED"
     ]
-    return {
+    value = {
         "unit_id": row["unit_id"],
         "status": audit.status,
         "successful_count": successful_count,
         "requested_count": len(entries),
         "failed_sources": failed_sources,
     }
+    if "exploration_lead_ids" in row:
+        value["exploration_lead_ids"] = list(row["exploration_lead_ids"])
+    return value
 
 
 def _coverage_unit_by_submission(archive: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    if archive.get("schema_version") != SOURCE_COVERAGE_SCHEMA_VERSION:
+    if archive.get("schema_version") not in (
+        SOURCE_COVERAGE_SCHEMA_VERSION, EXPLORATION_SCHEMA_VERSION
+    ) or "source_coverage_by_unit" not in archive:
         return {}
     return {
         submission_id: row
         for row in archive["source_coverage_by_unit"]
         for submission_id in row["submission_ids"]
+    }
+
+
+def _coverage_unit_by_lead(archive: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    if (
+        archive.get("schema_version") != EXPLORATION_SCHEMA_VERSION
+        or "source_coverage_by_unit" not in archive
+    ):
+        return {}
+    return {
+        lead_id: row
+        for row in archive["source_coverage_by_unit"]
+        for lead_id in row["exploration_lead_ids"]
     }
 
 
@@ -1604,6 +2630,12 @@ def _coverage_for_lineage(
 ) -> Dict[str, Any]:
     by_submission = _coverage_unit_by_submission(archive)
     row = by_submission.get(lineage.get("submission_id"))
+    by_lead = _coverage_unit_by_lead(archive)
+    lead_row = by_lead.get(lineage.get("lead_id"))
+    if row is not None and lead_row is not None and row is not lead_row:
+        raise ValueError("case EI and exploration coverage links identify different units")
+    if row is None:
+        row = lead_row
     by_unit = {
         item["unit_id"]: item for item in archive["source_coverage_by_unit"]
     }
@@ -1641,10 +2673,95 @@ def _coverage_report_text(coverage: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _archive_ei_status(archive: Dict[str, Any]) -> Tuple[str, List[Dict[str, str]]]:
+    assessments = [
+        {
+            "submission_id": item["submission_id"],
+            "status": item["assessment"]["status"].upper(),
+        }
+        for item in archive["ei_audit"]["submissions"]
+    ]
+    if not assessments:
+        return "NOT_RUN", []
+    statuses = {item["status"] for item in assessments}
+    return (next(iter(statuses)) if len(statuses) == 1 else "MIXED"), assessments
+
+
+def _public_exploration_disclosure(
+    archive: Dict[str, Any],
+    *,
+    lineage: Dict[str, Any],
+    disclosures: Optional[Dict[str, Any]] = None,
+    exploration_request: Optional[Dict[str, Any]] = None,
+    include_lead: bool = False,
+) -> Dict[str, Any]:
+    status, assessments = _archive_ei_status(archive)
+    lead_id = lineage.get("lead_id")
+    lead_map = {
+        item["lead_id"]: item for item in archive["exploration_audit"]["leads"]
+    }
+    lead = lead_map.get(lead_id)
+    if lead_id is not None and lead is None:
+        raise ValueError("public exploration lineage does not resolve to an archived lead")
+    authority = (
+        disclosures.get("maturity_authority")
+        if disclosures is not None
+        else None if exploration_request is None
+        else exploration_request["maturity_authority"]
+    )
+    alignment = (
+        disclosures.get("hypothesis_maturity_alignment")
+        if disclosures is not None
+        else "unknown" if exploration_request is None
+        else exploration_request["hypothesis_maturity_alignment"]
+    )
+    value = {
+        "exploration_status": "ADMITTED",
+        "maturity_authority": authority,
+        "hypothesis_maturity_alignment": alignment,
+        "lead_id": lead_id,
+        "ei_status": status,
+        "ei_assessment_statuses": assessments,
+        "ei_lead_association": (
+            "NOT_ESTABLISHED" if lead_id is not None else "NOT_APPLICABLE"
+        ),
+    }
+    if include_lead and lead is not None:
+        value["lead_material"] = _exploration_lead_public_projection(lead)
+    return value
+
+
 def public_summary(archive: Dict[str, Any]) -> Dict[str, Any]:
     # The caller has decoded a fresh immutable JSON value from SQLite.
     result = {key: value for key, value in archive["summary"].items()}
-    if archive.get("schema_version") != SOURCE_COVERAGE_SCHEMA_VERSION:
+    schema_version = archive.get("schema_version")
+    if schema_version == EXPLORATION_SCHEMA_VERSION:
+        result["case_summaries"] = [dict(item) for item in result["case_summaries"]]
+        result["unavailable_cases"] = [dict(item) for item in result["unavailable_cases"]]
+        result["exploration_status"] = "ADMITTED"
+        result["exploration_lead_count"] = len(archive["exploration_audit"]["leads"])
+        result["ei_status"], result["ei_assessment_statuses"] = _archive_ei_status(archive)
+        result["ei_lead_association"] = "NOT_ESTABLISHED"
+        cases_by_id = {item["case_id"]: item for item in archive["cases"]}
+        unavailable_by_id = {item["case_id"]: item for item in archive["unavailable"]}
+        for item in result["case_summaries"]:
+            archived = cases_by_id[item["case_id"]]
+            item.update(_public_exploration_disclosure(
+                archive,
+                lineage=archived["lineage"],
+                disclosures=archived["disclosures"],
+            ))
+        for item in result["unavailable_cases"]:
+            archived = unavailable_by_id[item["case_id"]]
+            item.update(_public_exploration_disclosure(
+                archive,
+                lineage=archived["lineage"],
+                exploration_request=archived["exploration_request"],
+            ))
+    if schema_version != SOURCE_COVERAGE_SCHEMA_VERSION and not (
+        schema_version == EXPLORATION_SCHEMA_VERSION
+        and "source_coverage_by_unit" in archive
+    ):
         return result
 
     result["case_summaries"] = [dict(item) for item in result["case_summaries"]]
@@ -1690,7 +2807,25 @@ def public_cases(archive: Dict[str, Any]) -> List[Dict[str, Any]]:
         }
         for item in archive["unavailable"]
     )
-    if archive.get("schema_version") == SOURCE_COVERAGE_SCHEMA_VERSION:
+    if archive.get("schema_version") == EXPLORATION_SCHEMA_VERSION:
+        cases_by_id = {item["case_id"]: item for item in archive["cases"]}
+        unavailable_by_id = {item["case_id"]: item for item in archive["unavailable"]}
+        for item in result:
+            archived = (
+                cases_by_id[item["case_id"]]
+                if item["classification"] != "UNAVAILABLE"
+                else unavailable_by_id[item["case_id"]]
+            )
+            item.update(_public_exploration_disclosure(
+                archive,
+                lineage=archived["lineage"],
+                disclosures=archived.get("disclosures"),
+                exploration_request=archived.get("exploration_request"),
+            ))
+    if archive.get("schema_version") == SOURCE_COVERAGE_SCHEMA_VERSION or (
+        archive.get("schema_version") == EXPLORATION_SCHEMA_VERSION
+        and "source_coverage_by_unit" in archive
+    ):
         cases_by_id = {item["case_id"]: item for item in archive["cases"]}
         unavailable_by_id = {
             item["case_id"]: item for item in archive["unavailable"]
@@ -1720,12 +2855,54 @@ def public_case(archive: Dict[str, Any], key: str, decoded_cases: Mapping[str, C
             from .core_presentation import _render_core_report
 
             result = decoded_cases[item["case_id"]]
-            disclosure = (
-                "maturity_authority=" + item["disclosures"]["maturity_authority"] + "; "
-                "hypothesis_maturity_alignment=" + item["disclosures"]["hypothesis_maturity_alignment"]
-                if item["disclosures"]["hypothesis_maturity_alignment"] != "unknown"
-                else "hypothesis_maturity_alignment=unknown"
-            )
+            if item["lineage"].get("lead_id") is not None:
+                lead = next(
+                    (
+                        candidate
+                        for candidate in archive["exploration_audit"]["leads"]
+                        if candidate["lead_id"] == item["lineage"]["lead_id"]
+                    ),
+                    None,
+                )
+                if lead is None:
+                    raise ValueError("public exploratory case has no audited lead")
+                audit_entries = tuple(
+                    audited["submission_id"] + ":" + audited["assessment"]["status"]
+                    for audited in archive["ei_audit"]["submissions"]
+                )
+                audit_text = repr(audit_entries) if audit_entries else "未提交"
+                disclosure = (
+                    "来源路径=Host投影的结构探索线索；来源准入、receipt与listing核验由Host负责，Core不重做；"
+                    "独立结构探索，不形成EI支持的分布声明；"
+                    "独立EI批次审计=" + audit_text + "; "
+                    "lead_id=" + lead["lead_id"] + "; event_statement_id="
+                    + lead["event_statement_id"] + "; exposure_statement_id="
+                    + lead["exposure_statement_id"] + "; maturity_authority="
+                    + item["disclosures"]["maturity_authority"]
+                    + "; hypothesis_maturity_alignment=not_established; uncertainties="
+                    + repr(tuple(lead["uncertainties"]))
+                )
+            else:
+                submission_id = item["lineage"]["submission_id"]
+                submission = next(
+                    (
+                        audited
+                        for audited in archive["ei_audit"]["submissions"]
+                        if audited["submission_id"] == submission_id
+                    ),
+                    None,
+                )
+                if submission is None:
+                    raise ValueError("public EI case has no audited submission status")
+                disclosure = (
+                    "来源路径=Event Intelligence hypothesis; "
+                    "event_intelligence_status="
+                    + submission["assessment"]["status"]
+                    + "; maturity_authority="
+                    + item["disclosures"]["maturity_authority"]
+                    + "; hypothesis_maturity_alignment="
+                    + item["disclosures"]["hypothesis_maturity_alignment"]
+                )
             value = {
                 "case_id": item["case_id"],
                 "case_key": item["case_key"],
@@ -1735,7 +2912,28 @@ def public_case(archive: Dict[str, Any], key: str, decoded_cases: Mapping[str, C
                     item["case_id"], result, tuple(item["reasons"]), disclosure
                 ),
             }
-            if archive.get("schema_version") == SOURCE_COVERAGE_SCHEMA_VERSION:
+            if archive.get("schema_version") == EXPLORATION_SCHEMA_VERSION:
+                disclosure = _public_exploration_disclosure(
+                    archive,
+                    lineage=item["lineage"],
+                    disclosures=item["disclosures"],
+                    exploration_request=item["exploration_request"],
+                    include_lead=True,
+                )
+                value.update(disclosure)
+                if item["lineage"]["lead_id"] is not None:
+                    value["report"] += (
+                        "\n\n结构探索披露：maturity_authority="
+                        + disclosure["maturity_authority"]
+                        + "; hypothesis_maturity_alignment="
+                        + disclosure["hypothesis_maturity_alignment"]
+                        + "; EI batch status=" + disclosure["ei_status"]
+                        + " (lead association NOT_ESTABLISHED)."
+                    )
+            if archive.get("schema_version") == SOURCE_COVERAGE_SCHEMA_VERSION or (
+                archive.get("schema_version") == EXPLORATION_SCHEMA_VERSION
+                and "source_coverage_by_unit" in archive
+            ):
                 coverage = _coverage_for_lineage(archive, item["lineage"])
                 value["source_coverage"] = coverage
                 value["report"] += "\n\n" + _coverage_report_text(coverage)
@@ -1749,7 +2947,17 @@ def public_case(archive: Dict[str, Any], key: str, decoded_cases: Mapping[str, C
                 "reasons": list(item["reasons"]),
                 "report": None,
             }
-            if archive.get("schema_version") == SOURCE_COVERAGE_SCHEMA_VERSION:
+            if archive.get("schema_version") == EXPLORATION_SCHEMA_VERSION:
+                value.update(_public_exploration_disclosure(
+                    archive,
+                    lineage=item["lineage"],
+                    exploration_request=item["exploration_request"],
+                    include_lead=True,
+                ))
+            if archive.get("schema_version") == SOURCE_COVERAGE_SCHEMA_VERSION or (
+                archive.get("schema_version") == EXPLORATION_SCHEMA_VERSION
+                and "source_coverage_by_unit" in archive
+            ):
                 value["source_coverage"] = _coverage_for_lineage(
                     archive, item["lineage"], case_id=item["case_id"]
                 )

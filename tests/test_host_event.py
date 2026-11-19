@@ -1,6 +1,7 @@
 """Synthetic transport tests for the bounded pre-Core Event Grounder driver."""
 
 import datetime
+from contextlib import closing
 import hashlib
 import inspect
 import json
@@ -1176,7 +1177,7 @@ def _prepare_v06_single_witness_case(case, *, admission_override=None):
 
 def _sec_primary_composite_records(
     symbol="ACME", *, yahoo_override=None, share_class="Common Stock",
-    cover_html_override=None, reference_cik=320193,
+    cover_html_override=None, reference_cik=320193, fresh_client=False,
 ):
     cover_html = cover_html_override or _sec_primary_raw_cover_html(symbol, share_class)
     reference_locator = "https://www.sec.gov/files/company_tickers_exchange.json"
@@ -1212,6 +1213,8 @@ def _sec_primary_composite_records(
         _resolver=lambda _host, _port: ("93.184.216.34",),
         _clock=lambda: _NOW,
     )
+    if fresh_client:
+        return client, (), calls
     initial = client.admit_candidates((_SEC_LOCATOR,))
     composite = client._admit_sec_reference_and_yahoo((symbol,), initial.admissions)
     checked = client._revalidate_sec_composite(
@@ -1262,7 +1265,8 @@ def _sec_primary_listing_case(
 def _listing_runtime_wires(
     run_id, symbol, source_order, bodies_by_url, config, *, normal_recipe=True,
     claim_quote="A synthetic event was reported.", source_body_overrides=None,
-    raw_input="Assess a synthetic listing event.",
+    raw_input="Assess a synthetic listing event.", claim_entity_refs=(),
+    include_hypothesis=True, event_date=None,
 ):
     run_input, context = _context_and_run_input(
         run_id,
@@ -1316,6 +1320,58 @@ def _listing_runtime_wires(
             "claim_ids": [claim_id],
             "gap": None,
         })
+    entity_binding_entries = []
+    for entity_ref in claim_entity_refs:
+        matching_entries = tuple(
+            entry for entry in catalog.entries
+            if entry.source_id == claim_entry.source_id
+            and entity_ref in entry.quote
+        )
+        if not matching_entries:
+            raise AssertionError(
+                "each fixture entity ref must occur in the claim source"
+            )
+        entity_binding_entries.append(matching_entries[0])
+    producer_bindings = []
+    verifier_bindings = []
+    symbol_ref = {"evidence_id": symbol_entry.evidence_id}
+    if include_hypothesis:
+        producer_bindings.append({
+            "field_path": "/hypotheses/0/underlying_symbol",
+            "evidence_id": symbol_entry.evidence_id,
+            "semantic_role": "entity",
+            "status": "supported",
+        })
+        verifier_bindings.append({
+            "index": 0,
+            "outcome": "supported",
+            "rationale": "Synthetic validator confirms the exact symbol binding.",
+            "evidence_refs": [symbol_ref],
+        })
+    for entity_index, entry in enumerate(entity_binding_entries):
+        producer_bindings.append({
+            "field_path": "/claims/0/entity_refs/{}".format(entity_index),
+            "evidence_id": entry.evidence_id,
+            "semantic_role": "entity",
+            "status": "supported",
+        })
+        verifier_bindings.append({
+            "index": len(verifier_bindings),
+            "outcome": "supported",
+            "rationale": "Synthetic validator confirms the event entity binding.",
+            "evidence_refs": [{"evidence_id": entry.evidence_id}],
+        })
+    if event_date is not None:
+        producer_bindings.append({
+            "field_path": "/claims/0/event_date",
+            "evidence_id": claim_entry.evidence_id,
+            "semantic_role": "date", "status": "supported",
+        })
+        verifier_bindings.append({
+            "index": len(verifier_bindings), "outcome": "supported",
+            "rationale": "Synthetic verifier supports this explicit occurrence date.",
+            "evidence_refs": [{"evidence_id": claim_entry.evidence_id}],
+        })
     producer = {
         "schema_version": "grounder-output-v0.3",
         "stage": "semantic",
@@ -1326,15 +1382,15 @@ def _listing_runtime_wires(
                 "kind": "observed_fact",
                 "evidence_id": claim_entry.evidence_id,
                 "text": claim_quote,
-                "entity_refs": [],
-                "event_date": None,
+                "entity_refs": list(claim_entity_refs),
+                "event_date": event_date,
                 "published_at": None,
                 "dependency_claim_ids": [],
                 "uncertainty": [],
                 "falsification_conditions": [],
             }
         ],
-        "hypotheses": [
+        "hypotheses": ([
             {
                 "hypothesis_id": hypothesis_id,
                 "underlying_symbol": symbol,
@@ -1349,16 +1405,9 @@ def _listing_runtime_wires(
                 "uncertainties": [],
                 "falsification_conditions": [],
             }
-        ],
+        ] if include_hypothesis else []),
         "coverage": coverage,
-        "field_bindings": [
-            {
-                "field_path": "/hypotheses/0/underlying_symbol",
-                "evidence_id": symbol_entry.evidence_id,
-                "semantic_role": "entity",
-                "status": "supported",
-            }
-        ],
+        "field_bindings": producer_bindings,
     }
     normalized, normalized_bytes = parse_grounder_output_v0_3(
         json.dumps(producer, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
@@ -1388,22 +1437,15 @@ def _listing_runtime_wires(
                 "evidence_refs": [event_ref],
             }
         ],
-        "hypotheses": [
+        "hypotheses": ([
             {
                 "hypothesis_id": hypothesis_id,
                 "outcome": "supported",
                 "rationale": "Synthetic validator confirms the hypothesis record.",
                 "evidence_refs": [event_ref],
             }
-        ],
-        "field_bindings": [
-            {
-                "index": 0,
-                "outcome": "supported",
-                "rationale": "Synthetic validator confirms the exact symbol binding.",
-                "evidence_refs": [symbol_ref],
-            }
-        ],
+        ] if include_hypothesis else []),
+        "field_bindings": verifier_bindings,
         "coverage": [
             {
                 "index": 0,
@@ -1552,6 +1594,206 @@ def _accepted_default_route_wires(
         producer, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     return producer_json, semantic_json
+
+
+def _directionless_exploration_fixture(run_id, *, symbol="ACME", peer_mention=False):
+    """Normal source/model transports; no projector, receipt or EI bypass."""
+    raw_input = "Research the issuer's forecast uncertainty without assuming a direction."
+    event_text = (
+        "On September 21, 2026, Example Holdings, Inc. (the “Company”) "
+        "announced that it widened its full-year revenue forecast range."
+    )
+    extra = " Peer Corp. (PEER) was quoted as an industry observer." if peer_mention else ""
+    cover = _sec_primary_raw_cover_html(symbol).replace(
+        b"</p><table>", b"</p><p>" + (event_text + extra).encode() + b"</p><table>",
+    )
+    _, records, _ = _sec_primary_composite_records(symbol, cover_html_override=cover)
+    candidates = (("source-sec", _SEC_LOCATOR), ("source-note", "https://source.example/a"))
+    sources = candidates + tuple((r.source_id, r.initial_locator) for r in records)
+    bodies = {r.initial_locator: r.parsed_body for r in records}
+    bodies[_SEC_LOCATOR] = "Example Holdings, Inc. {}\n".format(symbol)
+    bodies[candidates[1][1]] = "No additional event fact is asserted.\n"
+    overrides = {records[0].source_id: records[0].parsed_body}
+    config = _config(source_order=candidates)
+    discovery, semantic, _ = _listing_runtime_wires(
+        run_id, symbol, sources, bodies, config, claim_quote=event_text,
+        source_body_overrides=overrides, raw_input=raw_input,
+        claim_entity_refs=(symbol,), include_hypothesis=False,
+        event_date="2026-09-21",
+    )
+    transport = _SyntheticModelTransport(discovery, semantic)
+    client, _, _ = _sec_primary_composite_records(
+        symbol, cover_html_override=cover, fresh_client=True,
+    )
+    callback = create_event_grounder(
+        config, repo_root=_ROOT,
+        source_transport=_SyntheticSourceTransport(search_order=candidates, body_overrides=bodies),
+        discovery_transport=transport, semantic_transport=transport,
+        exploration_enabled=True,
+    )
+    with patch.dict(os.environ, {
+        "SYNTHETIC_TAVILY_KEY": "synthetic-only-key",
+        "SYNTHETIC_DISCOVERY_KEY": "synthetic-only-key",
+        "SYNTHETIC_SEMANTIC_KEY": "synthetic-only-key",
+    }), patch("convexity_hunter.host_event._create_source_admission_client", return_value=client):
+        result = callback(raw_input, run_id=run_id, bounds=CoreOperationalBounds(2, 2, 10, 10, 1.0))
+    return raw_input, result, transport, callback
+
+
+class DirectionlessExplorationIntegrationTests(unittest.TestCase):
+    def test_normal_source_receipt_admits_direct_issuer_without_hypothesis(self):
+        _, result, transport, _ = _directionless_exploration_fixture("directionless-normal")
+        self.assertEqual(len(transport.calls), 2)
+        self.assertIsNone(result.build_result.submission)
+        self.assertEqual(len(result.exploration_leads), 1)
+        lead = result.exploration_leads[0]
+        self.assertEqual(lead.underlying_key.symbol, "ACME")
+        self.assertEqual(lead.event_statement_id, lead.exposure_statement_id)
+        self.assertTrue(result._exploration_source_admissions)
+
+    def test_authenticated_event_actor_and_cik_must_match_listing_not_mentions(self):
+        from convexity_hunter.host_event import (
+            _direct_issuer_event_identity, _exploration_listing_issuer,
+            _sec_primary_html_occurrence_date_v0_4,
+        )
+        _, result, _, _ = _directionless_exploration_fixture("actor-role", peer_mention=True)
+        build = result.build_result
+        envelope = json.loads(build.semantic_validation.snapshot.canonical_bytes)
+        original = envelope["claims"][0]
+        lead = result.exploration_leads[0]
+        admissions = {a.source_id: a for a in result._exploration_source_admissions}
+        verified = frozenset(build.semantic_validation.receipt["verified_binding_indices"])
+        self.assertEqual([x.underlying_key.symbol for x in result.exploration_leads], ["ACME"])
+        self.assertTrue(_direct_issuer_event_identity(
+            0, original, envelope, verified, build.context,
+            admissions[original["source_id"]], lead.underlying_reference,
+            lead.underlying_key, admissions,
+        ))
+        for actor, cik in (("Peer Corp.", "320193"), ("Example Holdings, Inc.", "999999")):
+            with self.subTest(actor=actor, cik=cik):
+                # Independently admitted official HTML: same-name/different-CIK
+                # and another actor are not the issuer merely because the quote
+                # mentions it. No receipt/projector validator is patched.
+                locator = _SEC_LOCATOR.replace("/320193/", "/{}/".format(cik)).replace(
+                    "000032019326000123", "{:010d}26000123".format(int(cik)),
+                ).replace("example.htm", "other-event.htm")
+                text = original["text"].replace("Example Holdings, Inc.", actor)
+                html = _sec_primary_raw_cover_html("ACME").replace(
+                    b"Example Holdings, Inc.", actor.encode(),
+                ).replace(b"</p><table>", b"</p><p>" + text.encode() + b"</p><table>")
+                client = _SourceAdmissionClient(
+                    timeout_seconds=2.0, max_response_bytes=1_500_000,
+                    byte_budget=2_500_000,
+                    _transport=lambda *args: _Reply(200, {"Content-Type": "text/html; charset=UTF-8"}, html),
+                    _resolver=lambda *args: ("93.184.216.34",), _clock=lambda: _NOW,
+                )
+                admitted = client.admit_candidates((locator,)).admissions
+                self.assertEqual(len(admitted), 1)
+                admission = admitted[0]
+                source = HostSourceBody(
+                    admission.parsed_body, admission.parsed_body_sha256,
+                    admission.final_locator, admission.retrieved_at,
+                )
+                altered = json.loads(json.dumps(envelope))
+                claim = altered["claims"][0]
+                claim.update(source_id=admission.source_id, locator=locator, text=text)
+                start, end = next(span for span in _line_paragraph_spans(source.body)
+                                  if text in source.body[slice(*span)])
+                claim["quote"] = source.body[start:end]
+                for binding in altered["field_bindings"]:
+                    binding.update(source_id=admission.source_id, start=start,
+                                   end=end, quote=claim["quote"])
+                context = replace(build.context, source_bodies={
+                    **build.context.source_bodies, admission.source_id: source,
+                })
+                all_admissions = {**admissions, admission.source_id: admission}
+                self.assertEqual(_exploration_listing_issuer(
+                    lead.underlying_reference, lead.underlying_key, context, all_admissions,
+                ), "Example Holdings, Inc.")
+                self.assertIsNotNone(_sec_primary_html_occurrence_date_v0_4(
+                    0, claim, source, altered, verified, context, admission,
+                ))
+                self.assertFalse(_direct_issuer_event_identity(
+                    0, claim, altered, verified, context, admission,
+                    lead.underlying_reference, lead.underlying_key,
+                    all_admissions,
+                ))
+
+    def test_normal_grounder_shared_core_sqlite_and_lazy_chinese_detail(self):
+        from . import test_core_application as fixtures
+        from convexity_hunter import core_research
+        from convexity_hunter.host_event_core import create_event_core_executor
+        from convexity_hunter.host_profile import APPROVED_STANDARD_RESEARCH_PROFILE
+        from convexity_hunter.host_store import HostStore
+        from convexity_hunter.option_chain_discovery import OptionMaturityAuthority
+        from convexity_hunter.providers import futu
+
+        bounds = CoreOperationalBounds(2, 2, 10, 10, 1.0)
+        # Metadata uses the normal factory, not a synthetic alternative authority.
+        _, _, _, callback = _directionless_exploration_fixture("metadata-probe")
+        metadata = {
+            "configuration_snapshot": callback.configuration_snapshot(),
+            "execution_snapshot": {"event_executor": {
+                "status": "CONFIGURED", "version": "host-batch-executor-v0.1",
+            }},
+            "contract_versions": {
+                "architecture": "standalone-mvp-architecture-v0.1",
+                "host_shell": "host-server-v0.1",
+                "standard_research_profile": "standard-research-profile:v0.4",
+            },
+        }
+        raw = "Research the issuer's forecast uncertainty without assuming a direction."
+        with tempfile.TemporaryDirectory() as directory:
+            with closing(HostStore(Path(directory).resolve() / "research.sqlite")) as store:
+                run_id = store.create_run(
+                    "event", raw, bounds, APPROVED_STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+                )
+                raw, grounding, _, _ = _directionless_exploration_fixture(run_id, symbol="ABC")
+                stage = store.start_stage(run_id, "grounder")
+                store.save_grounder_exploration_stage_result(run_id, stage, grounding)
+                self.assertEqual(store.get_run(run_id)["status"], "RUNNING")
+                retained = store.get_event_research(run_id)
+                self.assertEqual(retained["status"], "EXPLORATION_RETAINED")
+                self.assertEqual(retained["ei_status"], "NOT_RUN")
+                self.assertNotIn("validation_reference", json.dumps(retained))
+                self.assertNotIn("lead_materials", json.dumps(store.get_run(run_id)))
+
+                underlying = grounding.exploration_leads[0].underlying_key
+                evaluation = datetime.date(2026, 11, 19)
+                rows = tuple(fixtures.make_row(datetime.date(2027, 1, 15), side, "100")
+                             for side in ("CALL", "PUT"))
+                class MarketBridge(fixtures.FakeMarketBridge):
+                    def __init__(self):
+                        self.rows = rows
+                        self.asks = {row.provider_identifier: fixtures.decimal.Decimal("2.50") for row in rows}
+                        self.calls = []
+                        self.verifications = {}
+                        for row in rows:
+                            self.verifications[row.provider_identifier] = futu.verify_futu_monthly_option_contract(
+                                fixtures.ExactContext(row), underlying_key=underlying,
+                                expiration=row.expiration, option_type=row.option_type, strike=row.strike,
+                            )
+                bridge = MarketBridge()
+                executor = create_event_core_executor(
+                    evaluation_date=evaluation,
+                    maturity_authority=OptionMaturityAuthority.NEUTRAL_STRUCTURAL_RESEARCH,
+                    market_bridge=bridge, exploration_enabled=True,
+                )
+                from convexity_hunter.core_application import SourceSubmissionBatch
+                result = executor(raw, bounds=bounds, source_batch=SourceSubmissionBatch(
+                    UserEventInput(raw), (), grounding.exploration_leads,
+                ))
+                self.assertEqual(len(result.case_set.cases), 3)
+                self.assertEqual([call[0] for call in bridge.calls].count("quote"), 1)
+                for case in result.case_set.cases:
+                    self.assertIs(case.kernel_result.geometry.status, core_research.CoreGeometryStatus.AVAILABLE)
+                    self.assertIs(case.kernel_result.disposition, core_research.CoreDisposition.DATA_INSUFFICIENT_CORE)
+                store.save_batch_result(run_id, result)
+                cases = store.list_batch_cases(run_id)
+                self.assertEqual(len(cases), 3)
+                detail = store.get_batch_case(run_id, cases[0]["case_key"])
+                self.assertIn("不形成EI支持的分布声明", detail["report"])
+                self.assertIn("not_established", detail["report"])
 
 
 class _SyntheticModelTransport:
@@ -1733,7 +1975,8 @@ class HostEventGrounderTests(unittest.TestCase):
         self.assertEqual(
             str(inspect.signature(HostGrounderEvidenceCatalogRuntimeResult)),
             "(build_result: 'HostBuildResult', discovery_call: 'HostGrounderCallSummary', "
-            "semantic_call: 'HostGrounderCallSummary', audit: 'HostEvidenceCatalogAudit') -> None",
+            "semantic_call: 'HostGrounderCallSummary', audit: 'HostEvidenceCatalogAudit', "
+            "exploration_leads: 'tuple' = ()) -> None",
         )
         self.assertNotIn("SYNTHETIC", repr(config))
         with self.assertRaisesRegex(TypeError, "host_context_preparer"):

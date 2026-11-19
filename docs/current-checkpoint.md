@@ -1,16 +1,32 @@
 # Current Checkpoint
 
-## Structure-first Event/World: authority approved, BUILD active — 2026-11-19
+## Structure-first Event/World: implemented, offline integrated — 2026-11-19
 
-User requests exploration without universal EI ACCEPTED/directional-hypothesis
-prerequisites, retaining EI for formal event/distribution claims. Current request,
-Futu and Core context contracts all require an accepted handoff; deleting the
-application gate alone is insufficient. [Minimal decision](structure-first-exploration-decision-v0.1.md)
-freezes a separate explicit exploration request/authority and neutral 30–150 DTE
-policy, independently verified fact/entity/exposure admission and shared Core.
-Independent decision review PASS; user explicitly approved. BUILD is authorized,
-not yet complete or live-validated. Existing authorities and historical results
-retain their meaning. No paid run, CAPR, provider request or Prompt repair.
+The approved [exploration authority](structure-first-exploration-decision-v0.1.md)
+is implemented behind `--enable-exploratory-research` (default off). A separately
+verified event/entity/exposure lead can enter the same Browser/exact verification/
+Core without manufacturing an EI submission, direction or impact window. Neutral
+30–150 calendar DTE and NOT_ESTABLISHED alignment remain explicit. Accepted-
+hypothesis routing takes precedence; unresolved same-event linkage fails closed.
+
+First normal Host scope is direct SEC own-issuer events with exact occurrence,
+issuer/CIK and existing independent listing/currency proof. Co-mentioned peers,
+general narratives and second-order exposure are not automatically projected.
+Event and World reuse the same Grounder and Core; Direct and formal EI acceptance
+remain unchanged. All eligible Calls/Puts/same-strike Straddles are enumerated
+neutrally under existing whole-batch bounds, never truncated to a ranked subset.
+Versioned structured archives and Workbench separate exploration, EI and Core
+status; ordinary GET stays redacted and detail rendering stays lazy.
+
+392 relevant offline tests PASS, including normal source admission, synthetic
+model transport, real receipt/projector, Store revalidation, common Event Core,
+SQLite and Chinese detail. The positive fixture patches no critical validator.
+Geometry survives while required unknown costs retain DATA_INSUFFICIENT_CORE.
+Actor/CIK mismatches and legacy routes are covered. Compilation, documentation
+links/fences, diff checks and independent review/targeted re-review PASS.
+Local launcher offline configuration check READY; live research is not run.
+No new real source/model/Futu call,
+CAPR run, paid acceptance or claimed live three-entry closure in this work unit.
 
 ## World archive → optional Event continuation delivered — 2026-11-12
 
