@@ -24,7 +24,11 @@ SQLite and Chinese detail. The positive fixture patches no critical validator.
 Geometry survives while required unknown costs retain DATA_INSUFFICIENT_CORE.
 Actor/CIK mismatches and legacy routes are covered. Compilation, documentation
 links/fences, diff checks and independent review/targeted re-review PASS.
-Local launcher offline configuration check READY; live research is not run.
+Local launcher offline configuration check READY. Normal Workbench deployed
+with evaluation date 2026-11-19 and explicit exploration opt-in; page HTTP200,
+new exploration assets and /api/status Host/journal/UI READY, all three
+executors CONFIGURED. Readiness is not source/model/Futu or research acceptance.
+Live research is not run.
 No new real source/model/Futu call,
 CAPR run, paid acceptance or claimed live three-entry closure in this work unit.
 

@@ -15,7 +15,8 @@ Versioned SQLite archives and Workbench distinguish exploration from EI claims.
 revalidation to Core/SQLite/Chinese detail without patching critical validators.
 Unknown costs remain missing and prevent unsupported Core qualification. Direct
 and EI semantics remain unchanged; no new paid/provider experiment or live
-three-entry completion claim. See checkpoint for validation/deployment status.
+three-entry completion claim. Normal local Workbench is deployed with explicit
+opt-in; page/assets/status checks pass, not a live research trial. See checkpoint.
 
 ## Actionable EI gap presentation — 2026-11-12
 
