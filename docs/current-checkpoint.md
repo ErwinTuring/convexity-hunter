@@ -1,5 +1,25 @@
 # Current Checkpoint
 
+## First live structure-first Event: Mattel stopped before market access — 2026-11-20
+
+One authorized U.S. options RTH run, `1574ddff-1146-4f95-bd43-ba1db97b629c`,
+from clean `83371c7` with exploration enabled. [Mattel's SEC 8-K](https://www.sec.gov/Archives/edgar/data/63276/000006327626000014/mat-20261102.htm)
+was an input lead for its November 5 results announcement, not prefilled
+evidence. The single POST was guarded and consumed, with no external rerun.
+Existing Tavily 3 requests/3 credits and two requests per model role unchanged;
+limits are not actual billing.
+
+Grounder and Builder completed, semantic receipt validated, and the results
+announcement was selected as the supported event fact anchor (7 claims, 9 field
+bindings, 1 hypothesis, 5 registered source bodies). The Semantic Verifier left
+one claim and the hypothesis unresolved; the latter also failed dependency
+closure. These are not exploration rejection codes. No admitted exploration
+lead and no EI submission: `BLOCKED / GROUNDING_NO_SUBMISSION`, EI `NOT_RUN`.
+The retained audit does not identify the exact exploration gate that abstained.
+No Futu quote request or Core execution; zero archived cases and no case report.
+World was not run; the prior shared-path offline integration still stands.
+No production changes, acceptance change, or positive live closure claim.
+
 ## Structure-first Event/World: implemented, offline integrated — 2026-11-19
 
 The approved [exploration authority](structure-first-exploration-decision-v0.1.md)
@@ -28,7 +48,7 @@ Local launcher offline configuration check READY. Normal Workbench deployed
 with evaluation date 2026-11-19 and explicit exploration opt-in; page HTTP200,
 new exploration assets and /api/status Host/journal/UI READY, all three
 executors CONFIGURED. Readiness is not source/model/Futu or research acceptance.
-Live research is not run.
+No live research was run as part of this BUILD.
 No new real source/model/Futu call,
 CAPR run, paid acceptance or claimed live three-entry closure in this work unit.
 

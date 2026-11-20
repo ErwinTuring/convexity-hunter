@@ -1,5 +1,14 @@
 # Project State
 
+## First live structure-first Event: no exploration lead — 2026-11-20
+
+One guarded normal Mattel Event ran in U.S. options RTH. Grounder and Builder
+completed; a supported event fact anchor was selected, but no exploration lead
+or EI submission was produced. `GROUNDING_NO_SUBMISSION`; EI did not run.
+The retained audit does not localize the exploration abstention. No Futu/Core,
+cases or Chinese case report; no World run, retry or production changes.
+See [checkpoint](current-checkpoint.md) for the run and evidence boundaries.
+
 ## Structure-first exploration: implemented, offline integrated — 2026-11-19
 
 New product direction separates exploratory structure research from EI claim
