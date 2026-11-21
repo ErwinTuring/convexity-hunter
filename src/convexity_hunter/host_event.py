@@ -965,6 +965,143 @@ def _exploration_listing_sec_cik(
     return None if locator_parts is None else locator_parts[0]
 
 
+def _exploration_sec_item_202_registrant(
+    claim_index, claim, source, envelope, verified_binding_indices, context, admission,
+) -> Optional[str]:
+    """Resolve only a direct quarterly release in a source-issued Item 2.02 block."""
+    if (
+        (admission.parser_id, admission.parser_version) != ("sec-edgar-cover-layout-v4", "4")
+        or claim.get("kind") != "observed_fact"
+        or claim.get("locator") != source.final_locator
+    ):
+        return None
+    original_path = _sec_locator_parts(admission.initial_locator)
+    if original_path is None or original_path != _sec_locator_parts(source.final_locator):
+        return None
+    anchors = []
+    for field in ("sec_cover.registrant", "sec_item_202.heading", "sec_item_202.release_block"):
+        found = tuple(a for a in admission.raw_anchors if a.field == field)
+        if len(found) != 1:
+            return None
+        anchors.append(found[0])
+    issuer, heading, block = anchors
+    if (
+        any(a.raw_start >= a.raw_end or a.parsed_start >= a.parsed_end for a in anchors)
+        or issuer.raw_end > heading.raw_start or heading.raw_end > block.raw_start
+        or issuer.parsed_end > heading.parsed_start or heading.parsed_end > block.parsed_start
+    ):
+        return None
+    body = source.body
+    if (
+        _sec_cover_layout_v4_fold(body[heading.parsed_start:heading.parsed_end])
+        != "Item 2.02 Results of Operations and Financial Condition."
+        or _sec_cover_layout_v4_fold(body[heading.parsed_end:block.parsed_start]) != ""
+    ):
+        return None
+    registrant = _listing_ascii_field(body[issuer.parsed_start:issuer.parsed_end])
+    if registrant is None:
+        return None
+
+    space = _SRO_ASCII_WS + "+"
+    pattern = re.compile(
+        r"(?<![A-Za-z0-9])On" + space
+        + r"(?P<month>(?ai:" + _ENGLISH_MONTHS + r"))" + space
+        + r"(?P<day>[0-9]{1,2})," + space + r"(?P<year>[0-9]{4})," + space
+        + r"(?ai:" + _ascii_whitespace_pattern(registrant) + r")"
+        + r"(?:" + space + r'\(the' + space + r'(?:“Company”|"Company")\))?' + space
+        + _ascii_whitespace_pattern("issued a press release regarding its") + space
+        + r"(?P<quarter>first|second|third|fourth)" + space + r"quarter" + space
+        + r"(?P<period_year>[0-9]{4})" + space + _ascii_whitespace_pattern("financial results")
+        + r"(?:," + space + _ascii_whitespace_pattern("a copy of which is furnished as Exhibit")
+        + space + r"[0-9]{1,3}\.[0-9]{1,3}" + space + r"hereto)?\."
+        + r"(?=$|" + _SRO_ASCII_WS + r")"
+    )
+    block_text = body[block.parsed_start:block.parsed_end]
+    match = pattern.match(block_text)
+    if (
+        match is None
+        or _ascii_whitespace_fold(block_text[match.end():]) not in (
+            "", "This exhibit is incorporated herein by reference.",
+        )
+        or type(claim.get("text")) is not str
+        or _ascii_whitespace_fold(claim["text"]) != _ascii_whitespace_fold(match.group(0))
+    ):
+        return None
+
+    date_tokens = _sec_v04_ambiguity_date_tokens(block_text)
+    if len(date_tokens) != 1 or date_tokens[0].span() != (match.start("month"), match.end("year")):
+        return None
+    # Do not treat a second exact report of the same issuer/period as evidence
+    # that one of the dates is the intended occurrence.
+    competing = tuple(
+        m for m in pattern.finditer(body)
+        if (m["quarter"], m["period_year"]) == (match["quarter"], match["period_year"])
+    )
+    if (
+        len(competing) != 1
+        or competing[0].span() != (block.parsed_start, block.parsed_start + match.end())
+        or _sec_primary_occurrence_has_correction(body)
+        or _exploration_sec_item_202_conflict(
+            body[:block.parsed_start], body[block.parsed_end:],
+            match["quarter"], match["period_year"],
+        )
+    ):
+        return None
+    try:
+        date = datetime.date(int(match["year"]), _ENGLISH_MONTH_NUMBERS[match["month"].title()],
+                             int(match["day"]))
+    except (KeyError, ValueError):
+        return None
+    if (
+        claim.get("event_date") != date.isoformat()
+        or date > context.observed_at.astimezone(datetime.timezone.utc).date()
+    ):
+        return None
+    exact = _exploration_binding(
+        envelope, verified_binding_indices, claim_index, claim,
+        "/claims/{}/event_date".format(claim_index), "date", source,
+    )
+    if exact is None:
+        return None
+    _, binding = exact
+    if (
+        binding["quote"] != claim.get("quote")
+        or (binding["start"], binding["end"]) not in _line_paragraph_spans(body)
+        or binding["start"] > block.parsed_start or binding["end"] < block.parsed_end
+    ):
+        return None
+    return registrant
+
+
+def _exploration_sec_item_202_conflict(before, after, quarter, year) -> bool:
+    # Veto other dated financial-result statements for this period, not just
+    # copies of the accepted template. This is a bounded ambiguity check, not
+    # a parser for arbitrary amendments or competing event narratives.
+    result_label = r"\b(?:press[- ]release|financial results|earnings)\b"
+    period = r"(?:" + quarter + r"[- ]quarter|Q" + str(
+        ("first", "second", "third", "fourth").index(quarter) + 1
+    ) + r")"
+    period_year = r"(?:" + period + r"(?: of)? " + year + r"|" + year + r" " + period + r")"
+    correction = r"\b(?:withdraw\w*|withdrew|retract\w*|rescind\w*|correct\w*|supersed\w*|restat\w*)\b"
+    flags = re.ASCII | re.IGNORECASE
+    for part in (before, after):
+        # A catalog paragraph can span different rendered SEC blocks and
+        # sections. Do not combine a result term and an unrelated notice
+        # from different rendered lines into a synthetic contradiction.
+        for line in part.split("\n"):
+            text = _ascii_whitespace_fold(line)
+            if re.search(result_label, text, flags) is None:
+                continue
+            if re.search(correction, text, flags) is not None:
+                return True
+            if (
+                re.search(r"\b" + period_year + r"\b", text, flags) is not None
+                and _sec_v04_ambiguity_date_tokens(text)
+            ):
+                return True
+    return False
+
+
 def _direct_issuer_event_identity(
     claim_index: int,
     claim: dict,
@@ -1036,6 +1173,11 @@ def _direct_issuer_event_identity(
         if occurrence is not None:
             registrant = occurrence[1].get("registrant")
             locator_parts = _sec_locator_parts(source.final_locator)
+
+    if registrant is None:
+        registrant = _exploration_sec_item_202_registrant(
+            claim_index, claim, source, envelope, verified_binding_indices, context, checked,
+        )
 
     if registrant is None or locator_parts is None:
         return False
@@ -3248,6 +3390,19 @@ def _sec_v04_ambiguity_date_tokens(text: str):
     )
 
 
+def _sec_primary_occurrence_has_correction(body: str) -> bool:
+    correction_label = re.compile(
+        r"^[ \t]*(?:Correction|Corrected event date|Withdrawal|Retraction):",
+        re.IGNORECASE | re.ASCII | re.MULTILINE,
+    )
+    correction_sentence = re.compile(
+        r"(?ai)(?<![A-Za-z0-9])The" + _SRO_ASCII_WS + r"+foregoing"
+        + _SRO_ASCII_WS + r"+statement" + _SRO_ASCII_WS + r"+is"
+        + _SRO_ASCII_WS + r"+(?:incorrect|corrected|withdrawn|retracted)\."
+    )
+    return correction_label.search(body) is not None or correction_sentence.search(body) is not None
+
+
 def _sec_primary_html_occurrence_pattern(
     registrant: str, *, ascii_case_insensitive_issuer: bool = False
 ):
@@ -3533,17 +3688,7 @@ def _sec_primary_html_occurrence_date(
         return None
 
     body = source.body
-    correction_label = re.compile(
-        r"^[ \t]*(?:Correction|Corrected event date|Withdrawal|Retraction):",
-        re.IGNORECASE | re.ASCII | re.MULTILINE,
-    )
-    correction_sentence = re.compile(
-        r"(?ai)(?<![A-Za-z0-9])The" + _SRO_ASCII_WS + r"+foregoing"
-        + _SRO_ASCII_WS + r"+statement" + _SRO_ASCII_WS + r"+is"
-        + _SRO_ASCII_WS
-        + r"+(?:incorrect|corrected|withdrawn|retracted)\."
-    )
-    if correction_label.search(body) is not None or correction_sentence.search(body) is not None:
+    if _sec_primary_occurrence_has_correction(body):
         return None
 
     selected_key = (

@@ -163,6 +163,36 @@ def _sec_layout_v4_html(
     ).format(issuer, marker, table_markup() * duplicate_tables, trailing).encode("utf-8")
 
 
+_SEC_ITEM_202_HEADING = "Item 2.02 Results of Operations and Financial Condition."
+_SEC_ITEM_202_RELEASE_FIRST = (
+    "On October 28, 2026, Example Holdings, Inc. issued a press release regarding its "
+    "third quarter 2026 financial results, a"
+)
+_SEC_ITEM_202_RELEASE_SECOND = (
+    "copy of which is furnished as Exhibit 99.1 hereto."
+)
+
+
+def _sec_item_202_v4_html(
+    *,
+    form_markup="<p>FORM 8-K</p>",
+    item_markup=None,
+    before_item="",
+    release_markup=None,
+    after_release="",
+):
+    if item_markup is None:
+        item_markup = "<p>{}</p>".format(_SEC_ITEM_202_HEADING)
+    if release_markup is None:
+        release_markup = "<p>{}</p><p>{}</p>".format(
+            _SEC_ITEM_202_RELEASE_FIRST,
+            _SEC_ITEM_202_RELEASE_SECOND,
+        )
+    trailing = before_item + item_markup + release_markup + after_release
+    body = _sec_layout_v4_html(title="Common&#13;Stock", trailing=trailing).decode("utf-8")
+    return body.replace("<body>", "<body>" + form_markup, 1).encode("utf-8")
+
+
 def _client(transport, *, resolver=None, max_bytes=100_000, byte_budget=500_000):
     return _SourceAdmissionClient(
         timeout_seconds=2.5,
@@ -1659,6 +1689,184 @@ class HostSourceAdmissionTests(unittest.TestCase):
                             spoof, max_raw_bytes=100_000, max_parsed_bytes=100_000
                         )
                     )
+
+    def test_sec_item_202_v4_emits_exact_heading_and_two_block_release_anchors(self):
+        after_release = "<p>The information is being furnished as required.</p>"
+        raw_body = _sec_item_202_v4_html(
+            item_markup="<p>{}</p>".format(_SEC_ITEM_202_HEADING),
+            after_release=after_release,
+        )
+        raw_text = raw_body.decode("utf-8")
+        transport = _ResponseTransport({SEC_LOCATOR: [_ok(raw_body)]})
+        result = _client(transport).admit_candidates((SEC_LOCATOR,))
+
+        self.assertEqual(result.request_count, 1)
+        self.assertEqual([call[0] for call in transport.calls], [SEC_LOCATOR])
+        self.assertEqual(len(result.admissions), 1)
+        admitted = result.admissions[0]
+        self.assertEqual(
+            (admitted.parser_id, admitted.parser_version),
+            ("sec-edgar-cover-layout-v4", "4"),
+        )
+        self.assertEqual(admitted.parsed_body, admission._sec_cover_layout_v4(raw_text).body)
+        self.assertIsNotNone(
+            _revalidate_source_admission(
+                admitted, max_raw_bytes=100_000, max_parsed_bytes=100_000
+            )
+        )
+
+        anchors_by_field = {anchor.field: anchor for anchor in admitted.raw_anchors}
+        heading = anchors_by_field["sec_item_202.heading"]
+        release = anchors_by_field["sec_item_202.release_block"]
+        expected_heading_raw = _SEC_ITEM_202_HEADING
+        self.assertEqual(
+            raw_text[heading.raw_start:heading.raw_end], expected_heading_raw
+        )
+        self.assertEqual(
+            heading.raw_sha256,
+            hashlib.sha256(expected_heading_raw.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            admission._sec_cover_layout_v4_fold(
+                admitted.parsed_body[heading.parsed_start:heading.parsed_end]
+            ),
+            _SEC_ITEM_202_HEADING,
+        )
+
+        expected_release_raw = (
+            _SEC_ITEM_202_RELEASE_FIRST
+            + "</p><p>"
+            + _SEC_ITEM_202_RELEASE_SECOND
+        )
+        release_start = raw_text.index(_SEC_ITEM_202_RELEASE_FIRST)
+        release_end = raw_text.index(_SEC_ITEM_202_RELEASE_SECOND) + len(
+            _SEC_ITEM_202_RELEASE_SECOND
+        )
+        self.assertEqual((release.raw_start, release.raw_end), (release_start, release_end))
+        self.assertEqual(
+            raw_text[release.raw_start:release.raw_end], expected_release_raw
+        )
+        self.assertEqual(
+            release.raw_sha256,
+            hashlib.sha256(expected_release_raw.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            admitted.parsed_body[release.parsed_start:release.parsed_end],
+            _SEC_ITEM_202_RELEASE_FIRST
+            + "\n\n"
+            + _SEC_ITEM_202_RELEASE_SECOND,
+        )
+        self.assertLessEqual(heading.raw_end, release.raw_start)
+        self.assertLessEqual(heading.parsed_end, release.parsed_start)
+        self.assertNotIn(
+            "The information is being furnished as required.",
+            admitted.parsed_body[release.parsed_start:release.parsed_end],
+        )
+
+    def test_sec_item_202_v4_optional_anchors_fail_closed_without_affecting_admission(self):
+        wrong_item = "<p>Item 2.01 Results of Operations and Financial Condition.</p>"
+        unrelated_then_candidate = (
+            "<p>Unrelated visible context.</p><p>{}</p><p>{}</p>".format(
+                _SEC_ITEM_202_RELEASE_FIRST,
+                _SEC_ITEM_202_RELEASE_SECOND,
+            )
+        )
+        statement_before_item = (
+            "<p>{}</p><p>{}</p>".format(
+                _SEC_ITEM_202_RELEASE_FIRST,
+                _SEC_ITEM_202_RELEASE_SECOND,
+            )
+        )
+        split_across_table = (
+            "<p>{}</p><table><tr><td>layout separator</td></tr></table><p>{}</p>".format(
+                _SEC_ITEM_202_RELEASE_FIRST,
+                _SEC_ITEM_202_RELEASE_SECOND,
+            )
+        )
+        hidden_release = (
+            "<p>{}<span aria-hidden=\"true\">invisible content</span></p><p>{}</p>".format(
+                _SEC_ITEM_202_RELEASE_FIRST,
+                _SEC_ITEM_202_RELEASE_SECOND,
+            )
+        )
+        cases = (
+            (
+                "wrong form",
+                {"form_markup": "<p>FORM 10-Q</p>"},
+            ),
+            (
+                "mixed forms",
+                {"form_markup": "<p>FORM 8-K</p><p>FORM 10-Q</p>"},
+            ),
+            (
+                "wrong item",
+                {"item_markup": wrong_item},
+            ),
+            (
+                "duplicate item heading",
+                {"item_markup": "<p>{0}</p><p>{0}</p>".format(_SEC_ITEM_202_HEADING)},
+            ),
+            (
+                "hidden heading path",
+                {
+                    "item_markup": (
+                        "<p>Item 2.02 Results of Operations"
+                        "<span hidden>hidden decoy</span> and Financial Condition.</p>"
+                    )
+                },
+            ),
+            (
+                "hidden release path",
+                {"release_markup": hidden_release},
+            ),
+            (
+                "unrelated next block",
+                {"release_markup": unrelated_then_candidate},
+            ),
+            (
+                "statement outside item",
+                {
+                    "before_item": statement_before_item,
+                    "release_markup": "<p>Unrelated filing context.</p>",
+                },
+            ),
+            (
+                "release split across table",
+                {"release_markup": split_across_table},
+            ),
+            (
+                "nonliteral copy continuation",
+                {
+                    "release_markup": "<p>{}</p><p>an exhibit copy is furnished as Exhibit 99.1</p>".format(
+                        _SEC_ITEM_202_RELEASE_FIRST
+                    )
+                },
+            ),
+        )
+        for label, options in cases:
+            with self.subTest(shape=label):
+                raw_body = _sec_item_202_v4_html(**options)
+                transport = _ResponseTransport({SEC_LOCATOR: [_ok(raw_body)]})
+                result = _client(transport).admit_candidates((SEC_LOCATOR,))
+
+                self.assertEqual(result.request_count, 1)
+                self.assertEqual([call[0] for call in transport.calls], [SEC_LOCATOR])
+                self.assertEqual(len(result.admissions), 1)
+                admitted = result.admissions[0]
+                self.assertEqual(
+                    (admitted.parser_id, admitted.parser_version),
+                    ("sec-edgar-cover-layout-v4", "4"),
+                )
+                fields = {anchor.field for anchor in admitted.raw_anchors}
+                self.assertNotIn("sec_item_202.heading", fields)
+                self.assertNotIn("sec_item_202.release_block", fields)
+                self.assertIn("sec_cover.registrant", fields)
+                self.assertIn("sec_cover.value.1", fields)
+                self.assertIsNotNone(
+                    _revalidate_source_admission(
+                        admitted, max_raw_bytes=100_000, max_parsed_bytes=100_000
+                    )
+                )
 
     def test_sec_v4_empty_layout_row_preserves_projection_and_proves_raw_anchors(self):
         baseline = _sec_layout_v4_html().decode("utf-8")

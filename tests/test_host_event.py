@@ -1598,15 +1598,16 @@ def _accepted_default_route_wires(
 
 def _directionless_exploration_fixture(
     run_id, *, symbol="ACME", peer_mention=False, event_date="2026-09-21",
+    cover_html=None, statement_text=None,
 ):
     """Normal source/model transports; no projector, receipt or EI bypass."""
     raw_input = "Research the issuer's forecast uncertainty without assuming a direction."
-    event_text = (
+    event_text = statement_text or (
         "On September 21, 2026, Example Holdings, Inc. (the “Company”) "
         "announced that it widened its full-year revenue forecast range."
     )
     extra = " Peer Corp. (PEER) was quoted as an industry observer." if peer_mention else ""
-    cover = _sec_primary_raw_cover_html(symbol).replace(
+    cover = cover_html or _sec_primary_raw_cover_html(symbol).replace(
         b"</p><table>", b"</p><p>" + (event_text + extra).encode() + b"</p><table>",
     )
     _, records, _ = _sec_primary_composite_records(symbol, cover_html_override=cover)
@@ -1653,6 +1654,68 @@ class DirectionlessExplorationIntegrationTests(unittest.TestCase):
         self.assertEqual(lead.event_statement_id, lead.exposure_statement_id)
         self.assertTrue(result._exploration_source_admissions)
         self.assertIsNone(result._exploration_gap)
+
+    def test_item_202_layout_is_exploration_only_and_requires_exact_date_and_issuer(self):
+        statement = (
+            "On September 21, 2026, Example Holdings, Inc. (the “Company”) "
+            "issued a press release regarding its third quarter 2026 financial results, a\n"
+            "copy of which is furnished as Exhibit 99.1 hereto."
+        )
+
+        def cover(item, event, trailing):
+            first, second = event.split("\n")
+            raw = _sec_primary_raw_cover_html().replace(
+                b"<body>", b"<body><div>FORM 8-K</div>",
+            ).replace(b"Example Holdings, Inc.", b"EXAMPLE HOLDINGS, INC.")
+            return raw.replace(
+                b"</table>", (
+                    "</table><div>Item {} Results of Operations and Financial Condition.</div>"
+                    "<div>{}</div><div>{} This exhibit is incorporated herein by reference.</div>"
+                    "<div>On October 1, 2026, an unrelated appointment was announced.</div>{}"
+                ).format(item, first, second, trailing).encode("utf-8"),
+            )
+
+        for label, item, text, date, trailing, eligible in (
+            ("direct", "2.02", statement, "2026-09-21", "", True),
+            ("unrelated-revision", "2.02", statement, "2026-09-21",
+             "<div>Item 5.02 Departure of Directors or Certain Officers.</div>"
+             "<div>The Letter Agreement supersedes the separation letter agreement.</div>", True),
+            ("different-section", "7.01", statement, "2026-09-21", "", False),
+            ("different-issuer", "2.02", statement.replace("Example Holdings", "Other Holdings"),
+             "2026-09-21", "", False),
+            ("wrong-date", "2.02", statement, "2026-09-20", "", False),
+            ("no-date-binding", "2.02", statement, None, "", False),
+            ("correction", "2.02", statement, "2026-09-21",
+             "<div>Correction: the release was not issued on the stated date.</div>", False),
+            ("retraction-sentence", "2.02", statement, "2026-09-21",
+             "<div>The Company withdrew the press release described above.</div>", False),
+            ("competing-occurrence", "2.02", statement, "2026-09-21", "<div>"
+             + statement.replace("September 21", "September 22").replace("99.1", "99.2")
+             + "</div>", False),
+            ("competing-period-report", "2.02", statement, "2026-09-21",
+             "<div>On September 22, 2026, the Company published its Q3 2026 earnings.</div>", False),
+        ):
+            with self.subTest(label=label):
+                _, result, _, _ = _directionless_exploration_fixture(
+                    "item-202-" + label, event_date=date,
+                    cover_html=cover(item, text, trailing), statement_text=text,
+                )
+                self.assertIsNone(result.build_result.submission)
+                self.assertIsNone(result.build_result.context.event_date_range)
+                self.assertEqual(len(result.exploration_leads), int(eligible))
+                if eligible:
+                    self.assertEqual(result.exploration_leads[0].underlying_key.symbol, "ACME")
+                    proof = json.loads(result.exploration_leads[0].validation_reference)
+                    anchor_fields = {
+                        a["field"] for a in proof["sources"][0]["admission"]["raw_anchors"]
+                    }
+                    self.assertIn("sec_item_202.heading", anchor_fields)
+                    self.assertIn("sec_item_202.release_block", anchor_fields)
+                    date_binding = next(
+                        b for b in proof["verified_entity_bindings"]
+                        if b["field_path"] == "/claims/0/event_date"
+                    )
+                    self.assertIn("October 1, 2026", date_binding["quote"])
 
     def test_admission_gap_distinguishes_listing_from_direct_issuer_proof(self):
         from convexity_hunter.host_event import _derive_exploration_leads

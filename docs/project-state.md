@@ -1,5 +1,14 @@
 # Project State
 
+## Exploration-only SEC Item 2.02 issuer/date witness — 2026-11-21
+
+Direct quarterly release evidence can use one exact source-anchored Item 2.02
+block (including one tightly linked exhibit-copy continuation). Original
+binding, listing, CIK and conflict checks remain required. Formal EI date,
+maturity and Core rules are unchanged. Mattel raw-document compatibility was
+verified with an offline binding fixture only; no live Event/World replay.
+See the [checkpoint](current-checkpoint.md) for limits.
+
 ## SEC v4 compatibility: one proven-empty leading layout row — 2026-11-21
 
 Approved five-cell layout variant implemented without changing listing, issuer,

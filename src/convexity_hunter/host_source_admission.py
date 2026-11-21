@@ -1763,6 +1763,7 @@ class _SecCoverSemanticHTML(_BoundedHTML):
         self._physical_row_counts = {}
         self._row_source_start = None
         self._row_source_spans = {}
+        self._hidden_raw_starts = []
 
     def proves_empty_layout_row(self, table_id, row):
         # Text-only chunks lose hidden content and some invalid numeric
@@ -1823,6 +1824,9 @@ class _SecCoverSemanticHTML(_BoundedHTML):
 
     def handle_starttag(self, tag, attrs):
         normalized_tag = tag.casefold()
+        hidden = not self._hidden_stack and self._hidden_start(normalized_tag, attrs)
+        if hidden:
+            self._hidden_raw_starts.append(self._offset())
         previous_row = self._row
         if normalized_tag == "tr" and self._table_stack:
             table_id = self._table_stack[-1]
@@ -1830,7 +1834,7 @@ class _SecCoverSemanticHTML(_BoundedHTML):
         if (
             not self._hidden_stack
             and normalized_tag in self._SEGMENT_BLOCKS
-            and not self._hidden_start(normalized_tag, attrs)
+            and not hidden
         ):
             self._finish_semantic_segment()
         super().handle_starttag(tag, attrs)
@@ -1879,6 +1883,85 @@ def _sec_semantic_segment_anchor(source, field, segment, visible_anchors):
         min(item.parsed_start for item in mapped),
         max(item.parsed_end for item in mapped),
     )
+
+
+def _sec_item_202_anchors(source, parser, visible_body, visible_anchors, marker_index, table_id):
+    """Emit optional exploration witnesses without editing the projected body."""
+    segments = parser.semantic_segments
+    folded = tuple(_sec_cover_layout_v4_fold(s["text"]) for s in segments)
+    forms = tuple(
+        i for i, text in enumerate(folded)
+        if text is not None and segments[i]["outside_table"]
+        and re.fullmatch(r"FORM [0-9][0-9A-Z-]{0,9}(?:/[A-Z])?", text, re.ASCII | re.I)
+    )
+    items = tuple(
+        i for i, text in enumerate(folded)
+        if text is not None and segments[i]["outside_table"]
+        and re.match(r"Item 2\.02(?:[ .:]|$)", text, re.ASCII | re.I)
+    )
+    if len(forms) != 1 or len(items) != 1:
+        return ()
+    form, item = forms[0], items[0]
+    if (
+        not form < marker_index < item
+        or folded[form] != "FORM 8-K"
+        or folded[item] != "Item 2.02 Results of Operations and Financial Condition."
+        or segments[form]["inline_break"] or segments[item]["inline_break"]
+    ):
+        return ()
+    heading = _sec_semantic_segment_anchor(
+        source, "sec_item_202.heading", segments[item], visible_anchors,
+    )
+    if heading is None or heading.raw_start <= parser.tables[table_id]["raw_end"]:
+        return ()
+
+    def next_block(i):
+        return next((j for j in range(i + 1, len(segments)) if folded[j] != ""), None)
+
+    first = next_block(item)
+    if first is None or not segments[first]["outside_table"]:
+        return ()
+    release = _sec_semantic_segment_anchor(
+        source, "sec_item_202.release_block", segments[first], visible_anchors,
+    )
+    if (
+        release is None or heading.raw_end > release.raw_start
+        or heading.parsed_end > release.parsed_start
+        or _sec_cover_layout_v4_fold(visible_body[heading.parsed_end:release.parsed_start]) != ""
+    ):
+        return ()
+    first_text = _sec_cover_layout_v4_fold(visible_body[release.parsed_start:release.parsed_end])
+    if first_text is None or not first_text.startswith("On "):
+        return ()
+    if first_text.endswith("financial results, a"):
+        # This is a presentation split within the same sentence, not an
+        # authorization to concatenate arbitrary neighboring source facts.
+        second = next_block(first)
+        if second is None or not segments[second]["outside_table"]:
+            return ()
+        tail = _sec_semantic_segment_anchor(source, "continuation", segments[second], visible_anchors)
+        if (
+            tail is None or release.raw_end > tail.raw_start
+            or release.parsed_end > tail.parsed_start
+            or _sec_cover_layout_v4_fold(visible_body[release.parsed_end:tail.parsed_start]) != ""
+        ):
+            return ()
+        tail_text = _sec_cover_layout_v4_fold(visible_body[tail.parsed_start:tail.parsed_end])
+        if tail_text is None or not re.fullmatch(
+            r"copy of which is furnished as Exhibit [0-9]{1,3}\.[0-9]{1,3} hereto\."
+            r"(?: This exhibit is incorporated herein by reference\.)?",
+            tail_text,
+        ):
+            return ()
+        release = _anchor(
+            release.field, source, release.raw_start, tail.raw_end,
+            release.parsed_start, tail.parsed_end,
+        )
+    if any(heading.raw_start <= i < release.raw_end for i in parser._hidden_raw_starts):
+        return ()
+    if any(heading.raw_start <= t["raw_start"] < release.raw_end for t in parser.tables):
+        return ()
+    return heading, release
 
 
 def _sec_cover_layout_v4(source: str) -> Optional[_ParsedPage]:
@@ -1941,6 +2024,10 @@ def _sec_cover_layout_v4(source: str) -> Optional[_ParsedPage]:
         anchors.append(anchor)
     if len(anchors) > 2048:
         return None
+    if len(anchors) <= 2046:
+        anchors.extend(_sec_item_202_anchors(
+            source, parser, _visible_body, visible_anchors, marker_index, table_id,
+        ))
     return _ParsedPage(body, "sec-edgar-cover-layout-v4", tuple(anchors), symbol)
 
 

@@ -120,6 +120,29 @@ raw responses, full source bodies or pre-generated prose.
 
 ## Interface impact and smallest BUILD
 
+### SEC Item 2.02 occurrence compatibility — 2026-11-21
+
+User-approved successor for independent exploration only. If the existing
+issuer occurrence rules do not resolve the anchor, an admitted and revalidated
+SEC primary v4 Form 8-K may witness the issuer's own quarterly financial
+results press-release occurrence under its sole visible Item 2.02 heading.
+Use the heading and the immediately following anchored visible source block.
+One adjacent block may complete the same explicit exhibit-copy clause when
+split by layout; do not join other facts. Require the original source span and
+raw hashes, a literal complete named-issuer announcement, one date inside the
+anchored block, and the same existing verified exact catalog quote and date
+binding containing that statement. ASCII case-insensitive comparison applies
+only to the issuer name, not to quoted text. A numeric Exhibit identifier is
+not sentence punctuation. Reject other acts/sections, duplicate direct
+releases, competing dated results statements for the same fiscal period, and
+explicit correction/retraction signals. These are bounded ambiguity checks,
+not an exhaustive parser for arbitrary amendments. Reject mismatched dates,
+CIK, security identity, citations or absent authority. Original narrative, receipt,
+anchor ordering and budgets remain unchanged. This does not populate the
+formal Event Intelligence date range, alter any EI rule, or authorize a replay.
+
+### Original scope and delivery
+
 First Host slice: direct own-issuer events with an exact existing SEC occurrence
 and issuer/CIK witness. Co-mentioned peers and general second-order relationships
 are not projected merely because their entities/listings are verified. They need

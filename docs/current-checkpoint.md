@@ -1,5 +1,22 @@
 # Current Checkpoint
 
+## SEC Item 2.02 direct release evidence for independent exploration — 2026-11-21
+
+The user approved the [narrow exploration-only occurrence successor](structure-first-exploration-decision-v0.1.md).
+An admitted SEC v4 Form 8-K may supply optional original heading/release block
+anchors, including the exact adjacent exhibit-copy clause when layout splits
+one sentence. Host requires a single exact issuer/quarter release, one date
+inside that block, the existing verified quote and date binding, and the same
+listing/CIK proof. Only the named issuer is compared ASCII-case-insensitively;
+the exact quote, source hashes and offsets are retained.
+
+The unmodified public Mattel 8-K passed the new deterministic occurrence check
+in isolation with a synthetic verified binding; without it or via the unchanged
+formal EI v0.4 rule it remained unresolved. This does not validate a live model
+receipt, explain the historic Mattel stop, or prove a live research case.
+No Event/World POST, market/model call, timing assumption or EI/Core change.
+The affected source, Event, World and storage suite passed 292 offline tests.
+
 ## SEC v4: one leading empty five-cell layout row — 2026-11-21
 
 The user approved one exact [SEC v4 cover format amendment](local-event-delivery-v0.1.md#sec-semantic-layout-source-text-v4--2026-10-10).
