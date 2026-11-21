@@ -3951,6 +3951,8 @@ class HostStore:
         transaction. No Core case or batch archive is created.
         """
 
+        from .host_grounder_runtime import _EXPLORATION_GAP_CODES
+
         self._validate_run_id(run_id)
         self._validate_stage_id(stage_id)
         diagnostics = [_GROUNDER_STAGE_DIAGNOSTIC]
@@ -3984,7 +3986,17 @@ class HostStore:
             outcome = _grounder_stage_outcome(result, run_id, start_snapshot["input"])
             if outcome["provenance"]["host_raw_input_sha256"] != start_snapshot["input_sha256"]:
                 raise ValueError("Grounder raw input digest does not match the immutable Host snapshot")
-            payload = {"outcome": outcome, "diagnostics": diagnostics}
+            gap = result._exploration_gap
+            stage_diagnostics = diagnostics
+            if gap is not None:
+                if type(gap) is not str or gap not in _EXPLORATION_GAP_CODES or result.exploration_leads:
+                    raise ValueError("Grounder exploration gap has an invalid negative stage")
+                _validated_exploration_policy(
+                    start_snapshot["metadata"]["configuration_snapshot"].get("exploration_policy"),
+                    mode="event",
+                )
+                stage_diagnostics = diagnostics + [gap]
+            payload = {"outcome": outcome, "diagnostics": stage_diagnostics}
             if connection.execute(
                 "SELECT 1 FROM direct_cases WHERE run_id=? UNION ALL "
                 "SELECT 1 FROM batch_archives WHERE run_id=? LIMIT 1",
@@ -4305,6 +4317,8 @@ class HostStore:
 
     def get_event_research(self, run_id: str) -> Optional[Dict[str, Any]]:
         """Read retained EI and explicit safe lead material, never provider bodies."""
+        from .host_grounder_runtime import _EXPLORATION_GAP_CODES, _EXPLORATION_UNKNOWN_GAP
+
         with self._lock:
             run = self.get_run(run_id)  # validates archive integrity before projection
             if run is None or run["mode"] != "event":
@@ -4372,6 +4386,20 @@ class HostStore:
                     "ei_assessment_statuses": assessment_rows,
                     "ei_lead_association": "NOT_ESTABLISHED",
                 })
+            elif (
+                view["status"] == "NOT_RETAINED"
+                and run["status"] == "BLOCKED"
+                and _GROUNDER_STAGE_DIAGNOSTIC in run["diagnostics"]
+                and "exploration_policy" in run["metadata"]["configuration_snapshot"]
+            ):
+                stages = [
+                    e for e in run["events"]
+                    if e["stage"] == "grounder" and e["status"] == "COMPLETED"
+                    and _GROUNDER_STAGE_DIAGNOSTIC in e.get("diagnostics", ())
+                ]
+                if len(stages) == 1:
+                    gaps = [code for code in stages[0]["diagnostics"] if code in _EXPLORATION_GAP_CODES]
+                    view["exploration_gap"] = gaps[0] if len(gaps) == 1 else _EXPLORATION_UNKNOWN_GAP
             return view
 
     def get_world_research(self, run_id: str) -> Optional[Dict[str, Any]]:

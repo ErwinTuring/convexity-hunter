@@ -53,6 +53,9 @@ from .host_grounder_runtime import (
     HostGrounderEvidenceCatalogRuntimeResult,
     HostGrounderRuntimeError,
     _EventFactAnchorOutcome,
+    _EXPLORATION_ISSUER_GAP,
+    _EXPLORATION_LISTING_GAP,
+    _EXPLORATION_UNKNOWN_GAP,
     _run_host_grounder_same_run_evidence_catalog_v0_10,
     _stamp_event_fact_anchor_outcome,
     _with_exploration_leads,
@@ -1069,6 +1072,7 @@ def _derive_exploration_leads(
     *,
     admission_records: tuple,
     max_leads: int,
+    gap_capture: Optional[list] = None,
 ) -> tuple:
     """Project narrow leads from existing receipt-verified claims and listings."""
     if (
@@ -1150,10 +1154,12 @@ def _derive_exploration_leads(
     # and that filing's CIK is the listing composite's CIK. Ticker mentions in
     # the same quote are not enough to create additional market candidates.
     candidate_roots = []
+    gaps = set()
     anchor_index = claim_index_by_id.get(anchor_id)
     for entity_ref in anchor_claim.get("entity_refs", ()):
         binding = build.context.underlying_bindings.get((anchor_id, entity_ref))
         if type(binding) is not tuple or len(binding) != 2:
+            gaps.add(_EXPLORATION_LISTING_GAP)
             continue
         underlying_key, underlying_reference = binding
         if (
@@ -1164,18 +1170,21 @@ def _derive_exploration_leads(
                 build.context,
                 admission_by_id,
             )
-            or not _direct_issuer_event_identity(
-                anchor_index,
-                anchor_claim,
-                envelope,
-                verified_binding_indices,
-                build.context,
-                admission_by_id.get(anchor_claim.get("source_id")),
-                underlying_reference,
-                underlying_key,
-                admission_by_id,
-            )
         ):
+            gaps.add(_EXPLORATION_LISTING_GAP)
+            continue
+        if not _direct_issuer_event_identity(
+            anchor_index,
+            anchor_claim,
+            envelope,
+            verified_binding_indices,
+            build.context,
+            admission_by_id.get(anchor_claim.get("source_id")),
+            underlying_reference,
+            underlying_key,
+            admission_by_id,
+        ):
+            gaps.add(_EXPLORATION_ISSUER_GAP)
             continue
         candidate_roots.append(
             {
@@ -1340,6 +1349,8 @@ def _derive_exploration_leads(
 
     if len(leads) > max_leads:
         raise HostGrounderRuntimeError("EXPLORATION_LEAD_LIMIT_EXCEEDED")
+    if gap_capture is not None and not leads and not candidate_roots and len(gaps) == 1:
+        gap_capture.append(next(iter(gaps)))
     return tuple(leads)
 
 
@@ -4856,10 +4867,12 @@ def create_event_grounder(
                 result, event_fact_anchor_capture[0]
             )
         if exploration_enabled:
+            gaps = []
             exploration_leads = _derive_exploration_leads(
                 result,
                 admission_records=tuple(admitted_sources),
                 max_leads=bounds.max_submissions,
+                gap_capture=gaps if not world_source_policy else None,
             )
             if exploration_leads:
                 result = _with_exploration_leads(result, exploration_leads)
@@ -4867,6 +4880,10 @@ def create_event_grounder(
                     result,
                     "_exploration_source_admissions",
                     tuple(admitted_sources),
+                )
+            elif not world_source_policy and result.build_result.submission is None:
+                object.__setattr__(
+                    result, "_exploration_gap", gaps[0] if gaps else _EXPLORATION_UNKNOWN_GAP,
                 )
         return result
 

@@ -1957,6 +1957,12 @@ class HostServerBatchTests(unittest.TestCase):
             )
             self.assertEqual(store.get_batch_summary(body["run_id"]), None)
             self.assertIsNotNone(result_by_run[body["run_id"]])
+            archived = self._request("GET", "/api/runs/" + body["run_id"] + "/research")
+            self.assertEqual(archived[0], 200)
+            research = self._decoded(archived)
+            self.assertEqual(research["status"], "NOT_RETAINED")
+            self.assertNotIn("exploration_gap", research)
+            self.assertEqual(timeline, ["configuration_snapshot", "create_run", "grounder"])
         finally:
             self._stop_server()
             store.close()

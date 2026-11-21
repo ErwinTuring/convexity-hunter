@@ -1118,6 +1118,21 @@ _DOCUMENT = r'''<!doctype html>
     missing_uncertainties: "缺少不确定性说明：可列出尚未建立的关键条件，不能伪装成已知事实。",
     missing_falsification_conditions: "缺少可证伪条件：可说明哪些可观察事实会使假设不再成立。"
   });
+  const explorationGapHelp = Object.freeze({
+    EXPLORATION_LISTING_IDENTITY_UNVERIFIED: "查找同一发行人符合现有准入条件的 SEC filing，核对法律发行人/CIK、具体证券类别，并核验该发行人直接事件及其发生日期。发行人 IR 公告或其他官方文件只能作为辅助线索，不能代替符合条件的 SEC 证明；交易所/上市市场与币种的官方资料也只是线索，既有精确身份组合仍须通过。单有 ticker 或用户直接提供的信息不够；补充仍须独立核验，不保证通过。",
+    EXPLORATION_ISSUER_RELATION_UNVERIFIED: "查找同一发行人符合现有准入条件的 SEC filing，直接核验由该发行人发生或承担的事件、发生日期及其与发行人的关系。IR 公告或其他官方文件只能作为辅助线索，不能代替符合条件的 SEC 证明；仅被同一材料提及不能证明关联。单有 ticker 或用户直接提供的信息不够；补充仍须独立核验，不保证通过。",
+    EXPLORATION_GAP_UNKNOWN: "具体原因未确定；不提供补充方向或续研草稿。"
+  });
+  function hasValidExplorationContinuationSeed(view) {
+    if (!isRecord(view) || typeof view.original_input !== "string" || !view.original_input.trim() || !isRecord(view.bounds)) return false;
+    const bounds = view.bounds;
+    return Object.keys(bounds).length === integerBoundNames.length + 1
+      && integerBoundNames.every(name => Object.prototype.hasOwnProperty.call(bounds, name)
+        && Number.isSafeInteger(bounds[name]) && bounds[name] >= 0)
+      && Object.prototype.hasOwnProperty.call(bounds, "quote_timeout_seconds")
+      && Number.isFinite(bounds.quote_timeout_seconds)
+      && bounds.quote_timeout_seconds > 0 && bounds.quote_timeout_seconds <= 60;
+  }
   function renderEventResearch(data) {
     continuationResearch = null;
     const button = byId("prepare-event-continuation");
@@ -1152,9 +1167,28 @@ _DOCUMENT = r'''<!doctype html>
       return;
     }
     if (!isRecord(view) || view.status !== "RETAINED") {
-      setText(byId("event-research-view"), isRecord(view) && view.status === "NOT_RETAINED"
-        ? "未保留可展示的 Event submission；不补造历史事实。原阶段原因仍见上方。"
-        : "尚未读取 Event 材料。请选择历史 Event，再点击查看按钮；尚未读取不代表未保留。");
+      if (isRecord(view) && view.status === "NOT_RETAINED") {
+        const lines = ["未保留可展示的 Event submission；不补造历史事实。原阶段原因仍见上方。"];
+        if (Object.prototype.hasOwnProperty.call(view, "exploration_gap")) {
+          const gap = view.exploration_gap;
+          if (typeof gap === "string" && Object.prototype.hasOwnProperty.call(explorationGapHelp, gap)) {
+            lines.push("探索缺口：" + gap);
+            lines.push(explorationGapHelp[gap]);
+            if (gap !== "EXPLORATION_GAP_UNKNOWN" && hasValidExplorationContinuationSeed(view)) {
+              continuationResearch = view;
+              button.disabled = false;
+              lines.push("可填写待核验补充并准备 Event 草稿；准备不调用服务，是否提交仍由你明确决定。");
+            } else if (gap !== "EXPLORATION_GAP_UNKNOWN") {
+              lines.push("原始 Event 输入或原五项预算缺失/无效；不生成续研草稿。");
+            }
+          } else {
+            lines.push("探索缺口未能安全识别；不提供补充方向或续研草稿。");
+          }
+        }
+        setText(byId("event-research-view"), lines.join("\n"));
+      } else {
+        setText(byId("event-research-view"), "尚未读取 Event 材料。请选择历史 Event，再点击查看按钮；尚未读取不代表未保留。");
+      }
       return;
     }
     const lines = ["已保留的核验后 submission 材料；不代表 EI 已接受或市场事实必然成立。",

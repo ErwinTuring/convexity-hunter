@@ -1596,7 +1596,9 @@ def _accepted_default_route_wires(
     return producer_json, semantic_json
 
 
-def _directionless_exploration_fixture(run_id, *, symbol="ACME", peer_mention=False):
+def _directionless_exploration_fixture(
+    run_id, *, symbol="ACME", peer_mention=False, event_date="2026-09-21",
+):
     """Normal source/model transports; no projector, receipt or EI bypass."""
     raw_input = "Research the issuer's forecast uncertainty without assuming a direction."
     event_text = (
@@ -1619,7 +1621,7 @@ def _directionless_exploration_fixture(run_id, *, symbol="ACME", peer_mention=Fa
         run_id, symbol, sources, bodies, config, claim_quote=event_text,
         source_body_overrides=overrides, raw_input=raw_input,
         claim_entity_refs=(symbol,), include_hypothesis=False,
-        event_date="2026-09-21",
+        event_date=event_date,
     )
     transport = _SyntheticModelTransport(discovery, semantic)
     client, _, _ = _sec_primary_composite_records(
@@ -1650,6 +1652,34 @@ class DirectionlessExplorationIntegrationTests(unittest.TestCase):
         self.assertEqual(lead.underlying_key.symbol, "ACME")
         self.assertEqual(lead.event_statement_id, lead.exposure_statement_id)
         self.assertTrue(result._exploration_source_admissions)
+        self.assertIsNone(result._exploration_gap)
+
+    def test_admission_gap_distinguishes_listing_from_direct_issuer_proof(self):
+        from convexity_hunter.host_event import _derive_exploration_leads
+
+        _, result, _, _ = _directionless_exploration_fixture("missing-listing-at-preparation")
+        self.assertEqual(len(result.exploration_leads), 1)
+        build = result.build_result
+        no_listing = replace(result, build_result=replace(
+            build, context=replace(build.context, underlying_bindings=MappingProxyType({})),
+        ), exploration_leads=())
+        object.__setattr__(
+            no_listing, "_event_fact_anchor_outcome", result._event_fact_anchor_outcome,
+        )
+        gaps = []
+        self.assertEqual(_derive_exploration_leads(
+            no_listing, admission_records=result._exploration_source_admissions,
+            max_leads=2, gap_capture=gaps,
+        ), ())
+        self.assertEqual(gaps, ["EXPLORATION_LISTING_IDENTITY_UNVERIFIED"])
+
+        _, no_occurrence, _, _ = _directionless_exploration_fixture(
+            "missing-occurrence-date-proof", event_date=None,
+        )
+        self.assertTrue(no_occurrence.build_result.context.underlying_bindings)
+        self.assertIsNone(no_occurrence.build_result.submission)
+        self.assertEqual(no_occurrence.exploration_leads, ())
+        self.assertEqual(no_occurrence._exploration_gap, "EXPLORATION_ISSUER_RELATION_UNVERIFIED")
 
     def test_authenticated_event_actor_and_cik_must_match_listing_not_mentions(self):
         from convexity_hunter.host_event import (
@@ -1759,8 +1789,15 @@ class DirectionlessExplorationIntegrationTests(unittest.TestCase):
                 self.assertNotIn("lead_materials", json.dumps(store.get_run(run_id)))
 
                 underlying = grounding.exploration_leads[0].underlying_key
-                evaluation = datetime.date(2026, 11, 19)
-                rows = tuple(fixtures.make_row(datetime.date(2027, 1, 15), side, "100")
+                evaluation = grounding.exploration_leads[0].observed_at.astimezone(
+                    datetime.timezone.utc
+                ).date()
+                first_eligible = evaluation + datetime.timedelta(days=30)
+                expiry = next(
+                    date for date in (first_eligible + datetime.timedelta(days=i) for i in range(35))
+                    if date.weekday() == 4 and 15 <= date.day <= 21
+                )
+                rows = tuple(fixtures.make_row(expiry, side, "100")
                              for side in ("CALL", "PUT"))
                 class MarketBridge(fixtures.FakeMarketBridge):
                     def __init__(self):

@@ -253,6 +253,7 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   });
   const calls = [];
   let caseResponseIndex = 0;
+  let researchResponseIndex = 0;
   const document = {
     getElementById(id) { return elements.get(id); },
     querySelector(selector) {
@@ -273,7 +274,12 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
     if (path === "/api/profile") return response({ profile: "synthetic" });
     if (path === "/api/runs") return response({ runs: [{ run_id: listedRunId, mode, status: runStatus }] });
     if (path === "/api/runs/" + encodeURIComponent(runId)) return response(run);
-    if (path === "/api/runs/" + encodeURIComponent(runId) + "/research") return response(eventResearch);
+    if (path === "/api/runs/" + encodeURIComponent(runId) + "/research") {
+      const research = Array.isArray(eventResearch)
+        ? eventResearch[Math.min(researchResponseIndex, eventResearch.length - 1)] : eventResearch;
+      researchResponseIndex += 1;
+      return response(research);
+    }
     if (path.startsWith("/api/runs/" + encodeURIComponent(runId) + "/cases/")) {
       const next = responses[Math.min(caseResponseIndex, responses.length - 1)];
       caseResponseIndex += 1;
@@ -924,6 +930,122 @@ async function scenario({ mode, cases, batchSummary = null, events, runStatus = 
   if (!worldExploration.elements.get("event-research-view").textContent.includes("independent world fact")) throw new Error("World-only exploration materials were hidden");
   if (worldExploration.elements.get("world-research-selections").children.length !== 0) throw new Error("World exploration created a mandatory manual selection");
   if (worldExploration.calls.some(x=>x.method === "POST")) throw new Error("World exploration view triggered research");
+  const gapBounds = {max_submissions:2,max_hypotheses:3,max_browser_rows:20,max_cases:8,quote_timeout_seconds:2.5};
+  const listingGap = await scenario({mode:"event",cases:[],events:[],
+    executors:{event:"CONFIGURED",world:"CONFIGURED",direct:"CONFIGURED"},
+    eventResearch:{status:"NOT_RETAINED",exploration_gap:"EXPLORATION_LISTING_IDENTITY_UNVERIFIED",
+      original_input:"original event",bounds:gapBounds}});
+  await listingGap.clickRun();
+  if (!listingGap.elements.get("prepare-event-continuation").disabled
+      || listingGap.elements.get("event-supplement").value !== "") throw new Error("gap continuation state was enabled before explicit research read");
+  await listingGap.elements.get("read-event-research").click();
+  const listingGapText = listingGap.elements.get("event-research-view").textContent;
+  for (const expected of ["EXPLORATION_LISTING_IDENTITY_UNVERIFIED", "同一发行人", "SEC filing",
+    "发行人 IR 公告或其他官方文件只能作为辅助线索", "不能代替符合条件的 SEC 证明",
+    "交易所/上市市场与币种的官方资料也只是线索", "既有精确身份组合仍须通过",
+    "ticker", "用户直接提供", "不保证通过"]) {
+    if (!listingGapText.includes(expected)) throw new Error("listing identity gap guidance missing: " + expected);
+  }
+  if (listingGap.elements.get("prepare-event-continuation").disabled) throw new Error("valid exploration gap did not enable draft preparation");
+  if (listingGap.calls.some(x=>x.method === "POST")) throw new Error("explicit gap read triggered research");
+  listingGap.elements.get("event-supplement").value = "SEC filing URL and dated event evidence";
+  await listingGap.elements.get("prepare-event-continuation").click();
+  if (!listingGap.elements.get("raw-input").value.includes("original event")
+      || !listingGap.elements.get("raw-input").value.includes("SEC filing URL and dated event evidence")) throw new Error("gap draft omitted original input or user supplement");
+  if (listingGap.elements.get("bound-max-submissions").value !== "2"
+      || listingGap.elements.get("bound-max-hypotheses").value !== "3"
+      || listingGap.elements.get("bound-max-browser-rows").value !== "20"
+      || listingGap.elements.get("bound-max-cases").value !== "8"
+      || listingGap.elements.get("bound-quote-timeout").value !== "2.5") throw new Error("gap draft did not preserve exact original bounds");
+  if (listingGap.calls.some(x=>x.method === "POST")) throw new Error("draft preparation submitted without explicit form submit");
+  await listingGap.clickRun();
+  if (!listingGap.elements.get("event-research-view").textContent.includes("尚未读取 Event 材料")
+      || !listingGap.elements.get("prepare-event-continuation").disabled
+      || listingGap.elements.get("event-supplement").value !== "") throw new Error("reloading run did not clear gap view state");
+
+  const clearedGap = await scenario({mode:"event",cases:[],events:[],
+    executors:{event:"CONFIGURED",world:"NOT_CONFIGURED",direct:"NOT_CONFIGURED"},
+    eventResearch:[
+      {status:"NOT_RETAINED",exploration_gap:"EXPLORATION_ISSUER_RELATION_UNVERIFIED",original_input:"original event",bounds:gapBounds},
+      {status:"NOT_RETAINED",exploration_gap:"EXPLORATION_GAP_UNKNOWN",original_input:"original event",bounds:gapBounds}
+    ]});
+  await clearedGap.clickRun();
+  await clearedGap.elements.get("read-event-research").click();
+  if (clearedGap.elements.get("prepare-event-continuation").disabled) throw new Error("actionable gap was not enabled before state-clear check");
+  clearedGap.elements.get("event-supplement").value = "stale supplement";
+  await clearedGap.elements.get("read-event-research").click();
+  const clearedGapText = clearedGap.elements.get("event-research-view").textContent;
+  if (!clearedGapText.includes("EXPLORATION_GAP_UNKNOWN")
+      || clearedGapText.includes("EXPLORATION_ISSUER_RELATION_UNVERIFIED")
+      || clearedGapText.includes("SEC filing")
+      || !clearedGap.elements.get("prepare-event-continuation").disabled
+      || clearedGap.elements.get("event-supplement").value !== ""
+      || clearedGap.elements.get("raw-input").value !== ""
+      || clearedGap.calls.some(x=>x.method === "POST")) throw new Error("unknown gap did not clear actionable continuation state");
+
+  const relationGap = await scenario({mode:"event",cases:[],events:[],
+    executors:{event:"CONFIGURED",world:"NOT_CONFIGURED",direct:"NOT_CONFIGURED"},
+    eventResearch:{status:"NOT_RETAINED",exploration_gap:"EXPLORATION_ISSUER_RELATION_UNVERIFIED",
+      original_input:"original event",bounds:gapBounds}});
+  await relationGap.clickRun();
+  await relationGap.elements.get("read-event-research").click();
+  const relationGapText = relationGap.elements.get("event-research-view").textContent;
+  for (const expected of ["EXPLORATION_ISSUER_RELATION_UNVERIFIED", "同一发行人符合现有准入条件的 SEC filing",
+    "事件、发生日期及其与发行人的关系", "IR 公告或其他官方文件只能作为辅助线索",
+    "不能代替符合条件的 SEC 证明", "仅被同一材料提及不能证明关联", "ticker", "不保证通过"]) {
+    if (!relationGapText.includes(expected)) throw new Error("issuer relation gap guidance missing: " + expected);
+  }
+  if (relationGap.elements.get("prepare-event-continuation").disabled) throw new Error("valid issuer relation gap did not enable draft preparation");
+  if (relationGap.calls.some(x=>x.method === "POST")) throw new Error("issuer relation gap read triggered research");
+
+  for (const invalidSeed of [
+    {original_input:"   ",bounds:gapBounds},
+    {original_input:"original event",bounds:{max_submissions:2,max_hypotheses:3,max_browser_rows:20,quote_timeout_seconds:2.5}}
+  ]) {
+    const invalidGap = await scenario({mode:"event",cases:[],events:[],
+      executors:{event:"CONFIGURED",world:"NOT_CONFIGURED",direct:"NOT_CONFIGURED"},
+      eventResearch:Object.assign({status:"NOT_RETAINED",exploration_gap:"EXPLORATION_LISTING_IDENTITY_UNVERIFIED"},invalidSeed)});
+    await invalidGap.clickRun();
+    await invalidGap.elements.get("read-event-research").click();
+    if (!invalidGap.elements.get("prepare-event-continuation").disabled
+        || !invalidGap.elements.get("event-research-view").textContent.includes("缺失/无效；不生成续研草稿")
+        || invalidGap.calls.some(x=>x.method === "POST")) throw new Error("invalid exploration continuation seed was actionable");
+  }
+
+  for (const gapCode of ["EXPLORATION_GAP_UNKNOWN", "UNEXPECTED_EXPLORATION_GAP"]) {
+    const unknownGap = await scenario({mode:"event",cases:[],events:[],
+      executors:{event:"CONFIGURED",world:"NOT_CONFIGURED",direct:"NOT_CONFIGURED"},
+      eventResearch:{status:"NOT_RETAINED",exploration_gap:gapCode,original_input:"original event",bounds:gapBounds}});
+    await unknownGap.clickRun();
+    await unknownGap.elements.get("read-event-research").click();
+    const unknownGapText = unknownGap.elements.get("event-research-view").textContent;
+    if (!unknownGap.elements.get("prepare-event-continuation").disabled
+        || unknownGap.elements.get("event-supplement").value !== ""
+        || unknownGap.elements.get("raw-input").value !== ""
+        || unknownGapText.includes("SEC filing") || unknownGapText.includes("ticker")
+        || unknownGapText.includes("查找") || unknownGap.calls.some(x=>x.method === "POST")) {
+      throw new Error("unknown exploration gap produced a draft or speculative guidance");
+    }
+  }
+
+  const legacyNotRetained = await scenario({mode:"event",cases:[],events:[],
+    executors:{event:"CONFIGURED",world:"NOT_CONFIGURED",direct:"NOT_CONFIGURED"},
+    eventResearch:{status:"NOT_RETAINED"}});
+  await legacyNotRetained.clickRun();
+  await legacyNotRetained.elements.get("read-event-research").click();
+  if (legacyNotRetained.elements.get("event-research-view").textContent !== "未保留可展示的 Event submission；不补造历史事实。原阶段原因仍见上方。"
+      || !legacyNotRetained.elements.get("prepare-event-continuation").disabled
+      || legacyNotRetained.calls.some(x=>x.method === "POST")) throw new Error("historical NOT_RETAINED behavior changed without exploration_gap");
+
+  const worldGap = await scenario({mode:"world",cases:[],events:[],
+    executors:{world:"CONFIGURED",event:"CONFIGURED",direct:"NOT_CONFIGURED"},
+    eventResearch:{status:"NOT_RETAINED",exploration_gap:"EXPLORATION_LISTING_IDENTITY_UNVERIFIED"}});
+  await worldGap.clickRun();
+  await worldGap.elements.get("read-event-research").click();
+  if (worldGap.elements.get("event-research-view").textContent.includes("EXPLORATION_LISTING_IDENTITY_UNVERIFIED")
+      || !worldGap.elements.get("prepare-event-continuation").disabled
+      || worldGap.calls.some(x=>x.method === "POST")) throw new Error("Event-only exploration gap leaked into World view");
+
   const assisted = await scenario({mode: "event", cases: [], events: [],
     executors: {event: "CONFIGURED", world: "NOT_CONFIGURED", direct: "CONFIGURED"},
     eventResearch: {status: "RETAINED", assessment_status: "incomplete", original_input: "original event",

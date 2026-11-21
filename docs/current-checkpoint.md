@@ -1,5 +1,28 @@
 # Current Checkpoint
 
+## Workbench: actionable Event exploration stop — 2026-11-21
+
+The existing explicit Event materials view can explain an unverified listing
+identity or direct issuer relation, and prepare an unverified supplement
+with the original Event bounds. There is no automatic POST and no evidence
+override. A stop without a recorded specific reason stays UNKNOWN, with no
+suggested supplement. Historical Mattel records are unchanged. The existing
+GROUNDING_NO_SUBMISSION terminal status and all acceptance gates are preserved.
+
+Separately, a read-only check of the public Mattel 8-K HTML reproduced a
+cover-table recognition limit in the current SEC parser: the registrant marker
+and preceding issuer were recognized, but the frozen table grammar did not
+recognize the cover table. This does not reconstruct the historical run's
+first failing gate. No new parser authority, research POST, World run, model
+call or market-data request was made.
+
+295 relevant offline tests passed. A date-sensitive integration fixture now
+derives a valid monthly expiry from its observation date; production dates
+and maturity policy are unchanged. The historical Mattel journal was also
+verified via a private temporary copy, with no historical write.
+Independent review, compile and docs/diff checks passed. The local Workbench
+served the updated page and Mattel UNKNOWN view via read-only GET.
+
 ## First live structure-first Event: Mattel stopped before market access — 2026-11-20
 
 One authorized U.S. options RTH run, `1574ddff-1146-4f95-bd43-ba1db97b629c`,

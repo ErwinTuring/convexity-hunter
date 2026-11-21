@@ -1,5 +1,16 @@
 # Project State
 
+## Event structure-exploration stop guidance — 2026-11-21
+
+Event-only, read-only Workbench materials now distinguish a confirmed
+unverified listed-security identity or direct issuer relation from an unknown
+exploration stop. New eligible no-submission runs retain one bounded code;
+the historical Mattel run has no code and displays UNKNOWN without reclassification.
+Actionable gaps can prepare the existing unverified Event supplement draft
+with immutable original bounds, no automatic submission. No prompt, evidence,
+maturity, Core, World, provider-budget or execution-gate change.
+See [checkpoint](current-checkpoint.md) for offline verification.
+
 ## First live structure-first Event: no exploration lead — 2026-11-20
 
 One guarded normal Mattel Event ran in U.S. options RTH. Grounder and Builder

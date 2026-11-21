@@ -1303,6 +1303,14 @@ class HostGrounderQuoteLocalizedRuntimeResult:
         )
 
 
+_EXPLORATION_LISTING_GAP = "EXPLORATION_LISTING_IDENTITY_UNVERIFIED"
+_EXPLORATION_ISSUER_GAP = "EXPLORATION_ISSUER_RELATION_UNVERIFIED"
+_EXPLORATION_UNKNOWN_GAP = "EXPLORATION_GAP_UNKNOWN"
+_EXPLORATION_GAP_CODES = frozenset((
+    _EXPLORATION_LISTING_GAP, _EXPLORATION_ISSUER_GAP, _EXPLORATION_UNKNOWN_GAP,
+))
+
+
 @dataclass(frozen=True, repr=False)
 class HostGrounderEvidenceCatalogRuntimeResult:
     build_result: HostBuildResult = field(repr=False)
@@ -1321,6 +1329,9 @@ class HostGrounderEvidenceCatalogRuntimeResult:
     )
     _exploration_source_admissions: tuple = field(
         default=(), init=False, repr=False, compare=False
+    )
+    _exploration_gap: Optional[str] = field(
+        default=None, init=False, repr=False, compare=False
     )
 
     def __repr__(self) -> str:

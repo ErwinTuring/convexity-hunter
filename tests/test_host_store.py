@@ -2570,6 +2570,35 @@ class HostStoreTests(unittest.TestCase):
                 STANDARD_RESEARCH_PROFILE.snapshot(), direct_metadata,
             )
 
+    def test_no_submission_exploration_gap_preserves_terminal_and_historical_records(self):
+        for recorded in (None, "EXPLORATION_LISTING_IDENTITY_UNVERIFIED",
+                         "EXPLORATION_ISSUER_RELATION_UNVERIFIED"):
+            with self.subTest(recorded=recorded):
+                metadata = _run_start_metadata()
+                metadata["configuration_snapshot"]["exploration_policy"] = (
+                    _exploration_policy_snapshot()
+                )
+                run_id = self.store.create_run(
+                    "event", "synthetic fixture event", BOUNDS,
+                    STANDARD_RESEARCH_PROFILE.snapshot(), metadata,
+                )
+                stage_id = self.store.start_stage(run_id, "grounder")
+                result = make_grounder_no_submission_result(run_id)
+                if recorded is not None:
+                    object.__setattr__(result, "_exploration_gap", recorded)
+                self.store.save_grounder_stage_result(run_id, stage_id, result)
+                run = self.store.get_run(run_id)
+                self.assertEqual(run["status"], "BLOCKED")
+                self.assertEqual(run["diagnostics"], ["GROUNDING_NO_SUBMISSION"])
+                self.assertEqual(run["events"][-1]["diagnostics"],
+                                 ["GROUNDING_NO_SUBMISSION"] + ([recorded] if recorded else []))
+                research = self.store.get_event_research(run_id)
+                self.assertEqual(research["status"], "NOT_RETAINED")
+                self.assertEqual(research["exploration_gap"], recorded or "EXPLORATION_GAP_UNKNOWN")
+                self.assertIsNone(research["assessment_status"])
+                self.assertEqual(research["sources"], [])
+                self.assertEqual(research["statements"], [])
+
     def test_grounder_exploration_stage_is_running_and_redacts_materials_from_run_get(self):
         from convexity_hunter.host_store import (
             _GROUNDER_EXPLORATION_STAGE_OUTCOME_VERSION,
