@@ -1,5 +1,13 @@
 # Project State
 
+## SEC v4 compatibility: one proven-empty leading layout row — 2026-11-21
+
+Approved five-cell layout variant implemented without changing listing, issuer,
+event-date, EI or Core policy. Mattel's unmodified public 8-K HTML now passes
+v4 parser admission/revalidation in isolation. No historical attribution,
+production Event/World trial, provider-budget change or live closure claim.
+See [checkpoint](current-checkpoint.md) for the verified scope.
+
 ## Event structure-exploration stop guidance — 2026-11-21
 
 Event-only, read-only Workbench materials now distinguish a confirmed

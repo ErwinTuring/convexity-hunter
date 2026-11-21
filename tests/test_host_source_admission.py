@@ -1660,6 +1660,63 @@ class HostSourceAdmissionTests(unittest.TestCase):
                         )
                     )
 
+    def test_sec_v4_empty_layout_row_preserves_projection_and_proves_raw_anchors(self):
+        baseline = _sec_layout_v4_html().decode("utf-8")
+        prefix = '<tr style="height:0">' + '<td style="padding:0;width:20.25pt"/>' * 5 + "</tr>"
+        padded = baseline.replace("<table>", "<table>" + prefix, 1)
+        self.assertIsNone(admission._sec_html(padded))
+        self.assertIsNone(admission._sec_cover_layout_v3(padded))
+
+        original = admission._sec_cover_layout_v4(baseline)
+        result = _client(_ResponseTransport({
+            SEC_LOCATOR: [_ok(padded.encode("utf-8"))]
+        })).admit_candidates((SEC_LOCATOR,))
+        self.assertEqual(len(result.admissions), 1)
+        admitted = result.admissions[0]
+        self.assertEqual((admitted.parser_id, admitted.parser_version),
+                         ("sec-edgar-cover-layout-v4", "4"))
+        self.assertEqual(admitted.parsed_body, original.body)
+        self.assertIsNotNone(_revalidate_source_admission(
+            admitted, max_raw_bytes=100_000, max_parsed_bytes=100_000,
+        ))
+        table_anchors = [a for a in admitted.raw_anchors
+                         if a.field.startswith(("sec_cover.header.", "sec_cover.value."))]
+        self.assertEqual(len(table_anchors), 6)
+        layout_end = padded.index(prefix) + len(prefix)
+        for anchor in table_anchors:
+            self.assertGreaterEqual(anchor.raw_start, layout_end)
+            self.assertEqual(anchor.raw_sha256, hashlib.sha256(
+                padded[anchor.raw_start:anchor.raw_end].encode("utf-8")
+            ).hexdigest())
+
+    def test_sec_v4_empty_layout_row_rejects_unproven_and_competing_shapes(self):
+        base = _sec_layout_v4_html().decode("utf-8")
+        empty = "<tr>" + "<td></td>" * 5 + "</tr>"
+        def with_leading(row):
+            return base.replace("<table>", "<table>" + row, 1)
+        padding = with_leading(empty)
+        table = base[base.index("<table>"):base.index("</table>") + len("</table>")]
+        cases = {
+            "wrong width": with_leading(empty.replace("<td></td>", "", 1)),
+            "duplicate leading rows": with_leading(empty * 2),
+            "trailing row": padding.replace("</table>", empty + "</table>"),
+            "nonempty cell": with_leading(empty.replace("</td>", "Unproven</td>", 1)),
+            "erased numeric control": with_leading(empty.replace("</td>", "&#11;</td>", 1)),
+            "unsafe control": with_leading(empty.replace("</td>", "\x0b</td>", 1)),
+            "encoded attribute control": with_leading(empty.replace("<td>", '<td style="&#1;">', 1)),
+            "non-layout style": with_leading(empty.replace("<td>", '<td style="content:attr(id)">', 1)),
+            "hidden payload": with_leading(empty.replace("</td>", "<span hidden>payload</span></td>", 1)),
+            "hidden extra row": with_leading('<tr hidden><td>payload</td></tr>' + empty),
+            "merged cell": with_leading(empty.replace("<td>", '<td colspan="2">', 1)),
+            "competing original table": padding.replace("</body>", table + "</body>"),
+            "competing padded table": padding.replace(
+                "</body>", table.replace("<table>", "<table>" + empty, 1) + "</body>",
+            ),
+        }
+        for label, html_text in cases.items():
+            with self.subTest(label=label):
+                self.assertIsNone(admission._sec_cover_layout_v4(html_text))
+
     def test_sec_layout_v4_only_rejects_br_between_meaningful_segment_text(self):
         marker = admission._SEC_MARKER
         marker_source = "(Exact&#10;name of registrant as specified in its charter)<br>"

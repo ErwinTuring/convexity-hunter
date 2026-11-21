@@ -1366,7 +1366,7 @@ def _sec_cover_layout_v3_fold(value: str) -> str:
     return _ascii_space(value.replace("\u00a0", " "))
 
 
-def _sec_cover_layout_table(parser, fold, *, safe_before_fold):
+def _sec_cover_layout_table(parser, fold, *, safe_before_fold, allow_leading_layout_row=False):
     """Apply the shared, narrow v3/v4 SEC cover-table grammar."""
     expected = tuple(value.casefold() for value in (_SEC_TITLE, _SEC_TICKER, _SEC_EXCHANGE))
     candidates = []
@@ -1374,19 +1374,28 @@ def _sec_cover_layout_table(parser, fold, *, safe_before_fold):
         rows = table["rows"]
         if not rows:
             continue
-        width = len(rows[0])
-        header = tuple(
-            fold(_sec_cover_cell_safety_text(cell).replace("\u00a0", " "))
-            for cell in rows[0]
-        )
-        if any(value is None for value in header):
-            continue
-        projected = tuple(value.lower() if value.isascii() else value for value in header if value)
-        if projected == expected:
-            candidates.append((table_id, rows, width, header))
+        for offset in range(2 if allow_leading_layout_row and len(rows) > 1 else 1):
+            header = tuple(
+                fold(_sec_cover_cell_safety_text(cell).replace("\u00a0", " "))
+                for cell in rows[offset]
+            )
+            if any(value is None for value in header):
+                continue
+            projected = tuple(value.lower() if value.isascii() else value for value in header if value)
+            if projected == expected:
+                candidates.append((table_id, rows, offset, header))
     if len(candidates) != 1:
         return None
-    table_id, rows, width, header = candidates[0]
+    table_id, rows, offset, header = candidates[0]
+    if offset:
+        if (
+            len(rows) != 3
+            or any(len(row) != 5 for row in rows)
+            or not parser.proves_empty_layout_row(table_id, rows[0])
+        ):
+            return None
+        rows = rows[1:]
+    width = len(rows[0])
     if width not in (3, 5) or len(rows) != 2 or any(len(row) != width for row in rows):
         return None
 
@@ -1716,6 +1725,30 @@ def _sec_cover_layout_v3(source: str) -> Optional[_ParsedPage]:
     return _ParsedPage(body, "sec-edgar-cover-layout-v3", tuple(anchors), symbol)
 
 
+_SEC_LAYOUT_DIMENSION = (
+    r"(?:height|width|padding)[ \t\r\n]*:[ \t\r\n]*[0-9]+(?:\.[0-9]+)?(?:pt|px|%)?"
+)
+_SEC_LAYOUT_STYLE_VALUE = (
+    r"[ \t\r\n]*" + _SEC_LAYOUT_DIMENSION
+    + r"(?:[ \t\r\n]*;[ \t\r\n]*" + _SEC_LAYOUT_DIMENSION + r")*[ \t\r\n]*(?:;[ \t\r\n]*)?"
+)
+_SEC_LAYOUT_STYLE = (
+    r"(?:[ \t\r\n]+style[ \t\r\n]*=[ \t\r\n]*(?:"
+    + '"' + _SEC_LAYOUT_STYLE_VALUE + '"'
+    + "|'" + _SEC_LAYOUT_STYLE_VALUE + "'))?"
+)
+_SEC_LAYOUT_EMPTY_TEXT = (
+    r"(?:[ \t\r\n\u00a0]|&(?:nbsp|Tab|NewLine);"
+    r"|&#(?:0*(?:9|10|13|32|160)|x0*(?:9|a|d|20|a0));)*"
+)
+_SEC_V4_EMPTY_LAYOUT_ROW = re.compile(
+    r"<tr" + _SEC_LAYOUT_STYLE + r"[ \t\r\n]*>[ \t\r\n]*"
+    + r"(?:<(td|th)" + _SEC_LAYOUT_STYLE + r"[ \t\r\n]*(?:/>|>"
+    + _SEC_LAYOUT_EMPTY_TEXT + r"</\1[ \t\r\n]*>)[ \t\r\n]*){5}",
+    re.ASCII | re.IGNORECASE,
+)
+
+
 class _SecCoverSemanticHTML(_BoundedHTML):
     """Collect visible SEC block text without treating pretty-print lines as blocks."""
 
@@ -1727,6 +1760,23 @@ class _SecCoverSemanticHTML(_BoundedHTML):
         self._semantic_chunks = []
         self._semantic_inline_break = False
         self._semantic_pending_inline_break = False
+        self._physical_row_counts = {}
+        self._row_source_start = None
+        self._row_source_spans = {}
+
+    def proves_empty_layout_row(self, table_id, row):
+        # Text-only chunks lose hidden content and some invalid numeric
+        # entities. Prove the optional layout row against original markup.
+        span = self._row_source_spans.get(id(row))
+        return (
+            self._physical_row_counts.get(table_id) == 3
+            and span is not None
+            and _SEC_V4_EMPTY_LAYOUT_ROW.fullmatch(self._source[slice(*span)]) is not None
+            and all(
+                _sec_cover_layout_v4_fold(_sec_cover_cell_safety_text(cell)) == ""
+                for cell in row
+            )
+        )
 
     def _finish_semantic_segment(self):
         if self._semantic_chunks:
@@ -1773,6 +1823,10 @@ class _SecCoverSemanticHTML(_BoundedHTML):
 
     def handle_starttag(self, tag, attrs):
         normalized_tag = tag.casefold()
+        previous_row = self._row
+        if normalized_tag == "tr" and self._table_stack:
+            table_id = self._table_stack[-1]
+            self._physical_row_counts[table_id] = self._physical_row_counts.get(table_id, 0) + 1
         if (
             not self._hidden_stack
             and normalized_tag in self._SEGMENT_BLOCKS
@@ -1780,9 +1834,19 @@ class _SecCoverSemanticHTML(_BoundedHTML):
         ):
             self._finish_semantic_segment()
         super().handle_starttag(tag, attrs)
+        if normalized_tag == "tr" and self._row is not None and self._row is not previous_row:
+            self._row_source_start = self._offset()
 
     def handle_endtag(self, tag):
         normalized_tag = tag.casefold()
+        if (
+            not self._hidden_stack
+            and normalized_tag == "tr"
+            and self._row is not None
+            and self._row_source_start is not None
+        ):
+            self._row_source_spans[id(self._row)] = (self._row_source_start, self._offset())
+            self._row_source_start = None
         if not self._hidden_stack and normalized_tag in self._SEGMENT_BLOCKS:
             self._finish_semantic_segment()
         super().handle_endtag(tag)
@@ -1851,7 +1915,8 @@ def _sec_cover_layout_v4(source: str) -> Optional[_ParsedPage]:
         return None
 
     cover_table = _sec_cover_layout_table(
-        parser, _sec_cover_layout_v4_fold, safe_before_fold=False
+        parser, _sec_cover_layout_v4_fold, safe_before_fold=False,
+        allow_leading_layout_row=True,
     )
     if cover_table is None:
         return None

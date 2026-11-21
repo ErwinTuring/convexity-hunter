@@ -384,7 +384,8 @@ or claim real compatibility from those aggregates.
   issuer segment, passing the existing explicit issuer checks. A substring,
   hidden marker, missing issuer or ambiguous segment is insufficient. Use a
   narrow source-local segment collector, not a generic HTML/rendering framework.
-- Preserve the unique cover-table grammar: exactly one header and one data row,
+- Preserve the unique cover-table grammar: exactly one header and one data row
+  (see the narrow leading-layout-row amendment below),
   equal physical widths of 3 or 5; only columns 2/4 in five-cell rows may be
   removed, and both rows must prove them empty under the declared v4 fold.
   Keep field-length/Markdown/ticker controls and reject competing tables,
@@ -408,6 +409,21 @@ segment. Internal name/marker splits remain rejected. Preserve hidden/block/
 table rules, literal visible body, anchors, hashes and all metadata; no new
 parser version or listing/date/EI authority is created. Earlier v4 records
 retain their meanings. Implementation/review status is in the checkpoint.
+
+User-approved v4 cover-layout compatibility amendment (2026-11-21): the
+SEC v4 five-cell cover route may additionally recognize exactly one leading
+row of five proven-empty layout cells immediately before the exact header and
+the single data row. Use only the declared v4 whitespace fold to prove empty
+text; a plain self-closing cell with no payload also qualifies. Only simple
+numeric height/width/padding styles are allowed in that row. Reject
+nonempty cells, unsafe controls, ambiguous/spanning cells or
+additional rows. Count competing cover tables across both supported shapes.
+Only the original header and data cells enter the projection; anchor spans,
+hashes and the original raw HTML must still bind those cells exactly. Keep
+existing parser identity, revalidation, visible narrative, and the v1–v3
+routes. This changes supported HTML layout only, not event occurrence, listing
+identity, supplement, EI or market-data authority. It does not establish why
+the historical Mattel research run stopped or authorize its replay.
 The correction is implemented and independently reviewed: 56 admission and
 139 related regressions pass. A same-hash public-HTML normalization confirms
 the IREN format parses as v4; this is not a normal Host admission/EI run.

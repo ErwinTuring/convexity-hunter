@@ -3842,6 +3842,18 @@ class HostEventGrounderTests(unittest.TestCase):
             global_cover.replace(b"<th></th>", b"")
             .replace(b"<td></td>", b"")
         )
+        padded_global_cover = global_cover.replace(
+            b"<table>",
+            b'<table><tr style="height:1pt">'
+            b'<td style="width:35%">&nbsp;</td><td></td><td> </td>'
+            b'<td>&#9;</td><td></td></tr>',
+            1,
+        )
+        self_closing_layout_cover = global_cover.replace(
+            b"<table>", b'<table><tr style="height:0">'
+            + b'<td style="width:20pt"/>' * 5 + b"</tr>",
+            1,
+        )
         yahoo_gs = (
             "<html><body><div>NasdaqGS - Nasdaq Real Time Price USD</div>"
             "<h1>Example Holdings, Inc. (ACME)</h1></body></html>"
@@ -3860,6 +3872,9 @@ class HostEventGrounderTests(unittest.TestCase):
         cases = (
             ("global-select-valid", global_cover, yahoo_gs, True),
             ("global-select-compact-cover-valid", compact_global_cover, yahoo_gs, True),
+            ("global-select-leading-empty-five-cell-row-valid", padded_global_cover, yahoo_gs, True),
+            ("global-select-self-closing-layout-valid", self_closing_layout_cover, yahoo_gs, True),
+            ("global-select-leading-empty-row-with-capital-yahoo", padded_global_cover, yahoo_cm, False),
             ("global-select-with-capital-yahoo", global_cover, yahoo_cm, False),
             ("capital-with-global-select-yahoo", capital_cover, yahoo_gs, False),
             ("par-value-global-select-with-capital-yahoo", par_value_global_cover, yahoo_cm, False),

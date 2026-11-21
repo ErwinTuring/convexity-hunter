@@ -1,5 +1,25 @@
 # Current Checkpoint
 
+## SEC v4: one leading empty five-cell layout row — 2026-11-21
+
+The user approved one exact [SEC v4 cover format amendment](local-event-delivery-v0.1.md#sec-semantic-layout-source-text-v4--2026-10-10).
+A five-cell cover table may have one physically leading, proven-empty layout
+row. The raw proof excludes discarded controls and ambiguous content; only
+the exact header and data row are projected and anchored. Multiple candidate
+tables still fail closed. v1–v3, SEC v4 metadata, listing/issuer/date and all
+downstream acceptance and research rules remain unchanged.
+
+[Mattel's public SEC 8-K](https://www.sec.gov/Archives/edgar/data/63276/000006327626000014/mat-20261102.htm)
+uses five self-closing empty layout cells. Its unmodified public HTML passed
+isolated v4 source admission and raw-to-parsed revalidation after the change.
+This is source-format evidence only, not verified issuer relationship, EI
+acceptance, or an attribution of the historical Mattel Event. No Event or World
+was submitted, no billable source/model/market call was made, and no historical
+run was replayed or reclassified.
+193 bounded admission/Event/World tests, compilation, document/diff checks
+and independent targeted re-review passed. The matched source format did not
+relax the listing cross-pair guard.
+
 ## Workbench: actionable Event exploration stop — 2026-11-21
 
 The existing explicit Event materials view can explain an unverified listing
