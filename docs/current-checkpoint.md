@@ -1,5 +1,23 @@
 # Current Checkpoint
 
+## Release candidate: single Mattel Event stopped before market access — 2026-11-24
+
+One authorized normal RTH Event on clean `553a9b6`, with exploration enabled
+and the prior Mattel input and bounds unchanged. POST 201 at 22:31 Beijing;
+run `1410127f-94df-4d9b-a8ad-1f362eef1a1b`. The attempt is spent. OpenD quote
+login and regular session were confirmed; no Futu research request followed.
+
+Semantic receipt validated; Builder completed; submission PRESENT; EI ASSESSED
+→ `INCOMPLETE`. The event-fact anchor had no `selected_claim_id`; independent
+exploration therefore stopped before the new Item 2.02 witness could be used.
+This does not identify why the anchor was not selected or show a format failure.
+Final `BLOCKED / HOST_BATCH_BLOCKED`, zero Core cases and one unavailable branch.
+Workbench readback retained two sources and four statements; no geometry report.
+
+Event positive live closure remains unproven. Direct's prior closure stands;
+World was not rerun. No proven implementation defect, production change, new
+case or automatic retry. Source/model limits were unchanged; billed usage is unknown.
+
 ## SEC Item 2.02 direct release evidence for independent exploration — 2026-11-21
 
 The user approved the [narrow exploration-only occurrence successor](structure-first-exploration-decision-v0.1.md).

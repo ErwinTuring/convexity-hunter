@@ -1,5 +1,13 @@
 # Project State
 
+## Mattel release-candidate acceptance: EI INCOMPLETE — 2026-11-24
+
+The one normal live Event reached a retained submission and actual EI assessment.
+No selected event-fact anchor, exploration lead, Futu research, or Core case.
+This does not invalidate the separately proven Item 2.02 format compatibility.
+Direct remains live-proven; positive Event/World closure remains unproven. No
+automatic rerun, new case, or scope expansion. See the [checkpoint](current-checkpoint.md).
+
 ## Exploration-only SEC Item 2.02 issuer/date witness — 2026-11-21
 
 Direct quarterly release evidence can use one exact source-anchored Item 2.02
