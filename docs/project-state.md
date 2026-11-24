@@ -7,6 +7,9 @@ No selected event-fact anchor, exploration lead, Futu research, or Core case.
 This does not invalidate the separately proven Item 2.02 format compatibility.
 Direct remains live-proven; positive Event/World closure remains unproven. No
 automatic rerun, new case, or scope expansion. See the [checkpoint](current-checkpoint.md).
+The [Workbench handoff](local-workbench-user-flow.md) marks Direct usable and
+Event/World preview. Browser walkthrough verified archived Direct, retained
+Event gaps and draft/cancel without a new run; this is not new live acceptance.
 
 ## Exploration-only SEC Item 2.02 issuer/date witness — 2026-11-21
 
